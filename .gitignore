@@ -1,0 +1,27 @@
+# Dependencies and package-manager caches
+node_modules/
+.pnpm-store/
+.npm/
+
+# Build outputs and generated runtimes
+dist/
+dist-electron/
+release/
+.private-runtime/
+.plugin-runtime/
+.native-host-runtime/
+.packaging-tools/
+coverage/
+*.tsbuildinfo
+
+# Local state, logs, and secrets
+.opencode/
+.redbox-dev/
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
+!.env.*.example
+developer_id.key
+developer_id.certSigningRequest

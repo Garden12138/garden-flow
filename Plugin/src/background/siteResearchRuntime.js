@@ -1,0 +1,881 @@
+import capabilityManifest from './siteResearchCapabilities.json' with { type: 'json' };
+
+const MAX_SNAPSHOT_CHARS = 180_000;
+const RESULT_READY_POLL_MS = 750;
+const RESULT_READY_TIMEOUT_MS = 8_000;
+const MAX_STALLED_SCROLLS = 2;
+const DEFAULT_MEDIA_LIMIT = 6;
+const MAX_MEDIA_LIMIT = 20;
+const MEDIA_DOWNLOAD_ACTION_RESERVE_MS = 4_000;
+const MEDIA_DOWNLOAD_ITEM_TIMEOUT_MS = 10_000;
+
+export const SITE_RESEARCH_CONTRACT_VERSION = capabilityManifest.contractVersion;
+
+const SITE_RESEARCH_FILTERS = Object.freeze({
+  xiaohongshu: Object.freeze({
+    sort: Object.freeze(['relevance', 'latest', 'most_liked']),
+    contentType: Object.freeze(['all', 'image_text', 'video']),
+    publishTime: Object.freeze(['all', 'day', 'week', 'half_year']),
+  }),
+  douyin: Object.freeze({
+    sort: Object.freeze(['relevance', 'latest', 'most_liked']),
+    contentType: Object.freeze(['all', 'image_text', 'video']),
+    publishTime: Object.freeze(['all', 'day', 'week', 'half_year']),
+  }),
+});
+
+export const SITE_CAPABILITY_SPECS = Object.freeze(Object.fromEntries(
+  capabilityManifest.capabilities.map((capability) => [capability.id, Object.freeze({
+    ...capability,
+    hosts: [...capability.hostPatterns],
+    operations: [...capability.supportedOperations],
+    filters: Object.fromEntries(Object.entries(capability.supportedFilters || {}).map(([key, values]) => [key, [...values]])),
+  })]),
+));
+
+export function listSiteCapabilities() {
+  return Object.values(SITE_CAPABILITY_SPECS).map((spec) => ({
+    id: spec.id,
+    displayName: spec.displayName,
+    operations: [...spec.operations],
+    filters: Object.fromEntries(Object.entries(spec.filters).map(([key, values]) => [key, [...values]])),
+    searchEntryUrl: spec.searchEntryUrl || null,
+    searchViaPageUi: spec.searchViaPageUi === true,
+    detailOpenMode: spec.detailOpenMode || 'direct_url',
+    capabilityVersion: spec.capabilityVersion,
+    extractorSchemaHash: spec.extractorSchemaHash,
+  }));
+}
+
+export function normalizeResearchRequest(input = {}) {
+  const operation = String(input.operation || input.researchOperation || '').trim().toLowerCase();
+  if (!['search', 'author_scan', 'content_scan'].includes(operation)) {
+    throw new Error('research.run requires operation: search, author_scan, or content_scan');
+  }
+  const query = String(input.query || input.keyword || '').trim();
+  const sourceUrl = normalizeHttpUrl(input.url || input.sourceUrl || input.profileUrl || input.contentUrl || '');
+  const site = resolveSiteCapability(input.siteId || input.site || input.platform || '', sourceUrl);
+  if (!site.operations.includes(operation)) {
+    throw new Error(`${site.displayName} does not support research operation: ${operation}`);
+  }
+  if (operation === 'search' && !query) throw new Error('research.run search requires query');
+  if (operation !== 'search' && !sourceUrl && !Number.isInteger(Number(input.tabId))) {
+    throw new Error(`research.run ${operation} requires url or tabId`);
+  }
+  return {
+    site,
+    operation,
+    query,
+    sourceUrl,
+    tabId: positiveInteger(input.tabId),
+    active: input.active !== false,
+    timeoutMs: clampNumber(input.timeoutMs, 1_000, 60_000, 20_000),
+    snapshot: input.snapshot !== false,
+    limit: clampNumber(input.limit, 1, 100, 10),
+    commentLimit: clampNumber(input.commentLimit, 0, 100, 8),
+    filters: normalizeResearchFilters(input.filters, site, operation),
+    depth: normalizeDepth(input.depth),
+    maxScrolls: clampNumber(input.maxScrolls, 0, 8, 3),
+    downloadMedia: input.downloadMedia === true || input.ocr === true || input.transcribeAudio === true,
+    mediaTypes: normalizeMediaTypes(input.mediaTypes),
+    mediaLimit: clampNumber(input.mediaLimit, 1, MAX_MEDIA_LIMIT, DEFAULT_MEDIA_LIMIT),
+    minMediaWidth: clampNumber(input.minMediaWidth, 0, 10_000, 0),
+    minMediaHeight: clampNumber(input.minMediaHeight, 0, 10_000, 0),
+    ocr: input.ocr === true,
+    transcribeAudio: input.transcribeAudio === true,
+    executionMode: normalizeExecutionMode(input.executionMode),
+    runId: String(input.runId || '').trim(),
+    item: input.item && typeof input.item === 'object' && !Array.isArray(input.item) ? input.item : null,
+    openState: input.openState && typeof input.openState === 'object' && !Array.isArray(input.openState) ? input.openState : null,
+    media: Array.isArray(input.media) ? input.media.slice(0, 40) : [],
+  };
+}
+
+export function pickReusableResearchTab(tabs, request) {
+  if (request?.operation !== 'search') return null;
+  const patterns = Array.isArray(request?.site?.hosts) ? request.site.hosts : [];
+  if (!patterns.length) return null;
+  const siteId = String(request?.site?.id || '');
+  const activeWindowId = (tabs || []).find((item) => item?.active === true)?.windowId;
+  const ranked = [];
+  for (const tab of tabs || []) {
+    const url = String(tab?.url || tab?.pendingUrl || '');
+    if (!tab?.id || !/^https?:/i.test(url)) continue;
+    if (!patterns.some((pattern) => url.includes(String(pattern)))) continue;
+    if (isLikelySiteDetailUrl(url, siteId)) continue;
+    let score = 10;
+    if (/search_result/i.test(url)) score = 30;
+    else if (isLikelySiteHomeUrl(url, siteId)) score = 20;
+    if (Number(tab.groupId) > 0) score += 5;
+    if (activeWindowId != null && tab.windowId === activeWindowId) score += 2;
+    if (tab.active === true) score += 1;
+    if (tab.discarded === true) score -= 8;
+    ranked.push({ tab, score });
+  }
+  ranked.sort((left, right) => right.score - left.score || Number(left.tab.id) - Number(right.tab.id));
+  return ranked[0]?.tab || null;
+}
+
+export async function runSiteResearch(requestInput, deps = {}) {
+  const request = normalizeResearchRequest(requestInput);
+  if (request.executionMode !== 'macro') {
+    return await runSiteResearchStep(request, deps);
+  }
+  if (typeof deps.createControlledTab !== 'function' || typeof deps.claimTab !== 'function' || typeof deps.readSnapshot !== 'function' || typeof deps.readSiteEvidence !== 'function') {
+    throw new Error('site research runtime is missing browser dependencies');
+  }
+  const targetUrl = request.operation === 'search'
+    ? request.site.searchEntryUrl
+    : request.sourceUrl;
+  if (!targetUrl && !request.tabId) throw new Error(`${request.site.displayName} research route is unavailable`);
+  let tab = request.tabId ? await deps.getTab?.(request.tabId) : null;
+  let reusedExistingTab = false;
+  if (!tab && typeof deps.listTabs === 'function') {
+    tab = pickReusableResearchTab(await deps.listTabs(), request);
+    reusedExistingTab = Boolean(tab?.id);
+    if (tab?.id && request.active !== false && typeof deps.activateTab === 'function') {
+      await deps.activateTab(tab.id).catch(() => {});
+    }
+  }
+  if (!tab) {
+    const created = await deps.createControlledTab({ url: targetUrl, active: request.active });
+    tab = created?.tab || null;
+    if (!tab?.id) throw new Error('site research could not create browser tab');
+  }
+  const pageRole = request.operation === 'search' ? 'research_search' : 'research_source';
+  try {
+    await deps.claimTab(tab.id, pageRole);
+  } catch (error) {
+    if (!reusedExistingTab || !isTabClaimConflict(error)) throw error;
+    const created = await deps.createControlledTab({ url: targetUrl, active: request.active });
+    tab = created?.tab || null;
+    if (!tab?.id) throw new Error('site research could not create browser tab');
+    await deps.claimTab(tab.id, pageRole);
+  }
+  if (typeof deps.waitForTabComplete === 'function') await deps.waitForTabComplete(tab.id, request.timeoutMs);
+  if (request.operation === 'search') {
+    if (request.site.searchViaPageUi !== true || typeof deps.submitSearch !== 'function') {
+      return researchSearchFailure(request, tab, targetUrl, {
+        reason: 'search_ui_runtime_unavailable',
+        message: `${request.site.displayName} page UI search is unavailable`,
+      });
+    }
+    const submitted = unwrapContentDelivery(await deps.submitSearch(tab.id, extractorRequest(request)));
+    if (submitted?.success !== true) {
+      return researchSearchFailure(request, tab, targetUrl, submitted);
+    }
+    if (typeof deps.waitForTabComplete === 'function') await deps.waitForTabComplete(tab.id, request.timeoutMs);
+  }
+  const current = await deps.getTab?.(tab.id) || tab;
+  let extracted = unwrapContentDelivery(await deps.readSiteEvidence(tab.id, extractorRequest(request)));
+  if (extracted?.success === false && extracted?.reason) {
+    const result = {
+      success: false,
+      kind: 'browser_research',
+      site: siteMetadata(request.site),
+      operation: request.operation,
+      sourceUrl: current?.url || targetUrl,
+      reason: extracted.reason,
+      retryable: false,
+      partial: false,
+    };
+    if (['login_required', 'security_verification_required'].includes(extracted.reason)) {
+      result.handoff = {
+        required: true,
+        tabId: tab.id,
+        message: extracted.reason === 'login_required' ? '请在浏览器完成登录' : '请在浏览器完成安全验证',
+      };
+    }
+    return result;
+  }
+  let filterResult = null;
+  if (Object.keys(request.filters).length) {
+    if (typeof deps.applyFilters !== 'function') {
+      return researchFilterFailure(request, current, targetUrl, {
+        reason: 'filter_runtime_unavailable',
+        message: 'site research filter dependency is unavailable',
+      });
+    }
+    filterResult = unwrapContentDelivery(await deps.applyFilters(tab.id, extractorRequest(request)));
+    if (filterResult?.success !== true) {
+      return researchFilterFailure(request, current, targetUrl, filterResult);
+    }
+    extracted = unwrapContentDelivery(await deps.readSiteEvidence(tab.id, extractorRequest(request)));
+    if (extracted?.success === false && extracted?.reason) {
+      return {
+        success: false,
+        kind: 'browser_research',
+        site: siteMetadata(request.site),
+        operation: request.operation,
+        sourceUrl: current?.url || targetUrl,
+        reason: extracted.reason,
+        retryable: false,
+        partial: false,
+      };
+    }
+  }
+  if (request.operation === 'search' || request.operation === 'author_scan') {
+    extracted = await collectBoundedCards(tab.id, request, extracted, deps);
+    if (!(extracted?.items || []).length) {
+      return researchCardsFailure(request, current, targetUrl, extracted);
+    }
+  }
+  const deep = request.depth === 'preview'
+    ? { items: [], failures: [] }
+    : await collectDeepItems(request, tab.id, extracted?.items || [], deps);
+  if (request.depth !== 'preview' && (extracted?.items || []).length > 0 && deep.items.length === 0) {
+    return {
+      success: false,
+      kind: 'browser_research',
+      site: siteMetadata(request.site),
+      operation: request.operation,
+      sourceUrl: current?.url || targetUrl,
+      reason: 'detail_capture_failed',
+      retryable: false,
+      partial: false,
+      failures: deep.failures,
+      counts: {
+        cards: extracted.items.length,
+        opened: deep.failures.length,
+        items: 0,
+        failed: deep.failures.length,
+      },
+    };
+  }
+  const snapshot = request.snapshot
+    ? unwrapContentDelivery(await deps.readSnapshot(tab.id))
+    : null;
+  const text = serializeSnapshot(snapshot);
+  const selectedItems = request.depth === 'preview' ? extracted?.items || [] : deep.items;
+  const mediaDownloads = request.downloadMedia
+    ? await downloadResearchMedia(request, extracted, selectedItems, deps)
+    : { items: [], failures: [] };
+  const failures = [...deep.failures, ...mediaDownloads.failures];
+  return {
+    success: true,
+    kind: 'browser_research',
+    site: siteMetadata(request.site),
+    operation: request.operation,
+    depth: request.depth,
+    query: request.query || undefined,
+    filters: {
+      requested: request.filters,
+      applied: filterResult?.applied || {},
+    },
+    sourceUrl: targetUrl,
+    tab: normalizeTab(current),
+    pageState: extracted?.pageState || null,
+    author: extracted?.author || null,
+    content: extracted?.content || null,
+    items: selectedItems,
+    failures,
+    partial: failures.length > 0,
+    mediaDownloads: mediaDownloads.items,
+    counts: {
+      cards: (extracted?.items || []).length,
+      opened: deep.items.length + deep.failures.length,
+      items: selectedItems.length,
+      comments: selectedItems.reduce((total, item) => total + (item.content?.comments?.length || item.comments?.length || 0), extracted?.content?.comments?.length || 0),
+      media: selectedItems.reduce((total, item) => total + (item.content?.media?.length || item.media?.length || 0), extracted?.content?.media?.length || 0),
+      failed: failures.length,
+    },
+    evidence: {
+      capturedAt: new Date().toISOString(),
+      sourceUrl: current?.url || targetUrl,
+      title: current?.title || '',
+      snapshot: text,
+      truncated: text.length >= MAX_SNAPSHOT_CHARS,
+      structured: extracted,
+    },
+  };
+}
+
+async function runSiteResearchStep(request, deps) {
+  if (!request.tabId || typeof deps.getTab !== 'function') {
+    throw new Error(`research.run ${request.executionMode} requires tabId`);
+  }
+  const tab = await deps.getTab(request.tabId);
+  if (!tab?.id) throw new Error('site research step tab is unavailable');
+  if (request.executionMode === 'submit_search') {
+    if (request.operation !== 'search' || typeof deps.submitSearch !== 'function') {
+      throw new Error('research.run submit_search requires a search operation and page UI dependency');
+    }
+    const submitted = unwrapContentDelivery(await deps.submitSearch(request.tabId, extractorRequest(request)));
+    return {
+      ...submitted,
+      kind: 'browser_research_step',
+      step: 'submit_search',
+      site: siteMetadata(request.site),
+      operation: request.operation,
+      sourceUrl: submitted?.sourceUrl || tab.url || request.sourceUrl,
+      tab: normalizeTab(await deps.getTab(request.tabId) || tab),
+    };
+  }
+  if (request.executionMode === 'extract') {
+    if (typeof deps.readSiteEvidence !== 'function') {
+      throw new Error('site research extract dependency is unavailable');
+    }
+    let extracted = unwrapContentDelivery(await deps.readSiteEvidence(tab.id, extractorRequest(request)));
+    if (request.operation === 'search' || request.operation === 'author_scan') {
+      extracted = await collectBoundedCards(tab.id, request, extracted, deps);
+    }
+    return {
+      ...extracted,
+      kind: 'browser_research_step',
+      step: 'extract',
+      site: siteMetadata(request.site),
+      operation: request.operation,
+      sourceUrl: tab.url || request.sourceUrl,
+      tab: normalizeTab(tab),
+      items: extracted?.items || [],
+    };
+  }
+  if (request.executionMode === 'apply_filters') {
+    if (typeof deps.applyFilters !== 'function') {
+      throw new Error('site research filter dependency is unavailable');
+    }
+    const applied = unwrapContentDelivery(await deps.applyFilters(tab.id, extractorRequest(request)));
+    return {
+      ...applied,
+      kind: 'browser_research_step',
+      step: 'apply_filters',
+      site: siteMetadata(request.site),
+      operation: request.operation,
+      sourceUrl: tab.url || request.sourceUrl,
+      tab: normalizeTab(tab),
+    };
+  }
+  if (request.executionMode === 'open_item') {
+    const interactionRef = request.item?.interactionRef;
+    if (!['search', 'author_scan'].includes(request.operation)
+      || request.site.detailOpenMode !== 'page_click'
+      || !request.item
+      || interactionRef?.kind !== 'site_card'
+      || String(interactionRef?.site || '') !== request.site.id
+      || typeof deps.openItem !== 'function') {
+      throw new Error('research.run open_item requires a typed page-click interactionRef and page interaction dependency');
+    }
+    const opened = unwrapContentDelivery(await deps.openItem(tab.id, extractorRequest(request)));
+    return {
+      ...opened,
+      kind: 'browser_research_step',
+      step: 'open_item',
+      site: siteMetadata(request.site),
+      operation: request.operation,
+      sourceUrl: opened?.sourceUrl || tab.url || request.sourceUrl,
+    };
+  }
+  if (request.executionMode === 'close_item') {
+    if (!['search', 'author_scan'].includes(request.operation)
+      || request.site.detailOpenMode !== 'page_click'
+      || !request.openState
+      || typeof deps.closeItem !== 'function') {
+      throw new Error('research.run close_item requires a page-click site openState and restore dependency');
+    }
+    const closed = unwrapContentDelivery(await deps.closeItem(tab.id, extractorRequest(request)));
+    return {
+      ...closed,
+      kind: 'browser_research_step',
+      step: 'close_item',
+      site: siteMetadata(request.site),
+      operation: request.operation,
+      sourceUrl: tab.url || request.sourceUrl,
+    };
+  }
+  if (request.executionMode === 'download_media') {
+    const mediaDownloads = await downloadResearchMedia(
+      request,
+      { content: { media: request.media } },
+      [],
+      deps,
+    );
+    return {
+      success: true,
+      kind: 'browser_research_step',
+      step: 'download_media',
+      site: siteMetadata(request.site),
+      operation: request.operation,
+      sourceUrl: tab.url || request.sourceUrl,
+      tab: normalizeTab(tab),
+      mediaDownloads: mediaDownloads.items,
+      failures: mediaDownloads.failures,
+      partial: mediaDownloads.failures.length > 0,
+    };
+  }
+  throw new Error(`unsupported site research execution mode: ${request.executionMode}`);
+}
+
+function normalizeResearchFilters(value, site, operation) {
+  if (value === undefined || value === null) return {};
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('research.run filters must be an object');
+  }
+  const entries = Object.entries(value).filter(([, filterValue]) => filterValue !== undefined && filterValue !== null && String(filterValue).trim());
+  if (!entries.length) return {};
+  if (operation !== 'search') throw new Error('research.run filters are only supported for search');
+  const supported = SITE_RESEARCH_FILTERS[site.id];
+  if (!supported) throw new Error(`${site.displayName} does not support research filters`);
+  const normalized = {};
+  for (const [key, rawValue] of entries) {
+    const values = supported[key];
+    if (!values) throw new Error(`${site.displayName} does not support research filter: ${key}`);
+    const filterValue = String(rawValue).trim().toLowerCase();
+    if (!values.includes(filterValue)) {
+      throw new Error(`${site.displayName} does not support ${key} filter value: ${filterValue}`);
+    }
+    normalized[key] = filterValue;
+  }
+  return normalized;
+}
+
+function unwrapContentDelivery(value) {
+  if (value?.response && typeof value.response === 'object' && !Array.isArray(value.response)) {
+    return value.response;
+  }
+  return value;
+}
+
+function researchFilterFailure(request, tab, targetUrl, failure = {}) {
+  return {
+    success: false,
+    kind: 'browser_research',
+    site: siteMetadata(request.site),
+    operation: request.operation,
+    sourceUrl: tab?.url || targetUrl,
+    reason: failure?.reason || 'filter_option_unavailable',
+    retryable: false,
+    partial: false,
+    failure: {
+      message: String(failure?.message || 'requested site filter is unavailable').slice(0, 500),
+      filter: failure?.filter || null,
+      value: failure?.value || null,
+    },
+  };
+}
+
+function researchSearchFailure(request, tab, targetUrl, failure = {}) {
+  return {
+    success: false,
+    kind: 'browser_research',
+    site: siteMetadata(request.site),
+    operation: request.operation,
+    sourceUrl: tab?.url || targetUrl,
+    reason: failure?.reason || 'search_ui_failed',
+    message: String(failure?.message || failure?.error || 'platform page UI search failed').slice(0, 500),
+    retryable: false,
+    partial: false,
+    failure,
+  };
+}
+
+function researchCardsFailure(request, tab, targetUrl, extracted = {}) {
+  const status = resultStatus(extracted);
+  const candidateCount = Number(extracted?.pageState?.results?.candidateCount || 0);
+  const reason = status === 'empty'
+    ? 'no_results'
+    : status === 'ready' && candidateCount > 0
+      ? 'card_interaction_unavailable'
+      : 'results_not_ready';
+  return {
+    success: false,
+    kind: 'browser_research',
+    site: siteMetadata(request.site),
+    operation: request.operation,
+    sourceUrl: tab?.url || targetUrl,
+    reason,
+    message: reason === 'no_results'
+      ? 'the platform explicitly reported that the current search has no results'
+      : reason === 'card_interaction_unavailable'
+        ? 'result cards are present, but no visible page-click target could be resolved'
+        : 'the result page did not expose stable interactive cards before the bounded readiness wait ended',
+    retryable: reason !== 'no_results',
+    partial: false,
+    failedStep: 'collect_cards',
+    pageState: extracted?.pageState || null,
+    recovery: {
+      requiresPageUiClick: request.site.detailOpenMode === 'page_click',
+      directUrlFallbackAllowed: false,
+    },
+    counts: { cards: 0, opened: 0, items: 0, comments: 0, media: 0, failed: 0 },
+  };
+}
+
+async function downloadResearchMedia(request, extracted, selectedItems, deps) {
+  if (typeof deps.downloadAsset !== 'function') {
+    return {
+      items: [],
+      failures: [{ reason: 'media_download_unavailable', message: 'browser media download dependency is unavailable' }],
+    };
+  }
+  const candidates = [];
+  const seen = new Set();
+  const append = (items) => {
+    for (const item of items || []) {
+      const sourceUrl = String(item?.sourceUrl || item?.url || '').trim();
+      if (!/^https?:\/\//i.test(sourceUrl) || seen.has(sourceUrl)) continue;
+      seen.add(sourceUrl);
+      candidates.push({ ...item, sourceUrl });
+      if (candidates.length >= 40) return;
+    }
+  };
+  append(extracted?.content?.media);
+  for (const item of selectedItems) append(item?.content?.media || item?.media);
+  const media = selectResearchMedia(candidates, request);
+  const items = [];
+  const failures = [];
+  const reserveMs = Math.min(
+    MEDIA_DOWNLOAD_ACTION_RESERVE_MS,
+    Math.max(250, Math.floor(request.timeoutMs / 4)),
+  );
+  const deadline = Date.now() + Math.max(250, request.timeoutMs - reserveMs);
+  for (let index = 0; index < media.length; index += 1) {
+    const asset = media[index];
+    const remainingMs = deadline - Date.now();
+    if (remainingMs < 250) {
+      for (const pending of media.slice(index)) {
+        failures.push({
+          reason: 'media_download_budget_exhausted',
+          sourceUrl: pending.sourceUrl,
+          message: 'research media download budget ended before this selected asset could start',
+        });
+      }
+      break;
+    }
+    try {
+      const result = await deps.downloadAsset(asset, {
+        ...request,
+        mediaIndex: index,
+        timeoutMs: Math.max(250, Math.min(MEDIA_DOWNLOAD_ITEM_TIMEOUT_MS, remainingMs)),
+      });
+      if (result?.success !== true || !result?.path) {
+        throw new Error(result?.error || result?.status || 'download did not return a local path');
+      }
+      items.push({
+        id: asset.id || null,
+        sourceUrl: asset.sourceUrl,
+        type: asset.type || 'unknown',
+        downloadId: result.download_id || result.downloadId || result.download?.id || null,
+        localPath: result.path,
+        mimeType: result.download?.mime || '',
+        bytes: result.download?.totalBytes || result.download?.bytesReceived || 0,
+        status: 'completed',
+        stagingOwned: result.stagingOwned === true,
+        stagingRunId: result.stagingRunId || null,
+      });
+    } catch (error) {
+      failures.push({
+        reason: 'media_download_failed',
+        sourceUrl: asset.sourceUrl,
+        message: String(error?.message || error || 'media download failed').slice(0, 500),
+      });
+    }
+  }
+  return { items, failures };
+}
+
+function selectResearchMedia(candidates, request) {
+  const allowedTypes = new Set(request.mediaTypes);
+  return candidates
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => {
+      const type = String(item?.type || 'unknown').trim().toLowerCase();
+      if (allowedTypes.size && !allowedTypes.has(type)) return false;
+      if (item?.eligible === false || String(item?.role || '').toLowerCase() === 'decorative') return false;
+      const width = mediaDimension(item, ['naturalWidth', 'width', 'renderedWidth']);
+      const height = mediaDimension(item, ['naturalHeight', 'height', 'renderedHeight']);
+      if (request.minMediaWidth > 0 && width > 0 && width < request.minMediaWidth) return false;
+      if (request.minMediaHeight > 0 && height > 0 && height < request.minMediaHeight) return false;
+      return true;
+    })
+    .sort((left, right) => {
+      const scoreDifference = Number(right.item?.relevanceScore || 0) - Number(left.item?.relevanceScore || 0);
+      return scoreDifference || left.index - right.index;
+    })
+    .slice(0, request.mediaLimit)
+    .map(({ item }) => item);
+}
+
+function mediaDimension(item, keys) {
+  for (const key of keys) {
+    const value = Number(item?.[key] || 0);
+    if (Number.isFinite(value) && value > 0) return value;
+  }
+  return 0;
+}
+
+function normalizeMediaTypes(value) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value
+    .map((item) => String(item || '').trim().toLowerCase())
+    .filter((item) => ['image', 'video', 'audio'].includes(item)))];
+}
+
+async function collectBoundedCards(tabId, request, first, deps) {
+  const collected = new Map();
+  appendCollectedItems(collected, first?.items, request.limit);
+  let latest = first || {};
+  const readyTimeoutMs = Math.min(request.timeoutMs, RESULT_READY_TIMEOUT_MS);
+  let readyWaitedMs = 0;
+  while (!collected.size && resultStatus(latest) === 'loading' && readyWaitedMs < readyTimeoutMs) {
+    const waitMs = Math.min(RESULT_READY_POLL_MS, readyTimeoutMs - readyWaitedMs);
+    await delayWithDeps(waitMs, deps);
+    readyWaitedMs += waitMs;
+    latest = unwrapContentDelivery(await deps.readSiteEvidence(tabId, extractorRequest(request)));
+    if (latest?.success === false) break;
+    appendCollectedItems(collected, latest?.items, request.limit);
+  }
+  let stalledScrolls = 0;
+  for (let index = 0; index < request.maxScrolls && collected.size < request.limit; index += 1) {
+    if (!collected.size) break;
+    if (typeof deps.scrollPage !== 'function') break;
+    const previousCount = collected.size;
+    const scrolled = unwrapContentDelivery(await deps.scrollPage(tabId));
+    if (scrolled?.success === false) break;
+    await delayWithDeps(800, deps);
+    latest = unwrapContentDelivery(await deps.readSiteEvidence(tabId, extractorRequest(request)));
+    if (latest?.success === false) break;
+    appendCollectedItems(collected, latest?.items, request.limit);
+    if (collected.size === previousCount) {
+      stalledScrolls += 1;
+      if (stalledScrolls >= MAX_STALLED_SCROLLS) break;
+    } else {
+      stalledScrolls = 0;
+    }
+  }
+  return { ...first, ...latest, items: [...collected.values()].slice(0, request.limit) };
+}
+
+function researchCardKey(item) {
+  const url = String(item?.sourceUrl || '');
+  const match = /\/(?:explore|discovery\/item|video)\/([0-9a-zA-Z]+)/.exec(url);
+  if (match?.[1]) return match[1];
+  return String(item?.id || url || '').trim();
+}
+
+function appendCollectedItems(collected, items, limit) {
+  for (const item of items || []) {
+    const key = researchCardKey(item);
+    if (key && !collected.has(key)) collected.set(key, item);
+    if (collected.size >= limit) break;
+  }
+}
+
+function resultStatus(extracted) {
+  const status = String(extracted?.pageState?.results?.status || 'loading');
+  return ['loading', 'ready', 'empty'].includes(status) ? status : 'loading';
+}
+
+function delayWithDeps(ms, deps) {
+  return typeof deps.delay === 'function'
+    ? deps.delay(ms)
+    : new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function collectDeepItems(request, sourceTabId, cards, deps) {
+  if (!cards.length) return { items: [], failures: [] };
+  const items = [];
+  const failures = [];
+  for (const card of cards.slice(0, request.limit)) {
+    let detailTab = null;
+    let openState = null;
+    try {
+      if (request.site.detailOpenMode === 'page_click') {
+        if (typeof deps.openItem !== 'function' || typeof deps.closeItem !== 'function') {
+          throw new Error('page-click detail navigation is unavailable');
+        }
+        const opened = unwrapContentDelivery(await deps.openItem(sourceTabId, extractorRequest(request, {
+          item: card,
+          executionMode: 'open_item',
+        })));
+        if (opened?.success !== true) throw new Error(opened?.reason || 'page-click detail opening failed');
+        openState = opened.openState || null;
+        detailTab = opened.tab || await deps.getTab?.(opened.targetTabId || sourceTabId) || null;
+      } else {
+        if (typeof deps.createControlledTab !== 'function' || typeof deps.closeTab !== 'function') {
+          throw new Error('direct detail navigation is unavailable');
+        }
+        const created = await deps.createControlledTab({ url: card.sourceUrl, active: false });
+        detailTab = created?.tab || null;
+        if (detailTab?.id) await deps.claimTab(detailTab.id, 'research_detail');
+      }
+      if (!detailTab?.id) throw new Error('detail tab was not opened');
+      if (typeof deps.waitForTabComplete === 'function') await deps.waitForTabComplete(detailTab.id, request.timeoutMs);
+      const detail = unwrapContentDelivery(await deps.readSiteEvidence(
+        detailTab.id,
+        extractorRequest(request, { operation: 'content_scan' }),
+      ));
+      if (detail?.success === false) throw new Error(detail.reason || 'detail extraction failed');
+      if (!detailEvidenceIsComplete(detail, request.site.detailOpenMode === 'page_click')) {
+        throw new Error('detail_content_incomplete');
+      }
+      items.push({ ...card, content: detail.content || null, pageState: detail.pageState || null });
+    } catch (error) {
+      failures.push({
+        sourceUrl: card.sourceUrl || '',
+        reason: String(error?.message || error || 'detail extraction failed').slice(0, 500),
+      });
+    } finally {
+      if (request.site.detailOpenMode === 'page_click' && openState) {
+        let closed;
+        try {
+          closed = unwrapContentDelivery(await deps.closeItem(sourceTabId, extractorRequest(request, {
+            executionMode: 'close_item',
+            openState,
+          })));
+        } catch (error) {
+          closed = { success: false, reason: String(error?.message || error || 'detail restore failed') };
+        }
+        if (closed?.success !== true) {
+          failures.push({
+            sourceUrl: card.sourceUrl || '',
+            reason: String(closed?.reason || 'detail_restore_failed').slice(0, 500),
+          });
+        }
+      } else if (detailTab?.id && typeof deps.closeTab === 'function') {
+        await deps.closeTab(detailTab.id);
+      }
+    }
+  }
+  return { items, failures };
+}
+
+function detailEvidenceIsComplete(detail, requireDetailSurface) {
+  if (detail?.pageState?.blocker) return false;
+  if (requireDetailSurface && !['detail', 'detail_overlay'].includes(String(detail?.pageState?.surface || ''))) {
+    return false;
+  }
+  const pageUrl = String(detail?.pageState?.url || detail?.tab?.url || detail?.sourceUrl || '').toLowerCase();
+  const pageTitle = String(detail?.tab?.title || detail?.content?.title || '');
+  if (pageUrl.includes('/404') || ['页面不见了', '当前笔记暂时无法浏览', '视频已失效', '内容不存在'].some((marker) => pageTitle.includes(marker))) {
+    return false;
+  }
+  const content = detail?.content && typeof detail.content === 'object' ? detail.content : null;
+  if (!content) return false;
+  const hasText = [content.body, content.text, content.description]
+    .some((value) => typeof value === 'string' && value.trim());
+  const hasMedia = Array.isArray(content.media) && content.media.length > 0;
+  return hasText || hasMedia;
+}
+
+function siteMetadata(site) {
+  return {
+    id: site.id,
+    displayName: site.displayName,
+    capabilityVersion: site.capabilityVersion,
+    extractorSchemaHash: site.extractorSchemaHash,
+    supportedFilters: site.filters,
+    detailOpenMode: site.detailOpenMode || 'direct_url',
+  };
+}
+
+function extractorRequest(request, overrides = {}) {
+  const { site, ...payload } = request;
+  return {
+    ...payload,
+    ...overrides,
+    siteId: site.id,
+    detailOpenMode: site.detailOpenMode || 'direct_url',
+  };
+}
+
+function resolveSiteCapability(value, sourceUrl) {
+  const requested = String(value || '').trim().toLowerCase();
+  const alias = Object.values(SITE_CAPABILITY_SPECS)
+    .find((spec) => spec.aliases.includes(requested))?.id || '';
+  const id = alias || requested || inferSiteId(sourceUrl);
+  const spec = SITE_CAPABILITY_SPECS[id];
+  if (!spec) throw new Error('research.run requires supported site: xiaohongshu, douyin, youtube, or web');
+  if (sourceUrl && !urlMatchesSite(sourceUrl, spec)) throw new Error(`URL does not belong to ${spec.displayName}`);
+  return spec;
+}
+
+function inferSiteId(sourceUrl) {
+  try {
+    const host = new URL(sourceUrl).hostname.toLowerCase();
+    return Object.values(SITE_CAPABILITY_SPECS).find((spec) => spec.hosts.some((suffix) => suffix !== '*' && (host === suffix || host.endsWith(`.${suffix}`))))?.id || 'web';
+  } catch {
+    return '';
+  }
+}
+
+function urlMatchesSite(url, spec) {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return spec.hosts.includes('*') || spec.hosts.some((suffix) => host === suffix || host.endsWith(`.${suffix}`));
+  } catch {
+    return false;
+  }
+}
+
+function normalizeDepth(value) {
+  const depth = String(value || 'standard').trim().toLowerCase();
+  if (!['preview', 'standard', 'deep'].includes(depth)) throw new Error(`unsupported research depth: ${depth}`);
+  return depth;
+}
+
+function normalizeExecutionMode(value) {
+  const mode = String(value || 'macro').trim().toLowerCase();
+  if (!['macro', 'submit_search', 'extract', 'apply_filters', 'open_item', 'close_item', 'download_media'].includes(mode)) {
+    throw new Error(`unsupported site research execution mode: ${mode}`);
+  }
+  return mode;
+}
+
+function isLikelySiteHomeUrl(url, siteId) {
+  try {
+    const path = new URL(url).pathname.replace(/\/+$/, '') || '/';
+    if (siteId === 'xiaohongshu') return path === '/' || path === '/explore';
+    if (siteId === 'douyin') return path === '/' || path === '/jingxuan';
+  } catch {
+    return false;
+  }
+  return false;
+}
+
+function isLikelySiteDetailUrl(url, siteId) {
+  try {
+    const path = new URL(url).pathname;
+    if (siteId === 'xiaohongshu') {
+      return /^\/explore\/[0-9a-zA-Z]{6,}/.test(path)
+        || /^\/discovery\/item\//.test(path)
+        || /^\/user\/profile\//.test(path);
+    }
+    if (siteId === 'douyin') {
+      return /^\/video\//.test(path) || /^\/note\//.test(path) || /^\/user\//.test(path);
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
+function isTabClaimConflict(error) {
+  return /tab_claim_conflict/.test(String(error?.message || error || ''));
+}
+
+function normalizeHttpUrl(value) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  const parsed = new URL(text);
+  if (!/^https?:$/.test(parsed.protocol)) throw new Error('research.run URL must use http or https');
+  return parsed.toString();
+}
+
+function positiveInteger(value) {
+  const number = Number(value);
+  return Number.isInteger(number) && number > 0 ? number : 0;
+}
+
+function clampNumber(value, minimum, maximum, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.min(maximum, Math.max(minimum, number)) : fallback;
+}
+
+function normalizeTab(tab = {}) {
+  return { id: tab.id, windowId: tab.windowId || null, url: tab.url || '', title: tab.title || '', active: tab.active === true };
+}
+
+function serializeSnapshot(value) {
+  const raw = typeof value?.snapshot === 'string' ? value.snapshot : JSON.stringify(value || {}, null, 2);
+  return raw.slice(0, MAX_SNAPSHOT_CHARS);
+}

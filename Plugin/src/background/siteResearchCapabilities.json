@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": 6,
+  "capabilities": [
+    {
+      "id": "xiaohongshu",
+      "aliases": ["xhs", "redbook", "rednote"],
+      "displayName": "小红书",
+      "hostPatterns": ["xiaohongshu.com", "xhslink.com", "rednote.com"],
+      "searchEntryUrl": "https://www.xiaohongshu.com/",
+      "searchViaPageUi": true,
+      "detailOpenMode": "page_click",
+      "supportedOperations": ["search", "author_scan", "content_scan"],
+      "supportedFilters": {
+        "sort": ["relevance", "latest", "most_liked"],
+        "contentType": ["all", "image_text", "video"],
+        "publishTime": ["all", "day", "week", "half_year"]
+      },
+      "defaultSurface": ["search", "author_scan", "content_scan"],
+      "debugSurface": ["search", "author_scan", "content_scan"],
+      "capabilityVersion": "1.6.0",
+      "extractorSchemaHash": "ebb4c0e28313597c16c26a05854cc845514f7232925cf3c9569eb36124f167bc",
+      "concurrencyPolicy": "single_account"
+    },
+    {
+      "id": "douyin",
+      "aliases": ["dy"],
+      "displayName": "抖音",
+      "hostPatterns": ["douyin.com", "iesdouyin.com"],
+      "searchEntryUrl": "https://www.douyin.com/",
+      "searchViaPageUi": true,
+      "detailOpenMode": "page_click",
+      "supportedOperations": ["search", "author_scan", "content_scan"],
+      "supportedFilters": {
+        "sort": ["relevance", "latest", "most_liked"],
+        "contentType": ["all", "image_text", "video"],
+        "publishTime": ["all", "day", "week", "half_year"]
+      },
+      "defaultSurface": ["search", "author_scan", "content_scan"],
+      "debugSurface": ["search", "author_scan", "content_scan"],
+      "capabilityVersion": "1.7.0",
+      "extractorSchemaHash": "ebb4c0e28313597c16c26a05854cc845514f7232925cf3c9569eb36124f167bc",
+      "concurrencyPolicy": "single_account"
+    },
+    {
+      "id": "youtube",
+      "aliases": ["yt"],
+      "displayName": "YouTube",
+      "hostPatterns": ["youtube.com", "youtu.be"],
+      "detailOpenMode": "direct_url",
+      "supportedOperations": ["content_scan"],
+      "supportedFilters": {},
+      "defaultSurface": ["content_scan"],
+      "debugSurface": ["content_scan"],
+      "capabilityVersion": "1.2.0",
+      "extractorSchemaHash": "9aef6f7a7ef5f73bca3277d0298a640ce10cbd9f015ff4544bedc58be57628e0",
+      "concurrencyPolicy": "single_account"
+    },
+    {
+      "id": "web",
+      "aliases": ["generic_web", "generic"],
+      "displayName": "Generic Web",
+      "hostPatterns": ["*"],
+      "detailOpenMode": "direct_url",
+      "supportedOperations": ["content_scan"],
+      "supportedFilters": {},
+      "defaultSurface": ["content_scan"],
+      "debugSurface": ["content_scan"],
+      "capabilityVersion": "1.2.0",
+      "extractorSchemaHash": "de366898f37e4b74729581f9a013dee22c45a8fef758d4a28d9c8cb02b81a2d9",
+      "concurrencyPolicy": "single_account"
+    }
+  ]
+}

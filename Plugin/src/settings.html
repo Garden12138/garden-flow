@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bojin 设置</title>
+  <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+  <main class="settings-shell">
+    <header class="page-header">
+      <div class="brand">
+        <img src="icons/icon48.png" alt="Bojin" class="brand-icon">
+        <div>
+          <h1>Bojin 设置</h1>
+          <p>采集任务参数</p>
+        </div>
+      </div>
+      <button id="test-connection" class="btn">测试连接</button>
+    </header>
+
+    <form id="settings-form" class="settings-grid">
+      <section class="panel">
+        <h2>默认行为</h2>
+        <label class="switch-row">
+          <input id="xhs-save-comments" type="checkbox">
+          <span>保存小红书笔记时包含评论区</span>
+        </label>
+        <label class="switch-row">
+          <input id="save-default" type="checkbox">
+          <span>批量采集默认写入知识库</span>
+        </label>
+      </section>
+
+      <section id="status" class="status-panel hidden"></section>
+
+      <footer class="actions">
+        <button id="reset-settings" type="button" class="btn ghost">恢复默认</button>
+        <button type="submit" class="btn primary">保存设置</button>
+      </footer>
+    </form>
+  </main>
+  <script src="settings.js"></script>
+</body>
+</html>

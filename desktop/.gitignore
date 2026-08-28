@@ -1,0 +1,15 @@
+node_modules/
+dist/
+dist-electron/
+release/
+.private-runtime/
+.plugin-runtime/
+.native-host-runtime/
+.packaging-tools/
+.opencode/
+.redbox-dev/
+.DS_Store
+.env.local
+.env.*.local
+developer_id.key
+developer_id.certSigningRequest

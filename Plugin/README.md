@@ -1,0 +1,148 @@
+# Bojin Chrome 插件
+
+这个目录提供 Bojin 的工程化构建源码，用来把外部网页内容采集到 Bojin 桌面端知识库和素材库。
+
+## 当前支持
+
+- 小红书笔记 / 文章详情页保存
+- 小红书详情页操作区 DOM 注入按钮
+- 全站右侧固定浮动采集面板
+- 小红书信息流卡片 DOM 注入采集按钮
+- 小红书博主页 DOM 注入博主采集 / 主页笔记采集按钮
+- 小红书页面接口响应缓存，用于复用页面自身加载出来的笔记列表
+- 小红书图片 / 视频素材下载
+- 小红书评论快照采集
+- 小红书博主主页笔记批量采集
+- 小红书当前页 / 关键词搜索批量采集
+- 小红书批量采集随机间隔控制
+- 小红书后台统一任务队列和当前任务状态
+- 通用采集运行时：页面内滚动追踪、可见节点判断、数量解析、展开按钮点击、基础验证页检测和采集 checkpoint
+- 侧边栏执行日志：展示任务开始、保存成功、部分成功和失败原因
+- 小红书采集任务历史和 JSON 导出
+- 插件设置页：采集间隔和默认采集数量
+- 侧边栏和页面浮动面板平台识别：小红书、抖音、快手、Bilibili、TikTok、Reddit、X、Instagram
+- YouTube 视频页 / Shorts 页
+- 任意网页链接收藏
+- 任意网页选中文字摘录（右键菜单）
+- AI 浏览器控制：tab/session、DOM snapshot、selector 查询、点击、输入、滚动、截图、CDP、下载状态、页面资产读取
+- MCP / native host 控制面：`App AI -> Desktop Bridge -> Bojin Native Host -> Chrome extension -> page`
+
+## 加载方式
+
+先构建扩展产物：
+
+```bash
+cd Plugin
+pnpm install
+pnpm build
+pnpm verify
+```
+
+1. 打开 Chrome 或 Edge。
+2. 进入扩展管理页：
+   - Chrome: `chrome://extensions`
+   - Edge: `edge://extensions`
+3. 打开“开发者模式”。
+4. 点击“加载已解压的扩展程序”。
+5. 选择当前仓库里的 `Plugin/dist/extension` 目录。
+
+源码在 `src` 目录。`dist/extension` 是构建产物，不要手改。
+
+## AI / MCP 控制面
+
+浏览器控制层是叠加能力，不替换现有结构化采集：
+
+- 现有采集：`pageObserver.js`、`xhsBridge.js`、`captureRuntime.js` 保持 content script 常驻，用于小红书、多平台识别、右键保存和网页浮动面板。
+- AI 控制：`browserControlContent.js` 只在 AI 调用浏览器工具时动态注入。
+- native host：在桌面端点击“准备浏览器插件”会安装 Chrome / Edge / Brave 的 Native Messaging manifest，后续启动会修复已安装但过期或缺失的目标。浏览器启动同一签名应用的隐藏 Native Host 模式，Host 通过 Windows Named Pipe 或 Unix Domain Socket 连接 Desktop Bridge，不监听 TCP 端口。`native-host/host.mjs` 和 Node installer 只保留隔离的 legacy 传输测试。
+- Knowledge：内容保存通过 Native Messaging 交给 Desktop Bridge 的 typed allowlist；Host 不代理 HTTP、不接受任意本地路径，也不直接写业务数据。`accounts.*` 账号档案和 AI 浏览器控制不在当前 Electron 内容采集闭环范围内。
+- 自动诊断：Native 连接失败、网页采集失败和写入失败会由插件直接提交到公开反馈接口；连接诊断只有在 Native Host 已确认 APP 的 Bridge 描述存在但握手/传输失败（`bridge_error`），或明确返回版本/协议错误时才提交，`app_not_running` 和初次未连接不提交。网络不可用时进入插件本地有界队列并自动重试，不依赖 Desktop Bridge。仅保留错误码、阶段、版本、浏览器和站点 origin 等定位元数据，不上传网页正文、Cookie、Token 或完整 URL。
+- App 内置 MCP：桌面端启动时会自动注册 `Bojin Browser Control` MCP server，stdio command 指向 Bojin App 自身的隐藏兼容 `--redbox-browser-control-mcp` 模式，不要求用户手动导入 MCP 配置。
+- App AI 首选入口：模型使用 `browser.connection.status/repair`、`browser.tabs.list`、`browser.tab.open/claim`、`browser.page.inspect/click/type`、`browser.tabs.finalize` 等单一职责 typed action。旧 `browser.control` 只做历史 session 兼容；MCP / Native Host 是后端适配层，不作为普通任务的模型调用面。
+- Agent-side JS client：`scripts/browser-client.mjs` 提供 Codex 同款对象 facade；生产型调试使用 `DesktopBridgeBrowserTransport`，旧 `BrowserControlTransport` 只服务隔离的 legacy contract tests。
+- 开发 MCP server：`mcp-server.mjs` 保留给插件目录独立调试，负责把 `tools/list` / `tools/call` 转发到当前 Desktop Bridge。
+
+开发态安装 Node fallback native host：
+
+```bash
+cd Plugin
+pnpm install:native-host -- --extension-id <chrome-extension-id> --node /absolute/path/to/node
+```
+
+正式安装包不需要这一步。在知识库或“设置 → 通用”点击“准备浏览器插件”即可按官方固定扩展 ID 安装 Native Host；后续桌面启动会自动修复已有配置。独立开发安装器仍用于 legacy 隔离测试。
+
+App 安装包内置 MCP 配置由桌面端自动写入，不需要用户选择目录或手动配置。独立开发调试时可使用：
+
+```json
+{
+  "command": "node",
+  "args": ["/absolute/path/to/Bojin/Plugin/mcp-server.mjs"]
+}
+```
+
+插件根目录也提供 `Plugin/.mcp.json`，用于开发态本地发现或外部 MCP 客户端导入 `browser-control` server；正式 App 运行时优先使用内置 MCP。
+
+调试连接：
+
+```bash
+pnpm diagnose:browser-control -- --no-fail
+pnpm agent:call -- --method browser.info
+pnpm agent:call -- --method tools/list
+```
+
+验收边界：
+
+- “打开网页读取内容”不是浏览器控制验收；必须看到 Bojin MCP / Native Host 经真实 Chrome 扩展返回 `tools/list`、`tabs.list`、`tab.info`、DOM 查询和至少一个交互动作。
+- `pnpm smoke:browser-control` 使用临时 profile / Chromium 做回归，不代表用户真实 Chrome 可用。
+- 真实 Chrome 验收必须使用已安装的 Bojin 扩展、真实 Chrome Native Messaging manifest、真实 Desktop Bridge，以及真实标签页或受控测试标签页。
+- 被 `tab.claim` / `tab.create` 纳入 active browser session 的页面必须显示 `Bojin 控制中` 页面内标签；释放、finalize 或 turn 结束后自动移除。
+- 不要为 smoke 或调试授权 macOS login keychain / Chrome Safe Storage；如果弹出此类提示，应拒绝并改用隔离 profile。
+
+## 开发命令
+
+```bash
+pnpm build
+pnpm verify
+pnpm check
+pnpm install:native-host -- --extension-id <chrome-extension-id>
+pnpm diagnose:browser-control
+pnpm smoke:browser-control
+pnpm mcp:server
+pnpm package
+```
+
+- `pnpm build`：把 `src` 里的 manifest、HTML、CSS、图片和脚本构建到 `dist/extension`。
+- `pnpm verify`：检查 manifest、HTML 引用、动态注入脚本和关键 content script 合同。
+- `scripts/browser-client.mjs`：供 agent / 调试脚本按 Codex Browser Use 对象 API 使用 Bojin browser-control；配套文档在 `Plugin/docs/browser-runtime.md`。
+- `pnpm install:native-host`：安装 Chrome native messaging host manifest。
+- `pnpm diagnose:browser-control`：检查 Native Host manifest、Desktop Bridge descriptor、鉴权握手和 extension forwarding 状态；需要只取报告时加 `-- --no-fail`。
+- `pnpm smoke:browser-control`：在当前运行的 Desktop Bridge 上，用临时 Chrome profile 加载构建后的扩展并临时安装 Native Host manifest，验证握手、tools/list、tab 创建、DOM 读取和 finalize；Host 版本必须与运行中的 App 版本一致。
+- `pnpm mcp:server`：启动开发态 Bojin browser-control stdio MCP server；正式 App 使用内置 Rust MCP 入口。
+- `pnpm package`：先构建，再生成 `dist/Bojin-<version>.zip`。
+
+## 使用前提
+
+- Bojin 桌面端必须已经启动。
+- Desktop Bridge 必须已启动；插件不需要配置 API 地址或本机端口。
+
+## 使用方式
+
+- 点击浏览器扩展图标会打开 Bojin 侧边栏，不再使用 popup。
+- 可在扩展详情页点击“扩展程序选项”，或在侧边栏顶部点击设置按钮，打开插件设置页。
+- 侧边栏展示当前页面识别、统一任务队列和批量采集入口；详情页采集、下载、导出等轻操作仍通过网页内 DOM 注入按钮触发。
+- 在小红书详情页可使用笔记操作区注入按钮：Bojin 保存、下载压缩包、下载素材、采集评论。
+- 在已注入页面右侧可使用 Bojin 浮动采集面板；小红书笔记页、YouTube、抖音、公众号和普通网页会显示不同动作。
+- 小红书博主页不再显示右侧浮动采集面板；可使用浏览器侧边栏或资料区注入按钮采集主页笔记，采集会优先读取 `user_posted`，失败时滚动主页收集已加载出来的笔记链接。
+- 在小红书信息流、搜索页、博主页可点击卡片右上角“采集”按钮保存单条笔记。
+- 批量采集默认串行执行；设置页可调整每条笔记之间的随机采集间隔、博主主页默认条数、关键词默认条数和链接批量上限。
+- 从多个页面、多个侧边栏或 DOM 注入按钮触发的小红书任务会进入同一个后台队列，避免并发采集互相冲突。
+- 博主笔记、链接批量、当前页批量和关键词采集支持在任务队列中暂停、继续或停止；短任务只显示停止。
+- 在 YouTube 视频页打开插件，点击“保存 YouTube 视频”
+- 在任意网页中选中文字，右键点击“保存选中文字到 Bojin”
+- 在任意网页使用右侧浮动采集面板保存当前页面链接
+
+## 备注
+
+- 插件负责采集、下载、导出、提交结构化数据，以及为桌面端 AI 暴露浏览器控制 MCP 工具；AI 编排和业务决策仍在桌面端完成。
+- `captureRuntime.js` 是平台无关的页面采集底座；平台逻辑应只提供根节点、列表项、字段解析和分页策略，不要把滚动等待、DOM 稳定判断、验证页识别重复写进各个平台 extractor。采集 checkpoint 存在 `redboxCaptureCheckpoints`，用于排查页面刷新、断网或站点限流导致的中断。
+- 知识整理、漫步、RedClaw 创作仍在桌面端完成。

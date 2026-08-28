@@ -1,0 +1,1205 @@
+import { CompactManager } from './compactManager';
+import { getMemoryMaintenanceService } from './memoryMaintenanceService';
+import { executeRuntimeHooks } from './runtimeHooks';
+import { evaluateRuntimeToolPermission } from './runtimePermissions';
+import { getSessionRuntimeStore } from './sessionRuntimeStore';
+import { getToolResultStore } from './toolResultStore';
+import { applyToolResultBudget } from './toolResultBudget';
+import { summarizeToolBatch } from './toolBatchSummary';
+import { getTaskGraphRuntime } from './ai/taskGraphRuntime';
+import {
+  createErrorResult,
+  ToolErrorType,
+  ToolKind,
+  ToolRegistry,
+  ToolExecutor,
+  type ToolCallRequest,
+  type ToolCallResponse,
+  type ToolResult,
+} from './toolRegistry';
+import { normalizeApiBaseUrl, safeUrlJoin } from './urlUtils';
+import { fetchLlmWithRetry } from './llmFetchRetry';
+import { getChatMessages } from '../db';
+import type { RuntimeAdapter, RuntimeConfig, RuntimeMessage } from './runtimeTypes';
+import { applyGenerationToolConstraints } from '../../shared/mediaGenerationContracts';
+import {
+  applyXhsAutoCaptureCompletionGate,
+  validateXhsAutoCaptureCompletion,
+} from './xhsAutoCaptureCompletion';
+
+type LlmToolCall = {
+  id: string;
+  name: string;
+  args: Record<string, unknown>;
+};
+
+type LlmResponse = {
+  content: string;
+  toolCalls: LlmToolCall[];
+  finishReason?: string;
+  usage?: {
+    promptTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
+  };
+};
+
+const now = () => Date.now();
+const nextId = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+const truncateText = (value: unknown, limit: number): string => {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit)}...`;
+};
+
+function parseRecordJson(value: unknown): Record<string, unknown> | null {
+  if (!value) return null;
+  if (typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>;
+  try {
+    const parsed = JSON.parse(String(value));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function attachmentSummaryText(attachment: Record<string, unknown>): string {
+  const attachmentType = String(attachment.type || 'attachment').trim() || 'attachment';
+  const attachmentName = String(attachment.name || attachment.title || attachment.absolutePath || '').trim();
+  const attachmentSummary = String(attachment.summary || '').trim();
+  const attachmentKind = String(attachment.kind || '').trim();
+  const attachmentPath = String(attachment.toolPath || attachment.workspaceRelativePath || attachment.absolutePath || '').trim();
+  return [
+    attachmentType,
+    attachmentName && `name=${attachmentName}`,
+    attachmentKind && `kind=${attachmentKind}`,
+    attachmentPath && `path=${truncateText(attachmentPath, 120)}`,
+    attachmentSummary && `summary=${truncateText(attachmentSummary, 180)}`,
+  ].filter(Boolean).join(' | ');
+}
+
+function attachmentSummariesFromMessage(message: { attachment?: unknown; metadata?: unknown }): string[] {
+  const metadata = parseRecordJson(message.metadata);
+  const metadataAttachments = Array.isArray(metadata?.uploadedAttachments)
+    ? metadata.uploadedAttachments
+      .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object' && !Array.isArray(item)))
+    : [];
+  if (metadataAttachments.length > 0) {
+    return metadataAttachments.map(attachmentSummaryText).filter(Boolean);
+  }
+  if (!message.attachment) return [];
+  const parsedAttachment = parseRecordJson(message.attachment);
+  if (parsedAttachment) {
+    return [attachmentSummaryText(parsedAttachment)].filter(Boolean);
+  }
+  return [truncateText(message.attachment, 180)].filter(Boolean);
+}
+
+const isToolConcurrencySafe = (registry: ToolRegistry, toolName: string, args: Record<string, unknown>): boolean => {
+  const tool = registry.getTool(toolName);
+  if (!tool) return false;
+  if (tool.requiresConfirmation) {
+    return false;
+  }
+  try {
+    if (typeof tool.isConcurrencySafe === 'function') {
+      return Boolean(tool.isConcurrencySafe(args));
+    }
+  } catch {
+    return false;
+  }
+  return tool.kind === ToolKind.Read || tool.kind === ToolKind.Search || tool.kind === ToolKind.Fetch;
+};
+
+const toToolFeedbackMessage = (name: string, content: string): RuntimeMessage => ({
+  role: 'user',
+  content: `Tool result from ${name}:\n${content}`,
+});
+
+const extractAssistantText = (content: unknown): string => {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((item) => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object') {
+          const record = item as Record<string, unknown>;
+          return typeof record.text === 'string' ? record.text : '';
+        }
+        return '';
+      })
+      .join('');
+  }
+  return '';
+};
+
+const terminalToolFailureMessage = (response: ToolCallResponse): string => {
+  if (response.result.success !== false) return '';
+  const data = response.result.data && typeof response.result.data === 'object' && !Array.isArray(response.result.data)
+    ? response.result.data as Record<string, unknown>
+    : null;
+  if (data?.kind !== 'media-generation-error' || data.terminal !== true) return '';
+  return String(
+    response.result.error?.message
+    || response.result.llmContent
+    || response.result.display
+    || '媒体生成请求失败',
+  ).trim();
+};
+
+export class QueryRuntime {
+  private readonly store = getSessionRuntimeStore();
+  private readonly toolResults = getToolResultStore();
+  private readonly compactManager: CompactManager;
+
+  constructor(
+    private readonly registry: ToolRegistry,
+    private readonly executor: ToolExecutor,
+    private readonly adapter: RuntimeAdapter,
+    private readonly config: RuntimeConfig,
+  ) {
+    this.compactManager = new CompactManager({
+      apiKey: config.apiKey,
+      baseURL: config.baseURL,
+      model: config.model,
+    });
+  }
+
+  async run(userInput: string): Promise<{ response: string; error?: string }> {
+    const startedAt = now();
+    const maxTurns = this.config.maxTurns || 24;
+    const maxTimeMs = (this.config.maxTimeMinutes || 12) * 60 * 1000;
+
+    let messages: RuntimeMessage[] = [
+      { role: 'system', content: this.config.systemPrompt },
+      ...this.config.messages,
+      { role: 'user', content: this.config.userInputContent ?? userInput },
+    ];
+
+    this.adapter.onEvent({ type: 'query_start', sessionId: this.config.sessionId, message: userInput });
+    this.store.appendTranscript({
+      sessionId: this.config.sessionId,
+      recordType: 'query.user',
+      role: 'user',
+      content: userInput,
+      payload: { kind: 'query.user', data: { toolPack: this.config.toolPack } },
+    });
+    this.store.addCheckpoint({
+      sessionId: this.config.sessionId,
+      checkpointType: 'query.start',
+      summary: '用户消息已进入统一运行时',
+      payload: { model: this.config.model, toolPack: this.config.toolPack },
+    });
+
+    await executeRuntimeHooks({
+      event: 'query.before',
+      context: {
+        sessionId: this.config.sessionId,
+        event: 'query.before',
+        payload: { message: userInput, model: this.config.model },
+      },
+      adapter: this.adapter,
+      llm: {
+        apiKey: this.config.apiKey,
+        baseURL: this.config.baseURL,
+        model: this.config.model,
+      },
+    });
+
+    let turnCount = 0;
+    let responseText = '';
+    let reactiveCompactUsed = false;
+    let continuationCount = 0;
+    let lastContinuationDelta = 0;
+    let compactFailureCount = 0;
+    let hadCompaction = false;
+    let completionRecoveryCount = 0;
+    const defaultMaxCompletionRecoveryAttempts = Math.max(
+      3,
+      Math.floor(Number(this.config.maxCompletionRecoveryAttempts) || 0) || 3,
+    );
+
+    while (turnCount < maxTurns) {
+      if (now() - startedAt > maxTimeMs) {
+        const message = 'Query runtime timeout';
+        this.adapter.onEvent({ type: 'error', message });
+        this.store.addCheckpoint({
+          sessionId: this.config.sessionId,
+          checkpointType: 'stop.failure',
+          summary: message,
+          payload: { turnCount },
+        });
+        await executeRuntimeHooks({
+          event: 'stop.failure',
+          context: {
+            sessionId: this.config.sessionId,
+            event: 'stop.failure',
+            payload: { message, turnCount },
+          },
+          adapter: this.adapter,
+        });
+        return { response: responseText, error: message };
+      }
+      if (this.config.signal?.aborted) {
+        const message = 'Query runtime cancelled';
+        this.adapter.onEvent({ type: 'error', message });
+        return { response: responseText, error: message };
+      }
+
+      turnCount += 1;
+      let compacted = null;
+      try {
+        if (compactFailureCount < 3) {
+          compacted = await this.compactManager.maybeCompact(messages);
+        }
+      } catch (error) {
+        compactFailureCount += 1;
+        const compactError = error instanceof Error ? error.message : String(error);
+        this.adapter.onEvent({
+          type: 'tool_summary',
+          toolName: 'runtime.compact',
+          content: `compact attempt failed (${compactFailureCount}/3): ${compactError}`,
+        });
+        this.store.appendTranscript({
+          sessionId: this.config.sessionId,
+          recordType: 'query.compact.failure',
+          role: 'system',
+          content: compactError,
+          payload: {
+            kind: 'query.compact.failure',
+            data: {
+              failures: compactFailureCount,
+            },
+          },
+        });
+        this.store.addCheckpoint({
+          sessionId: this.config.sessionId,
+          checkpointType: 'compact.failure',
+          summary: compactError,
+          payload: {
+            failures: compactFailureCount,
+          },
+        });
+      }
+      if (compacted) {
+        hadCompaction = true;
+        compactFailureCount = 0;
+        const rehydrated = this.rehydrateCompactedMessages(messages, compacted);
+        this.adapter.onEvent({ type: 'compact_start', strategy: compacted.strategy });
+        this.store.appendTranscript({
+          sessionId: this.config.sessionId,
+          recordType: 'query.compact',
+          role: 'system',
+          content: compacted.summary,
+          payload: {
+            kind: 'query.compact',
+            data: {
+              strategy: compacted.strategy,
+              reinjected: rehydrated.reinjected,
+              preservedSegments: rehydrated.preservedSegmentCount,
+            },
+          },
+        });
+        this.store.addCheckpoint({
+          sessionId: this.config.sessionId,
+          checkpointType: 'compact',
+          summary: `${compacted.strategy} compact applied`,
+          payload: {
+            strategy: compacted.strategy,
+            summary: compacted.summary,
+            reinjected: rehydrated.reinjected,
+            preservedSegments: rehydrated.preservedSegmentCount,
+          },
+        });
+        if (rehydrated.reinjectedSummary) {
+          this.store.appendTranscript({
+            sessionId: this.config.sessionId,
+            recordType: 'query.compact.rehydrated',
+            role: 'system',
+            content: rehydrated.reinjectedSummary,
+            payload: {
+              kind: 'query.compact.rehydrated',
+              data: {
+                strategy: compacted.strategy,
+                preservedSegmentCount: rehydrated.preservedSegmentCount,
+              },
+            },
+          });
+          this.store.addCheckpoint({
+            sessionId: this.config.sessionId,
+            checkpointType: 'compact.rehydrated',
+            summary: `compact context rehydrated (${rehydrated.preservedSegmentCount} segments)`,
+            payload: {
+              strategy: compacted.strategy,
+              preservedSegmentCount: rehydrated.preservedSegmentCount,
+            },
+          });
+        }
+        messages = rehydrated.messages;
+        this.adapter.onEvent({
+          type: 'compact_end',
+          strategy: compacted.strategy,
+          summary: rehydrated.reinjectedSummary || compacted.summary,
+          compacted: true,
+        });
+      }
+
+      let llmResponse: LlmResponse;
+      try {
+        llmResponse = await this.callLlm(messages);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const normalized = message.toLowerCase();
+        if (!reactiveCompactUsed && (normalized.includes('context_length_exceeded') || normalized.includes('prompt too long') || normalized.includes('maximum context'))) {
+          reactiveCompactUsed = true;
+          const reactive = await this.compactManager.maybeCompact([
+            ...messages,
+            { role: 'system', content: 'Reactive compaction requested after context overflow.' },
+          ]);
+          if (reactive) {
+            hadCompaction = true;
+            messages = reactive.compactedMessages;
+            this.adapter.onEvent({ type: 'compact_start', strategy: 'reactive' });
+            this.adapter.onEvent({ type: 'compact_end', strategy: 'reactive', summary: reactive.summary, compacted: true });
+            continue;
+          }
+        }
+        this.adapter.onEvent({ type: 'error', message });
+        this.store.addCheckpoint({
+          sessionId: this.config.sessionId,
+          checkpointType: 'stop.failure',
+          summary: message,
+          payload: { turnCount },
+        });
+        await executeRuntimeHooks({
+          event: 'stop.failure',
+          context: {
+            sessionId: this.config.sessionId,
+            event: 'stop.failure',
+            payload: { message, turnCount },
+          },
+          adapter: this.adapter,
+        });
+        return { response: responseText, error: message };
+      }
+
+      if (llmResponse.toolCalls.length > 0) {
+        messages.push({ role: 'assistant', content: llmResponse.content || '' });
+        this.store.appendTranscript({
+          sessionId: this.config.sessionId,
+          recordType: 'assistant.tool_call',
+          role: 'assistant',
+          content: llmResponse.content || '',
+          payload: {
+            kind: 'assistant.tool_call',
+            data: {
+              calls: llmResponse.toolCalls.map((call) => ({ id: call.id, name: call.name, args: call.args })),
+            },
+          },
+        });
+        const thoughtText = String(llmResponse.content || '').trim();
+        if (thoughtText) {
+          this.adapter.onEvent({ type: 'thinking', phase: 'tooling', content: thoughtText });
+        }
+        const toolResponses = await this.executeToolCalls(llmResponse.toolCalls);
+        const terminalToolFailure = toolResponses
+          .map((response) => ({ response, message: terminalToolFailureMessage(response) }))
+          .find((item) => item.message);
+        if (terminalToolFailure) {
+          const message = terminalToolFailure.message;
+          this.adapter.onEvent({ type: 'error', message });
+          this.store.addCheckpoint({
+            sessionId: this.config.sessionId,
+            checkpointType: 'stop.failure',
+            summary: message,
+            payload: {
+              toolName: terminalToolFailure.response.name,
+              callId: terminalToolFailure.response.callId,
+              terminal: true,
+            },
+          });
+          await executeRuntimeHooks({
+            event: 'stop.failure',
+            context: {
+              sessionId: this.config.sessionId,
+              event: 'stop.failure',
+              payload: {
+                message,
+                toolName: terminalToolFailure.response.name,
+                callId: terminalToolFailure.response.callId,
+              },
+            },
+            adapter: this.adapter,
+          });
+          return { response: responseText, error: message };
+        }
+        const batchSummary = summarizeToolBatch(
+          llmResponse.toolCalls.map((call, index) => ({
+            name: call.name,
+            args: call.args,
+            result: toolResponses[index]?.result,
+          })).filter((item): item is { name: string; args: Record<string, unknown>; result: ToolResult } => Boolean(item.result)),
+        );
+        if (batchSummary) {
+          this.adapter.onEvent({
+            type: 'tool_summary',
+            toolName: 'tool.batch',
+            content: batchSummary,
+          });
+          this.store.appendTranscript({
+            sessionId: this.config.sessionId,
+            recordType: 'tool.batch.summary',
+            role: 'system',
+            content: batchSummary,
+            payload: {
+              kind: 'tool.batch.summary',
+              data: {
+                toolCount: toolResponses.length,
+                toolNames: toolResponses.map((toolResponse) => toolResponse.name),
+              },
+            },
+          });
+        }
+        const budgetedResults = applyToolResultBudget(
+          this.registry,
+          toolResponses.map((toolResponse) => ({
+            toolName: toolResponse.name,
+            result: toolResponse.result,
+          })),
+        );
+        messages.push(
+          ...budgetedResults.map((toolResult) => toToolFeedbackMessage(toolResult.toolName, toolResult.promptText)),
+        );
+        for (const [index, toolResult] of budgetedResults.entries()) {
+          const response = toolResponses[index];
+          const persisted = response
+            ? this.toolResults.applyBudget({
+                sessionId: this.config.sessionId,
+                callId: response.callId,
+                promptText: toolResult.promptText,
+                originalChars: toolResult.originalChars,
+                promptChars: toolResult.promptChars,
+                truncated: toolResult.truncated,
+              })
+            : null;
+          if (!toolResult.truncated) {
+            continue;
+          }
+          this.adapter.onEvent({
+            type: 'tool_summary',
+            toolName: toolResult.toolName,
+            content: `tool result budget applied: ${toolResult.originalChars} -> ${toolResult.promptChars} chars`,
+          });
+          this.store.appendTranscript({
+            sessionId: this.config.sessionId,
+            recordType: 'tool.result.budget',
+            role: 'system',
+            content: `tool=${toolResult.toolName}; original=${toolResult.originalChars}; prompt=${toolResult.promptChars}`,
+            payload: {
+              kind: 'tool.result.budget',
+              data: {
+                callId: response?.callId,
+                toolResultId: persisted?.id,
+                toolName: toolResult.toolName,
+                originalChars: toolResult.originalChars,
+                promptChars: toolResult.promptChars,
+              },
+            },
+          });
+        }
+        this.store.addCheckpoint({
+          sessionId: this.config.sessionId,
+          checkpointType: 'tool.batch',
+          summary: batchSummary || `Completed ${toolResponses.length} tool call(s)`,
+          payload: {
+            tools: toolResponses.map((toolResponse) => ({
+              name: toolResponse.name,
+              success: toolResponse.result.success,
+            })),
+          },
+        });
+        continue;
+      }
+
+      responseText = llmResponse.content || '';
+      const shouldContinueForLength =
+        llmResponse.finishReason === 'length' &&
+        continuationCount < 3 &&
+        !(continuationCount >= 2 && responseText.length <= 500 && lastContinuationDelta <= 500);
+      if (shouldContinueForLength) {
+        if (responseText) {
+          this.adapter.onEvent({ type: 'response_chunk', content: responseText });
+        }
+        continuationCount += 1;
+        lastContinuationDelta = responseText.length;
+        messages.push({ role: 'assistant', content: responseText });
+        const continuationPrompt = `Continue exactly from where you stopped. Do not repeat prior content. This is continuation ${continuationCount}.`;
+        messages.push({ role: 'user', content: continuationPrompt });
+        this.store.appendTranscript({
+          sessionId: this.config.sessionId,
+          recordType: 'assistant.partial',
+          role: 'assistant',
+          content: responseText,
+          payload: {
+            kind: 'assistant.partial',
+            data: {
+              turnCount,
+              continuationCount,
+              finishReason: llmResponse.finishReason,
+              usage: llmResponse.usage || null,
+            },
+          },
+        });
+        this.store.addCheckpoint({
+          sessionId: this.config.sessionId,
+          checkpointType: 'response.continue',
+          summary: `response continuation requested (${continuationCount})`,
+          payload: {
+            finishReason: llmResponse.finishReason,
+            usage: llmResponse.usage || null,
+          },
+        });
+        this.adapter.onEvent({
+          type: 'thinking',
+          phase: 'respond',
+          content: `Response hit model output limit, continuing (${continuationCount}/3)`,
+        });
+        continue;
+      }
+
+      const adapterCompletion = this.adapter.validateCompletion
+        ? await this.adapter.validateCompletion({ response: responseText, turnCount })
+        : { complete: true };
+      const captureCompletion = validateXhsAutoCaptureCompletion({
+        metadata: this.config.completionContract || null,
+        toolResults: this.toolResults.list(this.config.sessionId).map((item) => ({
+          toolName: item.toolName,
+          command: item.command,
+          success: item.success,
+          resultText: item.resultText,
+          createdAt: item.createdAt,
+        })),
+        assistantResponse: responseText,
+      });
+      const completionValidation = applyXhsAutoCaptureCompletionGate(adapterCompletion, captureCompletion);
+      if (!completionValidation.complete) {
+        const feedback = String(completionValidation.feedback || 'Runtime completion requirements are not satisfied.').trim();
+        const terminalError = String(completionValidation.terminalError || '').trim();
+        const maxCompletionRecoveryAttempts = Math.max(
+          defaultMaxCompletionRecoveryAttempts,
+          Math.floor(Number(completionValidation.maxRecoveryAttempts) || defaultMaxCompletionRecoveryAttempts),
+        );
+        completionRecoveryCount += 1;
+        this.store.appendTranscript({
+          sessionId: this.config.sessionId,
+          recordType: 'assistant.completion_rejected',
+          role: 'assistant',
+          content: responseText,
+          payload: {
+            kind: 'assistant.completion_rejected',
+            data: {
+              turnCount,
+              completionRecoveryCount,
+              feedback,
+            },
+          },
+        });
+        this.store.addCheckpoint({
+          sessionId: this.config.sessionId,
+          checkpointType: 'response.completion_rejected',
+          summary: feedback.slice(0, 240),
+          payload: {
+            turnCount,
+            completionRecoveryCount,
+          },
+        });
+        if (terminalError) {
+          this.adapter.onEvent({ type: 'error', message: terminalError });
+          await executeRuntimeHooks({
+            event: 'stop.failure',
+            context: {
+              sessionId: this.config.sessionId,
+              event: 'stop.failure',
+              payload: { message: terminalError, turnCount },
+            },
+            adapter: this.adapter,
+          });
+          return { response: '', error: terminalError };
+        }
+        if (completionRecoveryCount > maxCompletionRecoveryAttempts) {
+          const message = `Runtime completion validation failed after ${maxCompletionRecoveryAttempts} recovery attempts: ${feedback}`;
+          this.adapter.onEvent({ type: 'error', message });
+          await executeRuntimeHooks({
+            event: 'stop.failure',
+            context: {
+              sessionId: this.config.sessionId,
+              event: 'stop.failure',
+              payload: { message, turnCount },
+            },
+            adapter: this.adapter,
+          });
+          return { response: '', error: message };
+        }
+        messages.push({ role: 'assistant', content: responseText });
+        messages.push({
+          role: 'system',
+          content: [
+            '## Runtime Completion Validation',
+            feedback,
+            `Recovery attempt: ${completionRecoveryCount}/${maxCompletionRecoveryAttempts}`,
+          ].join('\n'),
+        });
+        responseText = '';
+        this.adapter.onEvent({
+          type: 'thinking',
+          phase: 'respond',
+          content: `交付物尚未通过运行时验收，继续执行（${completionRecoveryCount}/${maxCompletionRecoveryAttempts}）...`,
+        });
+        continue;
+      }
+
+      if (responseText) {
+        this.adapter.onEvent({ type: 'response_chunk', content: responseText });
+      }
+      this.adapter.onEvent({ type: 'response_end', content: responseText });
+      this.adapter.onEvent({ type: 'done', response: responseText });
+      this.store.appendTranscript({
+        sessionId: this.config.sessionId,
+        recordType: 'assistant.response',
+        role: 'assistant',
+        content: responseText,
+        payload: { kind: 'assistant.response', data: { turnCount } },
+      });
+      this.store.addCheckpoint({
+        sessionId: this.config.sessionId,
+        checkpointType: 'response.final',
+        summary: responseText.slice(0, 240) || 'Assistant response completed',
+        payload: { turnCount, responseLength: responseText.length },
+      });
+      this.notifyMemoryLifecycle({
+        responseLength: responseText.length,
+        compacted: hadCompaction,
+      });
+      await executeRuntimeHooks({
+        event: 'query.after',
+        context: {
+          sessionId: this.config.sessionId,
+          event: 'query.after',
+          payload: { response: responseText, turnCount },
+        },
+        adapter: this.adapter,
+        llm: {
+          apiKey: this.config.apiKey,
+          baseURL: this.config.baseURL,
+          model: this.config.model,
+        },
+      });
+      return { response: responseText };
+    }
+
+    const message = 'Query runtime exceeded max turns';
+    this.adapter.onEvent({ type: 'error', message });
+    return { response: responseText, error: message };
+  }
+
+  private async callLlm(messages: RuntimeMessage[]): Promise<LlmResponse> {
+    const response = await fetchLlmWithRetry(safeUrlJoin(normalizeApiBaseUrl(this.config.baseURL), '/chat/completions'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${this.config.apiKey}`,
+      },
+      signal: this.config.signal,
+      body: JSON.stringify({
+        model: this.config.model,
+        temperature: this.config.temperature ?? 0.5,
+        messages,
+        tools: this.registry.getToolSchemas(),
+      }),
+    }, {
+      maxAttempts: 2,
+      baseDelayMs: 600,
+      maxDelayMs: 3000,
+      onRetry: ({ attempt, maxAttempts, reason }) => {
+        this.adapter.onEvent({
+          type: 'thinking',
+          phase: 'analyze',
+          content: `模型连接暂时失败，正在自动重试（${attempt + 1}/${maxAttempts}）...`,
+        });
+        this.store.addCheckpoint({
+          sessionId: this.config.sessionId,
+          checkpointType: 'llm.network_retry',
+          summary: reason.slice(0, 240),
+          payload: { attempt, maxAttempts },
+        });
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      throw new Error(`Runtime LLM error (${response.status}): ${errorText || response.statusText}`);
+    }
+
+    const data = await response.json() as {
+      usage?: {
+        prompt_tokens?: number;
+        completion_tokens?: number;
+        total_tokens?: number;
+      };
+      choices?: Array<{
+        finish_reason?: string;
+        message?: {
+          content?: string | Array<{ text?: string }>;
+          tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }>;
+        };
+      }>;
+    };
+    const message = data?.choices?.[0]?.message;
+    return {
+      content: extractAssistantText(message?.content),
+      toolCalls: Array.isArray(message?.tool_calls)
+        ? message!.tool_calls!.map((toolCall) => ({
+            id: String(toolCall.id || nextId('tool')),
+            name: String(toolCall.function?.name || ''),
+            args: (() => {
+              try {
+                return JSON.parse(String(toolCall.function?.arguments || '{}')) as Record<string, unknown>;
+              } catch {
+                return {};
+              }
+            })(),
+          })).filter((toolCall) => toolCall.name)
+        : [],
+      finishReason: typeof data?.choices?.[0]?.finish_reason === 'string'
+        ? data.choices?.[0]?.finish_reason
+        : undefined,
+      usage: data?.usage ? {
+        promptTokens: data.usage.prompt_tokens,
+        completionTokens: data.usage.completion_tokens,
+        totalTokens: data.usage.total_tokens,
+      } : undefined,
+    };
+  }
+
+  private async executeToolCalls(toolCalls: LlmToolCall[]): Promise<ToolCallResponse[]> {
+    const serial: LlmToolCall[] = [];
+    const responses: ToolCallResponse[] = [];
+    let currentConcurrentBatch: LlmToolCall[] = [];
+    const flushConcurrentBatch = async () => {
+      if (currentConcurrentBatch.length === 0) {
+        return;
+      }
+      responses.push(...await Promise.all(currentConcurrentBatch.map((toolCall) => this.executeSingleToolCall(toolCall))));
+      currentConcurrentBatch = [];
+    };
+
+    for (const toolCall of toolCalls) {
+      if (isToolConcurrencySafe(this.registry, toolCall.name, toolCall.args)) {
+        currentConcurrentBatch.push(toolCall);
+        continue;
+      }
+      await flushConcurrentBatch();
+      serial.push(toolCall);
+    }
+    await flushConcurrentBatch();
+    for (const toolCall of serial) {
+      responses.push(await this.executeSingleToolCall(toolCall));
+    }
+    return responses;
+  }
+
+  private async executeSingleToolCall(toolCall: LlmToolCall): Promise<ToolCallResponse> {
+    const effectiveArgs = applyGenerationToolConstraints(
+      toolCall.name,
+      toolCall.args,
+      this.config.generationToolConstraints,
+    );
+    const tool = this.registry.getTool(toolCall.name);
+    const description = tool?.getDescription(effectiveArgs) || `Executing ${toolCall.name}`;
+    const startedAt = now();
+
+    if (!tool) {
+      return {
+        callId: toolCall.id,
+        name: toolCall.name,
+        result: createErrorResult(`Tool "${toolCall.name}" not found`, ToolErrorType.EXECUTION_FAILED),
+        durationMs: 0,
+      };
+    }
+
+    const permission = evaluateRuntimeToolPermission({
+      tool,
+      toolName: toolCall.name,
+      args: effectiveArgs,
+      context: {
+        sessionId: this.config.sessionId,
+        toolPack: this.config.toolPack,
+        runtimeMode: this.config.runtimeMode,
+        interactive: this.config.interactive !== false,
+        requiresHumanApproval: this.config.requiresHumanApproval,
+      },
+    });
+
+    if (permission.outcome !== 'allow') {
+      this.adapter.onEvent({
+        type: 'tool_summary',
+        toolName: toolCall.name,
+        content: `permission ${permission.outcome}: ${permission.reason}`,
+      });
+      this.store.appendTranscript({
+        sessionId: this.config.sessionId,
+        recordType: 'tool.permission',
+        role: 'system',
+        content: `${toolCall.name}: ${permission.outcome} - ${permission.reason}`,
+        payload: {
+          kind: 'tool.permission',
+          data: {
+            callId: toolCall.id,
+            toolName: toolCall.name,
+            outcome: permission.outcome,
+            source: permission.source,
+          },
+        },
+      });
+      this.store.addCheckpoint({
+        sessionId: this.config.sessionId,
+        checkpointType: permission.outcome === 'deny' ? 'tool.permission.denied' : 'tool.permission.confirm',
+        summary: `${toolCall.name}: ${permission.reason}`,
+        payload: {
+          callId: toolCall.id,
+          toolName: toolCall.name,
+          outcome: permission.outcome,
+        },
+      });
+    }
+
+    if (permission.outcome === 'deny') {
+      const deniedResult = createErrorResult(permission.reason, ToolErrorType.PERMISSION_DENIED);
+      const persistedToolResult = this.toolResults.add({
+        sessionId: this.config.sessionId,
+        callId: toolCall.id,
+        toolName: toolCall.name,
+        command: this.extractCommand(effectiveArgs),
+        result: deniedResult,
+        summaryText: deniedResult.llmContent,
+        payload: {
+          deniedByRuntimePermission: true,
+          source: permission.source,
+        },
+      });
+      this.adapter.onEvent({
+        type: 'tool_end',
+        callId: toolCall.id,
+        name: toolCall.name,
+        result: deniedResult,
+        durationMs: now() - startedAt,
+      });
+      this.store.appendTranscript({
+        sessionId: this.config.sessionId,
+        recordType: 'tool.result',
+        role: 'tool',
+        content: deniedResult.llmContent,
+        payload: {
+          kind: 'tool.result',
+          data: {
+            toolResultId: persistedToolResult.id,
+            callId: toolCall.id,
+            toolName: toolCall.name,
+            success: false,
+            deniedByRuntimePermission: true,
+            durationMs: now() - startedAt,
+          },
+        },
+      });
+      this.adapter.onToolResult?.(toolCall.name, deniedResult, this.extractCommand(effectiveArgs));
+      return {
+        callId: toolCall.id,
+        name: toolCall.name,
+        result: deniedResult,
+        durationMs: now() - startedAt,
+      };
+    }
+
+    await executeRuntimeHooks({
+      event: 'tool.before',
+      context: {
+        sessionId: this.config.sessionId,
+        event: 'tool.before',
+        payload: {
+          name: toolCall.name,
+          args: effectiveArgs,
+        },
+      },
+      adapter: this.adapter,
+      llm: {
+        apiKey: this.config.apiKey,
+        baseURL: this.config.baseURL,
+        model: this.config.model,
+      },
+    });
+
+    this.adapter.onEvent({
+      type: 'tool_start',
+      callId: toolCall.id,
+      name: toolCall.name,
+      params: effectiveArgs,
+      description,
+    });
+
+    const request: ToolCallRequest = {
+      callId: toolCall.id,
+      name: toolCall.name,
+      params: effectiveArgs,
+      forceConfirmation: permission.outcome === 'confirm',
+      confirmationDetails: permission.details || null,
+    };
+    const response = await this.executor.execute(
+      request,
+      this.config.signal ?? new AbortController().signal,
+      (chunk) => {
+        this.adapter.onEvent({
+          type: 'tool_output',
+          callId: toolCall.id,
+          name: toolCall.name,
+          chunk,
+        });
+      },
+    );
+
+    const summarized = this.summarizeToolResult(toolCall.name, response.result);
+    const persistedToolResult = this.toolResults.add({
+      sessionId: this.config.sessionId,
+      callId: response.callId,
+      toolName: toolCall.name,
+      command: this.extractCommand(effectiveArgs),
+      result: response.result,
+      summaryText: summarized,
+      payload: {
+        durationMs: response.durationMs,
+      },
+    });
+    if (summarized) {
+      this.adapter.onEvent({
+        type: 'tool_summary',
+        toolName: toolCall.name,
+        content: summarized,
+      });
+    }
+
+    this.adapter.onEvent({
+      type: 'tool_end',
+      callId: response.callId,
+      name: response.name,
+      result: response.result,
+      durationMs: response.durationMs,
+    });
+
+    this.adapter.onToolResult?.(toolCall.name, response.result, this.extractCommand(effectiveArgs));
+    this.store.appendTranscript({
+      sessionId: this.config.sessionId,
+      recordType: 'tool.result',
+      role: 'tool',
+      content: summarized || response.result.llmContent,
+      payload: {
+        kind: 'tool.result',
+        data: {
+          toolResultId: persistedToolResult.id,
+          callId: response.callId,
+          toolName: toolCall.name,
+          success: response.result.success,
+          durationMs: response.durationMs,
+        },
+      },
+    });
+
+    await executeRuntimeHooks({
+      event: 'tool.after',
+      context: {
+        sessionId: this.config.sessionId,
+        event: 'tool.after',
+        payload: {
+          name: toolCall.name,
+          args: effectiveArgs,
+          success: response.result.success,
+          output: summarized || response.result.llmContent,
+        },
+      },
+      adapter: this.adapter,
+      llm: {
+        apiKey: this.config.apiKey,
+        baseURL: this.config.baseURL,
+        model: this.config.model,
+      },
+    });
+
+    return response;
+  }
+
+  private summarizeToolResult(toolName: string, result: ToolResult): string | null {
+    const override = this.adapter.summarizeToolResult?.(toolName, result);
+    if (override) return override;
+    const text = String(result.llmContent || result.display || result.error?.message || '').trim();
+    if (!text) return null;
+    if (text.length <= 4_000) return text;
+    return `${text.slice(0, 4_000)}\n\n[tool result summarized for runtime event]`;
+  }
+
+  private extractCommand(args: Record<string, unknown>): string {
+    return typeof args.command === 'string' ? args.command : '';
+  }
+
+  private notifyMemoryLifecycle(params: {
+    responseLength: number;
+    compacted: boolean;
+  }): void {
+    if (this.config.runtimeMode === 'background-maintenance') {
+      return;
+    }
+    try {
+      getMemoryMaintenanceService().notifyQueryLifecycleEvent({
+        sessionId: this.config.sessionId,
+        runtimeMode: this.config.runtimeMode,
+        responseLength: params.responseLength,
+        compacted: params.compacted,
+      });
+    } catch (error) {
+      this.adapter.onEvent({
+        type: 'tool_summary',
+        toolName: 'memory-maintenance',
+        content: `memory lifecycle notify failed: ${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
+  }
+
+  private rehydrateCompactedMessages(
+    originalMessages: RuntimeMessage[],
+    compacted: { strategy: 'micro' | 'normal' | 'reactive'; summary: string; compactedMessages: RuntimeMessage[] },
+  ): {
+    messages: RuntimeMessage[];
+    reinjected: boolean;
+    reinjectedSummary: string;
+    preservedSegmentCount: number;
+  } {
+    const firstSystemMessage = originalMessages.find((message) => message.role === 'system') || compacted.compactedMessages[0];
+    const compactedTail = compacted.compactedMessages.filter((message, index) => {
+      if (message.role !== 'system') return true;
+      return index === 0 && message === firstSystemMessage;
+    }).filter(Boolean) as RuntimeMessage[];
+
+    const checkpoints = this.store.listCheckpoints(this.config.sessionId, 8)
+      .filter((checkpoint) => !checkpoint.checkpointType.startsWith('compact'))
+      .slice(0, 5);
+    const toolResults = this.store.listToolResults(this.config.sessionId, 6).slice(0, 4);
+    const attachmentSummaries = this.getRecentAttachmentSummaries();
+    const taskNodeSummaries = this.getRecentTaskNodeSummaries();
+    const recentTurns = originalMessages
+      .filter((message) => message.role !== 'system')
+      .slice(-4)
+      .map((message) => `${message.role}: ${truncateText(message.content, 280)}`);
+
+    const preservedSegments: string[] = [
+      `runtimeMode: ${this.config.runtimeMode || 'unknown'}`,
+      `toolPack: ${this.config.toolPack}`,
+      `requiresHumanApproval: ${this.config.requiresHumanApproval ? 'true' : 'false'}`,
+    ];
+
+    if (checkpoints.length > 0) {
+      preservedSegments.push(
+        'Recent checkpoints:',
+        ...checkpoints.map((checkpoint) => `- ${checkpoint.checkpointType}: ${truncateText(checkpoint.summary, 220)}`),
+      );
+    }
+
+    if (toolResults.length > 0) {
+      preservedSegments.push(
+        'Recent tool outcomes:',
+        ...toolResults.map((result) => `- ${result.toolName} [${result.success ? 'ok' : 'fail'}]: ${truncateText(result.summaryText || result.promptText || result.resultText, 220)}`),
+      );
+    }
+
+    if (attachmentSummaries.length > 0) {
+      preservedSegments.push(
+        'Recent attachments and rich user payloads:',
+        ...attachmentSummaries.map((item) => `- ${item}`),
+      );
+    }
+
+    if (taskNodeSummaries.length > 0) {
+      preservedSegments.push(
+        'Recent task graph state:',
+        ...taskNodeSummaries.map((item) => `- ${item}`),
+      );
+    }
+
+    if (recentTurns.length > 0) {
+      preservedSegments.push(
+        'Recent live turns:',
+        ...recentTurns.map((item) => `- ${item}`),
+      );
+    }
+
+    const reinjectedSummary = [
+      '## Compact Boundary',
+      `Strategy: ${compacted.strategy}`,
+      `Summary: ${truncateText(compacted.summary, 3200)}`,
+      '',
+      '## Preserved Runtime Context',
+      ...preservedSegments,
+      '',
+      'Rules:',
+      '- Favor the latest live turns and preserved runtime context over older compressed details.',
+      '- Preserve current task goal, active role, and recent tool outcomes.',
+      '- Do not repeat already completed work unless the preserved context says it is incomplete.',
+    ].join('\n');
+
+    return {
+      messages: [
+        firstSystemMessage,
+        { role: 'system', content: reinjectedSummary },
+        ...compactedTail.slice(-8),
+      ].filter(Boolean) as RuntimeMessage[],
+      reinjected: true,
+      reinjectedSummary,
+      preservedSegmentCount: preservedSegments.length,
+    };
+  }
+
+  private getRecentAttachmentSummaries(): string[] {
+    const messages = getChatMessages(this.config.sessionId)
+      .filter((message) => message.role === 'user' && (attachmentSummariesFromMessage(message).length > 0 || message.display_content))
+      .slice(-4);
+
+    return messages.map((message) => {
+      const attachmentText = attachmentSummariesFromMessage(message)
+        .map((item, index) => `attachment${index + 1}: ${item}`)
+        .join(' ; ');
+      const displayText = String(message.display_content || '').trim();
+      const contentText = String(message.content || '').trim();
+      return [
+        attachmentText,
+        displayText && `display: ${truncateText(displayText, 180)}`,
+        contentText && `content: ${truncateText(contentText, 180)}`,
+      ].filter(Boolean).join(' || ');
+    }).filter(Boolean);
+  }
+
+  private getRecentTaskNodeSummaries(): string[] {
+    const tasks = getTaskGraphRuntime()
+      .listTasks({ ownerSessionId: this.config.sessionId, limit: 3 })
+      .slice(0, 2);
+
+    return tasks.flatMap((task) => {
+      const activeNodes = task.graph
+        .filter((node) => node.status === 'running' || node.status === 'failed' || node.status === 'pending')
+        .slice(0, 3);
+      const header = `task=${task.id} intent=${task.intent || task.taskType} status=${task.status}`;
+      const nodeLines = activeNodes.map((node) => `${node.type}:${node.status}${node.summary ? ` (${truncateText(node.summary, 120)})` : ''}`);
+      if (nodeLines.length === 0) {
+        return [header];
+      }
+      return [header, ...nodeLines];
+    });
+  }
+}
