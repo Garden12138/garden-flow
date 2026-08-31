@@ -1,4 +1,5 @@
 import { createBridgeCore } from './core';
+import { normalizeOptionalTimeoutMs } from './timeout';
 import { createAccountsBridge } from './domains/accountsBridge';
 import { createAdvisorsBridge } from './domains/advisorsBridge';
 import { createAiConfigBridge } from './domains/aiConfigBridge';
@@ -143,7 +144,7 @@ async function invokeChannelGuarded<T = unknown>(
   payload?: unknown,
   options?: InvokeGuardOptions<T>,
 ): Promise<T> {
-  const timeoutMs = Math.max(1, Number(options?.timeoutMs || 0));
+  const timeoutMs = normalizeOptionalTimeoutMs(options?.timeoutMs);
 
   try {
     const value = timeoutMs > 0
@@ -182,7 +183,7 @@ async function invokeCommandGuarded<T = unknown>(
   args?: unknown,
   options?: InvokeGuardOptions<T> & { fallbackChannel?: string },
 ): Promise<T> {
-  const timeoutMs = Math.max(1, Number(options?.timeoutMs || 0));
+  const timeoutMs = normalizeOptionalTimeoutMs(options?.timeoutMs);
   const fallbackKey = options?.fallbackChannel || command;
 
   try {

@@ -11,9 +11,10 @@
   "main": "dist-electron/main.js",
   "scripts": {
     "clean": "node -e \"const fs=require('fs');['dist','dist-electron','release'].forEach(d=>fs.rmSync(d,{recursive:true,force:true}));\"",
-    "dev": "pnpm run sync:brand && pnpm run prepare:private-runtime && pnpm run prepare:plugin-runtime && pnpm run sync:prompt-library && vite",
+    "dev": "pnpm run sync:brand && pnpm run prepare:private-runtime && pnpm run prepare:plugin-runtime && pnpm run prepare:unix-native-host && pnpm run sync:prompt-library && vite",
     "prepare:private-runtime": "node scripts/prepare-private-runtime.cjs",
     "prepare:plugin-runtime": "node scripts/prepare-plugin-runtime.cjs",
+    "prepare:unix-native-host": "node scripts/prepare-unix-native-host.cjs",
     "prepare:windows-native-host": "node scripts/prepare-windows-native-host.cjs",
     "prepare:ffmpeg": "node scripts/ensure-ffmpeg-static.cjs",
     "sync:prompt-library": "node scripts/sync-prompt-library.cjs",
@@ -28,13 +29,13 @@
     "test:image-hosting": "node --test tests/imageHosting.test.ts",
     "test:wander": "node --test tests/wanderTopicFlow.test.ts",
     "check:parity": "node scripts/check-ui-parity-source.mjs && node scripts/check-bridge-domain-parity.mjs && tsc --noEmit --pretty false",
-    "build": "pnpm run prepare:private-runtime && pnpm run prepare:plugin-runtime && pnpm run prepare:ffmpeg && pnpm run clean && tsc && vite build && pnpm run sync:prompt-library && electron-builder",
-    "build:mac": "pnpm run prepare:private-runtime && pnpm run prepare:plugin-runtime && pnpm run prepare:ffmpeg && pnpm run clean && tsc && vite build && pnpm run sync:prompt-library && electron-builder --mac --x64 --arm64",
-    "build:mac:signed": "pnpm run prepare:private-runtime && pnpm run prepare:plugin-runtime && pnpm run prepare:ffmpeg && pnpm run clean && tsc && vite build && pnpm run sync:prompt-library && electron-builder --mac --x64 --arm64 -c.mac.notarize=false",
+    "build": "pnpm run prepare:private-runtime && pnpm run prepare:plugin-runtime && pnpm run prepare:unix-native-host && pnpm run prepare:ffmpeg && pnpm run clean && tsc && vite build && pnpm run sync:prompt-library && electron-builder",
+    "build:mac": "pnpm run prepare:private-runtime && pnpm run prepare:plugin-runtime && pnpm run prepare:unix-native-host && pnpm run prepare:ffmpeg && pnpm run clean && tsc && vite build && pnpm run sync:prompt-library && electron-builder --mac --x64 --arm64",
+    "build:mac:signed": "pnpm run prepare:private-runtime && pnpm run prepare:plugin-runtime && pnpm run prepare:unix-native-host && pnpm run prepare:ffmpeg && pnpm run clean && tsc && vite build && pnpm run sync:prompt-library && electron-builder --mac --x64 --arm64 -c.mac.notarize=false",
     "build:win": "pnpm run prepare:private-runtime && pnpm run prepare:plugin-runtime && pnpm run prepare:windows-native-host && pnpm run prepare:ffmpeg && pnpm run clean && tsc && vite build && pnpm run sync:prompt-library && electron-builder --win --x64",
     "build:all": "pnpm run prepare:private-runtime && pnpm run prepare:plugin-runtime && pnpm run prepare:ffmpeg && pnpm run clean && tsc && vite build && pnpm run sync:prompt-library && electron-builder --mac --x64 --arm64 --win --x64",
-    "build:mac:nosign": "pnpm run prepare:private-runtime && pnpm run prepare:plugin-runtime && pnpm run prepare:ffmpeg && pnpm run clean && tsc && vite build && pnpm run sync:prompt-library && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --x64 --arm64 -c.mac.identity=null",
-    "build:nosign": "pnpm run prepare:private-runtime && pnpm run prepare:plugin-runtime && pnpm run prepare:ffmpeg && pnpm run clean && tsc && vite build && pnpm run sync:prompt-library && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder",
+    "build:mac:nosign": "pnpm run prepare:private-runtime && pnpm run prepare:plugin-runtime && pnpm run prepare:unix-native-host && pnpm run prepare:ffmpeg && pnpm run clean && tsc && vite build && pnpm run sync:prompt-library && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --x64 --arm64 -c.mac.identity=null",
+    "build:nosign": "pnpm run prepare:private-runtime && pnpm run prepare:plugin-runtime && pnpm run prepare:unix-native-host && pnpm run prepare:ffmpeg && pnpm run clean && tsc && vite build && pnpm run sync:prompt-library && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder",
     "postinstall": "electron-builder install-app-deps",
     "preview": "vite preview",
     "sync:brand": "node ../scripts/sync-brand.cjs"
@@ -95,7 +96,13 @@
         "CFBundleDisplayName": "GardenFlow",
         "CFBundleName": "GardenFlow",
         "NSCameraUsageDescription": "This app requires camera access to record videos."
-      }
+      },
+      "extraResources": [
+        {
+          "from": ".native-host-runtime/unix/gardenflow-browser-native-host.cjs",
+          "to": "native-host/gardenflow-browser-native-host.cjs"
+        }
+      ]
     },
     "asarUnpack": [
       "**/*.node",
@@ -122,7 +129,13 @@
       ]
     },
     "linux": {
-      "icon": "gardenflow.png"
+      "icon": "gardenflow.png",
+      "extraResources": [
+        {
+          "from": ".native-host-runtime/unix/gardenflow-browser-native-host.cjs",
+          "to": "native-host/gardenflow-browser-native-host.cjs"
+        }
+      ]
     }
   },
   "dependencies": {

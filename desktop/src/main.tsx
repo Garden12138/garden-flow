@@ -1,5 +1,5 @@
 import './ipc/bootstrap';
-import React from 'react'
+import React, { useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
 import 'tippy.js/dist/tippy.css'
@@ -92,12 +92,41 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
   }
 }
 
+function RendererReadySignal() {
+  useEffect(() => {
+    let sent = false;
+    const reportReady = () => {
+      if (sent) return;
+      sent = true;
+      window.ipcRenderer.send('renderer:ready', {
+        rootChildCount: document.getElementById('root')?.childElementCount ?? 0,
+        readyState: document.readyState,
+      });
+    };
+
+    const fallbackTimer = window.setTimeout(reportReady, 250);
+    const firstFrame = window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(reportReady);
+    });
+
+    return () => {
+      window.clearTimeout(fallbackTimer);
+      window.cancelAnimationFrame(firstFrame);
+    };
+  }, []);
+
+  return null;
+}
+
 const appTree = (
-  <ErrorBoundary>
-    <I18nProvider>
-      <App />
-    </I18nProvider>
-  </ErrorBoundary>
+  <>
+    <RendererReadySignal />
+    <ErrorBoundary>
+      <I18nProvider>
+        <App />
+      </I18nProvider>
+    </ErrorBoundary>
+  </>
 );
 
 const isDevRuntime = window.location.protocol !== 'file:';

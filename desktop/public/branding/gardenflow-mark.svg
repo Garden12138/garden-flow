@@ -1,7 +1,41 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="gardenflow-title">
-  <title id="gardenflow-title">GardenFlow</title>
-  <rect x="16" y="16" width="992" height="992" rx="224" fill="#fff" stroke="#dedee3" stroke-width="24"/>
-  <rect x="100" y="100" width="824" height="824" rx="174" fill="#e60012"/>
-  <path d="M492 322H334c-65 0-106 44-106 108v164c0 65 41 108 106 108h158V488H361v76h55v62h-68c-28 0-44-18-44-47V445c0-30 16-47 44-47h144z" fill="#fff"/>
-  <path d="M552 322h244v76H632v99h144v76H632v129h-80z" fill="#fff"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="gardenflow-title gardenflow-description">
+  <title id="gardenflow-title">GardenFlow iris</title>
+  <desc id="gardenflow-description">A blue-violet iris blooming between two flowing green leaves.</desc>
+  <defs>
+    <linearGradient id="tile" x1="130" y1="100" x2="900" y2="930" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0F4D3E"/>
+      <stop offset="0.54" stop-color="#087D70"/>
+      <stop offset="1" stop-color="#063D38"/>
+    </linearGradient>
+    <linearGradient id="petal" x1="338" y1="232" x2="706" y2="760" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#D8D0FF"/>
+      <stop offset="0.5" stop-color="#8B75D7"/>
+      <stop offset="1" stop-color="#5B3FCC"/>
+    </linearGradient>
+    <linearGradient id="leaf" x1="215" y1="260" x2="770" y2="885" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A7E879"/>
+      <stop offset="0.48" stop-color="#20A77B"/>
+      <stop offset="1" stop-color="#08765F"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="512" y1="486" x2="512" y2="690" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFE29A"/>
+      <stop offset="1" stop-color="#F3A82F"/>
+    </linearGradient>
+    <filter id="soft-shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="22" stdDeviation="24" flood-color="#022823" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <rect x="24" y="24" width="976" height="976" rx="222" fill="url(#tile)"/>
+  <path d="M118 814C235 756 278 598 277 332c103 139 105 356-4 502-48 65-100 99-155 111 49-42 69-82 0-131Z" fill="url(#leaf)"/>
+  <path d="M906 814C789 756 746 598 747 332c-103 139-105 356 4 502 48 65 100 99 155 111-49-42-69-82 0-131Z" fill="url(#leaf)"/>
+  <g filter="url(#soft-shadow)">
+    <path d="M512 563C443 502 405 402 431 301c18-70 56-139 81-174 25 35 63 104 81 174 26 101-12 201-81 262Z" fill="url(#petal)"/>
+    <path d="M492 587C394 574 296 527 247 442c-31-53-43-110-38-151 44-2 105 12 160 45 86 51 125 149 123 251Z" fill="url(#petal)"/>
+    <path d="M532 587C630 574 728 527 777 442c31-53 43-110 38-151-44-2-105 12-160 45-86 51-125 149-123 251Z" fill="url(#petal)"/>
+    <path d="M490 559C404 575 329 633 294 718c-23 55-27 109-17 147 42-4 97-26 144-64 72-58 95-151 69-242Z" fill="url(#petal)"/>
+    <path d="M534 559C620 575 695 633 730 718c23 55 27 109 17 147-42-4-97-26-144-64-72-58-95-151-69-242Z" fill="url(#petal)"/>
+    <path d="M512 543C449 590 414 676 427 756c9 55 37 101 85 137 48-36 76-82 85-137 13-80-22-166-85-213Z" fill="url(#petal)"/>
+    <path d="M512 490c-38 48-49 112-28 171 9 25 18 44 28 59 10-15 19-34 28-59 21-59 10-123-28-171Z" fill="url(#gold)"/>
+    <circle cx="512" cy="596" r="38" fill="#F3BE58"/>
+  </g>
 </svg>

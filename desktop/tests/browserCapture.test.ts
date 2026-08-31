@@ -23,8 +23,10 @@ import {
     type BrowserCaptureBridgeDescriptor,
 } from '../electron/core/browserCaptureProtocol.ts';
 import {
+    buildUnixBrowserNativeHostLauncherScript,
     browserNativeHostNeedsInstall,
     resolvePackagedBrowserNativeHostExecutable,
+    resolvePackagedUnixBrowserNativeHostRuntime,
     type BrowserNativeHostStatus,
 } from '../electron/core/browserNativeHostInstaller.ts';
 import { selectCompatibleGardenFlowReleaseAsset } from '../electron/core/appUpdatePolicy.ts';
@@ -69,13 +71,20 @@ test('packaged Windows Native Host uses the dedicated console executable', () =>
         }, 'win32'),
         'C:\\Program Files\\GardenFlow\\resources\\native-host\\gardenflow-browser-native-host.exe',
     );
+});
+
+test('packaged macOS Native Host uses a node-mode launcher instead of claiming the app identity', () => {
+    const appExecutable = '/Applications/GardenFlow.app/Contents/MacOS/GardenFlow';
+    const resourcesPath = '/Applications/GardenFlow.app/Contents/Resources';
+    const runtimePath = resolvePackagedUnixBrowserNativeHostRuntime({ resourcesPath });
     assert.equal(
-        resolvePackagedBrowserNativeHostExecutable({
-            appExecutable: '/Applications/GardenFlow.app/Contents/MacOS/GardenFlow',
-            resourcesPath: '/Applications/GardenFlow.app/Contents/Resources',
-        }, 'darwin'),
-        '/Applications/GardenFlow.app/Contents/MacOS/GardenFlow',
+        runtimePath,
+        '/Applications/GardenFlow.app/Contents/Resources/native-host/gardenflow-browser-native-host.cjs',
     );
+    const launcher = buildUnixBrowserNativeHostLauncherScript(appExecutable, runtimePath);
+    assert.match(launcher, /ELECTRON_RUN_AS_NODE=1/);
+    assert.match(launcher, /GARDENFLOW_NATIVE_HOST_NODE_MODE=1/);
+    assert.match(launcher, /gardenflow-browser-native-host\.cjs/);
 });
 
 test('Windows packaging prepares and bundles the dedicated Native Host', async () => {
@@ -97,6 +106,11 @@ test('Windows packaging prepares and bundles the dedicated Native Host', async (
     assert.match(windowsPackagingScript, /Invoke-Pnpm run prepare:windows-native-host/);
     assert.match(windowsDiagnosticScript, /native-host\.log/);
     assert.match(windowsDiagnosticScript, /NativeMessagingHosts\\com\.gardenflow\.browser_control/);
+    assert.equal(
+        packageConfig.build.mac.extraResources[0]?.to,
+        'native-host/gardenflow-browser-native-host.cjs',
+    );
+    assert.match(packageConfig.scripts['build:nosign'], /prepare:unix-native-host/);
 });
 
 test('app updater accepts only GardenFlow installers for the current platform and architecture', () => {

@@ -1,4 +1,5 @@
 import { buildFallbackResponse } from './fallbacks';
+import { normalizeOptionalTimeoutMs } from './timeout';
 import type {
   BridgeCore,
   GuardedFallbackValue,
@@ -108,7 +109,7 @@ async function invokeChannelGuarded<T = unknown>(
   payload?: unknown,
   options?: InvokeGuardOptions<T>,
 ): Promise<T> {
-  const timeoutMs = Math.max(1, Number(options?.timeoutMs || 0));
+  const timeoutMs = normalizeOptionalTimeoutMs(options?.timeoutMs);
 
   try {
     const value = timeoutMs > 0
@@ -147,7 +148,7 @@ async function invokeCommandGuarded<T = unknown>(
   args?: unknown,
   options?: InvokeGuardOptions<T> & { fallbackChannel?: string },
 ): Promise<T> {
-  const timeoutMs = Math.max(1, Number(options?.timeoutMs || 0));
+  const timeoutMs = normalizeOptionalTimeoutMs(options?.timeoutMs);
   const fallbackKey = options?.fallbackChannel || command;
 
   try {

@@ -790,6 +790,26 @@ function markStartupPhase(label: string): void {
     sincePrevPhaseMs: now - last,
   });
 }
+
+function appendStartupWindowDiagnostic(event: string, details: Record<string, unknown> = {}): void {
+  try {
+    const logDir = path.join(app.getPath('userData'), 'logs');
+    fsSync.mkdirSync(logDir, { recursive: true });
+    const sanitizedDetails = Object.fromEntries(
+      Object.entries(details).map(([key, value]) => [
+        key,
+        typeof value === 'string' ? value.slice(0, 500) : value,
+      ]),
+    );
+    fsSync.appendFileSync(
+      path.join(logDir, 'startup-window.log'),
+      `${JSON.stringify({ ts: new Date().toISOString(), event, ...sanitizedDetails })}\n`,
+      'utf8',
+    );
+  } catch (error) {
+    console.error('[Startup] Failed to persist window diagnostic:', error);
+  }
+}
 const ADVISOR_OPTIMIZE_SYSTEM_PROMPT = loadPrompt(
   'runtime/advisors/optimize_system.txt',
   '你是一个专业的 Prompt 工程师，请根据用户描述优化系统提示词。'
@@ -1667,7 +1687,27 @@ async function checkForAppUpdate(force = false, forceNotify = false): Promise<Ap
   }
 }
 
+function revealMainWindow(targetWindow: BrowserWindow): void {
+  if (targetWindow.isDestroyed()) return;
+  targetWindow.webContents.invalidate();
+  if (!targetWindow.isVisible()) {
+    targetWindow.show();
+  }
+  targetWindow.focus();
+  for (const delayMs of [120, 500]) {
+    setTimeout(() => {
+      if (!targetWindow.isDestroyed()) {
+        targetWindow.webContents.invalidate();
+      }
+    }, delayMs);
+  }
+}
+
 function createWindow() {
+  if (!appSingleInstanceLock) {
+    return;
+  }
+
   attachWorkItemStoreListeners();
   const iconPath = path.join(app.getAppPath(), 'gardenflow.png');
   const devIconPath = path.join(process.cwd(), 'gardenflow.png');
@@ -1693,19 +1733,166 @@ function createWindow() {
     width: 1200,
     height: 800,
     backgroundColor: '#FFFFFF',
-
+    show: false,
   })
 
-  win.webContents.on('did-finish-load', () => {
-    win?.webContents.send('main-process-message', (new Date).toLocaleString())
+  const targetWindow = win;
+  let rendererReady = false;
+  let startupReloadAttempted = false;
+  let rendererCrashReloadAttempted = false;
+  let startupFailureDialogOpen = false;
+  let startupTimeout: NodeJS.Timeout | null = null;
+
+  const clearStartupTimeout = () => {
+    if (startupTimeout) {
+      clearTimeout(startupTimeout);
+      startupTimeout = null;
+    }
+  };
+
+  const showStartupFailure = async (detail: string) => {
+    if (startupFailureDialogOpen || targetWindow.isDestroyed()) return;
+    startupFailureDialogOpen = true;
+    revealMainWindow(targetWindow);
+    const result = await dialog.showMessageBox(targetWindow, {
+      type: 'error',
+      title: 'GardenFlow 启动失败',
+      message: 'GardenFlow 界面未能完成加载',
+      detail: `${detail}\n\n诊断信息已写入 logs/startup-window.log。`,
+      buttons: ['重新加载', '退出'],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+    });
+    startupFailureDialogOpen = false;
+    if (result.response === 0 && !targetWindow.isDestroyed()) {
+      rendererReady = false;
+      startupReloadAttempted = false;
+      targetWindow.hide();
+      targetWindow.webContents.reloadIgnoringCache();
+      scheduleStartupTimeout();
+      return;
+    }
+    app.quit();
+  };
+
+  const handleStartupTimeout = async () => {
+    if (rendererReady || targetWindow.isDestroyed()) return;
+    const inspection = await targetWindow.webContents.executeJavaScript(`(() => {
+      const root = document.getElementById('root');
+      return {
+        readyState: document.readyState,
+        rootChildCount: root?.childElementCount ?? 0,
+        bodyChildCount: document.body?.childElementCount ?? 0,
+      };
+    })()`, true).catch(() => null) as {
+      readyState?: string;
+      rootChildCount?: number;
+      bodyChildCount?: number;
+    } | null;
+
+    appendStartupWindowDiagnostic('renderer-ready-timeout', {
+      readyState: inspection?.readyState || 'unknown',
+      rootChildCount: inspection?.rootChildCount ?? -1,
+      bodyChildCount: inspection?.bodyChildCount ?? -1,
+      reloadAttempted: startupReloadAttempted,
+    });
+
+    if ((inspection?.rootChildCount ?? 0) > 0) {
+      rendererReady = true;
+      revealMainWindow(targetWindow);
+      return;
+    }
+
+    if (!startupReloadAttempted) {
+      startupReloadAttempted = true;
+      targetWindow.webContents.reloadIgnoringCache();
+      scheduleStartupTimeout();
+      return;
+    }
+
+    await showStartupFailure('渲染器在自动重试后仍未返回可显示界面。');
+  };
+
+  function scheduleStartupTimeout() {
+    clearStartupTimeout();
+    startupTimeout = setTimeout(() => {
+      void handleStartupTimeout();
+    }, 10000);
+  }
+
+  const handleRendererReady = (event: Electron.IpcMainEvent, payload?: {
+    rootChildCount?: number;
+    readyState?: string;
+  }) => {
+    if (event.sender !== targetWindow.webContents || targetWindow.isDestroyed()) return;
+    rendererReady = true;
+    clearStartupTimeout();
+    markStartupPhase('renderer-ready');
+    appendStartupWindowDiagnostic('renderer-ready', {
+      rootChildCount: Number(payload?.rootChildCount || 0),
+      readyState: String(payload?.readyState || ''),
+    });
+    revealMainWindow(targetWindow);
+  };
+
+  ipcMain.on('renderer:ready', handleRendererReady);
+  targetWindow.once('closed', () => {
+    clearStartupTimeout();
+    ipcMain.off('renderer:ready', handleRendererReady);
+    if (win === targetWindow) {
+      win = null;
+    }
+  });
+
+  targetWindow.webContents.on('did-finish-load', () => {
+    targetWindow.webContents.send('main-process-message', (new Date).toLocaleString())
   })
 
+  targetWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, _validatedUrl, isMainFrame) => {
+    if (!isMainFrame || errorCode === -3) return;
+    appendStartupWindowDiagnostic('did-fail-load', { errorCode, errorDescription });
+    void showStartupFailure(`页面加载失败（${errorCode}: ${errorDescription}）。`);
+  });
+
+  targetWindow.webContents.on('preload-error', (_event, _preloadPath, error) => {
+    appendStartupWindowDiagnostic('preload-error', { error: error.message });
+  });
+
+  targetWindow.webContents.on('render-process-gone', (_event, details) => {
+    appendStartupWindowDiagnostic('render-process-gone', {
+      reason: details.reason,
+      exitCode: details.exitCode,
+    });
+    if (!targetWindow.isDestroyed() && !rendererCrashReloadAttempted) {
+      rendererCrashReloadAttempted = true;
+      rendererReady = false;
+      targetWindow.hide();
+      targetWindow.webContents.reload();
+      scheduleStartupTimeout();
+      return;
+    }
+    void showStartupFailure(`渲染进程异常退出（${details.reason}）。`);
+  });
+
+  targetWindow.on('unresponsive', () => {
+    appendStartupWindowDiagnostic('window-unresponsive');
+  })
+
+  scheduleStartupTimeout();
+
+  let loadPromise: Promise<void>;
   if (VITE_DEV_SERVER_URL) {
-    win.loadURL(VITE_DEV_SERVER_URL)
+    loadPromise = targetWindow.loadURL(VITE_DEV_SERVER_URL)
   } else {
     const distDir = process.env.DIST || path.join(__dirname, '../dist');
-    win.loadFile(path.join(distDir, 'index.html'))
+    loadPromise = targetWindow.loadFile(path.join(distDir, 'index.html'))
   }
+  void loadPromise.catch((error) => {
+    appendStartupWindowDiagnostic('load-promise-rejected', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
 
   if (process.platform === 'darwin') {
     const dockIcon = nativeImage.createFromPath(resolvedIconPath);
@@ -1824,6 +2011,7 @@ app.on('before-quit', (event) => {
 });
 
 app.on('second-instance', () => {
+  if (!appSingleInstanceLock) return;
   const existingWindow = BrowserWindow.getAllWindows()[0];
   if (existingWindow) {
     if (existingWindow.isMinimized()) {
@@ -1837,6 +2025,7 @@ app.on('second-instance', () => {
 });
 
 app.on('activate', () => {
+  if (!appSingleInstanceLock) return;
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow()
   }
@@ -2721,6 +2910,7 @@ async function ensureSessionBridgeStarted() {
 }
 
 app.whenReady().then(async () => {
+  if (!appSingleInstanceLock) return;
   markStartupPhase('app.whenReady');
   registerLocalAssetProtocols();
   markStartupPhase('local-asset-protocols-registered');
@@ -2732,6 +2922,9 @@ app.whenReady().then(async () => {
   }
   createWindow();
   markStartupPhase('main-window-created');
+  setTimeout(() => {
+    void warmupBrowserPluginPrepared();
+  }, 250);
 
   // 先让窗口尽快可交互，再分阶段初始化重量后台服务
   let backgroundServicesScheduled = false;
@@ -2755,8 +2948,6 @@ app.whenReady().then(async () => {
         } catch (e) {
           console.error('[Workspace] Failed to ensure workspace structure:', e);
         }
-
-        await warmupBrowserPluginPrepared();
         try {
           await initializeGardenFlowBackgroundRunner();
         } catch (e) {
@@ -16261,6 +16452,7 @@ ipcMain.handle('youtube:save-note', async (_event, payload: {
 });
 
 app.whenReady().then(() => {
+  if (!appSingleInstanceLock) return;
   ensureKnowledgeRedbookDir();
   ensureKnowledgeYoutubeDir();
   if (process.env.GARDENFLOW_ENABLE_LEGACY_PLUGIN_HTTP === '1') {

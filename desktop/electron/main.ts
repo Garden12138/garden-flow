@@ -2,8 +2,12 @@ import { assertDataMigrationReady } from './brandStartup';
 import { isBrowserCaptureNativeHostInvocation } from './core/browserCaptureProtocol';
 
 if (isBrowserCaptureNativeHostInvocation()) {
-    void import('./browserNativeHostRuntime')
-        .then(({ runBrowserNativeHost }) => runBrowserNativeHost())
+    void import('./browserNativeHostBootstrap')
+        .then(async ({ handoffBrowserNativeHostToNodeRuntime }) => {
+            if (handoffBrowserNativeHostToNodeRuntime()) return;
+            const { runBrowserNativeHost } = await import('./browserNativeHostRuntime');
+            await runBrowserNativeHost();
+        })
         .catch(() => {
             process.exitCode = 1;
         });
