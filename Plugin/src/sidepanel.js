@@ -68,7 +68,8 @@ init().catch((error) => {
   renderPageIdentity({
     platform: 'gardenflow',
     name: '识别失败',
-    logo: 'B',
+    logo: '✿',
+    icon: 'icons/icon48.png',
     title: '侧栏初始化失败',
     detail: '请刷新侧栏后重试',
   });
@@ -165,7 +166,8 @@ async function refreshContext() {
     renderPageIdentity({
       platform: 'gardenflow',
       name: '识别失败',
-      logo: 'B',
+      logo: '✿',
+      icon: 'icons/icon48.png',
       title: '当前页面状态读取失败',
       detail: '请确认页面已加载完成',
     });
@@ -251,7 +253,7 @@ function resolvePageIdentity(nextContext) {
 
 function renderPageIdentity(view) {
   elements.platformLogo.className = `platform-logo platform-${view.platform || 'gardenflow'}`;
-  elements.platformFallback.textContent = view.logo || 'B';
+  elements.platformFallback.textContent = view.logo || '✿';
   if (view.icon) {
     elements.platformIcon.src = view.icon;
     elements.platformIcon.alt = `${view.name || '平台'} 图标`;
@@ -280,7 +282,6 @@ function renderCaptureActions(nextContext) {
   if (config.actions.length === 0) return;
 
   const isHealthy = Boolean(nextContext?.health?.success);
-  elements.captureMark.textContent = config.mark || 'B';
   elements.captureTitle.textContent = config.title;
   elements.captureSubtitle.textContent = config.subtitle;
   elements.captureActions.replaceChildren();
@@ -973,7 +974,7 @@ function getPlatformMeta(platform) {
     instagram: { platform: 'instagram', name: 'Instagram', logo: 'I', icon: 'assets/platforms/instagram.svg' },
     wechat: { platform: 'wechat', name: '微信公众号', logo: '微' },
     zhihu: { platform: 'zhihu', name: '知乎', logo: '知', icon: 'assets/platforms/zhihu.svg' },
-    gardenflow: { platform: 'gardenflow', name: 'GardenFlow', logo: 'B' },
+    gardenflow: { platform: 'gardenflow', name: 'GardenFlow', logo: '✿', icon: 'icons/icon48.png' },
     web: { platform: 'web', name: '网页', logo: 'W' },
   };
   return map[platform] || map.web;

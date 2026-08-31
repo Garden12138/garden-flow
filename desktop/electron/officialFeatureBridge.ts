@@ -38,11 +38,11 @@ let cachedOfficialFeatureModulePromise: Promise<OfficialFeatureModule | null> | 
 
 const getOfficialRuntimeCandidates = (): string[] => {
   const relativeRuntimePath = path.join('.private-runtime', 'private', 'electron', 'registerOfficialFeatures.js');
-  return [
+  return Array.from(new Set([
     path.resolve(__dirname, '..', relativeRuntimePath),
     path.resolve(process.cwd(), relativeRuntimePath),
     path.resolve(process.cwd(), 'archive', 'desktop-electron', relativeRuntimePath),
-  ];
+  ]));
 };
 
 export const loadOfficialFeatureModule = async (): Promise<OfficialFeatureModule | null> => {
@@ -67,8 +67,9 @@ export const loadOfficialFeatureModule = async (): Promise<OfficialFeatureModule
           attemptedErrors.push(`${candidatePath}: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
-      if (attemptedErrors.length) {
-        console.warn('[official-features] runtime module unavailable', attemptedErrors);
+      const unexpectedErrors = attemptedErrors.filter((entry) => !entry.startsWith('missing:'));
+      if (unexpectedErrors.length) {
+        console.warn('[official-features] optional runtime failed to load', unexpectedErrors);
       }
       return null;
     })();

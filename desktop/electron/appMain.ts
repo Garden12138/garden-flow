@@ -9,6 +9,10 @@ import { Readable } from 'node:stream'
 import { Blob as NodeBlob } from 'node:buffer'
 import { createHash } from 'node:crypto'
 import {
+  computeBrowserExtensionFingerprint,
+  syncBrowserExtensionDirectory,
+} from './core/browserExtensionExport';
+import {
   getModelInputCapabilities,
   supportsAttachmentKindDirectInput,
 } from '../shared/modelCapabilities';
@@ -149,7 +153,9 @@ import {
   installBrowserNativeHost,
 } from './core/browserNativeHostInstaller';
 import {
+  APP_UPDATE_DISABLED_MESSAGE,
   GARDENFLOW_UPDATE_LATEST_RELEASE_API_URL,
+  appUpdatesEnabled,
   selectCompatibleGardenFlowReleaseAsset,
   type AppUpdateAsset,
 } from './core/appUpdatePolicy';
@@ -777,6 +783,7 @@ const XHS_ASSET_REQUEST_HEADERS = {
 };
 const APP_UPDATE_CHECK_TIMEOUT_MS = 10000;
 const APP_UPDATE_CHECK_MIN_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const APP_UPDATES_ENABLED = appUpdatesEnabled(compatibility.identity.updatesEnabled);
 let appUpdateCheckInFlight = false;
 let appUpdateLastCheckedAt = 0;
 
@@ -912,6 +919,13 @@ async function buildAdvisorDetail(advisorId: string): Promise<AdvisorDetailRecor
 let localAssetProtocolsRegistered = false;
 const BROWSER_PLUGIN_BUNDLE_RELATIVE_PATH = path.join('.plugin-runtime', 'browser-extension');
 const BROWSER_PLUGIN_EXPORT_RELATIVE_PATH = path.join('integrations', 'browser-extension', 'gardenflow-capture');
+const LEGACY_BROWSER_PLUGIN_EXPORT_RELATIVE_PATHS = Array.isArray(
+  compatibility.identity?.legacy?.browserExtensionExportPaths,
+)
+  ? compatibility.identity.legacy.browserExtensionExportPaths
+      .map((item: unknown) => String(item || '').trim())
+      .filter(Boolean)
+  : [];
 
 const appSingleInstanceLock = app.requestSingleInstanceLock();
 const browserCaptureBridgeService = createBrowserCaptureBridgeService({
@@ -1254,10 +1268,6 @@ const getExportedBrowserPluginDir = (): string => {
   return path.join(app.getPath('userData'), BROWSER_PLUGIN_EXPORT_RELATIVE_PATH);
 };
 
-const getExportedBrowserPluginMetaPath = (): string => {
-  return path.join(getExportedBrowserPluginDir(), '.gardenflow-plugin-meta.json');
-};
-
 const pathExists = async (targetPath: string): Promise<boolean> => {
   try {
     await fs.access(targetPath);
@@ -1267,40 +1277,72 @@ const pathExists = async (targetPath: string): Promise<boolean> => {
   }
 };
 
-const ensureBrowserPluginPrepared = async (): Promise<{ path: string; alreadyPrepared: boolean }> => {
+const getCompatibleLegacyBrowserPluginDirs = (): string[] => {
+  const appDataDir = path.resolve(app.getPath('appData'));
+  return LEGACY_BROWSER_PLUGIN_EXPORT_RELATIVE_PATHS
+    .map((relativePath: string) => path.resolve(appDataDir, relativePath))
+    .filter((candidate: string) => candidate.startsWith(`${appDataDir}${path.sep}`));
+};
+
+const syncCompatibleLegacyBrowserPlugins = async (
+  sourceDir: string,
+  bundleFingerprint: string,
+): Promise<string[]> => {
+  const refreshed: string[] = [];
+  for (const legacyDir of getCompatibleLegacyBrowserPluginDirs()) {
+    if (!await pathExists(legacyDir)) continue;
+    const backupDir = path.join(
+      app.getPath('userData'),
+      'integrations',
+      'browser-extension',
+      'legacy-backups',
+      `${path.basename(legacyDir)}-before-gardenflow`,
+    );
+    try {
+      const result = await syncBrowserExtensionDirectory({
+        appVersion: app.getVersion(),
+        backupDir,
+        bundleFingerprint,
+        requireMatchingExistingKey: true,
+        sourceDir,
+        sourceLabel: path.basename(sourceDir),
+        targetDir: legacyDir,
+      });
+      if (result.updated) {
+        refreshed.push(legacyDir);
+        console.info(`[browser-extension] Refreshed compatible legacy install: ${legacyDir}`);
+      }
+    } catch (error) {
+      console.warn(`[browser-extension] Skipped incompatible legacy install ${legacyDir}:`, error);
+    }
+  }
+  return refreshed;
+};
+
+const ensureBrowserPluginPrepared = async (): Promise<{
+  path: string;
+  alreadyPrepared: boolean;
+  refreshedLegacyPaths: string[];
+}> => {
   const sourceDir = await findBundledBrowserPluginDir();
   if (!sourceDir) {
     throw new Error(`内置插件资源不存在，已检查：${getBundledBrowserPluginCandidateDirs().join(' | ')}`);
   }
 
   const targetDir = getExportedBrowserPluginDir();
-  const metaPath = getExportedBrowserPluginMetaPath();
+  const bundleFingerprint = await computeBrowserExtensionFingerprint(sourceDir);
   const alreadyPrepared = await pathExists(targetDir);
   const exportedUsable = alreadyPrepared && await isUsableBrowserPluginDir(targetDir);
-  if (exportedUsable && app.isPackaged) {
-    try {
-      const raw = await fs.readFile(metaPath, 'utf-8');
-      const parsed = JSON.parse(raw) as {
-        appVersion?: string;
-        sourceDir?: string;
-      };
-      if (parsed?.appVersion === app.getVersion() && parsed?.sourceDir === path.basename(sourceDir)) {
-        return { path: targetDir, alreadyPrepared: true };
-      }
-    } catch {
-      // stale or missing metadata; fall through and refresh the exported extension
-    }
-  }
-
-  await fs.rm(targetDir, { recursive: true, force: true });
-  await fs.mkdir(path.dirname(targetDir), { recursive: true });
-  await fs.cp(sourceDir, targetDir, { recursive: true });
-  await fs.writeFile(metaPath, JSON.stringify({
+  await syncBrowserExtensionDirectory({
     appVersion: app.getVersion(),
-    sourceDir: path.basename(sourceDir),
-    preparedAt: new Date().toISOString(),
-  }, null, 2), 'utf-8');
-  return { path: targetDir, alreadyPrepared };
+    bundleFingerprint,
+    force: !exportedUsable,
+    sourceDir,
+    sourceLabel: path.basename(sourceDir),
+    targetDir,
+  });
+  const refreshedLegacyPaths = await syncCompatibleLegacyBrowserPlugins(targetDir, bundleFingerprint);
+  return { path: targetDir, alreadyPrepared, refreshedLegacyPaths };
 };
 
 const warmupBrowserPluginPrepared = async (): Promise<void> => {
@@ -1466,7 +1508,7 @@ async function fetchLatestGithubRelease(): Promise<{
     digest: string;
   }>;
 }> {
-  if (!compatibility.identity.updatesEnabled) throw new Error('GardenFlow 尚未配置更新源；本机版本不检查或下载远程更新。');
+  if (!APP_UPDATES_ENABLED) throw new Error(APP_UPDATE_DISABLED_MESSAGE);
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), APP_UPDATE_CHECK_TIMEOUT_MS);
   try {
@@ -1541,6 +1583,7 @@ interface AppUpdateNoticePayload {
 interface AppUpdateCheckResult {
   success: boolean;
   hasUpdate: boolean;
+  disabled?: boolean;
   throttled?: boolean;
   inFlight?: boolean;
   message?: string;
@@ -1620,6 +1663,14 @@ const notifyAppUpdateAvailable = (payload: AppUpdateNoticePayload, forceNotify =
 };
 
 async function checkForAppUpdate(force = false, forceNotify = false): Promise<AppUpdateCheckResult> {
+  if (!APP_UPDATES_ENABLED) {
+    return {
+      success: true,
+      hasUpdate: false,
+      disabled: true,
+      message: APP_UPDATE_DISABLED_MESSAGE,
+    };
+  }
   const now = Date.now();
   if (appUpdateCheckInFlight) {
     return {
@@ -1857,6 +1908,16 @@ function createWindow() {
 
   targetWindow.webContents.on('preload-error', (_event, _preloadPath, error) => {
     appendStartupWindowDiagnostic('preload-error', { error: error.message });
+  });
+
+  targetWindow.webContents.on('console-message', (details) => {
+    if (details.level !== 'error') return;
+    appendStartupWindowDiagnostic('renderer-console-error', {
+      level: details.level,
+      message: details.message,
+      line: details.lineNumber,
+      sourceId: details.sourceId,
+    });
   });
 
   targetWindow.webContents.on('render-process-gone', (_event, details) => {
@@ -3026,9 +3087,11 @@ app.whenReady().then(async () => {
     markStartupPhase('renderer-did-finish-load');
     void initializeStartupCoreServices();
     void bootstrapBackgroundServices();
-    setTimeout(() => {
-      void checkForAppUpdate(false, false);
-    }, 1800);
+    if (APP_UPDATES_ENABLED) {
+      setTimeout(() => {
+        void checkForAppUpdate(false, false);
+      }, 1800);
+    }
   });
   setTimeout(() => {
     void bootstrapBackgroundServices();

@@ -29,7 +29,11 @@ import {
     resolvePackagedUnixBrowserNativeHostRuntime,
     type BrowserNativeHostStatus,
 } from '../electron/core/browserNativeHostInstaller.ts';
-import { selectCompatibleGardenFlowReleaseAsset } from '../electron/core/appUpdatePolicy.ts';
+import {
+    APP_UPDATE_DISABLED_MESSAGE,
+    appUpdatesEnabled,
+    selectCompatibleGardenFlowReleaseAsset,
+} from '../electron/core/appUpdatePolicy.ts';
 
 function nativeHostStatus(overrides: Partial<BrowserNativeHostStatus> = {}): BrowserNativeHostStatus {
     return {
@@ -129,6 +133,14 @@ test('app updater accepts only GardenFlow installers for the current platform an
         selectCompatibleGardenFlowReleaseAsset(assets.slice(0, 2), 'win32', 'x64'),
         null,
     );
+});
+
+test('disabled app updates skip automatic and remote update work', () => {
+    assert.equal(appUpdatesEnabled(false), false);
+    assert.equal(appUpdatesEnabled(undefined), false);
+    assert.equal(appUpdatesEnabled('true'), false);
+    assert.equal(appUpdatesEnabled(true), true);
+    assert.match(APP_UPDATE_DISABLED_MESSAGE, /不检查或下载远程更新/);
 });
 
 test('typed capture payloads preserve platform content and reject local media paths', () => {

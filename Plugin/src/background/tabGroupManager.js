@@ -1,7 +1,13 @@
 import { getStoredMap, setStoredMap } from './storage.js';
+import compatibility from '../../brandCompatibility.cjs';
 
 export const TAB_GROUPS_KEY = 'gardenflowBrowserDataAiTabGroups';
 const DEFAULT_SESSION_GROUP_TITLE = 'GardenFlow';
+const LEGACY_SESSION_GROUP_TITLES = new Set(
+  (compatibility.identity?.legacy?.displayNames || [])
+    .map((title) => String(title || '').trim())
+    .filter(Boolean),
+);
 const TAB_GROUP_COLORS = ['grey', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange'];
 
 let initialized = false;
@@ -21,6 +27,7 @@ export async function initializeManagedTabGroups() {
   if (!initializing) {
     registerManagedGroupListeners();
     initializing = loadManagedTabGroups()
+      .then(adoptLegacyManagedGroups)
       .then(refreshManagedGroupsFromChrome)
       .then(() => {
         initialized = true;
@@ -182,16 +189,44 @@ async function loadManagedTabGroups() {
     groupMetadata.set(chromeGroupId, {
       chromeGroupId,
       presentationColor: normalizeColor(group.presentationColor),
-      title: normalizeTitle(group.title),
+      title: normalizeManagedTitle(group.title),
     });
   }
   const titles = stored.sessionGroupTitles && typeof stored.sessionGroupTitles === 'object'
     ? stored.sessionGroupTitles
     : {};
   for (const [sessionId, title] of Object.entries(titles)) {
-    const normalizedTitle = normalizeTitle(title);
+    const normalizedTitle = normalizeManagedTitle(title);
     if (sessionId && normalizedTitle) sessionGroupTitles.set(sessionId, normalizedTitle);
   }
+}
+
+async function adoptLegacyManagedGroups() {
+  let changed = false;
+  for (const legacyTitle of LEGACY_SESSION_GROUP_TITLES) {
+    const observed = await chrome.tabGroups.query({ title: legacyTitle }).catch(() => []);
+    for (const chromeGroup of observed) {
+      const groupId = Number(chromeGroup?.id);
+      if (!Number.isInteger(groupId)) continue;
+      const tabs = await chrome.tabs.query({ groupId }).catch(() => []);
+      if (tabs.length === 0) continue;
+      const group = groupMetadata.get(groupId) || {
+        chromeGroupId: groupId,
+        presentationColor: normalizeColor(chromeGroup.color),
+        title: DEFAULT_SESSION_GROUP_TITLE,
+      };
+      group.title = DEFAULT_SESSION_GROUP_TITLE;
+      groupMetadata.set(groupId, group);
+      await chrome.tabGroups.update(groupId, {
+        title: DEFAULT_SESSION_GROUP_TITLE,
+        color: ensurePresentationColor(group),
+        collapsed: false,
+      }).catch(() => {});
+      changed = true;
+    }
+  }
+  if (changed) await saveManagedTabGroups();
+  return changed;
 }
 
 async function saveManagedTabGroups() {
@@ -359,6 +394,11 @@ function normalizeTitle(value) {
   if (typeof value !== 'string') return undefined;
   const title = value.trim();
   return title ? title.slice(0, 80) : undefined;
+}
+
+function normalizeManagedTitle(value) {
+  const title = normalizeTitle(value);
+  return title && LEGACY_SESSION_GROUP_TITLES.has(title) ? DEFAULT_SESSION_GROUP_TITLE : title;
 }
 
 function normalizeColor(value) {

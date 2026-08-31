@@ -19,6 +19,15 @@
       "redconvert-desktop",
       "com.redbox.app"
     ],
+    "displayNames": [
+      "Bojin",
+      "博今",
+      "RedBox",
+      "RedClaw"
+    ],
+    "browserExtensionExportPaths": [
+      "red-convert-desktop/integrations/browser-extension/redbox-capture"
+    ],
     "database": "redconvert.db",
     "workspaceDirectory": ".redconvert",
     "projectDirectory": "redclaw",

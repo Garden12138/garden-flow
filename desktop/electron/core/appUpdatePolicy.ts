@@ -1,5 +1,10 @@
 export const GARDENFLOW_UPDATE_REPOSITORY = 'Garden12138/garden-flow';
 export const GARDENFLOW_UPDATE_LATEST_RELEASE_API_URL = `https://api.github.com/repos/${GARDENFLOW_UPDATE_REPOSITORY}/releases/latest`;
+export const APP_UPDATE_DISABLED_MESSAGE = 'GardenFlow 尚未配置更新源；本机版本不检查或下载远程更新。';
+
+export function appUpdatesEnabled(configuredValue: unknown): boolean {
+    return configuredValue === true;
+}
 
 export type AppUpdateAsset = {
     name: string;

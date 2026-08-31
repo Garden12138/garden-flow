@@ -1869,7 +1869,7 @@ declare global {
         render: (payload: Record<string, unknown>) => Promise<{ success?: boolean; error?: string; project?: VideoEditorV2ProjectSummary; outputPath?: string; compositionPath?: string; subtitlePath?: string | null }>;
       };
       getAppVersion: () => Promise<string>;
-      checkAppUpdate: (force?: boolean) => Promise<{ success: boolean; hasUpdate: boolean; throttled?: boolean; inFlight?: boolean; message?: string; notice?: { currentVersion: string; latestVersion: string; htmlUrl: string; name: string; publishedAt: string; body: string; installable?: boolean } }>;
+      checkAppUpdate: (force?: boolean) => Promise<{ success: boolean; hasUpdate: boolean; disabled?: boolean; throttled?: boolean; inFlight?: boolean; message?: string; notice?: { currentVersion: string; latestVersion: string; htmlUrl: string; name: string; publishedAt: string; body: string; installable?: boolean } }>;
       installAppUpdate: () => Promise<{ success: boolean; installed?: boolean; hasUpdate?: boolean; inFlight?: boolean; error?: string }>;
       onAppUpdateAvailable: (listener: (...args: unknown[]) => void) => void;
       offAppUpdateAvailable: (listener: (...args: unknown[]) => void) => void;

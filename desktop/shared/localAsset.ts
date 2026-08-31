@@ -1,4 +1,4 @@
-import compatibility from './brandCompatibility.cjs';
+import compatibility from './brandCompatibility.mjs';
 export const GARDENFLOW_ASSET_PROTOCOL = 'gardenflow-asset';
 export const GARDENFLOW_ASSET_HOST = 'asset';
 export const LEGACY_LOCAL_FILE_PROTOCOL = 'local-file';

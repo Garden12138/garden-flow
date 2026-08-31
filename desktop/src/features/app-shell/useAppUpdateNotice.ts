@@ -108,22 +108,10 @@ export function useAppUpdateNotice(openDownloadFailedLabel: string) {
       });
       setInstallState(initialInstallState);
     };
-    const updateCheckTimer = window.setTimeout(() => {
-      void window.ipcRenderer.checkAppUpdate(false).then((result) => {
-        if (result?.hasUpdate && result.notice) {
-          if (!shouldShowAppUpdateNotice(result.notice)) return;
-          markAppUpdateNoticeShown(result.notice);
-          setUpdateNotice(result.notice);
-        }
-      }).catch((error) => {
-        console.warn('[AppUpdate] check failed:', error);
-      });
-    }, 1800);
     const unsubscribeAppUpdateAvailable = subscribeAppUpdateAvailable(handleUpdateNotice);
     const unsubscribeAppUpdateInstallProgress = subscribeAppUpdateInstallProgress(handleInstallProgress);
     window.addEventListener(SHOW_CURRENT_RELEASE_NOTES_EVENT, handleCurrentReleaseNotes);
     return () => {
-      window.clearTimeout(updateCheckTimer);
       unsubscribeAppUpdateAvailable();
       unsubscribeAppUpdateInstallProgress();
       window.removeEventListener(SHOW_CURRENT_RELEASE_NOTES_EVENT, handleCurrentReleaseNotes);

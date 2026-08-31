@@ -4,12 +4,20 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const identity = fs.readFileSync(path.join(root, 'branding/identity.json'), 'utf8');
 const compatibility = fs.readFileSync(path.join(root, 'branding/compatibility.cjs'), 'utf8').replace("require('./identity.json')", "require('./brand.generated.json')");
+const compatibilityEsm = fs.readFileSync(path.join(root, 'branding/compatibility.cjs'), 'utf8')
+    .replace("'use strict';\n\n", '')
+    .replace("const identity = require('./identity.json');", `const identity = ${identity.trim()};`)
+    .replace(
+        'module.exports = { identity, canonicalKey, canonicalValue, migrateStructured, applyEnvironmentAliases, migrateStorage };',
+        'const compatibility = { identity, canonicalKey, canonicalValue, migrateStructured, applyEnvironmentAliases, migrateStorage };\n\nexport { identity, canonicalKey, canonicalValue, migrateStructured, applyEnvironmentAliases, migrateStorage };\nexport default compatibility;',
+    );
 const environment = fs.readFileSync(path.join(root, 'branding/environment.cjs'), 'utf8').replace("require('./compatibility.cjs')", "require('./brandCompatibility.cjs')");
 for (const dir of ['desktop/shared', 'Plugin']) {
     fs.writeFileSync(path.join(root, dir, 'brand.generated.json'), identity);
     fs.writeFileSync(path.join(root, dir, 'brandCompatibility.cjs'), compatibility);
     fs.writeFileSync(path.join(root, dir, 'brandEnvironment.cjs'), environment);
 }
+fs.writeFileSync(path.join(root, 'desktop/shared/brandCompatibility.mjs'), compatibilityEsm);
 const brand = JSON.parse(identity);
 const shellAliases = Object.entries(brand.legacy.environment).map(([previous, current]) => {
     if (!/^[A-Z][A-Z0-9_]+$/.test(previous) || !/^[A-Z][A-Z0-9_]+$/.test(current)) throw new Error('Invalid environment alias');
