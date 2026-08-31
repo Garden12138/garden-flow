@@ -134,7 +134,7 @@ export function getNativeMethodSchemaCatalog() {
   return {
     schemaVersion: NATIVE_METHOD_SCHEMA_CATALOG_VERSION,
     protocolSchemaVersion: BROWSER_PROTOCOL_SCHEMA_VERSION,
-    source: 'xwow_target_method_normalizers',
+    source: 'gardenflow_target_method_normalizers',
     targetEvidence: 'hehggada_schema_parse_safeParse_and_confirmed_native_methods',
     methods: NATIVE_METHOD_SCHEMAS,
   };

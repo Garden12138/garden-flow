@@ -1,7 +1,7 @@
 import type { BridgeCore, Listener } from '../types';
 
-const APP_ONBOARDING_SEEN_KEY = 'redbox:app-onboarding:v2:seen';
-const APP_ONBOARDING_SEEN_AT_KEY = 'redbox:app-onboarding:v2:seen-at';
+const APP_ONBOARDING_SEEN_KEY = 'gardenflow:app-onboarding:v2:seen';
+const APP_ONBOARDING_SEEN_AT_KEY = 'gardenflow:app-onboarding:v2:seen-at';
 
 type AppReleaseNotesResult = {
   success: boolean;

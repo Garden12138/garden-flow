@@ -6,10 +6,10 @@ import {
   createErrorResult,
   createSuccessResult,
 } from '../toolRegistry';
-import { updateRedClawCreatorProfile, updateRedClawProfileDocument, type RedClawProfileDocType } from '../redclawProfileStore';
+import { updateGardenFlowCreatorProfile, updateGardenFlowProfileDocument, type GardenFlowProfileDocType } from '../gardenflowProfileStore';
 
 const UpdateProfileDocParamsSchema = z.object({
-  docType: z.enum(['agent', 'soul', 'user', 'creator_profile']).describe('Which long-term RedClaw profile document to update.'),
+  docType: z.enum(['agent', 'soul', 'user', 'creator_profile']).describe('Which long-term GardenFlow profile document to update.'),
   markdown: z.string().min(1).describe('The full updated markdown content for the target profile document.'),
   reason: z.string().optional().describe('Why this profile document is being updated.'),
 });
@@ -23,7 +23,7 @@ const UpdateCreatorProfileParamsSchema = z.object({
 
 type UpdateCreatorProfileParams = z.infer<typeof UpdateCreatorProfileParamsSchema>;
 
-const profileDocLabel = (docType: RedClawProfileDocType): string => {
+const profileDocLabel = (docType: GardenFlowProfileDocType): string => {
   switch (docType) {
     case 'agent': return 'Agent.md';
     case 'soul': return 'Soul.md';
@@ -33,11 +33,11 @@ const profileDocLabel = (docType: RedClawProfileDocType): string => {
   }
 };
 
-export class RedClawUpdateProfileDocTool extends DeclarativeTool<typeof UpdateProfileDocParamsSchema> {
-  readonly name = 'redclaw_update_profile_doc';
-  readonly displayName = 'RedClaw Update Profile Document';
+export class GardenFlowUpdateProfileDocTool extends DeclarativeTool<typeof UpdateProfileDocParamsSchema> {
+  readonly name = 'gardenflow_update_profile_doc';
+  readonly displayName = 'GardenFlow Update Profile Document';
   readonly description =
-    'Update one of RedClaw’s core long-term profile documents: Agent.md, Soul.md, user.md, or CreatorProfile.md. Use the correct document based on whether the user changed RedClaw operating rules, collaboration style, stable user profile, or long-term creator strategy.';
+    'Update one of GardenFlow’s core long-term profile documents: Agent.md, Soul.md, user.md, or CreatorProfile.md. Use the correct document based on whether the user changed GardenFlow operating rules, collaboration style, stable user profile, or long-term creator strategy.';
   readonly kind = ToolKind.Edit;
   readonly parameterSchema = UpdateProfileDocParamsSchema;
   readonly requiresConfirmation = false;
@@ -48,7 +48,7 @@ export class RedClawUpdateProfileDocTool extends DeclarativeTool<typeof UpdatePr
 
   async execute(params: UpdateProfileDocParams): Promise<ToolResult> {
     try {
-      const result = await updateRedClawProfileDocument(params.docType, params.markdown);
+      const result = await updateGardenFlowProfileDocument(params.docType, params.markdown);
       return createSuccessResult(
         `Profile document updated: ${result.path}\nDocType: ${params.docType}\nReason: ${params.reason || 'unspecified'}`,
         `${profileDocLabel(params.docType)} 已更新`
@@ -59,9 +59,9 @@ export class RedClawUpdateProfileDocTool extends DeclarativeTool<typeof UpdatePr
   }
 }
 
-export class RedClawUpdateCreatorProfileTool extends DeclarativeTool<typeof UpdateCreatorProfileParamsSchema> {
-  readonly name = 'redclaw_update_creator_profile';
-  readonly displayName = 'RedClaw Update Creator Profile';
+export class GardenFlowUpdateCreatorProfileTool extends DeclarativeTool<typeof UpdateCreatorProfileParamsSchema> {
+  readonly name = 'gardenflow_update_creator_profile';
+  readonly displayName = 'GardenFlow Update Creator Profile';
   readonly description =
     'Update the long-term CreatorProfile.md document that stores the user\'s self-media positioning, target audience, style, business goals, and operating constraints. Use this when the user provides durable creator strategy information.';
   readonly kind = ToolKind.Edit;
@@ -74,7 +74,7 @@ export class RedClawUpdateCreatorProfileTool extends DeclarativeTool<typeof Upda
 
   async execute(params: UpdateCreatorProfileParams): Promise<ToolResult> {
     try {
-      const result = await updateRedClawCreatorProfile(params.markdown);
+      const result = await updateGardenFlowCreatorProfile(params.markdown);
       return createSuccessResult(
         `Creator profile updated: ${result.path}\nReason: ${params.reason || 'unspecified'}`,
         'CreatorProfile.md 已更新'

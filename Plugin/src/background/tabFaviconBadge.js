@@ -3,7 +3,7 @@ import { getStoredMap, setStoredMap } from './storage.js';
 import { getOwningSessionId, mightHaveActiveTabLease, subscribeActiveTabLeaseChanges } from './tabLeaseManager.js';
 
 export const CONTENT_TAB_FAVICON_BADGE_TYPE = 'TAB_FAVICON_BADGE';
-export const FINALIZED_TAB_BADGES_KEY = 'xwowBrowserDataAiFinalizedTabBadges';
+export const FINALIZED_TAB_BADGES_KEY = 'gardenflowBrowserDataAiFinalizedTabBadges';
 
 let lifecycleListenersRegistered = false;
 let unsubscribeLeaseChanges = null;
@@ -310,7 +310,7 @@ async function resolveTabFaviconHref(tabId) {
 }
 
 function isBadgeFaviconUrl(value) {
-  return typeof value === 'string' && value.includes('xwow-favicon-badge');
+  return typeof value === 'string' && value.includes('gardenflow-favicon-badge');
 }
 
 function defaultFaviconDataUrl() {

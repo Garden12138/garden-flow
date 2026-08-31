@@ -190,7 +190,7 @@ const getHumanStatusText = (toolName: string, actionName: string, status: Status
     }
     return statusVerb(status, '正在读取工作区', '已读取工作区', '工作区读取失败');
   }
-  if (normalizedAction.startsWith('redclaw.task.')) {
+  if (normalizedAction.startsWith('gardenflow.task.')) {
     return statusVerb(status, `正在处理 ${APP_BRAND.aiDisplayName} 任务`, `已处理 ${APP_BRAND.aiDisplayName} 任务`, `${APP_BRAND.aiDisplayName} 任务处理失败`);
   }
   if (normalizedAction === 'runtime.resume') {
@@ -217,7 +217,7 @@ const getHumanStatusText = (toolName: string, actionName: string, status: Status
   if (normalizedTool === 'Search' || normalizedTool === 'grep' || normalizedTool === 'web_search' || normalizedTool === 'duckduckgo_search' || normalizedAction.includes('search')) {
     return statusVerb(status, '正在搜索内容', '已搜索内容', '内容搜索失败');
   }
-  if (normalizedTool === 'Write' || normalizedTool === 'write_file' || normalizedTool === 'edit_file' || normalizedTool === 'redbox_editor' || normalizedAction.includes('write') || normalizedAction.includes('edit')) {
+  if (normalizedTool === 'Write' || normalizedTool === 'write_file' || normalizedTool === 'edit_file' || normalizedTool === 'gardenflow_editor' || normalizedAction.includes('write') || normalizedAction.includes('edit')) {
     return statusVerb(status, '正在编辑文件', '已编辑文件', '文件编辑失败');
   }
   if (normalizedTool.startsWith('task_node:')) {

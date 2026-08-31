@@ -1,11 +1,12 @@
 #!/usr/bin/env node
+import '../shared/brandEnvironment.cjs';
 
 import { setTimeout as delay } from 'node:timers/promises';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-const relayUrl = process.env.REDCONVERT_RELAY_URL || 'http://127.0.0.1:31937/hooks/weixin/relay';
-const relayToken = process.env.REDCONVERT_RELAY_TOKEN || '';
+const relayUrl = process.env.GARDENFLOW_RELAY_URL || 'http://127.0.0.1:31937/hooks/weixin/relay';
+const relayToken = process.env.GARDENFLOW_RELAY_TOKEN || '';
 const accountId = process.env.WEIXIN_CLAW_ACCOUNT_ID || '';
 const pollTimeoutMs = Math.max(5_000, Number(process.env.WEIXIN_CLAW_POLL_TIMEOUT_MS || 35_000));
 const retryDelayMs = Math.max(1_000, Number(process.env.WEIXIN_CLAW_RETRY_DELAY_MS || 3_000));
@@ -224,7 +225,7 @@ async function main() {
           },
         });
         const kickoffText = String(accepted?.response || '').trim()
-          || '收到，RedClaw正在思考';
+          || '收到，GardenFlow正在思考';
         console.log('[weixin-claw-relay] sending immediate kickoff reply to weixin', {
           peerId,
           messageId: String(message?.message_id || '').trim(),

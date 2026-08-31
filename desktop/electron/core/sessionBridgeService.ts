@@ -246,7 +246,7 @@ export class SessionBridgeService extends EventEmitter {
         updatedAt: session.updated_at,
         createdAt: session.created_at,
         contextType: String(metadata.contextType || '').trim() || 'chat',
-        runtimeMode: String(metadata.runtimeMode || '').trim() || 'redclaw',
+        runtimeMode: String(metadata.runtimeMode || '').trim() || 'gardenflow',
         isBackgroundSession: Boolean(metadata.isBackgroundSession),
         ownerTaskCount: getTaskGraphRuntime().listTasks({ ownerSessionId: session.id, limit: 100 }).length,
         backgroundTaskCount: 0,
@@ -267,7 +267,7 @@ export class SessionBridgeService extends EventEmitter {
       updatedAt: session.updated_at,
       createdAt: session.created_at,
       contextType: 'chat',
-      runtimeMode: 'redclaw',
+      runtimeMode: 'gardenflow',
       isBackgroundSession: false,
       ownerTaskCount: 0,
       backgroundTaskCount: backgroundTasks.length,
@@ -329,8 +329,8 @@ export class SessionBridgeService extends EventEmitter {
   }): Promise<SessionBridgeSessionSummary> {
     const sessionId = `session_bridge_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     createChatSession(sessionId, String(input?.title || 'Bridge Session'), {
-      contextType: String(input?.contextType || 'redclaw'),
-      runtimeMode: String(input?.runtimeMode || 'redclaw'),
+      contextType: String(input?.contextType || 'gardenflow'),
+      runtimeMode: String(input?.runtimeMode || 'gardenflow'),
       createdBy: 'session-bridge',
       ...(input?.metadata || {}),
     });

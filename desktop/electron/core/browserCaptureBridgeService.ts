@@ -245,7 +245,7 @@ export class BrowserCaptureBridgeService {
     private createEndpoint(stateRoot: string): BrowserCaptureBridgeEndpoint {
         if (process.platform === 'win32') {
             const userHint = String(os.userInfo().username || 'user').replace(/[^A-Za-z0-9._-]/g, '-');
-            return { kind: 'windows_named_pipe', name: `\\\\.\\pipe\\redbox-desktop-bridge-${userHint}` };
+            return { kind: 'windows_named_pipe', name: `\\\\.\\pipe\\gardenflow-desktop-bridge-${userHint}` };
         }
         return { kind: 'unix', path: path.join(stateRoot, 'desktop-bridge-v1.sock') };
     }
@@ -495,7 +495,7 @@ export class BrowserCaptureBridgeService {
             ? candidates.find((item) => item.extensionInstanceId === requestedInstance)
             : candidates[0];
         if (!instance) {
-            throw Object.assign(new Error('没有已连接的 Bojin 浏览器插件实例'), {
+            throw Object.assign(new Error('没有已连接的 GardenFlow 浏览器插件实例'), {
                 code: 'BROWSER_INSTANCE_UNAVAILABLE',
             });
         }
@@ -529,7 +529,7 @@ export class BrowserCaptureBridgeService {
     /** 桌面进程内直接调用采集入库 handler（与插件走 bridge 的入库同一实现）。 */
     async invokeLocalCaptureRequest(method: string, params: Record<string, unknown>): Promise<unknown> {
         return await this.options.handleRequest(method, params, {
-            origin: 'bojin://desktop-internal',
+            origin: 'gardenflow://desktop-internal',
             hostInstanceId: 'desktop-internal',
             extensionInstanceId: 'desktop-internal',
         });

@@ -93,7 +93,7 @@ const inferStructuredIntent = (context: RuntimeContext): IntentName => {
     case 'chatroom':
     case 'advisor-discussion':
       return 'discussion';
-    case 'redclaw':
+    case 'gardenflow':
     default:
       break;
   }
@@ -109,7 +109,7 @@ const inferStructuredIntent = (context: RuntimeContext): IntentName => {
   if (metadata.channelProvider === 'weixin' && metadata.weixinSecretaryMode === true) {
     return 'direct_answer';
   }
-  return context.runtimeMode === 'redclaw' ? 'manuscript_creation' : 'direct_answer';
+  return context.runtimeMode === 'gardenflow' ? 'manuscript_creation' : 'direct_answer';
 };
 
 const shouldRequireMultiAgent = (context: RuntimeContext, intent: IntentName): boolean => {
@@ -213,7 +213,7 @@ const callLlmRouter = async (params: {
   fallback: IntentRoute;
 }): Promise<IntentRoute | null> => {
   const systemPrompt = loadAndRenderPrompt(ROUTE_INTENT_SYSTEM_PROMPT_PATH, {}, [
-    'You are the intent router for Bojin.',
+    'You are the intent router for GardenFlow.',
     'Return strict JSON only.',
   ].join('\n'));
   const userPrompt = loadAndRenderPrompt(ROUTE_INTENT_USER_PROMPT_PATH, {

@@ -52,8 +52,8 @@ export function AutomationTaskCard({ hint }: AutomationTaskCardProps) {
         try {
             const nextEnabled = !enabled;
             const result = isLongCycle
-                ? await window.ipcRenderer.redclawRunner.setLongCycleEnabled({ taskId: hint.taskId, enabled: nextEnabled })
-                : await window.ipcRenderer.redclawRunner.setScheduledEnabled({ taskId: hint.taskId, enabled: nextEnabled });
+                ? await window.ipcRenderer.gardenflowRunner.setLongCycleEnabled({ taskId: hint.taskId, enabled: nextEnabled })
+                : await window.ipcRenderer.gardenflowRunner.setScheduledEnabled({ taskId: hint.taskId, enabled: nextEnabled });
             const error = readActionError(result, nextEnabled ? '启用任务失败。' : '暂停任务失败。');
             if (error) throw new Error(error);
             setEnabled(nextEnabled);
@@ -68,8 +68,8 @@ export function AutomationTaskCard({ hint }: AutomationTaskCardProps) {
         setBusy('run');
         try {
             const result = isLongCycle
-                ? await window.ipcRenderer.redclawRunner.runLongCycleNow({ taskId: hint.taskId })
-                : await window.ipcRenderer.redclawRunner.runScheduledNow({ taskId: hint.taskId });
+                ? await window.ipcRenderer.gardenflowRunner.runLongCycleNow({ taskId: hint.taskId })
+                : await window.ipcRenderer.gardenflowRunner.runScheduledNow({ taskId: hint.taskId });
             const error = readActionError(result, '立即执行失败。');
             if (error) throw new Error(error);
         } catch (error) {

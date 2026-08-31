@@ -14,10 +14,10 @@ import {
   DesktopBridgeControlClient,
 } from './desktop-bridge-client.mjs';
 
-const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'beav-desktop-bridge-client-'));
+const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'gardenflow-desktop-bridge-client-'));
 const descriptorPath = path.join(tempRoot, 'desktop-bridge-v1.json');
 const endpointPath = process.platform === 'win32'
-  ? `\\\\.\\pipe\\beav-desktop-bridge-client-${process.pid}-${randomUUID()}`
+  ? `\\\\.\\pipe\\gardenflow-desktop-bridge-client-${process.pid}-${randomUUID()}`
   : path.join(tempRoot, 'desktop-bridge-v1.sock');
 const controlAuthToken = 'c'.repeat(64);
 const requests = [];
@@ -85,11 +85,11 @@ try {
   await client.close();
 
   const transport = new DesktopBridgeBrowserTransport({ timeoutMs: 2000 });
-  process.env.REDBOX_BROWSER_BRIDGE_DESCRIPTOR = descriptorPath;
+  process.env.GARDENFLOW_BROWSER_BRIDGE_DESCRIPTOR = descriptorPath;
   const endpoints = await transport.listEndpoints();
   assert.equal(endpoints.length, 1);
   assert.equal((await transport.withBrowser('extension-test').hostInfo()).extensionReady, true);
-  delete process.env.REDBOX_BROWSER_BRIDGE_DESCRIPTOR;
+  delete process.env.GARDENFLOW_BROWSER_BRIDGE_DESCRIPTOR;
 
   const helloRequest = requests.find((request) => request.method === 'bridge.hello');
   assert.equal(helloRequest.params.authToken, controlAuthToken);
@@ -101,7 +101,7 @@ try {
     requests: requests.map((request) => request.method),
   }, null, 2));
 } finally {
-  delete process.env.REDBOX_BROWSER_BRIDGE_DESCRIPTOR;
+  delete process.env.GARDENFLOW_BROWSER_BRIDGE_DESCRIPTOR;
   await close(server);
   await fs.rm(tempRoot, { recursive: true, force: true });
 }

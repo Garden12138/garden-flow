@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { BrowserControlTransport, setupBrowserRuntime } from './browser-client.mjs';
 
-const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'redbox-browser-binding-'));
+const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'gardenflow-browser-binding-'));
 const endpointsDirectory = path.join(tempRoot, 'endpoints');
 const endpointStatePath = path.join(tempRoot, 'legacy-endpoint.json');
 const servers = new Set();
@@ -154,7 +154,7 @@ function endpointResult({ browser, extensionInstanceId, hostInstanceId, request,
   if (request.method === 'host.getInfo') {
     return {
       ok: true,
-      hostName: 'com.redbox.browser_control',
+      hostName: 'com.gardenflow.browser_control',
       instanceId: hostInstanceId,
       extensionReady: true,
       extension: { extensionInstanceId, browser },

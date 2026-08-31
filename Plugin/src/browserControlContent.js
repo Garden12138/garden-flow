@@ -1,3 +1,4 @@
+import './brandRuntime.js';
 import './siteAdapters.js';
 import { applyControlledTabBadge } from './content/controlBadge.js';
 import { applyAgentCursorState, hideAgentCursor, moveAgentCursor } from './content/cursorOverlay.js';
@@ -7,159 +8,159 @@ import { readPageAssets } from './content/pageAssetInventory.js';
 import { checkElement, clickElement, clickNextButton, clickNode, getElementAttribute, getElementValue, getElementValues, hoverElement, inspectPoint, isCheckedElement, isElementVisible, queryElements, scrollNode, scrollPage, selectElement, typeElement, waitForDomStable, waitForNode, waitForSelector } from './content/pageActions.js';
 import { applySiteResearchFilters, extractSiteResearch, prepareSiteResearchItemClick, prepareSiteResearchItemClose, submitSiteResearchSearch } from './content/siteResearchExtractor.js';
 
-const XWOW_READ_FRAME = 'xwow-data-ai:read-frame';
-const XWOW_DOM_SNAPSHOT = 'xwow-data-ai:dom-snapshot';
-const XWOW_SITE_RESEARCH_EXTRACT = 'xwow-data-ai:site-research-extract';
-const XWOW_SITE_RESEARCH_APPLY_FILTERS = 'xwow-data-ai:site-research-apply-filters';
-const XWOW_SITE_RESEARCH_SUBMIT_SEARCH = 'xwow-data-ai:site-research-submit-search';
-const XWOW_SITE_RESEARCH_PREPARE_ITEM_CLICK = 'xwow-data-ai:site-research-prepare-item-click';
-const XWOW_SITE_RESEARCH_PREPARE_ITEM_CLOSE = 'xwow-data-ai:site-research-prepare-item-close';
-const XWOW_SCROLL_PAGE = 'xwow-data-ai:scroll-page';
-const XWOW_CLICK_NEXT = 'xwow-data-ai:click-next';
-const XWOW_CLICK_ELEMENT = 'xwow-data-ai:click-element';
-const XWOW_CLICK_NODE = 'xwow-data-ai:click-node';
-const XWOW_HOVER_ELEMENT = 'xwow-data-ai:hover-element';
-const XWOW_INSPECT_POINT = 'xwow-data-ai:inspect-point';
-const XWOW_SCROLL_NODE = 'xwow-data-ai:scroll-node';
-const XWOW_SELECT_ELEMENT = 'xwow-data-ai:select-element';
-const XWOW_TYPE_ELEMENT = 'xwow-data-ai:type-element';
-const XWOW_WAIT_STABLE = 'xwow-data-ai:wait-stable';
-const XWOW_WAIT_SELECTOR = 'xwow-data-ai:wait-selector';
-const XWOW_WAIT_NODE = 'xwow-data-ai:wait-node';
-const XWOW_CHECK_ELEMENT = 'xwow-data-ai:check-element';
-const XWOW_IS_CHECKED = 'xwow-data-ai:is-checked';
-const XWOW_IS_VISIBLE = 'xwow-data-ai:is-visible';
-const XWOW_GET_VALUE = 'xwow-data-ai:get-value';
-const XWOW_GET_VALUES = 'xwow-data-ai:get-values';
-const XWOW_GET_ATTRIBUTE = 'xwow-data-ai:get-attribute';
-const XWOW_QUERY_ELEMENTS = 'xwow-data-ai:query-elements';
-const XWOW_PAGE_ASSETS = 'xwow-data-ai:page-assets';
-const XWOW_CURSOR_MOVE = 'xwow-data-ai:cursor-move';
-const XWOW_CURSOR_HIDE = 'xwow-data-ai:cursor-hide';
-const XWOW_CONTENT_PING = 'xwow-data-ai:content-ping';
-const XWOW_CONTROL_BADGE = 'xwow-data-ai:control-badge';
+const GARDENFLOW_READ_FRAME = 'gardenflow-data-ai:read-frame';
+const GARDENFLOW_DOM_SNAPSHOT = 'gardenflow-data-ai:dom-snapshot';
+const GARDENFLOW_SITE_RESEARCH_EXTRACT = 'gardenflow-data-ai:site-research-extract';
+const GARDENFLOW_SITE_RESEARCH_APPLY_FILTERS = 'gardenflow-data-ai:site-research-apply-filters';
+const GARDENFLOW_SITE_RESEARCH_SUBMIT_SEARCH = 'gardenflow-data-ai:site-research-submit-search';
+const GARDENFLOW_SITE_RESEARCH_PREPARE_ITEM_CLICK = 'gardenflow-data-ai:site-research-prepare-item-click';
+const GARDENFLOW_SITE_RESEARCH_PREPARE_ITEM_CLOSE = 'gardenflow-data-ai:site-research-prepare-item-close';
+const GARDENFLOW_SCROLL_PAGE = 'gardenflow-data-ai:scroll-page';
+const GARDENFLOW_CLICK_NEXT = 'gardenflow-data-ai:click-next';
+const GARDENFLOW_CLICK_ELEMENT = 'gardenflow-data-ai:click-element';
+const GARDENFLOW_CLICK_NODE = 'gardenflow-data-ai:click-node';
+const GARDENFLOW_HOVER_ELEMENT = 'gardenflow-data-ai:hover-element';
+const GARDENFLOW_INSPECT_POINT = 'gardenflow-data-ai:inspect-point';
+const GARDENFLOW_SCROLL_NODE = 'gardenflow-data-ai:scroll-node';
+const GARDENFLOW_SELECT_ELEMENT = 'gardenflow-data-ai:select-element';
+const GARDENFLOW_TYPE_ELEMENT = 'gardenflow-data-ai:type-element';
+const GARDENFLOW_WAIT_STABLE = 'gardenflow-data-ai:wait-stable';
+const GARDENFLOW_WAIT_SELECTOR = 'gardenflow-data-ai:wait-selector';
+const GARDENFLOW_WAIT_NODE = 'gardenflow-data-ai:wait-node';
+const GARDENFLOW_CHECK_ELEMENT = 'gardenflow-data-ai:check-element';
+const GARDENFLOW_IS_CHECKED = 'gardenflow-data-ai:is-checked';
+const GARDENFLOW_IS_VISIBLE = 'gardenflow-data-ai:is-visible';
+const GARDENFLOW_GET_VALUE = 'gardenflow-data-ai:get-value';
+const GARDENFLOW_GET_VALUES = 'gardenflow-data-ai:get-values';
+const GARDENFLOW_GET_ATTRIBUTE = 'gardenflow-data-ai:get-attribute';
+const GARDENFLOW_QUERY_ELEMENTS = 'gardenflow-data-ai:query-elements';
+const GARDENFLOW_PAGE_ASSETS = 'gardenflow-data-ai:page-assets';
+const GARDENFLOW_CURSOR_MOVE = 'gardenflow-data-ai:cursor-move';
+const GARDENFLOW_CURSOR_HIDE = 'gardenflow-data-ai:cursor-hide';
+const GARDENFLOW_CONTENT_PING = 'gardenflow-data-ai:content-ping';
+const GARDENFLOW_CONTROL_BADGE = 'gardenflow-data-ai:control-badge';
 const TARGET_CONTENT_PING = 'CONTENT_PING';
 const TARGET_CONTROL_BADGE = 'AGENT_CONTROL_BADGE';
-const XWOW_TAB_FAVICON_BADGE = 'TAB_FAVICON_BADGE';
+const GARDENFLOW_TAB_FAVICON_BADGE = 'TAB_FAVICON_BADGE';
 const TARGET_CURSOR_STATE = 'AGENT_CURSOR_STATE';
 const TARGET_GET_CURSOR_STATE = 'GET_AGENT_CURSOR_STATE';
 const TARGET_GET_CONTROL_BADGE_STATE = 'GET_AGENT_CONTROL_BADGE_STATE';
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   void (async () => {
-    if (message?.type === XWOW_CONTENT_PING || message?.type === TARGET_CONTENT_PING) {
+    if (message?.type === GARDENFLOW_CONTENT_PING || message?.type === TARGET_CONTENT_PING) {
       sendResponse({ success: true, ok: true, frameUrl: location.href });
       return;
     }
-    if (message?.type === XWOW_READ_FRAME) {
+    if (message?.type === GARDENFLOW_READ_FRAME) {
       sendResponse({ success: true, data: readFrame(message.options || {}) });
       return;
     }
-    if (message?.type === XWOW_DOM_SNAPSHOT) {
+    if (message?.type === GARDENFLOW_DOM_SNAPSHOT) {
       sendResponse(readDomSnapshot(message.options || {}));
       return;
     }
-    if (message?.type === XWOW_SITE_RESEARCH_EXTRACT) {
+    if (message?.type === GARDENFLOW_SITE_RESEARCH_EXTRACT) {
       sendResponse(extractSiteResearch(message.options || {}));
       return;
     }
-    if (message?.type === XWOW_SITE_RESEARCH_APPLY_FILTERS) {
+    if (message?.type === GARDENFLOW_SITE_RESEARCH_APPLY_FILTERS) {
       sendResponse(await applySiteResearchFilters(message.options || {}));
       return;
     }
-    if (message?.type === XWOW_SITE_RESEARCH_SUBMIT_SEARCH) {
+    if (message?.type === GARDENFLOW_SITE_RESEARCH_SUBMIT_SEARCH) {
       sendResponse(await submitSiteResearchSearch(message.options || {}));
       return;
     }
-    if (message?.type === XWOW_SITE_RESEARCH_PREPARE_ITEM_CLICK) {
+    if (message?.type === GARDENFLOW_SITE_RESEARCH_PREPARE_ITEM_CLICK) {
       sendResponse(await prepareSiteResearchItemClick(message.options || {}));
       return;
     }
-    if (message?.type === XWOW_SITE_RESEARCH_PREPARE_ITEM_CLOSE) {
+    if (message?.type === GARDENFLOW_SITE_RESEARCH_PREPARE_ITEM_CLOSE) {
       sendResponse(await prepareSiteResearchItemClose(message.options || {}));
       return;
     }
-    if (message?.type === XWOW_SCROLL_PAGE) {
+    if (message?.type === GARDENFLOW_SCROLL_PAGE) {
       sendResponse(await scrollPage(message.options || {}));
       return;
     }
-    if (message?.type === XWOW_CLICK_NEXT) {
+    if (message?.type === GARDENFLOW_CLICK_NEXT) {
       sendResponse(await clickNextButton(message.options || {}));
       return;
     }
-    if (message?.type === XWOW_CLICK_ELEMENT) {
+    if (message?.type === GARDENFLOW_CLICK_ELEMENT) {
       sendResponse(await clickElement(message.options || {}));
       return;
     }
-    if (message?.type === XWOW_CLICK_NODE) {
+    if (message?.type === GARDENFLOW_CLICK_NODE) {
       sendResponse(await clickNode(message.options || {}));
       return;
     }
-    if (message?.type === XWOW_HOVER_ELEMENT) {
+    if (message?.type === GARDENFLOW_HOVER_ELEMENT) {
       sendResponse(await hoverElement(message.options || {}));
       return;
     }
-    if (message?.type === XWOW_INSPECT_POINT) {
+    if (message?.type === GARDENFLOW_INSPECT_POINT) {
       sendResponse(inspectPoint(message.options || {}));
       return;
     }
-    if (message?.type === XWOW_SCROLL_NODE) {
+    if (message?.type === GARDENFLOW_SCROLL_NODE) {
       sendResponse(scrollNode(message.options || {}));
       return;
     }
-    if (message?.type === XWOW_SELECT_ELEMENT) {
+    if (message?.type === GARDENFLOW_SELECT_ELEMENT) {
       sendResponse(await selectElement(message.options || {}));
       return;
     }
-    if (message?.type === XWOW_TYPE_ELEMENT) {
+    if (message?.type === GARDENFLOW_TYPE_ELEMENT) {
       sendResponse(await typeElement(message.options || {}));
       return;
     }
-    if (message?.type === XWOW_WAIT_STABLE) {
+    if (message?.type === GARDENFLOW_WAIT_STABLE) {
       sendResponse(await waitForDomStable(message.options || {}));
       return;
     }
-    if (message?.type === XWOW_WAIT_SELECTOR) {
+    if (message?.type === GARDENFLOW_WAIT_SELECTOR) {
       sendResponse(await waitForSelector(message.options || {}));
       return;
     }
-    if (message?.type === XWOW_WAIT_NODE) {
+    if (message?.type === GARDENFLOW_WAIT_NODE) {
       sendResponse(await waitForNode(message.options || {}));
       return;
     }
-    if (message?.type === XWOW_CHECK_ELEMENT) {
+    if (message?.type === GARDENFLOW_CHECK_ELEMENT) {
       sendResponse(await checkElement(message.options || {}));
       return;
     }
-    if (message?.type === XWOW_IS_CHECKED) {
+    if (message?.type === GARDENFLOW_IS_CHECKED) {
       sendResponse(isCheckedElement(message.options || {}));
       return;
     }
-    if (message?.type === XWOW_IS_VISIBLE) {
+    if (message?.type === GARDENFLOW_IS_VISIBLE) {
       sendResponse(isElementVisible(message.options || {}));
       return;
     }
-    if (message?.type === XWOW_GET_VALUE) {
+    if (message?.type === GARDENFLOW_GET_VALUE) {
       sendResponse(getElementValue(message.options || {}));
       return;
     }
-    if (message?.type === XWOW_GET_VALUES) {
+    if (message?.type === GARDENFLOW_GET_VALUES) {
       sendResponse(getElementValues(message.options || {}));
       return;
     }
-    if (message?.type === XWOW_GET_ATTRIBUTE) {
+    if (message?.type === GARDENFLOW_GET_ATTRIBUTE) {
       sendResponse(getElementAttribute(message.options || {}));
       return;
     }
-    if (message?.type === XWOW_QUERY_ELEMENTS) {
+    if (message?.type === GARDENFLOW_QUERY_ELEMENTS) {
       sendResponse(queryElements(message.options || {}));
       return;
     }
-    if (message?.type === XWOW_PAGE_ASSETS) {
+    if (message?.type === GARDENFLOW_PAGE_ASSETS) {
       sendResponse({ success: true, assets: readPageAssets(message.options || {}) });
       return;
     }
-    if (message?.type === XWOW_CURSOR_MOVE) {
+    if (message?.type === GARDENFLOW_CURSOR_MOVE) {
       sendResponse(moveAgentCursor(message.options || {}));
       return;
     }
@@ -167,15 +168,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse(applyAgentCursorState(message.state || message.options?.state || message.options || {}));
       return;
     }
-    if (message?.type === XWOW_CURSOR_HIDE) {
+    if (message?.type === GARDENFLOW_CURSOR_HIDE) {
       sendResponse(hideAgentCursor());
       return;
     }
-    if (message?.type === XWOW_TAB_FAVICON_BADGE) {
+    if (message?.type === GARDENFLOW_TAB_FAVICON_BADGE) {
       sendResponse(applyTabFaviconBadge(message.options || {}));
       return;
     }
-    if (message?.type === XWOW_CONTROL_BADGE || message?.type === TARGET_CONTROL_BADGE) {
+    if (message?.type === GARDENFLOW_CONTROL_BADGE || message?.type === TARGET_CONTROL_BADGE) {
       sendResponse(applyControlledTabBadge(message.state || message.options || {}));
       return;
     }

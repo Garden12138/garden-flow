@@ -1,5 +1,5 @@
 const TARGET_CONTENT_PING_TYPE = 'CONTENT_PING';
-const CONTENT_PING_TYPE = 'xwow-data-ai:content-ping';
+const CONTENT_PING_TYPE = 'gardenflow-data-ai:content-ping';
 const CONTENT_PING_TYPES = [TARGET_CONTENT_PING_TYPE, CONTENT_PING_TYPE];
 const CONTENT_SCRIPT_FILES = ['browserControlContent.js'];
 const injectionPromises = new Map();

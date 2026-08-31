@@ -241,7 +241,7 @@ export function getVideoModelCapabilities(model: string, endpoint = ''): VideoMo
                 : '文生/参考图/首尾帧视频',
         };
     }
-    if (providerKind === 'redbox') {
+    if (providerKind === 'gardenflow') {
         return {
             providerKind,
             supportedModes: ['text-to-video', 'reference-guided', 'first-last-frame', 'continuation'],

@@ -3,7 +3,7 @@ import type { ModelCapability } from './modelCapabilities.ts';
 /**
  * 私有化部署的 new-api 网关（OpenAI 兼容）。
  *
- * 与 `bojinVideo.ts` 的官方视频网关（api.ziz.hk 专有协议）解耦：
+ * 与 `gardenflowVideo.ts` 的官方视频网关（api.ziz.hk 专有协议）解耦：
  * AI 能力（聊天/向量/图片/语音/转录）全部指向本网关，
  * 视频生成走 new-api 的异步任务协议（见 videoProvider 的 `new-api` 分支）。
  */
@@ -39,28 +39,29 @@ export interface PrivateGatewayModelMeta {
  * 在线时可用设置页「获取模型」按 `GET /v1/models` 刷新。
  */
 export const PRIVATE_GATEWAY_DEFAULT_MODELS: PrivateGatewayModelMeta[] = [
-    { id: 'bojin-max', capabilities: ['chat'] },
-    { id: 'bojin-plus', capabilities: ['chat'] },
-    { id: 'bojin-omni-plus', capabilities: ['audio'] },
-    { id: 'bojin-imgae-2.0', capabilities: ['image'] },
-    { id: 'bojin-imgae-3.0', capabilities: ['image'] },
-    { id: 'bojin-text-embedding', capabilities: ['embedding'] },
-    { id: 'bojin-speech', capabilities: ['tts'] },
-    { id: 'bojin-asr-plus', capabilities: ['transcription'] },
-    { id: 'bojin-video-1.1-r2v', capabilities: ['video'] },
-    { id: 'bojin-video-H3', capabilities: ['video'] },
+    { id: 'gardenflow-max', capabilities: ['chat'] },
+    { id: 'gardenflow-plus', capabilities: ['chat'] },
+    { id: 'gardenflow-omni-plus', capabilities: ['audio'] },
+    { id: 'gardenflow-imgae-2.0', capabilities: ['image'] },
+    { id: 'gardenflow-imgae-3.0', capabilities: ['image'] },
+    { id: 'gardenflow-text-embedding', capabilities: ['embedding'] },
+    { id: 'gardenflow-vl-embedding', capabilities: ['embedding'] },
+    { id: 'gardenflow-speech', capabilities: ['tts'] },
+    { id: 'gardenflow-asr-plus', capabilities: ['transcription'] },
+    { id: 'gardenflow-video-1.1-r2v', capabilities: ['video'] },
+    { id: 'gardenflow-video-H3', capabilities: ['video'] },
 ];
 
 export const PRIVATE_GATEWAY_DEFAULT_MODEL_IDS: string[] = PRIVATE_GATEWAY_DEFAULT_MODELS.map((item) => item.id);
 
 /** 各任务 scope 的推荐默认模型，由结构化清单承载，避免在业务代码里散落模型名。 */
 export const PRIVATE_GATEWAY_SCOPE_MODELS = Object.freeze({
-    chat: 'bojin-max',
-    transcription: 'bojin-asr-plus',
-    embedding: 'bojin-text-embedding',
-    image: 'bojin-imgae-3.0',
-    videoAnalysis: 'bojin-omni-plus',
-    voiceTts: 'bojin-speech',
+    chat: 'gardenflow-max',
+    transcription: 'gardenflow-asr-plus',
+    embedding: 'gardenflow-text-embedding',
+    image: 'gardenflow-imgae-3.0',
+    videoAnalysis: 'gardenflow-omni-plus',
+    voiceTts: 'gardenflow-speech',
 });
 
 /**
@@ -83,7 +84,7 @@ export interface PrivateGatewayVideoModelMeta {
 
 export const PRIVATE_GATEWAY_VIDEO_MODELS: PrivateGatewayVideoModelMeta[] = [
     {
-        id: 'bojin-video-1.1-r2v',
+        id: 'gardenflow-video-1.1-r2v',
         upstream: 'aliyun-bailian',
         modes: ['reference-guided'],
         // new-api 阿里适配器的 metadata.input.media 上限为 5 张（直连可到 9 张）。
@@ -94,7 +95,7 @@ export const PRIVATE_GATEWAY_VIDEO_MODELS: PrivateGatewayVideoModelMeta[] = [
         summary: '参考图视频 · 需要 1–5 张参考图',
     },
     {
-        id: 'bojin-video-H3',
+        id: 'gardenflow-video-H3',
         upstream: 'minimax',
         modes: ['text-to-video', 'reference-guided', 'first-last-frame'],
         minReferenceImages: 0,

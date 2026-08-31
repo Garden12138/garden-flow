@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 
-const SIDEBAR_COLLAPSED_STORAGE_KEY = 'redbox:layout-sidebar-collapsed:v1';
-const SIDEBAR_WIDTH_STORAGE_KEY = 'redbox:layout-sidebar-width:v1';
+const SIDEBAR_COLLAPSED_STORAGE_KEY = 'gardenflow:layout-sidebar-collapsed:v1';
+const SIDEBAR_WIDTH_STORAGE_KEY = 'gardenflow:layout-sidebar-width:v1';
 const SIDEBAR_DEFAULT_WIDTH = 320;
 const SIDEBAR_MIN_WIDTH = 240;
 const SIDEBAR_MAX_WIDTH = 460;

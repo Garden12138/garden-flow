@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import '../brandEnvironment.cjs';
 
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -20,15 +21,15 @@ import {
 const pluginRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repositoryRoot = path.resolve(pluginRoot, '..');
 const extensionPath = path.join(pluginRoot, 'dist', 'extension');
-const hostName = 'com.redbox.browser_control';
-const defaultRustHostPath = path.join(repositoryRoot, 'desktop', 'src-tauri', 'target', 'debug', 'beav');
+const hostName = 'com.gardenflow.browser_control';
+const defaultRustHostPath = path.join(repositoryRoot, 'desktop', 'src-tauri', 'target', 'debug', 'gardenflow');
 const stableChromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 
 function parseArgs(argv) {
   const args = {
     allowStableChrome: false,
-    chromePath: process.env.REDBOX_BROWSER_CONTROL_CHROME_PATH || '',
-    hostPath: process.env.REDBOX_BROWSER_CONTROL_HOST_PATH || defaultRustHostPath,
+    chromePath: process.env.GARDENFLOW_BROWSER_CONTROL_CHROME_PATH || '',
+    hostPath: process.env.GARDENFLOW_BROWSER_CONTROL_HOST_PATH || defaultRustHostPath,
     faultMatrix: false,
     keepProfile: false,
     timeoutMs: 20_000,
@@ -45,8 +46,8 @@ function parseArgs(argv) {
       console.log(`Usage: node scripts/smoke-browser-control-e2e.mjs [options]
 
 Options:
-  --chrome-path <path>       Browser binary to launch. Also reads REDBOX_BROWSER_CONTROL_CHROME_PATH.
-  --host-path <path>         Native Host executable. Defaults to desktop/src-tauri/target/debug/beav.
+  --chrome-path <path>       Browser binary to launch. Also reads GARDENFLOW_BROWSER_CONTROL_CHROME_PATH.
+  --host-path <path>         Native Host executable. Defaults to desktop/src-tauri/target/debug/gardenflow.
   --fault-matrix             Inject auth failure, late response, and MV3 worker restart faults.
   --allow-stable-chrome      Allow /Applications/Google Chrome.app as a fallback.
   --keep-profile             Keep the temporary profile directory after the smoke run.
@@ -72,7 +73,7 @@ async function main() {
   const baselineInstances = await discoveryTransport.listEndpoints();
   const baselineInstanceIds = new Set(baselineInstances.map(browserInstanceKey));
 
-  const tempRoot = await fsp.mkdtemp(path.join(os.tmpdir(), 'redbox-browser-e2e-'));
+  const tempRoot = await fsp.mkdtemp(path.join(os.tmpdir(), 'gardenflow-browser-e2e-'));
   const isolatedHome = path.join(tempRoot, 'home');
   const profileRoot = path.join(tempRoot, 'chrome-profile');
   const manifestPaths = nativeManifestPathsForBrowser(selectedBrowser.path, profileRoot, isolatedHome);
@@ -136,7 +137,7 @@ async function main() {
     const linkQuery = await linkLocator.query({ all: true, mode: 'all' });
     const links = await linkLocator.count();
     const linkTexts = await linkLocator.allTextContents();
-    const badgeLocator = tab.playwright.locator('#xwow-browser-data-ai-control-badge');
+    const badgeLocator = tab.playwright.locator('#gardenflow-browser-data-ai-control-badge');
     await badgeLocator.waitFor({ timeoutMs: 5000 });
     const badgeTexts = await badgeLocator.allTextContents();
     assert.match(title || '', /Example Domain/i, 'tab title should come from the loaded page');
@@ -146,8 +147,8 @@ async function main() {
       `DOM query should read example.com link text, received: ${JSON.stringify(linkTexts)}`,
     );
     assert(
-      badgeTexts.some((text) => /(?:Bojin|Beav|RedBox) 控制中/i.test(text)),
-      `controlled tab should show the Bojin control badge, received: ${JSON.stringify(badgeTexts)}`,
+      badgeTexts.some((text) => /(?:GardenFlow|GardenFlow|GardenFlow) 控制中/i.test(text)),
+      `controlled tab should show the GardenFlow control badge, received: ${JSON.stringify(badgeTexts)}`,
     );
     const researchStepResponse = await transport.callTool('research.run', {
       sessionId: 'smoke-session',
@@ -391,7 +392,7 @@ function launchChrome(browserPath, profileRoot, isolatedHome, bridgeDescriptorPa
       HOME: isolatedHome,
       XDG_CONFIG_HOME: path.join(isolatedHome, '.config'),
       XDG_DATA_HOME: path.join(isolatedHome, '.local', 'share'),
-      REDBOX_BROWSER_BRIDGE_DESCRIPTOR: bridgeDescriptorPath,
+      GARDENFLOW_BROWSER_BRIDGE_DESCRIPTOR: bridgeDescriptorPath,
     },
     stdio: ['ignore', 'ignore', 'pipe'],
   });
@@ -406,8 +407,8 @@ function attachStderrRing(child) {
     stderr += chunk.toString();
     if (stderr.length > maxChars) stderr = stderr.slice(-maxChars);
   });
-  child.redboxStderr = () => stderr.trim();
-  child.redboxPid = child.pid ?? null;
+  child.gardenflowStderr = () => stderr.trim();
+  child.gardenflowPid = child.pid ?? null;
   return child;
 }
 
@@ -439,7 +440,7 @@ async function waitForDevTools(profileRoot, timeoutMs, child) {
     }
     await delay(100);
   }
-  const stderr = typeof child?.redboxStderr === 'function' ? child.redboxStderr() : '';
+  const stderr = typeof child?.gardenflowStderr === 'function' ? child.gardenflowStderr() : '';
   throw new Error([
     `Timed out waiting for DevToolsActivePort: ${activePortPath}`,
     stderr ? `stderr:\n${stderr}` : 'stderr=<empty>',
@@ -466,7 +467,7 @@ async function triggerNativeConnect({ extensionId, port, timeoutMs }) {
           awaitPromise: true,
           returnByValue: true,
           expression: `new Promise((resolve) => {
-            chrome.runtime.sendMessage({ type: 'xwow-data-ai:native-connect' }, (response) => {
+            chrome.runtime.sendMessage({ type: 'gardenflow-data-ai:native-connect' }, (response) => {
               resolve({ response, lastError: chrome.runtime.lastError && chrome.runtime.lastError.message || '' });
             });
           })`,
@@ -808,7 +809,7 @@ async function installNativeHostManifest(extensionId, manifestPaths, args) {
   assert(fs.existsSync(resolvedHostPath), `Native Host executable not found: ${resolvedHostPath}`);
   const manifest = {
     name: hostName,
-    description: 'Bojin browser control native messaging host',
+    description: 'GardenFlow browser control native messaging host',
     path: resolvedHostPath,
     type: 'stdio',
     allowed_origins: [`chrome-extension://${extensionId}/`],
@@ -851,9 +852,9 @@ async function waitForBridgeMatch(predicate, timeoutMs, diagnostics = {}) {
     await delay(200);
   }
   const child = diagnostics.child;
-  const stderr = typeof child?.redboxStderr === 'function' ? child.redboxStderr() : '';
+  const stderr = typeof child?.gardenflowStderr === 'function' ? child.gardenflowStderr() : '';
   const childState = child
-    ? `pid=${child.redboxPid || ''} exit=${child.exitCode ?? ''} signal=${child.signalCode ?? ''}`
+    ? `pid=${child.gardenflowPid || ''} exit=${child.exitCode ?? ''} signal=${child.signalCode ?? ''}`
     : 'pid=';
   const registeredExtensionId = diagnostics.profileRoot
     ? await findExtensionId(diagnostics.profileRoot).catch(() => '')

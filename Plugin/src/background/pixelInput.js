@@ -2,9 +2,9 @@ import { DANGEROUS_ACTION_TEXT, browserPolicyError } from './browserPolicy.js';
 import { attachCdpTab, getDefaultCdpTimeoutMs, sendCdpCommandWithTimeout } from './cdpTransport.js';
 import { sendContentMessage } from './dynamicContentInjection.js';
 
-export const CONTENT_CURSOR_MOVE_TYPE = 'xwow-data-ai:cursor-move';
-export const CONTENT_CURSOR_HIDE_TYPE = 'xwow-data-ai:cursor-hide';
-export const CONTENT_CURSOR_ARRIVED_TYPE = 'xwow-data-ai:cursor-arrived';
+export const CONTENT_CURSOR_MOVE_TYPE = 'gardenflow-data-ai:cursor-move';
+export const CONTENT_CURSOR_HIDE_TYPE = 'gardenflow-data-ai:cursor-hide';
+export const CONTENT_CURSOR_ARRIVED_TYPE = 'gardenflow-data-ai:cursor-arrived';
 export const TARGET_CURSOR_STATE_TYPE = 'AGENT_CURSOR_STATE';
 export const TARGET_CURSOR_ARRIVED_TYPE = 'AGENT_CURSOR_ARRIVED';
 export const TARGET_GET_CURSOR_STATE_TYPE = 'GET_AGENT_CURSOR_STATE';
@@ -286,7 +286,7 @@ export async function clearCursorOverlayForTab(tabId, reason = 'clear_cursor_ove
   const state = buildCursorState(id, {
     sessionId: previous.sessionId || '',
     turnId: previous.turnId || '',
-    label: previous.label || 'Bojin',
+    label: previous.label || 'GardenFlow',
   }, {}, false, null);
   cursorStateByTabId.delete(id);
   const response = await sendContentMessage(id, TARGET_CURSOR_STATE_TYPE, { state, reason }, 0).catch((error) => ({
@@ -386,7 +386,7 @@ function buildCursorState(tabId, action = {}, options = {}, visible = true, move
     turnId: session.turnId || action.turnId || '',
     isVisible: visible,
     cursor,
-    label: action.label || 'Bojin',
+    label: action.label || 'GardenFlow',
     updatedAt: new Date().toISOString(),
   };
 }
@@ -401,7 +401,7 @@ function deriveCursorOverlayStateForTab(tabId, options = {}) {
       turnId: options.turnId || '',
       isVisible: false,
       cursor: null,
-      label: options.label || 'Bojin',
+      label: options.label || 'GardenFlow',
       updatedAt: new Date().toISOString(),
     };
   }

@@ -76,7 +76,7 @@ function readDescriptor(): BrowserCaptureBridgeDescriptor {
     try {
         parsed = JSON.parse(fs.readFileSync(browserCaptureDescriptorPath(), 'utf8')) as BrowserCaptureBridgeDescriptor;
     } catch (error) {
-        throw Object.assign(new Error('Bojin desktop app is not running'), {
+        throw Object.assign(new Error('GardenFlow desktop app is not running'), {
             code: 'APP_NOT_RUNNING',
             phase: 'bridge',
             retryable: true,
@@ -90,7 +90,7 @@ function readDescriptor(): BrowserCaptureBridgeDescriptor {
         || parsed.ready !== true
         || String(parsed.hostAuthToken || '').length < 32
     ) {
-        throw Object.assign(new Error('Bojin Desktop Bridge descriptor is incompatible'), {
+        throw Object.assign(new Error('GardenFlow Desktop Bridge descriptor is incompatible'), {
             code: 'BROWSER_PROTOCOL_MISMATCH',
             phase: 'bridge',
             retryable: false,
@@ -152,7 +152,7 @@ export class DesktopBridgeHostClient {
             const candidate = net.createConnection(endpointPath);
             const timer = setTimeout(() => {
                 candidate.destroy();
-                reject(Object.assign(new Error('Bojin Desktop Bridge connection timed out'), {
+                reject(Object.assign(new Error('GardenFlow Desktop Bridge connection timed out'), {
                     code: 'APP_BRIDGE_UNAVAILABLE',
                     phase: 'bridge',
                     retryable: true,
@@ -177,7 +177,7 @@ export class DesktopBridgeHostClient {
         socket.on('close', () => {
             this.socket = null;
             this.hello = null;
-            this.rejectAll(Object.assign(new Error('Bojin Desktop Bridge disconnected'), {
+            this.rejectAll(Object.assign(new Error('GardenFlow Desktop Bridge disconnected'), {
                 code: 'APP_BRIDGE_UNAVAILABLE',
                 phase: 'bridge',
                 retryable: true,
@@ -452,7 +452,7 @@ export async function runBrowserNativeHost(options: BrowserNativeHostRuntimeOpti
                     id,
                     result: {
                         ok: true,
-                        hostName: 'com.redbox.browser_control',
+                        hostName: 'com.gardenflow.browser_control',
                         hostInstanceId: HOST_INSTANCE_ID,
                         appVersion: String(hello?.appVersion || APP_VERSION),
                         bridgeProtocolVersion: BROWSER_CAPTURE_BRIDGE_PROTOCOL_VERSION,

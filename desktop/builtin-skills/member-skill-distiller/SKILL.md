@@ -1,7 +1,7 @@
 ---
 name: member-skill-distiller
 description: Distill team members from profile, files, and YouTube subtitles into session-activated member skills.
-allowedRuntimeModes: [advisor-discussion, chatroom, wander, redclaw]
+allowedRuntimeModes: [advisor-discussion, chatroom, wander, gardenflow]
 allowedTools: [resource]
 autoActivate: false
 activationScope: turn

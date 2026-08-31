@@ -17,14 +17,14 @@ export { CalculatorTool } from './calculatorTool';
 export { ListDirTool } from './listDirTool'; // Legacy list
 export { ExploreWorkspaceTool } from './exploreWorkspaceTool';
 export { SaveMemoryTool } from './memoryTool';
-export { RedClawUpdateProfileDocTool, RedClawUpdateCreatorProfileTool } from './creatorProfileTool';
+export { GardenFlowUpdateProfileDocTool, GardenFlowUpdateCreatorProfileTool } from './creatorProfileTool';
 export {
-    RedClawCreateProjectTool,
-    RedClawSaveCopyPackTool,
-    RedClawSaveImagePackTool,
-    RedClawSaveRetrospectiveTool,
-    RedClawListProjectsTool,
-} from './redclawTool';
+    GardenFlowCreateProjectTool,
+    GardenFlowSaveCopyPackTool,
+    GardenFlowSaveImagePackTool,
+    GardenFlowSaveRetrospectiveTool,
+    GardenFlowListProjectsTool,
+} from './gardenflowTool';
 export { LspTool } from './lspTool';
 export { TodoWriteTool, TodoReadTool } from './todoTool';
 export { PlanModeEnterTool, PlanModeExitTool } from './planTool';
@@ -57,7 +57,7 @@ const ensureBuiltinToolDescriptorsRegistered = (): void => {
     }
     builtinToolsRegistered = true;
 
-    const publicAllContexts: BuiltinToolPack[] = ['redclaw', 'knowledge', 'chatroom', 'diagnostics'];
+    const publicAllContexts: BuiltinToolPack[] = ['gardenflow', 'knowledge', 'chatroom', 'diagnostics'];
     const developerOnlyContexts: BuiltinToolPack[] = ['diagnostics'];
     const register = (descriptor: Parameters<typeof registerBuiltinToolDescriptor>[0]) => {
         registerBuiltinToolDescriptor(descriptor);
@@ -96,9 +96,9 @@ const ensureBuiltinToolDescriptorsRegistered = (): void => {
     register({
         name: 'app_cli',
         displayName: 'App CLI',
-        description: 'CLI-style app control layer for spaces, manuscripts, media, RedClaw and settings.',
+        description: 'CLI-style app control layer for spaces, manuscripts, media, GardenFlow and settings.',
         kind: ToolKind.Execute,
-        contexts: ['redclaw', 'diagnostics'],
+        contexts: ['gardenflow', 'diagnostics'],
         visibility: 'public',
         requiresContext: null,
         preconditions: ['command must use supported namespace/action'],
@@ -113,7 +113,7 @@ const ensureBuiltinToolDescriptorsRegistered = (): void => {
         displayName: 'Generate Image',
         description: 'Typed image generation. Standalone by default, with optional explicit XHS image-slot binding. Returned absolute paths can be used directly as video references.',
         kind: ToolKind.Execute,
-        contexts: ['redclaw', 'diagnostics'],
+        contexts: ['gardenflow', 'diagnostics'],
         visibility: 'public',
         requiresContext: null,
         preconditions: ['prompt is required', 'notePath and slotId are optional but must be supplied together'],
@@ -128,7 +128,7 @@ const ensureBuiltinToolDescriptorsRegistered = (): void => {
         displayName: 'Generate Video',
         description: 'Typed standalone or structured-note video generation with explicit referenceImages, first/last frames, continuation, and driving audio.',
         kind: ToolKind.Execute,
-        contexts: ['redclaw', 'diagnostics'],
+        contexts: ['gardenflow', 'diagnostics'],
         visibility: 'public',
         requiresContext: null,
         preconditions: ['prompt is required for standalone generation', 'reference inputs must match generationMode'],
@@ -143,7 +143,7 @@ const ensureBuiltinToolDescriptorsRegistered = (): void => {
         displayName: 'Generate Audio',
         description: 'Typed speech and voiceover audio generation with voice, language, speed, emotion, and format controls.',
         kind: ToolKind.Execute,
-        contexts: ['redclaw', 'diagnostics'],
+        contexts: ['gardenflow', 'diagnostics'],
         visibility: 'public',
         requiresContext: null,
         preconditions: ['text is required', 'voice service must be configured'],

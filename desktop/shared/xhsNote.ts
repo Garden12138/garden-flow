@@ -98,7 +98,7 @@ export interface XhsNotePackageAsset {
 }
 
 export interface XhsNotePackageManifest {
-    schema: 'redclaw-xiaohongshu-material-package';
+    schema: 'gardenflow-xiaohongshu-material-package';
     schemaVersion: typeof XHS_NOTE_SCHEMA_VERSION;
     noteType: XhsNoteType;
     revision: number;
@@ -328,7 +328,7 @@ export function createXhsNotePackageManifest(input: {
     exportedAt?: string;
 }): XhsNotePackageManifest {
     return {
-        schema: 'redclaw-xiaohongshu-material-package',
+        schema: 'gardenflow-xiaohongshu-material-package',
         schemaVersion: XHS_NOTE_SCHEMA_VERSION,
         noteType: input.document.noteType,
         revision: input.document.revision,

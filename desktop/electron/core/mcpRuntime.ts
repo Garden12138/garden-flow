@@ -87,7 +87,7 @@ class StdioJsonRpcClient {
         tools: {},
       },
       clientInfo: {
-        name: 'Bojin',
+        name: 'GardenFlow',
         version: MCP_CLIENT_VERSION,
       },
     });
@@ -394,7 +394,7 @@ export async function listMcpTools(server: McpServerConfig): Promise<McpToolInfo
     params: {
       protocolVersion: MCP_PROTOCOL_VERSION,
       capabilities: { tools: {} },
-      clientInfo: { name: 'Bojin', version: MCP_CLIENT_VERSION },
+      clientInfo: { name: 'GardenFlow', version: MCP_CLIENT_VERSION },
     },
   }, headers);
   const sessionHeader = init.sessionId ? { ...headers, 'mcp-session-id': init.sessionId } : headers;
@@ -448,7 +448,7 @@ export async function callMcpTool(
     params: {
       protocolVersion: MCP_PROTOCOL_VERSION,
       capabilities: { tools: {} },
-      clientInfo: { name: 'Bojin', version: MCP_CLIENT_VERSION },
+      clientInfo: { name: 'GardenFlow', version: MCP_CLIENT_VERSION },
     },
   }, headers);
   const sessionHeader = init.sessionId ? { ...headers, 'mcp-session-id': init.sessionId } : headers;

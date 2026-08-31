@@ -208,7 +208,7 @@ function queueMode(value: unknown): 'free_creation' | 'ai_generation' {
 function providerKeyFor(kind: string, request: Record<string, unknown>): string {
   const explicit = optionalText(request.providerKey) || optionalText(request.provider);
   if (explicit) return explicit;
-  if (kind === 'video' || kind === 'video_sequence') return 'redbox-official';
+  if (kind === 'video' || kind === 'video_sequence') return 'gardenflow-official';
   if (kind === 'audio' || kind === 'audio_sequence' || kind === 'voice_clone') return 'voice-gateway';
   return optionalText(request.providerTemplate) || 'openai-compatible';
 }
@@ -455,7 +455,7 @@ async function uploadRemoteTempFile(filePath: string, payload: Record<string, un
   const settings = readSettings();
   const endpoint = normalizeApiBaseUrl(endpointFromRequest(payload, settings));
   const apiKey = apiKeyFromRequest(payload, settings);
-  if (!endpoint || !apiKey || !/api\.ziz\.hk|redbox/i.test(endpoint)) return null;
+  if (!endpoint || !apiKey || !/api\.ziz\.hk|gardenflow/i.test(endpoint)) return null;
   const bytes = await fs.readFile(filePath);
   const contentType = text(payload.contentType) || 'application/octet-stream';
   const keyPrefix = text(payload.keyPrefix) || 'ai/digital-human';
@@ -494,7 +494,7 @@ export async function stageGenerationTempFile(payload: Record<string, unknown>):
     error: error instanceof Error ? error.message : String(error),
   }));
   if (remote?.success) return remote;
-  const targetDir = path.join(getWorkspacePaths().base, '.redbox', 'media-runtime', 'uploads');
+  const targetDir = path.join(getWorkspacePaths().base, '.gardenflow', 'media-runtime', 'uploads');
   await fs.mkdir(targetDir, { recursive: true });
   const targetPath = path.join(targetDir, `${Date.now()}-${path.basename(sourcePath).replace(/[^a-zA-Z0-9._-]+/g, '_')}`);
   await fs.copyFile(sourcePath, targetPath);
@@ -563,7 +563,7 @@ export class MediaGenerationJobRegistry extends EventEmitter {
   private writeQueue: Promise<void> = Promise.resolve();
 
   private statePath(): string {
-    return path.join(getWorkspacePaths().base, '.redbox', 'media-runtime', 'media-jobs.json');
+    return path.join(getWorkspacePaths().base, '.gardenflow', 'media-runtime', 'media-jobs.json');
   }
 
   private async ensureLoaded(): Promise<void> {

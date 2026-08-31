@@ -196,12 +196,12 @@ const INTERNAL_PROTOCOL_BLOCKS = [
   /<task-notification[\s\S]*?<\/task-notification>/gi,
 
   // --- 配置注入标签（interactive_runtime_shared.rs）---
-  /<redclaw_agent_md[\s\S]*?<\/redclaw_agent_md>/gi,
-  /<redclaw_soul_md\b[\s\S]*?<\/redclaw_soul_md>/gi,
-  /<redclaw_identity_md[\s\S]*?<\/redclaw_identity_md>/gi,
-  /<redclaw_user_md[\s\S]*?<\/redclaw_user_md>/gi,
-  /<redclaw_creator_profile_md[\s\S]*?<\/redclaw_creator_profile_md>/gi,
-  /<redclaw_bootstrap[\s\S]*?<\/redclaw_bootstrap>/gi,
+  /<gardenflow_agent_md[\s\S]*?<\/gardenflow_agent_md>/gi,
+  /<gardenflow_soul_md\b[\s\S]*?<\/gardenflow_soul_md>/gi,
+  /<gardenflow_identity_md[\s\S]*?<\/gardenflow_identity_md>/gi,
+  /<gardenflow_user_md[\s\S]*?<\/gardenflow_user_md>/gi,
+  /<gardenflow_creator_profile_md[\s\S]*?<\/gardenflow_creator_profile_md>/gi,
+  /<gardenflow_bootstrap[\s\S]*?<\/gardenflow_bootstrap>/gi,
 
   // --- Bracket 风格协议块（有闭合）---
   /\[KnowledgeReferences\][\s\S]*?\[\/KnowledgeReferences\]/gi,
@@ -663,10 +663,10 @@ const TEXT_LINK_EXTENSIONS = new Set([
   'lock',
 ]);
 const ARCHIVE_LINK_EXTENSIONS = new Set(['zip', 'rar', '7z', 'tar', 'gz', 'tgz']);
-const PREVIEW_VIRTUAL_PATH_RE = /^(workspace|knowledge|manuscripts|media|cover|redclaw):\/\/.+/i;
+const PREVIEW_VIRTUAL_PATH_RE = /^(workspace|knowledge|manuscripts|media|cover|gardenflow):\/\/.+/i;
 const PREVIEW_PATH_LINKIFY_EXT_PATTERN = '(?:png|jpe?g|webp|gif|bmp|svg|avif|ico|tiff?|mp4|webm|mov|m4v|mkv|avi|ogv|mp3|wav|m4a|flac|aac|ogg|oga|opus|pdf|docx?|odt|pptx?|odp|xlsx?|ods|html?|md|markdown|redpost|redvideo|thrive|txt|srt|vtt|diff|patch|json|csv|tsv|ya?ml|toml|ini|conf|config|env|xml|log|sql|sh|bash|zsh|fish|ts|tsx|js|jsx|mjs|cjs|rs|py|go|java|c|cpp|cc|cxx|h|hpp|hh|hxx|css|scss|sass|less|vue|svelte|astro|rb|php|swift|kt|kts|scala|r|lua|pl|pm|dart|dockerfile|lock|zip|rar|7z|tar|gz|tgz)';
 const PREVIEW_PATH_LINKIFY_RE = new RegExp(
-  String.raw`(^|[\s([{])((?:(?:workspace|knowledge|manuscripts|media|cover|redclaw):\/\/|file:\/\/|local-file:\/\/|redbox-asset:\/\/asset\/|[A-Za-z]:[\\/]|\\\\|\/|\.{1,2}[\\/]|[A-Za-z0-9._@ -]+[\\/])[^<>"'\n\r]*?\.${PREVIEW_PATH_LINKIFY_EXT_PATTERN})(?=$|[\s)\]},.!?;:'">])`,
+  String.raw`(^|[\s([{])((?:(?:workspace|knowledge|manuscripts|media|cover|gardenflow):\/\/|file:\/\/|local-file:\/\/|gardenflow-asset:\/\/asset\/|[A-Za-z]:[\\/]|\\\\|\/|\.{1,2}[\\/]|[A-Za-z0-9._@ -]+[\\/])[^<>"'\n\r]*?\.${PREVIEW_PATH_LINKIFY_EXT_PATTERN})(?=$|[\s)\]},.!?;:'">])`,
   'gi',
 );
 

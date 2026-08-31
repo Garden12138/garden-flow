@@ -1,4 +1,4 @@
-# WWUD Bojin Model Schema
+# WWUD GardenFlow Model Schema
 
 Store learned preferences as compact, evidence-backed rules.
 
@@ -6,7 +6,7 @@ Store learned preferences as compact, evidence-backed rules.
 
 - `identity`: user role, operator role, creator role, and active workspace.
 - `decision_defaults`: stable rules that apply across the app.
-- `surface_preferences`: per-surface rules for RedClaw, Wander, chat, automation, manuscript editor, media/video, settings, skills, and release flows.
+- `surface_preferences`: per-surface rules for GardenFlow, Wander, chat, automation, manuscript editor, media/video, settings, skills, and release flows.
 - `role_models`: creator profiles, advisor/member reasoning style, and known boundaries.
 - `approval_policy`: what can be inferred, what must be escalated, and what evidence is required.
 - `learning_events`: append-only observations from approvals, corrections, and choices.
@@ -15,7 +15,7 @@ Store learned preferences as compact, evidence-backed rules.
 
 ```json
 {
-  "source": "redclaw|wander|automation|chat|advisor|manuscript|media|settings|release",
+  "source": "gardenflow|wander|automation|chat|advisor|manuscript|media|settings|release",
   "decision": "short decision context",
   "chosen": "preferred option",
   "rejected": "rejected option or n/a",

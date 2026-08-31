@@ -1,3 +1,4 @@
+import compatibility from '../../../shared/brandCompatibility.cjs';
 import { z } from 'zod';
 import path from 'node:path';
 import { constants as fsConstants } from 'node:fs';
@@ -44,17 +45,17 @@ import {
     updateUserMemoryInFile,
 } from '../fileMemoryStore';
 import {
-    createRedClawProject,
-    getRedClawProject,
-    listRedClawProjects,
-    saveRedClawCopyPack,
-    saveRedClawImagePack,
-    saveRedClawRetrospective,
-    type RedClawAuthoringTaskType,
-    type RedClawContentPlatform,
-    type RedClawImagePrompt,
-    type RedClawSourceMode,
-} from '../redclawStore';
+    createGardenFlowProject,
+    getGardenFlowProject,
+    listGardenFlowProjects,
+    saveGardenFlowCopyPack,
+    saveGardenFlowImagePack,
+    saveGardenFlowRetrospective,
+    type GardenFlowAuthoringTaskType,
+    type GardenFlowContentPlatform,
+    type GardenFlowImagePrompt,
+    type GardenFlowSourceMode,
+} from '../gardenflowStore';
 import {
     listMediaAssets,
     bindMediaAssetToManuscript,
@@ -146,7 +147,7 @@ import {
 } from '../../../shared/manuscriptFiles';
 
 const AppCliParamsSchema = z.object({
-    command: z.string().min(1).describe('CLI command. Example: "redclaw list --limit 20"'),
+    command: z.string().min(1).describe('CLI command. Example: "gardenflow list --limit 20"'),
     payload: z.record(z.any()).optional().describe('Optional structured payload for complex commands.'),
 });
 
@@ -253,7 +254,7 @@ interface XhsGenerationBindingTarget {
     completionScope: 'note' | 'slot';
 }
 
-const normalizeRedClawPlatform = (value: unknown): RedClawContentPlatform | undefined => {
+const normalizeGardenFlowPlatform = (value: unknown): GardenFlowContentPlatform | undefined => {
     const normalized = String(value || '').trim();
     if (normalized === 'wechat_official_account' || normalized === 'xiaohongshu') {
         return normalized;
@@ -261,7 +262,7 @@ const normalizeRedClawPlatform = (value: unknown): RedClawContentPlatform | unde
     return undefined;
 };
 
-const normalizeRedClawTaskType = (value: unknown): RedClawAuthoringTaskType | undefined => {
+const normalizeGardenFlowTaskType = (value: unknown): GardenFlowAuthoringTaskType | undefined => {
     const normalized = String(value || '').trim();
     if (normalized === 'expand_from_xhs' || normalized === 'direct_write') {
         return normalized;
@@ -269,7 +270,7 @@ const normalizeRedClawTaskType = (value: unknown): RedClawAuthoringTaskType | un
     return undefined;
 };
 
-const normalizeRedClawSourceMode = (value: unknown): RedClawSourceMode | undefined => {
+const normalizeGardenFlowSourceMode = (value: unknown): GardenFlowSourceMode | undefined => {
     const normalized = String(value || '').trim();
     if (normalized === 'manual' || normalized === 'knowledge' || normalized === 'manuscript') {
         return normalized;
@@ -285,7 +286,7 @@ const CONCURRENCY_SAFE_APP_CLI_ACTIONS = new Map<string, Set<string>>([
     ['knowledge', new Set(['list', 'get', 'search'])],
     ['advisors', new Set(['list', 'get', 'search'])],
     ['memory', new Set(['list', 'get', 'search'])],
-    ['redclaw', new Set(['list', 'get', 'status'])],
+    ['gardenflow', new Set(['list', 'get', 'status'])],
     ['media', new Set(['list', 'get', 'search'])],
     ['video-edit', new Set(['list', 'get'])],
     ['subjects', new Set(['list', 'get', 'search'])],
@@ -323,7 +324,7 @@ function parseCommand(command: string): ParsedCommand {
         return { namespace: 'help', action: 'show', flags: {}, args: [] };
     }
 
-    while (tokens.length > 0 && ['app-cli', 'app_cli', 'redconvert', 'redconvert-cli'].includes(tokens[0].toLowerCase())) {
+    while (tokens.length > 0 && ['app-cli', 'app_cli', 'gardenflow-cli', ...compatibility.identity.legacy.cliExecutables].includes(tokens[0].toLowerCase())) {
         tokens.shift();
     }
 
@@ -331,8 +332,8 @@ function parseCommand(command: string): ParsedCommand {
         return { namespace: 'help', action: 'show', flags: {}, args: [] };
     }
 
-    const namespace = (tokens.shift() || 'help').toLowerCase();
-    const actionCandidate = tokens[0] && !tokens[0].startsWith('--') ? tokens.shift() : undefined;
+    const namespace = compatibility.canonicalKey((tokens.shift() || 'help').toLowerCase());
+    const actionCandidate = tokens[0] && !tokens[0].startsWith('--') ? compatibility.canonicalKey(tokens.shift()!.toLowerCase()) : undefined;
     const action = (actionCandidate || 'list').toLowerCase();
 
     const flags: Record<string, FlagValue> = {};
@@ -468,7 +469,7 @@ function dedupeList(input: string[], limit?: number): string[] {
     return output;
 }
 
-/** 会创建/删除持久后台任务的 redclaw 动作，需在前台会话由用户确认。 */
+/** 会创建/删除持久后台任务的 gardenflow 动作，需在前台会话由用户确认。 */
 const AUTOMATION_TASK_MUTATION_ACTIONS = new Set([
     'schedule-add',
     'schedule-remove',
@@ -476,7 +477,7 @@ const AUTOMATION_TASK_MUTATION_ACTIONS = new Set([
     'long-remove',
 ]);
 
-/** 执行成功后需要在聊天里回显任务卡片的 redclaw 动作。 */
+/** 执行成功后需要在聊天里回显任务卡片的 gardenflow 动作。 */
 const AUTOMATION_TASK_UI_HINT_ACTIONS = new Set([
     'schedule-add',
     'schedule-update',
@@ -495,7 +496,7 @@ function isLongCycleAutomationAction(action: string): boolean {
 }
 
 function buildAutomationTaskUiHint(parsed: ParsedCommand, result: unknown): AutomationTaskUiHint | null {
-    if (parsed.namespace !== 'redclaw') return null;
+    if (parsed.namespace !== 'gardenflow') return null;
     if (!AUTOMATION_TASK_UI_HINT_ACTIONS.has(parsed.action)) return null;
     if (!result || typeof result !== 'object' || Array.isArray(result)) return null;
 
@@ -599,8 +600,8 @@ function inferVideoGenerationMode(
 const APP_CLI_NAMESPACE_HELP: Record<string, { summary: string; actions: string[]; examples: string[] }> = {
     work: {
         summary: 'Manage unified work items and ready/blocked states.',
-        actions: ['list', 'ready', 'get', 'create', 'update', 'link', 'dep-add', 'dep-remove', 'promote-redclaw', 'schedule-add', 'schedule-update', 'cycle-add', 'cycle-update', 'run-now'],
-        examples: ['work ready', 'work create --title "写一条效率工具笔记" --type redclaw-note', 'work schedule-add --title "每晚巡检选题库" --prompt "检查今日新增素材" --mode daily --time 22:30'],
+        actions: ['list', 'ready', 'get', 'create', 'update', 'link', 'dep-add', 'dep-remove', 'promote-gardenflow', 'schedule-add', 'schedule-update', 'cycle-add', 'cycle-update', 'run-now'],
+        examples: ['work ready', 'work create --title "写一条效率工具笔记" --type gardenflow-note', 'work schedule-add --title "每晚巡检选题库" --prompt "检查今日新增素材" --mode daily --time 22:30'],
     },
     spaces: {
         summary: 'Manage workspaces/spaces.',
@@ -634,10 +635,10 @@ const APP_CLI_NAMESPACE_HELP: Record<string, { summary: string; actions: string[
         actions: ['list', 'get', 'search', 'add', 'update', 'delete'],
         examples: ['memory list', 'memory add --content "用户偏好短句风格" --type preference'],
     },
-    redclaw: {
-        summary: 'Manage RedClaw projects and automation.',
+    gardenflow: {
+        summary: 'Manage GardenFlow projects and automation.',
         actions: ['list', 'get', 'create', 'save-copy', 'save-image', 'save-retro', 'runner-status', 'runner-start', 'heartbeat-set', 'schedule-add', 'schedule-update', 'long-add', 'long-update'],
-        examples: ['redclaw create --goal "做一条民宿选题" --platform xiaohongshu', 'redclaw runner-status'],
+        examples: ['gardenflow create --goal "做一条民宿选题" --platform xiaohongshu', 'gardenflow runner-status'],
     },
     media: {
         summary: 'List media and bind assets to manuscripts.',
@@ -741,8 +742,8 @@ function helpText(topic?: string): string {
                     'Mode rules:',
                     '- text-to-video: 不传参考图；只根据文字生成视频。',
                     '- reference-guided: 传 1 到 5 张参考图；主要复用这些图中的主体、元素、风格和构图线索，不是首尾帧过渡。',
-                    '- first-last-frame: 传 2 张参考图，并按“首帧,尾帧”顺序传入；在 Bojin 官方路由中会映射成 first_last_frame + media[]。',
-                    '- continuation: 传 1 段起始视频 `--first-clip`；在 Bojin 官方路由中会映射成 continuation + media[]。',
+                    '- first-last-frame: 传 2 张参考图，并按“首帧,尾帧”顺序传入；在 GardenFlow 官方路由中会映射成 first_last_frame + media[]。',
+                    '- continuation: 传 1 段起始视频 `--first-clip`；在 GardenFlow 官方路由中会映射成 continuation + media[]。',
                     '- 若未显式传 mode，app_cli 只会做安全兜底：0 个参考输入=文生视频，>=1 张参考图=参考图视频。首尾帧模式必须显式指定。',
                     '',
                     'Generate options:',
@@ -797,7 +798,7 @@ function helpText(topic?: string): string {
         '',
         'Examples:',
         '- help work',
-        '- help redclaw',
+        '- help gardenflow',
         '- help manuscripts',
         '- help mcp',
         '',
@@ -891,7 +892,7 @@ function createEmptyOtioTimeline(title: string) {
             ],
         },
         metadata: {
-            owner: 'redbox',
+            owner: 'gardenflow',
             engine: 'ai-editing',
             version: 1,
             sourceRefs: [],
@@ -1113,7 +1114,7 @@ let resolvedFfmpegCommandCache = '';
 
 async function resolveFfmpegCommand(): Promise<string> {
     if (resolvedFfmpegCommandCache) return resolvedFfmpegCommandCache;
-    const envPath = String(process.env.REDCONVERT_FFMPEG_PATH || process.env.FFMPEG_PATH || '').trim();
+    const envPath = String(process.env.GARDENFLOW_FFMPEG_PATH || process.env.FFMPEG_PATH || '').trim();
     const candidates: string[] = [];
     if (envPath) candidates.push(envPath.includes('app.asar') ? envPath.replace('app.asar', 'app.asar.unpacked') : envPath);
 
@@ -1159,7 +1160,7 @@ async function resolveFfmpegCommand(): Promise<string> {
         }
     }
 
-    const allowSystemFallback = String(process.env.REDCONVERT_ALLOW_SYSTEM_FFMPEG || '').trim().toLowerCase();
+    const allowSystemFallback = String(process.env.GARDENFLOW_ALLOW_SYSTEM_FFMPEG || '').trim().toLowerCase();
     if (allowSystemFallback === '1' || allowSystemFallback === 'true' || allowSystemFallback === 'yes') {
         if (await canRunFfmpeg('ffmpeg')) {
             resolvedFfmpegCommandCache = 'ffmpeg';
@@ -1457,7 +1458,7 @@ async function exportVideoOrAudioPackage(params: {
 export class AppCliTool extends DeclarativeTool<typeof AppCliParamsSchema> {
     readonly name = 'app_cli';
     readonly displayName = 'App CLI';
-    readonly description = 'CLI-style app control layer. Manage spaces/manuscripts/redclaw/media/subjects/image/settings/skills/memory with terminal-like commands.';
+    readonly description = 'CLI-style app control layer. Manage spaces/manuscripts/gardenflow/media/subjects/image/settings/skills/memory with terminal-like commands.';
     readonly kind = ToolKind.Execute;
     readonly parameterSchema = AppCliParamsSchema;
     readonly requiresConfirmation = false;
@@ -1471,7 +1472,7 @@ export class AppCliTool extends DeclarativeTool<typeof AppCliParamsSchema> {
      */
     getConfirmationDetails(params: AppCliParams): ToolConfirmationDetails | null {
         const parsed = parseCommand(params.command);
-        if (parsed.namespace !== 'redclaw' || !AUTOMATION_TASK_MUTATION_ACTIONS.has(parsed.action)) {
+        if (parsed.namespace !== 'gardenflow' || !AUTOMATION_TASK_MUTATION_ACTIONS.has(parsed.action)) {
             return null;
         }
 
@@ -1840,7 +1841,7 @@ export class AppCliTool extends DeclarativeTool<typeof AppCliParamsSchema> {
                 return {
                     success: true,
                     llmContent: lines.join('\n'),
-                    display: `redclaw ${parsed.action}`,
+                    display: `gardenflow ${parsed.action}`,
                     data: {
                         kind: 'automation-task',
                         uiHint: automationTaskHint,
@@ -1891,8 +1892,8 @@ export class AppCliTool extends DeclarativeTool<typeof AppCliParamsSchema> {
                 return this.handleAdvisors(parsed, payload);
             case 'memory':
                 return this.handleMemory(parsed, payload);
-            case 'redclaw':
-                return this.handleRedclaw(parsed, payload);
+            case 'gardenflow':
+                return this.handleGardenFlow(parsed, payload);
             case 'media':
                 return this.handleMedia(parsed, payload);
             case 'subjects':
@@ -2024,13 +2025,13 @@ export class AppCliTool extends DeclarativeTool<typeof AppCliParamsSchema> {
             const dependencyId = requireString(readFlag(parsed.flags, 'depends-on', 'dependency-id') || payload.dependsOn || payload.dependencyId, 'dependencyId');
             return store.removeDependency(id, dependencyId);
         }
-        if (action === 'promote-redclaw') {
+        if (action === 'promote-gardenflow') {
             const id = requireString(readFlag(parsed.flags, 'id') || payload.id, 'id');
             const existing = await store.getWorkItem(id);
             if (!existing) {
                 throw new Error(`Work item not found: ${id}`);
             }
-            const result = await createRedClawProject({
+            const result = await createGardenFlowProject({
                 goal: readFlag(parsed.flags, 'goal') || (payload.goal as string | undefined) || existing.title,
                 targetAudience: readFlag(parsed.flags, 'audience', 'target-audience') || (payload.targetAudience as string | undefined),
                 tone: readFlag(parsed.flags, 'tone') || (payload.tone as string | undefined),
@@ -2078,8 +2079,8 @@ export class AppCliTool extends DeclarativeTool<typeof AppCliParamsSchema> {
                     runAt: (readFlag(parsed.flags, 'run-at', 'at') || payload.runAt) as string | undefined,
                 },
             });
-            const mod = await import('../redclawBackgroundRunner');
-            const runner = mod.getRedClawBackgroundRunner();
+            const mod = await import('../gardenflowBackgroundRunner');
+            const runner = mod.getGardenFlowBackgroundRunner();
             const task = await runner.addScheduledTask({
                 name: title,
                 mode,
@@ -2109,8 +2110,8 @@ export class AppCliTool extends DeclarativeTool<typeof AppCliParamsSchema> {
             const weekdays = weekdaysInput !== undefined
                 ? parseList(weekdaysInput).map((item) => Number(item)).filter((n) => Number.isFinite(n)).map((n) => Math.max(0, Math.min(6, Math.floor(n))))
                 : undefined;
-            const mod = await import('../redclawBackgroundRunner');
-            const runner = mod.getRedClawBackgroundRunner();
+            const mod = await import('../gardenflowBackgroundRunner');
+            const runner = mod.getGardenFlowBackgroundRunner();
             const task = await runner.updateScheduledTask(scheduledTaskId, {
                 name: (readFlag(parsed.flags, 'title', 'name') || payload.title || payload.name) as string | undefined,
                 mode: (readFlag(parsed.flags, 'mode') || payload.mode || undefined) as any,
@@ -2178,8 +2179,8 @@ export class AppCliTool extends DeclarativeTool<typeof AppCliParamsSchema> {
                     completedRounds: 0,
                 },
             });
-            const mod = await import('../redclawBackgroundRunner');
-            const runner = mod.getRedClawBackgroundRunner();
+            const mod = await import('../gardenflowBackgroundRunner');
+            const runner = mod.getGardenFlowBackgroundRunner();
             const task = await runner.addLongCycleTask({
                 name: title,
                 objective,
@@ -2203,8 +2204,8 @@ export class AppCliTool extends DeclarativeTool<typeof AppCliParamsSchema> {
             const subagentRoles = readFlag(parsed.flags, 'subagent-roles', 'roles') !== undefined || payload.subagentRoles !== undefined
                 ? parseList(readFlag(parsed.flags, 'subagent-roles', 'roles') || payload.subagentRoles)
                 : undefined;
-            const mod = await import('../redclawBackgroundRunner');
-            const runner = mod.getRedClawBackgroundRunner();
+            const mod = await import('../gardenflowBackgroundRunner');
+            const runner = mod.getGardenFlowBackgroundRunner();
             const task = await runner.updateLongCycleTask(longCycleTaskId, {
                 name: (readFlag(parsed.flags, 'title', 'name') || payload.title || payload.name) as string | undefined,
                 objective: (readFlag(parsed.flags, 'objective') || payload.objective) as string | undefined,
@@ -2243,8 +2244,8 @@ export class AppCliTool extends DeclarativeTool<typeof AppCliParamsSchema> {
             const existing = await store.getWorkItem(id);
             if (!existing) throw new Error(`Work item not found: ${id}`);
             const metadata = (existing.metadata || {}) as Record<string, unknown>;
-            const mod = await import('../redclawBackgroundRunner');
-            const runner = mod.getRedClawBackgroundRunner();
+            const mod = await import('../gardenflowBackgroundRunner');
+            const runner = mod.getGardenFlowBackgroundRunner();
             if (metadata.scheduledTaskId) {
                 return runner.runScheduledTaskNow(String(metadata.scheduledTaskId));
             }
@@ -2972,28 +2973,28 @@ export class AppCliTool extends DeclarativeTool<typeof AppCliParamsSchema> {
         throw new Error(`Unsupported memory action: ${action}`);
     }
 
-    private async handleRedclaw(parsed: ParsedCommand, payload: Record<string, unknown>) {
+    private async handleGardenFlow(parsed: ParsedCommand, payload: Record<string, unknown>) {
         const action = parsed.action;
         const getRunner = async () => {
-            const mod = await import('../redclawBackgroundRunner');
-            return mod.getRedClawBackgroundRunner();
+            const mod = await import('../gardenflowBackgroundRunner');
+            return mod.getGardenFlowBackgroundRunner();
         };
         if (action === 'list') {
             const limit = parseNumber(readFlag(parsed.flags, 'limit') || payload.limit) || 20;
-            return listRedClawProjects(limit);
+            return listGardenFlowProjects(limit);
         }
         if (action === 'create') {
             const goal = requireString(readFlag(parsed.flags, 'goal') || payload.goal, 'goal');
-            return createRedClawProject({
+            return createGardenFlowProject({
                 goal,
-                platform: normalizeRedClawPlatform(readFlag(parsed.flags, 'platform') || payload.platform),
-                taskType: normalizeRedClawTaskType(readFlag(parsed.flags, 'task-type') || payload.taskType),
+                platform: normalizeGardenFlowPlatform(readFlag(parsed.flags, 'platform') || payload.platform),
+                taskType: normalizeGardenFlowTaskType(readFlag(parsed.flags, 'task-type') || payload.taskType),
                 targetAudience: readFlag(parsed.flags, 'audience', 'target-audience') || (payload.targetAudience as string | undefined),
                 tone: readFlag(parsed.flags, 'tone') || (payload.tone as string | undefined),
                 successCriteria: readFlag(parsed.flags, 'success', 'success-criteria') || (payload.successCriteria as string | undefined),
-                sourcePlatform: normalizeRedClawPlatform(readFlag(parsed.flags, 'source-platform') || payload.sourcePlatform),
+                sourcePlatform: normalizeGardenFlowPlatform(readFlag(parsed.flags, 'source-platform') || payload.sourcePlatform),
                 sourceNoteId: readFlag(parsed.flags, 'source-note-id') || (payload.sourceNoteId as string | undefined),
-                sourceMode: normalizeRedClawSourceMode(readFlag(parsed.flags, 'source-mode') || payload.sourceMode),
+                sourceMode: normalizeGardenFlowSourceMode(readFlag(parsed.flags, 'source-mode') || payload.sourceMode),
                 sourceTitle: readFlag(parsed.flags, 'source-title') || (payload.sourceTitle as string | undefined),
                 sourceManuscriptPath: readFlag(parsed.flags, 'source-manuscript-path') || (payload.sourceManuscriptPath as string | undefined),
                 tags: parseList(readFlag(parsed.flags, 'tags') || payload.tags),
@@ -3002,16 +3003,16 @@ export class AppCliTool extends DeclarativeTool<typeof AppCliParamsSchema> {
         }
         if (action === 'get') {
             const projectId = requireString(readFlag(parsed.flags, 'project-id', 'projectid') || payload.projectId, 'projectId');
-            return getRedClawProject(projectId);
+            return getGardenFlowProject(projectId);
         }
         if (action === 'save-copy') {
             const projectId = requireString(readFlag(parsed.flags, 'project-id', 'projectid') || payload.projectId, 'projectId');
             const titleOptions = parseList(readFlag(parsed.flags, 'titles', 'title-options') || payload.titleOptions);
             const content = requireString(readFlag(parsed.flags, 'content') || payload.content, 'content');
-            return saveRedClawCopyPack({
+            return saveGardenFlowCopyPack({
                 projectId,
-                platform: normalizeRedClawPlatform(readFlag(parsed.flags, 'platform') || payload.platform),
-                taskType: normalizeRedClawTaskType(readFlag(parsed.flags, 'task-type') || payload.taskType),
+                platform: normalizeGardenFlowPlatform(readFlag(parsed.flags, 'platform') || payload.platform),
+                taskType: normalizeGardenFlowTaskType(readFlag(parsed.flags, 'task-type') || payload.taskType),
                 titleOptions: titleOptions.length > 0 ? titleOptions : ['默认标题'],
                 finalTitle: readFlag(parsed.flags, 'final-title') || (payload.finalTitle as string | undefined),
                 summary: readFlag(parsed.flags, 'summary') || (payload.summary as string | undefined),
@@ -3021,9 +3022,9 @@ export class AppCliTool extends DeclarativeTool<typeof AppCliParamsSchema> {
                 coverTexts: parseList(readFlag(parsed.flags, 'cover-texts') || payload.coverTexts),
                 imageSuggestions: parseList(readFlag(parsed.flags, 'image-suggestions') || payload.imageSuggestions),
                 cta: readFlag(parsed.flags, 'cta') || (payload.cta as string | undefined),
-                sourcePlatform: normalizeRedClawPlatform(readFlag(parsed.flags, 'source-platform') || payload.sourcePlatform),
+                sourcePlatform: normalizeGardenFlowPlatform(readFlag(parsed.flags, 'source-platform') || payload.sourcePlatform),
                 sourceNoteId: readFlag(parsed.flags, 'source-note-id') || (payload.sourceNoteId as string | undefined),
-                sourceMode: normalizeRedClawSourceMode(readFlag(parsed.flags, 'source-mode') || payload.sourceMode),
+                sourceMode: normalizeGardenFlowSourceMode(readFlag(parsed.flags, 'source-mode') || payload.sourceMode),
                 sourceTitle: readFlag(parsed.flags, 'source-title') || (payload.sourceTitle as string | undefined),
                 sourceManuscriptPath: readFlag(parsed.flags, 'source-manuscript-path') || (payload.sourceManuscriptPath as string | undefined),
                 publishPlan: readFlag(parsed.flags, 'publish-plan') || (payload.publishPlan as string | undefined),
@@ -3031,7 +3032,7 @@ export class AppCliTool extends DeclarativeTool<typeof AppCliParamsSchema> {
         }
         if (action === 'save-image') {
             const projectId = requireString(readFlag(parsed.flags, 'project-id', 'projectid') || payload.projectId, 'projectId');
-            let images = (payload.images as RedClawImagePrompt[] | undefined) || [];
+            let images = (payload.images as GardenFlowImagePrompt[] | undefined) || [];
             if (!Array.isArray(images) || images.length === 0) {
                 const prompts = parseList(readFlag(parsed.flags, 'prompts') || payload.prompts);
                 images = prompts.map((prompt) => ({ prompt }));
@@ -3039,7 +3040,7 @@ export class AppCliTool extends DeclarativeTool<typeof AppCliParamsSchema> {
             if (!images.length) {
                 throw new Error('images/prompts is required');
             }
-            return saveRedClawImagePack({
+            return saveGardenFlowImagePack({
                 projectId,
                 coverPrompt: readFlag(parsed.flags, 'cover-prompt') || (payload.coverPrompt as string | undefined),
                 notes: readFlag(parsed.flags, 'notes') || (payload.notes as string | undefined),
@@ -3048,7 +3049,7 @@ export class AppCliTool extends DeclarativeTool<typeof AppCliParamsSchema> {
         }
         if (action === 'save-retro') {
             const projectId = requireString(readFlag(parsed.flags, 'project-id', 'projectid') || payload.projectId, 'projectId');
-            return saveRedClawRetrospective({
+            return saveGardenFlowRetrospective({
                 projectId,
                 metrics: {
                     views: parseNumber(readFlag(parsed.flags, 'views') || (payload.metrics as any)?.views),
@@ -3277,7 +3278,7 @@ export class AppCliTool extends DeclarativeTool<typeof AppCliParamsSchema> {
             const taskId = requireString(readFlag(parsed.flags, 'task-id', 'taskid') || payload.taskId, 'taskId');
             return runner.runLongCycleTaskNow(taskId);
         }
-        throw new Error(`Unsupported redclaw action: ${action}`);
+        throw new Error(`Unsupported gardenflow action: ${action}`);
     }
 
     private async handleSubjects(parsed: ParsedCommand, payload: Record<string, unknown>) {
@@ -4207,7 +4208,7 @@ export class AppCliTool extends DeclarativeTool<typeof AppCliParamsSchema> {
                         prompt: promptPrefix || `按已确认分镜生成《${snapshot.document.finalTitle || '小红书视频'}》`,
                         dataBuffer: finalBuffer,
                         mimeType: 'video/mp4',
-                        provider: 'redbox-composite',
+                        provider: 'gardenflow-composite',
                         model: Array.from(new Set(generatedClips.map((item) => item.model))).join('+'),
                         aspectRatio: snapshot.document.aspectRatio,
                         size: resolution,
@@ -4230,7 +4231,7 @@ export class AppCliTool extends DeclarativeTool<typeof AppCliParamsSchema> {
                     assetId: finalAsset.id,
                 });
                 return {
-                    provider: clipAssets.length > 1 ? 'redbox-composite' : generatedClips[0].provider,
+                    provider: clipAssets.length > 1 ? 'gardenflow-composite' : generatedClips[0].provider,
                     model: Array.from(new Set(generatedClips.map((item) => item.model))).join('+'),
                     generationMode: 'text-to-video',
                     aspectRatio: snapshot.document.aspectRatio,
@@ -4633,7 +4634,7 @@ export class AppCliTool extends DeclarativeTool<typeof AppCliParamsSchema> {
                 mcp_servers_json: typeof next.mcp_servers_json === 'string'
                     ? next.mcp_servers_json
                     : JSON.stringify(next.mcp_servers_json || []),
-                redclaw_compact_target_tokens: Number(next.redclaw_compact_target_tokens || 256000),
+                gardenflow_compact_target_tokens: Number(next.gardenflow_compact_target_tokens || 256000),
             });
             return { success: true, key, value };
         }

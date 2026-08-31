@@ -1,7 +1,7 @@
 import { getStoredMap, setStoredMap } from './storage.js';
 
-export const DOWNLOAD_EVENT_LOG_KEY = 'xwowBrowserDataAiDownloadEvents';
-export const DOWNLOAD_STATE_KEY = 'xwowBrowserDataAiDownloadState';
+export const DOWNLOAD_EVENT_LOG_KEY = 'gardenflowBrowserDataAiDownloadEvents';
+export const DOWNLOAD_STATE_KEY = 'gardenflowBrowserDataAiDownloadState';
 export const DOWNLOAD_WAIT_EVENT_KINDS = ['wait.started', 'wait.complete', 'wait.failed', 'wait.canceled', 'wait.timeout'];
 
 const downloadChangeListeners = new Set();
@@ -292,7 +292,7 @@ function notifyDownloadChangeListeners(event, options = {}) {
     try {
       listener(event);
     } catch (error) {
-      console.warn('[XWOW BrowserDataAI] download change listener failed', error);
+      console.warn('[GARDENFLOW BrowserDataAI] download change listener failed', error);
     }
   }
 }

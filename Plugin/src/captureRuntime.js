@@ -1,6 +1,6 @@
-(function installBojinCaptureRuntime() {
+(function installGardenFlowCaptureRuntime() {
   const VERSION = 1;
-  const RUNTIME_KEY = '__REDBOX_CAPTURE_RUNTIME__';
+  const RUNTIME_KEY = '__GARDENFLOW_CAPTURE_RUNTIME__';
 
   function normalizeText(value) {
     return String(value || '').replace(/\s+/g, ' ').trim();

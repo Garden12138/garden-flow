@@ -159,7 +159,7 @@ test('openai images uses url when gateway returns empty b64_json', async () => {
         const adapter = getImageProviderAdapter('openai-images', 'openai-compatible');
         const outputs = await adapter.generate({
             prompt: 'test image',
-            model: 'bojin-imgae-3.0',
+            model: 'gardenflow-imgae-3.0',
             endpoint: 'http://192.168.10.117:3000/v1',
             apiKey: 'test-key',
             provider: 'openai-compatible',

@@ -34,36 +34,36 @@ export function createAuthBridge(core: BridgeCore) {
   return {
     officialAuth: {
       bootstrap: (payload?: { reason?: string }) => core.invokeChannelGuarded(
-        'redbox-auth:bootstrap',
+        'gardenflow-auth:bootstrap',
         payload || {},
         {
           timeoutMs: 20000,
           fallback: { success: false, error: '官方账号恢复超时' },
         },
       ),
-      refresh: () => core.invokeChannel('redbox-auth:refresh'),
-      getConfig: () => core.invokeChannel('redbox-auth:get-config'),
-      setRealm: (payload: { realm: 'cn' | 'global' }) => core.invokeChannel('redbox-auth:set-realm', payload),
-      getMe: () => core.invokeChannel('redbox-auth:me'),
-      getPoints: () => core.invokeChannel('redbox-auth:points'),
-      getProducts: () => core.invokeChannel('redbox-auth:products'),
-      getProduct: (payload: { productId: string }) => core.invokeChannel('redbox-auth:product', payload),
-      getCallRecords: () => core.invokeChannel('redbox-auth:call-records'),
-      getWechatStatus: (payload: { sessionId: string }) => core.invokeChannel('redbox-auth:wechat-status', payload),
-      getWechatUrl: (payload?: { state?: string }) => core.invokeChannel('redbox-auth:wechat-url', payload || {}),
-      sendSmsCode: (payload: { phone: string }) => core.invokeChannel('redbox-auth:send-sms-code', payload),
+      refresh: () => core.invokeChannel('gardenflow-auth:refresh'),
+      getConfig: () => core.invokeChannel('gardenflow-auth:get-config'),
+      setRealm: (payload: { realm: 'cn' | 'global' }) => core.invokeChannel('gardenflow-auth:set-realm', payload),
+      getMe: () => core.invokeChannel('gardenflow-auth:me'),
+      getPoints: () => core.invokeChannel('gardenflow-auth:points'),
+      getProducts: () => core.invokeChannel('gardenflow-auth:products'),
+      getProduct: (payload: { productId: string }) => core.invokeChannel('gardenflow-auth:product', payload),
+      getCallRecords: () => core.invokeChannel('gardenflow-auth:call-records'),
+      getWechatStatus: (payload: { sessionId: string }) => core.invokeChannel('gardenflow-auth:wechat-status', payload),
+      getWechatUrl: (payload?: { state?: string }) => core.invokeChannel('gardenflow-auth:wechat-url', payload || {}),
+      sendSmsCode: (payload: { phone: string }) => core.invokeChannel('gardenflow-auth:send-sms-code', payload),
       loginSms: (payload: { phone: string; code: string; inviteCode?: string }) =>
-        core.invokeChannel('redbox-auth:login-sms', payload),
+        core.invokeChannel('gardenflow-auth:login-sms', payload),
       registerSms: (payload: { phone: string; code: string; inviteCode?: string }) =>
-        core.invokeChannel('redbox-auth:register-sms', payload),
-      logout: () => core.invokeChannel('redbox-auth:logout'),
+        core.invokeChannel('gardenflow-auth:register-sms', payload),
+      logout: () => core.invokeChannel('gardenflow-auth:logout'),
       createPagePayOrder: (payload: Record<string, unknown>) =>
-        core.invokeChannel('redbox-auth:create-page-pay-order', payload),
-      getOrderStatus: (payload: { outTradeNo: string }) => core.invokeChannel('redbox-auth:order-status', payload),
+        core.invokeChannel('gardenflow-auth:create-page-pay-order', payload),
+      getOrderStatus: (payload: { outTradeNo: string }) => core.invokeChannel('gardenflow-auth:order-status', payload),
       openPaymentForm: (payload: { paymentForm: string }) =>
-        core.invokeChannel('redbox-auth:open-payment-form', payload),
-      getPricing: () => core.invokeChannel('redbox-auth:pricing'),
-      refreshPricing: () => core.invokeChannel('redbox-auth:pricing-refresh'),
+        core.invokeChannel('gardenflow-auth:open-payment-form', payload),
+      getPricing: () => core.invokeChannel('gardenflow-auth:pricing'),
+      refreshPricing: () => core.invokeChannel('gardenflow-auth:pricing-refresh'),
     },
     llmReadiness: {
       getState: () => core.invokeChannelGuarded<LlmReadinessSnapshot>(

@@ -82,13 +82,13 @@ import type {
   ThrivePluginSummary,
 } from '../types';
 import {
-  REDBOX_OFFICIAL_VIDEO_BASE_URL,
-  REDBOX_OFFICIAL_VIDEO_MODELS,
-} from '../../shared/bojinVideo';
+  GARDENFLOW_OFFICIAL_VIDEO_BASE_URL,
+  GARDENFLOW_OFFICIAL_VIDEO_MODELS,
+} from '../../shared/gardenflowVideo';
 import {
-  isRedClawOnboardingCompleted,
-  type RedclawOnboardingState,
-} from './redclaw/onboardingState';
+  isGardenFlowOnboardingCompleted,
+  type GardenFlowOnboardingState,
+} from './gardenflow/onboardingState';
 import { hasOfficialAiPanel, loadOfficialAiPanelModule, type OfficialAiPanelProps } from '../features/official';
 import {
   ECOMMERCE_PLATFORM_GROUPS,
@@ -169,7 +169,7 @@ const DEVELOPER_MODE_UNLOCK_TAP_COUNT = 7;
 const DEVELOPER_MODE_TTL_MS = 24 * 60 * 60 * 1000;
 const SETTINGS_ACTIVATION_DEBOUNCE_MS = 80;
 const SETTINGS_TAB_POLL_DELAY_MS = 300;
-const FILE_INDEX_DASHBOARD_CACHE_KEY = 'redbox:file-index-dashboard:v1';
+const FILE_INDEX_DASHBOARD_CACHE_KEY = 'gardenflow:file-index-dashboard:v1';
 
 // 官方源以「私有 new-api 网关」形态呈现：baseURL 由代码锁定、令牌可编辑、无需账号登录。
 // 与闭源官方登录面板（hasOfficialAiPanel）互斥，避免两套鉴权形态同时出现。
@@ -200,7 +200,7 @@ const normalizeVideoModelList = (raw: unknown, selectedModel?: unknown): string[
   return normalized;
 };
 
-type VideoGenerationProviderPreset = 'bojin' | 'aliyun-bailian' | 'minimax' | 'new-api' | 'custom';
+type VideoGenerationProviderPreset = 'gardenflow' | 'aliyun-bailian' | 'minimax' | 'new-api' | 'custom';
 
 const PRIVATE_GATEWAY_VIDEO_MODEL_IDS = PRIVATE_GATEWAY_VIDEO_MODELS.map((item) => item.id);
 
@@ -240,14 +240,14 @@ const inferVideoProviderPreset = (
     return 'minimax';
   }
   if (
-    normalizedEndpoint === REDBOX_OFFICIAL_VIDEO_BASE_URL
+    normalizedEndpoint === GARDENFLOW_OFFICIAL_VIDEO_BASE_URL
     && normalizedModels.length > 0
     && normalizedModels.every((model) => model.startsWith('seedance-'))
   ) {
-    return 'bojin';
+    return 'gardenflow';
   }
   if (
-    declaredPreset === 'bojin'
+    declaredPreset === 'gardenflow'
     || declaredPreset === 'aliyun-bailian'
     || declaredPreset === 'minimax'
     || declaredPreset === 'new-api'
@@ -258,7 +258,7 @@ const inferVideoProviderPreset = (
 };
 
 const defaultVideoProviderName = (preset: VideoGenerationProviderPreset): string => {
-  if (preset === 'bojin') return 'Bojin Seedance';
+  if (preset === 'gardenflow') return 'GardenFlow Seedance';
   if (preset === 'aliyun-bailian') return '阿里云百炼 HappyHorse';
   if (preset === 'minimax') return 'MiniMax';
   if (preset === 'new-api') return `${APP_BRAND.displayName}私有网关`;
@@ -299,15 +299,15 @@ const normalizeVideoProviderConfigs = (
     const models = normalizeVideoModelList(record.models, model);
     const storedEndpoint = String(record.endpoint || '').trim();
     const preset = inferVideoProviderPreset(storedEndpoint, models, record.preset);
-    const endpointWasAssignedByWrongBojinMigration = (
+    const endpointWasAssignedByWrongGardenFlowMigration = (
       preset === 'aliyun-bailian'
-      && record.preset === 'bojin'
-      && storedEndpoint === REDBOX_OFFICIAL_VIDEO_BASE_URL
+      && record.preset === 'gardenflow'
+      && storedEndpoint === GARDENFLOW_OFFICIAL_VIDEO_BASE_URL
     );
-    const endpoint = endpointWasAssignedByWrongBojinMigration ? '' : storedEndpoint;
+    const endpoint = endpointWasAssignedByWrongGardenFlowMigration ? '' : storedEndpoint;
     const storedName = String(record.name || '').trim();
     const nameWasGeneratedForWrongPreset = (
-      (storedName === 'Bojin Seedance' && preset !== 'bojin')
+      (storedName === 'GardenFlow Seedance' && preset !== 'gardenflow')
       || (storedName === '阿里云百炼 HappyHorse' && preset !== 'aliyun-bailian')
       || (storedName === 'MiniMax' && preset !== 'minimax')
       || (storedName === '自定义视频服务商' && preset !== 'custom')
@@ -337,14 +337,14 @@ const normalizeVideoProviderConfigs = (
   });
   if (providers.length > 0) return providers;
 
-  const endpoint = String(legacy.endpoint || REDBOX_OFFICIAL_VIDEO_BASE_URL).trim();
+  const endpoint = String(legacy.endpoint || GARDENFLOW_OFFICIAL_VIDEO_BASE_URL).trim();
   const apiKey = String(legacy.apiKey || '').trim();
-  const model = String(legacy.model || REDBOX_OFFICIAL_VIDEO_MODELS['text-to-video']).trim();
+  const model = String(legacy.model || GARDENFLOW_OFFICIAL_VIDEO_MODELS['text-to-video']).trim();
   const models = normalizeVideoModelList(legacy.modelsJson, model);
   const preset = inferVideoProviderPreset(endpoint, models);
   return [{
-    id: preset === 'bojin'
-      ? 'video-provider-bojin'
+    id: preset === 'gardenflow'
+      ? 'video-provider-gardenflow'
       : preset === 'aliyun-bailian'
         ? 'video-provider-aliyun-bailian'
         : preset === 'minimax'
@@ -362,13 +362,13 @@ const normalizeVideoProviderConfigs = (
 };
 
 const createVideoProviderPreset = (preset: VideoGenerationProviderPreset): VideoGenerationProviderConfig => {
-  if (preset === 'bojin') {
-    const model = REDBOX_OFFICIAL_VIDEO_MODELS['text-to-video'];
+  if (preset === 'gardenflow') {
+    const model = GARDENFLOW_OFFICIAL_VIDEO_MODELS['text-to-video'];
     return {
       id: generateVideoProviderId(),
-      name: 'Bojin Seedance',
+      name: 'GardenFlow Seedance',
       preset,
-      endpoint: REDBOX_OFFICIAL_VIDEO_BASE_URL,
+      endpoint: GARDENFLOW_OFFICIAL_VIDEO_BASE_URL,
       apiKey: '',
       model,
       models: [model],
@@ -418,7 +418,7 @@ const createVideoProviderPreset = (preset: VideoGenerationProviderPreset): Video
   };
 };
 
-type RedclawProfileDraft = {
+type GardenFlowProfileDraft = {
   user: string;
   creatorProfile: string;
 };
@@ -430,7 +430,7 @@ type WorkspaceSpace = {
   updatedAt?: string;
 };
 
-const EMPTY_REDCLAW_PROFILE_DRAFT: RedclawProfileDraft = {
+const EMPTY_GARDENFLOW_PROFILE_DRAFT: GardenFlowProfileDraft = {
   user: '',
   creatorProfile: '',
 };
@@ -438,7 +438,7 @@ const EMPTY_REDCLAW_PROFILE_DRAFT: RedclawProfileDraft = {
 const DEFAULT_SPACE_ID = 'default';
 
 function teamAdvisorOrder(advisor: Advisor, index: number): number {
-  return Number.isFinite(advisor.redclawOrder) ? Number(advisor.redclawOrder) : index;
+  return Number.isFinite(advisor.gardenflowOrder) ? Number(advisor.gardenflowOrder) : index;
 }
 
 function sortTeamAdvisors(advisors: Advisor[]): Advisor[] {
@@ -516,7 +516,7 @@ function TeamSettingsSection({
         ) : (
           <div className="divide-y divide-border/70">
             {advisors.map((advisor) => {
-              const visible = advisor.redclawVisible !== false;
+              const visible = advisor.gardenflowVisible !== false;
               const busy = busyAdvisorId === advisor.id;
               const isDragging = draggingAdvisorId === advisor.id;
               return (
@@ -1104,14 +1104,14 @@ function clearCachedFileIndexDashboard() {
 
 export function Settings({
   isActive = true,
-  onOpenRedClawOnboarding,
-  redclawOnboardingVersion = 0,
+  onOpenGardenFlowOnboarding,
+  gardenflowOnboardingVersion = 0,
   navigationTarget,
   onReturn,
 }: {
   isActive?: boolean;
-  onOpenRedClawOnboarding?: () => void;
-  redclawOnboardingVersion?: number;
+  onOpenGardenFlowOnboarding?: () => void;
+  gardenflowOnboardingVersion?: number;
   navigationTarget?: SettingsNavigationTarget | null;
   onReturn?: () => void;
 }) {
@@ -1202,8 +1202,8 @@ export function Settings({
     voice_clone_model: DEFAULT_VOICE_CLONE_MODEL,
     video_endpoint: '',
     video_api_key: '',
-    video_model: String(REDBOX_OFFICIAL_VIDEO_MODELS['text-to-video']),
-    video_models_json: JSON.stringify([REDBOX_OFFICIAL_VIDEO_MODELS['text-to-video']]),
+    video_model: String(GARDENFLOW_OFFICIAL_VIDEO_MODELS['text-to-video']),
+    video_models_json: JSON.stringify([GARDENFLOW_OFFICIAL_VIDEO_MODELS['text-to-video']]),
     video_providers_json: '',
     active_video_provider_id: '',
     image_provider_template: 'openai-images',
@@ -1213,11 +1213,11 @@ export function Settings({
     model_name_wander: '',
     model_name_chatroom: '',
     model_name_knowledge: '',
-    model_name_redclaw: '',
+    model_name_gardenflow: '',
     proxy_enabled: false,
     proxy_url: '',
     proxy_bypass: 'localhost,127.0.0.1,::1',
-    redclaw_compact_target_tokens: '256000',
+    gardenflow_compact_target_tokens: '256000',
     chat_max_tokens_default: String(DEFAULT_CHAT_MAX_TOKENS),
     chat_max_tokens_deepseek: String(DEFAULT_CHAT_MAX_TOKENS_DEEPSEEK),
     wander_deep_think_enabled: false,
@@ -1293,7 +1293,7 @@ export function Settings({
   const [selectedBackgroundTaskId, setSelectedBackgroundTaskId] = useState('');
   const [selectedBackgroundTaskDetail, setSelectedBackgroundTaskDetail] = useState<BackgroundTaskItem | null>(null);
   const [runtimeDraftInput, setRuntimeDraftInput] = useState('');
-  const [runtimeDraftMode, setRuntimeDraftMode] = useState<'redclaw' | 'knowledge' | 'team' | 'advisor-discussion' | 'background-maintenance' | 'diagnostics'>('redclaw');
+  const [runtimeDraftMode, setRuntimeDraftMode] = useState<'gardenflow' | 'knowledge' | 'team' | 'advisor-discussion' | 'background-maintenance' | 'diagnostics'>('gardenflow');
   const [isRuntimeLoading, setIsRuntimeLoading] = useState(false);
   const [isRuntimeTraceLoading, setIsRuntimeTraceLoading] = useState(false);
   const [isRuntimeSessionLoading, setIsRuntimeSessionLoading] = useState(false);
@@ -1311,13 +1311,13 @@ export function Settings({
   const [activeRuntimePerfRunId, setActiveRuntimePerfRunId] = useState('');
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [saveErrorMessage, setSaveErrorMessage] = useState('');
-  const [redclawProfileDraft, setRedclawProfileDraft] = useState<RedclawProfileDraft>(EMPTY_REDCLAW_PROFILE_DRAFT);
-  const [savedRedclawProfileDraft, setSavedRedclawProfileDraft] = useState<RedclawProfileDraft>(EMPTY_REDCLAW_PROFILE_DRAFT);
-  const [redclawProfileRoot, setRedclawProfileRoot] = useState('');
-  const [isRedclawProfileLoading, setIsRedclawProfileLoading] = useState(false);
-  const [redclawProfileDirty, setRedclawProfileDirty] = useState(false);
-  const [redclawProfileMessage, setRedclawProfileMessage] = useState<{ tone: 'error' | 'success'; text: string } | null>(null);
-  const [redclawOnboardingState, setRedclawOnboardingState] = useState<RedclawOnboardingState>(null);
+  const [gardenflowProfileDraft, setGardenFlowProfileDraft] = useState<GardenFlowProfileDraft>(EMPTY_GARDENFLOW_PROFILE_DRAFT);
+  const [savedGardenFlowProfileDraft, setSavedGardenFlowProfileDraft] = useState<GardenFlowProfileDraft>(EMPTY_GARDENFLOW_PROFILE_DRAFT);
+  const [gardenflowProfileRoot, setGardenFlowProfileRoot] = useState('');
+  const [isGardenFlowProfileLoading, setIsGardenFlowProfileLoading] = useState(false);
+  const [gardenflowProfileDirty, setGardenFlowProfileDirty] = useState(false);
+  const [gardenflowProfileMessage, setGardenFlowProfileMessage] = useState<{ tone: 'error' | 'success'; text: string } | null>(null);
+  const [gardenflowOnboardingState, setGardenFlowOnboardingState] = useState<GardenFlowOnboardingState>(null);
   const [currentSpaceId, setCurrentSpaceId] = useState(DEFAULT_SPACE_ID);
   const [spaces, setSpaces] = useState<WorkspaceSpace[]>([]);
   const [assistantDaemonStatus, setAssistantDaemonStatus] = useState<AssistantDaemonStatus | null>(null);
@@ -1334,9 +1334,9 @@ export function Settings({
     () => Boolean(selectedRuntimeSessionId && runtimeSessions.some((session) => session.id === selectedRuntimeSessionId)),
     [runtimeSessions, selectedRuntimeSessionId],
   );
-  const redclawOnboardingCompleted = useMemo(
-    () => isRedClawOnboardingCompleted(redclawOnboardingState),
-    [redclawOnboardingState],
+  const gardenflowOnboardingCompleted = useMemo(
+    () => isGardenFlowOnboardingCompleted(gardenflowOnboardingState),
+    [gardenflowOnboardingState],
   );
   const currentSpaceName = useMemo(
     () => spaces.find((space) => space.id === currentSpaceId)?.name || currentSpaceId,
@@ -1417,9 +1417,9 @@ export function Settings({
     }
   }, []);
 
-  const setRedclawProfileDirtyState = useCallback((next: boolean) => {
-    redclawProfileDirtyRef.current = next;
-    setRedclawProfileDirty(next);
+  const setGardenFlowProfileDirtyState = useCallback((next: boolean) => {
+    gardenflowProfileDirtyRef.current = next;
+    setGardenFlowProfileDirty(next);
   }, []);
 
   const setCurrentSpaceState = useCallback((spaceId?: string | null) => {
@@ -1442,75 +1442,75 @@ export function Settings({
     }
   }, [setCurrentSpaceState]);
 
-  const resetRedclawProfileState = useCallback(() => {
-    redclawProfileLoadRequestRef.current += 1;
-    setRedclawProfileRoot('');
-    setSavedRedclawProfileDraft(EMPTY_REDCLAW_PROFILE_DRAFT);
-    setRedclawProfileDraft(EMPTY_REDCLAW_PROFILE_DRAFT);
-    setRedclawOnboardingState(null);
-    setRedclawProfileDirtyState(false);
-    setRedclawProfileMessage(null);
-    setIsRedclawProfileLoading(false);
-  }, [setRedclawProfileDirtyState]);
+  const resetGardenFlowProfileState = useCallback(() => {
+    gardenflowProfileLoadRequestRef.current += 1;
+    setGardenFlowProfileRoot('');
+    setSavedGardenFlowProfileDraft(EMPTY_GARDENFLOW_PROFILE_DRAFT);
+    setGardenFlowProfileDraft(EMPTY_GARDENFLOW_PROFILE_DRAFT);
+    setGardenFlowOnboardingState(null);
+    setGardenFlowProfileDirtyState(false);
+    setGardenFlowProfileMessage(null);
+    setIsGardenFlowProfileLoading(false);
+  }, [setGardenFlowProfileDirtyState]);
 
-  const loadRedclawProfileBundle = useCallback(async (options?: { preserveDraft?: boolean; expectedSpaceId?: string }) => {
+  const loadGardenFlowProfileBundle = useCallback(async (options?: { preserveDraft?: boolean; expectedSpaceId?: string }) => {
     const expectedSpaceId = String(options?.expectedSpaceId || currentSpaceIdRef.current || DEFAULT_SPACE_ID).trim() || DEFAULT_SPACE_ID;
-    const requestId = ++redclawProfileLoadRequestRef.current;
-    setIsRedclawProfileLoading(true);
+    const requestId = ++gardenflowProfileLoadRequestRef.current;
+    setIsGardenFlowProfileLoading(true);
     try {
-      const bundle = await window.ipcRenderer.redclawProfile.getBundle();
-      if (requestId !== redclawProfileLoadRequestRef.current) return;
+      const bundle = await window.ipcRenderer.gardenflowProfile.getBundle();
+      if (requestId !== gardenflowProfileLoadRequestRef.current) return;
       const responseSpaceId = String(bundle.activeSpaceId || expectedSpaceId).trim() || DEFAULT_SPACE_ID;
       if (responseSpaceId !== currentSpaceIdRef.current) {
         setCurrentSpaceState(responseSpaceId);
       }
-      setRedclawOnboardingState(
+      setGardenFlowOnboardingState(
         bundle.onboardingState && typeof bundle.onboardingState === 'object'
           ? bundle.onboardingState as Record<string, unknown>
           : null
       );
-      if (options?.preserveDraft && redclawProfileDirtyRef.current) {
-        setRedclawProfileRoot(String(bundle.profileRoot || '').trim());
+      if (options?.preserveDraft && gardenflowProfileDirtyRef.current) {
+        setGardenFlowProfileRoot(String(bundle.profileRoot || '').trim());
         return;
       }
       const files = bundle.files || {};
-      const nextDraft: RedclawProfileDraft = {
+      const nextDraft: GardenFlowProfileDraft = {
         user: String(bundle.user || files.user || ''),
         creatorProfile: String(bundle.creatorProfile || files.creatorProfile || ''),
       };
-      setRedclawProfileRoot(String(bundle.profileRoot || '').trim());
-      setSavedRedclawProfileDraft(nextDraft);
-      setRedclawProfileDraft(nextDraft);
-      setRedclawProfileDirtyState(false);
-      setRedclawProfileMessage(null);
+      setGardenFlowProfileRoot(String(bundle.profileRoot || '').trim());
+      setSavedGardenFlowProfileDraft(nextDraft);
+      setGardenFlowProfileDraft(nextDraft);
+      setGardenFlowProfileDirtyState(false);
+      setGardenFlowProfileMessage(null);
     } catch (error) {
-      if (requestId !== redclawProfileLoadRequestRef.current) return;
+      if (requestId !== gardenflowProfileLoadRequestRef.current) return;
       console.error('Failed to load AI profile bundle', error);
-      setRedclawProfileMessage({
+      setGardenFlowProfileMessage({
         tone: 'error',
         text: `加载用户档案失败：${error instanceof Error ? error.message : String(error)}`,
       });
     } finally {
-      if (requestId === redclawProfileLoadRequestRef.current) {
-        setIsRedclawProfileLoading(false);
+      if (requestId === gardenflowProfileLoadRequestRef.current) {
+        setIsGardenFlowProfileLoading(false);
       }
     }
-  }, [setRedclawProfileDirtyState]);
+  }, [setGardenFlowProfileDirtyState]);
 
-  const handleRedclawProfileDraftChange = useCallback((field: keyof RedclawProfileDraft, value: string) => {
-    setRedclawProfileDraft((prev) => {
+  const handleGardenFlowProfileDraftChange = useCallback((field: keyof GardenFlowProfileDraft, value: string) => {
+    setGardenFlowProfileDraft((prev) => {
       const next = {
         ...prev,
         [field]: value,
       };
-      const dirty = next.user !== savedRedclawProfileDraft.user
-        || next.creatorProfile !== savedRedclawProfileDraft.creatorProfile;
-      setRedclawProfileDirtyState(dirty);
+      const dirty = next.user !== savedGardenFlowProfileDraft.user
+        || next.creatorProfile !== savedGardenFlowProfileDraft.creatorProfile;
+      setGardenFlowProfileDirtyState(dirty);
       return next;
     });
-    setRedclawProfileMessage(null);
+    setGardenFlowProfileMessage(null);
     setStatus('idle');
-  }, [savedRedclawProfileDraft.creatorProfile, savedRedclawProfileDraft.user, setRedclawProfileDirtyState]);
+  }, [savedGardenFlowProfileDraft.creatorProfile, savedGardenFlowProfileDraft.user, setGardenFlowProfileDirtyState]);
 
   const settingsLoadRequestRef = useRef(0);
   const debugLogsLoadRequestRef = useRef(0);
@@ -1536,12 +1536,12 @@ export function Settings({
   const aiSourceAutosaveTimerRef = useRef<number | null>(null);
   const remoteTabWarmTimerRef = useRef<number | null>(null);
   const settingsActivationTimerRef = useRef<number | null>(null);
-  const redclawProfileLoadRequestRef = useRef(0);
+  const gardenflowProfileLoadRequestRef = useRef(0);
   const baseSettingsLoadedRef = useRef(false);
   const baseSettingsInFlightRef = useRef(false);
   const aiSourceDraftDirtyRef = useRef(false);
   const aiSourceEditGenerationRef = useRef(0);
-  const redclawProfileDirtyRef = useRef(false);
+  const gardenflowProfileDirtyRef = useRef(false);
   const currentSpaceIdRef = useRef(DEFAULT_SPACE_ID);
   const tabWarmRef = useRef<Record<SettingsTab, boolean>>({
     general: false,
@@ -2144,10 +2144,10 @@ export function Settings({
     const sourceName = String(source.name || '').trim().toLowerCase();
     const presetId = String(source.presetId || '').trim().toLowerCase();
     return isOfficialAutoSourceId(sourceId)
-      || sourceName === 'redbox official'
+      || sourceName === 'gardenflow official'
       || sourceName === `${APP_BRAND.displayName} official`.toLowerCase()
       || sourceName === OFFICIAL_AI_SOURCE_DISPLAY_NAME.toLowerCase()
-      || presetId === 'redbox-official';
+      || presetId === 'gardenflow-official';
   }, []);
 
   const hasOfficialManagedSource = useMemo(
@@ -2795,8 +2795,8 @@ export function Settings({
       setFormData((prev) => ({ ...prev, model_name_chatroom: normalizedModel }));
     } else if (scope === 'knowledge') {
       setFormData((prev) => ({ ...prev, model_name_knowledge: normalizedModel }));
-    } else if (scope === 'redclaw') {
-      setFormData((prev) => ({ ...prev, model_name_redclaw: normalizedModel }));
+    } else if (scope === 'gardenflow') {
+      setFormData((prev) => ({ ...prev, model_name_gardenflow: normalizedModel }));
     } else if (scope === 'transcription') {
       setFormData((prev) => ({ ...prev, transcription_model: normalizedModel }));
     } else if (scope === 'embedding') {
@@ -3339,7 +3339,7 @@ export function Settings({
   }, [formData.debug_log_enabled, formData.diagnostics_include_advanced_context, loadLoggingStatus, loadPendingDiagnosticReports]);
 
   const handleOpenFeedbackReport = useCallback(() => {
-    window.dispatchEvent(new CustomEvent('redbox:open-feedback-report', {
+    window.dispatchEvent(new CustomEvent('gardenflow:open-feedback-report', {
       detail: {
         sourcePage: 'settings',
         operation: 'manual_feedback',
@@ -4430,7 +4430,7 @@ export function Settings({
           : (loadedVideoProviders[0]?.id || '');
         const loadedActiveVideoProvider = loadedVideoProviders.find((provider) => provider.id === loadedActiveVideoProviderId)
           || loadedVideoProviders[0];
-        const loadedVideoModel = loadedActiveVideoProvider?.model || REDBOX_OFFICIAL_VIDEO_MODELS['text-to-video'];
+        const loadedVideoModel = loadedActiveVideoProvider?.model || GARDENFLOW_OFFICIAL_VIDEO_MODELS['text-to-video'];
         const loadedVideoModels = loadedActiveVideoProvider?.models || [loadedVideoModel];
         const nextModelRoutes: AiModelRoutes = {
           ...loadedModelRoutes,
@@ -4452,9 +4452,9 @@ export function Settings({
             ...loadedModelRoutes.knowledge,
             model: routeModelFirst(loadedModelRoutes.knowledge.model, settings.model_name_knowledge),
           },
-          redclaw: {
-            ...loadedModelRoutes.redclaw,
-            model: routeModelFirst(loadedModelRoutes.redclaw.model, settings.model_name_redclaw),
+          gardenflow: {
+            ...loadedModelRoutes.gardenflow,
+            model: routeModelFirst(loadedModelRoutes.gardenflow.model, settings.model_name_gardenflow),
           },
           transcription: {
             ...loadedModelRoutes.transcription,
@@ -4603,7 +4603,7 @@ export function Settings({
           voice_tts_model: loadedVoiceTtsModel,
           tts_model: loadedVoiceTtsModel,
           voice_clone_model: loadedVoiceCloneModel,
-          video_endpoint: loadedActiveVideoProvider?.endpoint || REDBOX_OFFICIAL_VIDEO_BASE_URL,
+          video_endpoint: loadedActiveVideoProvider?.endpoint || GARDENFLOW_OFFICIAL_VIDEO_BASE_URL,
           video_api_key: loadedActiveVideoProvider?.apiKey || '',
           video_model: loadedVideoModel,
           video_models_json: JSON.stringify(loadedVideoModels),
@@ -4615,11 +4615,11 @@ export function Settings({
           model_name_wander: nextModelRoutes.wander.model || '',
           model_name_chatroom: nextModelRoutes.team.model || '',
           model_name_knowledge: nextModelRoutes.knowledge.model || '',
-          model_name_redclaw: nextModelRoutes.redclaw.model || '',
+          model_name_gardenflow: nextModelRoutes.gardenflow.model || '',
           proxy_enabled: Boolean(settings.proxy_enabled),
           proxy_url: settings.proxy_url || '',
           proxy_bypass: settings.proxy_bypass || 'localhost,127.0.0.1,::1',
-          redclaw_compact_target_tokens: String(settings.redclaw_compact_target_tokens || 256000),
+          gardenflow_compact_target_tokens: String(settings.gardenflow_compact_target_tokens || 256000),
           chat_max_tokens_default: sanitizeChatMaxTokensInput(String(settings.chat_max_tokens_default || DEFAULT_CHAT_MAX_TOKENS), DEFAULT_CHAT_MAX_TOKENS),
           chat_max_tokens_deepseek: sanitizeChatMaxTokensInput(String(settings.chat_max_tokens_deepseek || DEFAULT_CHAT_MAX_TOKENS_DEEPSEEK), DEFAULT_CHAT_MAX_TOKENS_DEEPSEEK),
           wander_deep_think_enabled: Boolean(settings.wander_deep_think_enabled),
@@ -5672,29 +5672,29 @@ export function Settings({
     await Promise.all(items.map((advisor, index) => (
       window.ipcRenderer.advisors.update({
         id: advisor.id,
-        redclawOrder: index,
-        redclawVisible: advisor.redclawVisible !== false,
+        gardenflowOrder: index,
+        gardenflowVisible: advisor.gardenflowVisible !== false,
       })
     )));
     teamAdvisorOrderRef.current = items;
-    window.dispatchEvent(new Event('redclaw:team-settings-changed'));
+    window.dispatchEvent(new Event('gardenflow:team-settings-changed'));
   }, []);
 
   const handleToggleTeamAdvisorVisible = useCallback((advisor: Advisor) => {
-    const nextVisible = advisor.redclawVisible === false;
+    const nextVisible = advisor.gardenflowVisible === false;
     setTeamAdvisorBusyId(advisor.id);
     setTeamAdvisors((prev) => prev.map((item) => (
-      item.id === advisor.id ? { ...item, redclawVisible: nextVisible } : item
+      item.id === advisor.id ? { ...item, gardenflowVisible: nextVisible } : item
     )));
     void window.ipcRenderer.advisors.update({
       id: advisor.id,
-      redclawVisible: nextVisible,
+      gardenflowVisible: nextVisible,
     }).then(() => {
-      window.dispatchEvent(new Event('redclaw:team-settings-changed'));
+      window.dispatchEvent(new Event('gardenflow:team-settings-changed'));
     }).catch((error) => {
       console.error('Failed to update advisor visibility:', error);
       setTeamAdvisors((prev) => prev.map((item) => (
-        item.id === advisor.id ? { ...item, redclawVisible: advisor.redclawVisible } : item
+        item.id === advisor.id ? { ...item, gardenflowVisible: advisor.gardenflowVisible } : item
       )));
       setTestMsg('成员展示设置保存失败');
       setStatus('error');
@@ -5718,7 +5718,7 @@ export function Settings({
       const next = [...prev];
       const [moved] = next.splice(fromIndex, 1);
       next.splice(toIndex, 0, moved);
-      const ordered = next.map((item, index) => ({ ...item, redclawOrder: index }));
+      const ordered = next.map((item, index) => ({ ...item, gardenflowOrder: index }));
       teamAdvisorOrderRef.current = ordered;
       return ordered;
     });
@@ -5763,7 +5763,7 @@ export function Settings({
       setSettingsTeamAdvisor(null);
       setEditingTeamAdvisor(null);
       await loadTeamAdvisors();
-      window.dispatchEvent(new Event('redclaw:team-settings-changed'));
+      window.dispatchEvent(new Event('gardenflow:team-settings-changed'));
     } catch (error) {
       console.error('Failed to delete advisor:', error);
       setTestMsg('成员删除失败');
@@ -5884,8 +5884,8 @@ export function Settings({
       await window.ipcRenderer.advisors.update({
         ...data,
         id: editingTeamAdvisor.id,
-        redclawVisible: editingTeamAdvisor.redclawVisible !== false,
-        redclawOrder: editingTeamAdvisor.redclawOrder,
+        gardenflowVisible: editingTeamAdvisor.gardenflowVisible !== false,
+        gardenflowOrder: editingTeamAdvisor.gardenflowOrder,
       });
     } else {
       const createData: Record<string, unknown> = { ...data };
@@ -5913,7 +5913,7 @@ export function Settings({
     if (advisorId) {
       await refreshTeamAdvisor(advisorId);
     }
-    window.dispatchEvent(new Event('redclaw:team-settings-changed'));
+    window.dispatchEvent(new Event('gardenflow:team-settings-changed'));
   }, [editingTeamAdvisor, loadTeamAdvisors, refreshTeamAdvisor]);
 
   const ensureTabResourcesLoaded = useCallback(async (tab: SettingsTab, force = false) => {
@@ -5931,7 +5931,7 @@ export function Settings({
           loadPendingDiagnosticReports(),
         ]);
       } else if (tab === 'profile') {
-        await loadRedclawProfileBundle({
+        await loadGardenFlowProfileBundle({
           preserveDraft: true,
         });
       } else if (tab === 'team') {
@@ -5964,7 +5964,7 @@ export function Settings({
     OfficialAiPanelComponent,
     formData.developer_mode_enabled,
     isActive,
-    loadRedclawProfileBundle,
+    loadGardenFlowProfileBundle,
     loadCliRuntimeDashboard,
     loadAppVersion,
     loadBackgroundTasks,
@@ -6016,7 +6016,7 @@ export function Settings({
       if (activeTab === 'remote') {
         scheduleRemoteTabWarmup();
       }
-      if (activeTab === 'profile' && !redclawProfileDirtyRef.current) {
+      if (activeTab === 'profile' && !gardenflowProfileDirtyRef.current) {
         void ensureTabResourcesLoaded('profile', true);
       }
       if (activeTab === 'general' || activeTab === 'tools' || activeTab === 'skills' || activeTab === 'mcp') {
@@ -6037,14 +6037,14 @@ export function Settings({
         return;
       }
       tabWarmRef.current.profile = false;
-      resetRedclawProfileState();
+      resetGardenFlowProfileState();
       clearCachedFileIndexDashboard();
       fileIndexDashboardCurrentRef.current = null;
       fileIndexDashboardLoadedAtRef.current = 0;
       setFileIndexDashboard(null);
       tabWarmRef.current.general = false;
       if (activeTab === 'profile') {
-        void loadRedclawProfileBundle({ expectedSpaceId: nextSpaceId });
+        void loadGardenFlowProfileBundle({ expectedSpaceId: nextSpaceId });
       }
       if (activeTab === 'general') {
         void loadFileIndexDashboard({ force: true });
@@ -6054,12 +6054,12 @@ export function Settings({
     return () => {
       window.ipcRenderer.spaces.offChanged(handleSpaceChanged);
     };
-  }, [activeTab, isActive, loadFileIndexDashboard, loadRedclawProfileBundle, loadSpaceContext, resetRedclawProfileState, setCurrentSpaceState]);
+  }, [activeTab, isActive, loadFileIndexDashboard, loadGardenFlowProfileBundle, loadSpaceContext, resetGardenFlowProfileState, setCurrentSpaceState]);
 
   useEffect(() => {
-    if (!redclawOnboardingVersion) return;
-    void loadRedclawProfileBundle({ expectedSpaceId: currentSpaceIdRef.current });
-  }, [loadRedclawProfileBundle, redclawOnboardingVersion]);
+    if (!gardenflowOnboardingVersion) return;
+    void loadGardenFlowProfileBundle({ expectedSpaceId: currentSpaceIdRef.current });
+  }, [loadGardenFlowProfileBundle, gardenflowOnboardingVersion]);
 
   useEffect(() => {
     if (!isActive || activeTab !== 'general') return;
@@ -6098,10 +6098,10 @@ export function Settings({
       ]);
     };
     window.ipcRenderer.logs.onReportPending(handleDiagnosticsReportPending);
-    window.addEventListener('redbox:feedback-report-submitted', handleFeedbackReportSubmitted);
+    window.addEventListener('gardenflow:feedback-report-submitted', handleFeedbackReportSubmitted);
     return () => {
       window.ipcRenderer.logs.offReportPending(handleDiagnosticsReportPending);
-      window.removeEventListener('redbox:feedback-report-submitted', handleFeedbackReportSubmitted);
+      window.removeEventListener('gardenflow:feedback-report-submitted', handleFeedbackReportSubmitted);
     };
   }, [loadLoggingStatus, loadPendingDiagnosticReports]);
 
@@ -6230,8 +6230,8 @@ export function Settings({
     setSaveErrorMessage('');
     try {
       if (activeTab === 'profile') {
-        const userMarkdown = String(redclawProfileDraft.user || '').trim();
-        const creatorProfileMarkdown = String(redclawProfileDraft.creatorProfile || '').trim();
+        const userMarkdown = String(gardenflowProfileDraft.user || '').trim();
+        const creatorProfileMarkdown = String(gardenflowProfileDraft.creatorProfile || '').trim();
         if (!userMarkdown) {
           throw new Error('用户画像不能为空');
         }
@@ -6239,26 +6239,26 @@ export function Settings({
           throw new Error('创作档案不能为空');
         }
         let savedDocCount = 0;
-        await window.ipcRenderer.redclawProfile.updateDoc({
+        await window.ipcRenderer.gardenflowProfile.updateDoc({
           docType: 'user',
           markdown: userMarkdown,
           reason: 'settings-user-profile-save',
         });
         savedDocCount += 1;
-        await window.ipcRenderer.redclawProfile.updateDoc({
+        await window.ipcRenderer.gardenflowProfile.updateDoc({
           docType: 'creator_profile',
           markdown: creatorProfileMarkdown,
           reason: 'settings-user-profile-save',
         });
         savedDocCount += 1;
-        const nextDraft: RedclawProfileDraft = {
+        const nextDraft: GardenFlowProfileDraft = {
           user: userMarkdown,
           creatorProfile: creatorProfileMarkdown,
         };
-        setSavedRedclawProfileDraft(nextDraft);
-        setRedclawProfileDraft(nextDraft);
-        setRedclawProfileDirtyState(false);
-        setRedclawProfileMessage({
+        setSavedGardenFlowProfileDraft(nextDraft);
+        setGardenFlowProfileDraft(nextDraft);
+        setGardenFlowProfileDirtyState(false);
+        setGardenFlowProfileMessage({
           tone: 'success',
           text: savedDocCount === 2
             ? `用户档案已保存，${APP_BRAND.aiDisplayName} 后续会直接读取这两份长期档案。`
@@ -6353,7 +6353,7 @@ export function Settings({
       if (resolvedImageSource?.id && resolvedImageSource.id !== imageSourceId) {
         setImageSourceId(resolvedImageSource.id);
       }
-      const parsedCompactTokens = Number(formData.redclaw_compact_target_tokens);
+      const parsedCompactTokens = Number(formData.gardenflow_compact_target_tokens);
       const compactTargetTokens = Number.isFinite(parsedCompactTokens) && parsedCompactTokens > 0
         ? Math.max(16000, Math.floor(parsedCompactTokens))
         : 256000;
@@ -6495,9 +6495,9 @@ export function Settings({
           { ...aiModelRoutes.knowledge, model: routeChatModel('knowledge', formData.model_name_knowledge) },
           aiModelRoutes.knowledge.sourceId || OFFICIAL_AUTO_SOURCE_ID,
         ),
-        redclaw: normalizeRouteForSource(
-          { ...aiModelRoutes.redclaw, model: routeChatModel('redclaw', formData.model_name_redclaw) },
-          aiModelRoutes.redclaw.sourceId || OFFICIAL_AUTO_SOURCE_ID,
+        gardenflow: normalizeRouteForSource(
+          { ...aiModelRoutes.gardenflow, model: routeChatModel('gardenflow', formData.model_name_gardenflow) },
+          aiModelRoutes.gardenflow.sourceId || OFFICIAL_AUTO_SOURCE_ID,
         ),
         transcription: normalizeRouteForSource(
           { ...aiModelRoutes.transcription, sourceId: resolvedTranscriptionSource?.id || '', model: routeTranscriptionModel },
@@ -6549,7 +6549,7 @@ export function Settings({
         model_name_wander: routeChatModel('wander', formData.model_name_wander),
         model_name_chatroom: routeChatModel('team', formData.model_name_chatroom),
         model_name_knowledge: routeChatModel('knowledge', formData.model_name_knowledge),
-        model_name_redclaw: routeChatModel('redclaw', formData.model_name_redclaw),
+        model_name_gardenflow: routeChatModel('gardenflow', formData.model_name_gardenflow),
         proxy_enabled: Boolean(formData.proxy_enabled),
         proxy_url: String(formData.proxy_url || '').trim(),
         proxy_bypass: String(formData.proxy_bypass || '').trim(),
@@ -6608,7 +6608,7 @@ export function Settings({
         ai_sources_json: JSON.stringify(sanitizedSources),
         default_ai_source_id: normalizedModelRoutes.chat.sourceId || resolvedLegacyChatSourceId || '',
         mcp_servers_json: JSON.stringify(mcpServers),
-        redclaw_compact_target_tokens: compactTargetTokens,
+        gardenflow_compact_target_tokens: compactTargetTokens,
         debug_log_enabled: Boolean(formData.debug_log_enabled),
         diagnostics_upload_consent: formData.diagnostics_upload_consent,
         diagnostics_include_advanced_context: Boolean(formData.diagnostics_include_advanced_context),
@@ -6671,7 +6671,7 @@ export function Settings({
       console.error(e);
       const errorMessage = e instanceof Error ? e.message : String(e);
       if (activeTab === 'profile') {
-        setRedclawProfileMessage({
+        setGardenFlowProfileMessage({
           tone: 'error',
           text: e instanceof Error ? e.message : String(e),
         });
@@ -6717,7 +6717,7 @@ export function Settings({
     if (scope === 'wander') return String(aiModelRoutes.wander.model || formData.model_name_wander || '').trim();
     if (scope === 'team') return String(aiModelRoutes.team.model || formData.model_name_chatroom || '').trim();
     if (scope === 'knowledge') return String(aiModelRoutes.knowledge.model || formData.model_name_knowledge || '').trim();
-    if (scope === 'redclaw') return String(aiModelRoutes.redclaw.model || formData.model_name_redclaw || '').trim();
+    if (scope === 'gardenflow') return String(aiModelRoutes.gardenflow.model || formData.model_name_gardenflow || '').trim();
     if (scope === 'transcription') return String(aiModelRoutes.transcription.model || formData.transcription_model || '').trim();
     if (scope === 'embedding') return String(aiModelRoutes.embedding.model || formData.embedding_model || '').trim();
     if (scope === 'image') return String(aiModelRoutes.image.model || formData.image_model || '').trim();
@@ -6733,7 +6733,7 @@ export function Settings({
     formData.model_name,
     formData.model_name_chatroom,
     formData.model_name_knowledge,
-    formData.model_name_redclaw,
+    formData.model_name_gardenflow,
     formData.model_name_wander,
     formData.transcription_model,
     formData.tts_model,
@@ -8097,7 +8097,7 @@ export function Settings({
                             onChange={(e) => handleVideoProviderCreatePresetChange(e.target.value as VideoGenerationProviderPreset)}
                             className="w-full rounded border border-border bg-surface-primary px-3 py-2 text-sm focus:border-accent-primary focus:outline-none"
                           >
-                            <option value="bojin">Bojin Seedance</option>
+                            <option value="gardenflow">GardenFlow Seedance</option>
                             <option value="new-api">{defaultVideoProviderName('new-api')}</option>
                             <option value="aliyun-bailian">阿里云百炼</option>
                             <option value="minimax">MiniMax</option>
@@ -8370,8 +8370,8 @@ export function Settings({
                           type="number"
                           min={16000}
                           step={1000}
-                          value={formData.redclaw_compact_target_tokens}
-                          onChange={e => setFormData(d => ({ ...d, redclaw_compact_target_tokens: e.target.value }))}
+                          value={formData.gardenflow_compact_target_tokens}
+                          onChange={e => setFormData(d => ({ ...d, gardenflow_compact_target_tokens: e.target.value }))}
                           className="w-full bg-surface-secondary/30 rounded border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent-primary transition-colors"
                         />
                         <p className="mt-1 text-[11px] text-text-tertiary">
@@ -8933,48 +8933,48 @@ export function Settings({
                         <h2 className="text-lg font-medium text-text-primary">用户创作档案</h2>
                         <button
                           type="button"
-                          onClick={() => onOpenRedClawOnboarding?.()}
+                          onClick={() => onOpenGardenFlowOnboarding?.()}
                           className="text-xs font-medium text-text-tertiary underline-offset-4 transition-colors hover:text-text-primary hover:underline"
                         >
-                          {redclawOnboardingCompleted ? '重新自定义风格' : '去定义风格'}
+                          {gardenflowOnboardingCompleted ? '重新自定义风格' : '去定义风格'}
                         </button>
                       </div>
                       <div className="mt-1 flex items-center gap-2 text-xs text-text-tertiary">
                         <span
                           className="rounded-full bg-surface-secondary px-2 py-1"
-                          title={redclawProfileRoot || undefined}
+                          title={gardenflowProfileRoot || undefined}
                         >
                           空间：{currentSpaceName}
                         </span>
                         <span className={clsx(
                           'rounded-full px-2 py-1',
-                          redclawProfileDirty
+                          gardenflowProfileDirty
                             ? 'bg-amber-500/10 text-amber-600'
                             : 'bg-emerald-500/10 text-emerald-600'
                         )}>
-                          {redclawProfileDirty ? '未保存' : '已同步'}
+                          {gardenflowProfileDirty ? '未保存' : '已同步'}
                         </span>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => void loadRedclawProfileBundle()}
-                        disabled={isRedclawProfileLoading}
+                        onClick={() => void loadGardenFlowProfileBundle()}
+                        disabled={isGardenFlowProfileLoading}
                         className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-xs text-text-secondary transition-colors hover:bg-surface-secondary disabled:opacity-50"
                       >
-                        <RefreshCw className={clsx('h-3.5 w-3.5', isRedclawProfileLoading && 'animate-spin')} />
-                        {isRedclawProfileLoading ? '刷新中' : '刷新'}
+                        <RefreshCw className={clsx('h-3.5 w-3.5', isGardenFlowProfileLoading && 'animate-spin')} />
+                        {isGardenFlowProfileLoading ? '刷新中' : '刷新'}
                       </button>
                       <button
                         type="button"
                         onClick={() => {
-                          setRedclawProfileDraft(savedRedclawProfileDraft);
-                          setRedclawProfileDirtyState(false);
-                          setRedclawProfileMessage(null);
+                          setGardenFlowProfileDraft(savedGardenFlowProfileDraft);
+                          setGardenFlowProfileDirtyState(false);
+                          setGardenFlowProfileMessage(null);
                           setStatus('idle');
                         }}
-                        disabled={!redclawProfileDirty}
+                        disabled={!gardenflowProfileDirty}
                         className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-xs text-text-secondary transition-colors hover:bg-surface-secondary disabled:opacity-50"
                       >
                         还原
@@ -8982,14 +8982,14 @@ export function Settings({
                     </div>
                   </div>
 
-                  {redclawProfileMessage && (
+                  {gardenflowProfileMessage && (
                     <div className={clsx(
                       'rounded-xl border px-4 py-3 text-sm',
-                      redclawProfileMessage.tone === 'error'
+                      gardenflowProfileMessage.tone === 'error'
                         ? 'border-red-500/25 bg-red-500/5 text-red-600'
                         : 'border-emerald-500/25 bg-emerald-500/5 text-emerald-600'
                     )}>
-                      {redclawProfileMessage.text}
+                      {gardenflowProfileMessage.text}
                     </div>
                   )}
                 </section>
@@ -9003,8 +9003,8 @@ export function Settings({
                       </p>
                     </div>
                     <textarea
-                      value={redclawProfileDraft.user}
-                      onChange={(event) => handleRedclawProfileDraftChange('user', event.target.value)}
+                      value={gardenflowProfileDraft.user}
+                      onChange={(event) => handleGardenFlowProfileDraftChange('user', event.target.value)}
                       placeholder="# user.md"
                       spellCheck={false}
                       className="min-h-[280px] w-full rounded-lg border border-border bg-surface-primary px-4 py-3 font-mono text-sm leading-6 text-text-primary focus:border-accent-primary focus:outline-none"
@@ -9019,8 +9019,8 @@ export function Settings({
                       </p>
                     </div>
                     <textarea
-                      value={redclawProfileDraft.creatorProfile}
-                      onChange={(event) => handleRedclawProfileDraftChange('creatorProfile', event.target.value)}
+                      value={gardenflowProfileDraft.creatorProfile}
+                      onChange={(event) => handleGardenFlowProfileDraftChange('creatorProfile', event.target.value)}
                       placeholder="# CreatorProfile.md"
                       spellCheck={false}
                       className="min-h-[360px] w-full rounded-lg border border-border bg-surface-primary px-4 py-3 font-mono text-sm leading-6 text-text-primary focus:border-accent-primary focus:outline-none"

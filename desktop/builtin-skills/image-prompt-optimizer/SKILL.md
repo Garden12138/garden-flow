@@ -1,5 +1,5 @@
 ---
-allowedRuntimeModes: [chatroom, redclaw, image-generation]
+allowedRuntimeModes: [chatroom, gardenflow, image-generation]
 hookMode: inline
 autoActivate: false
 activationScope: turn

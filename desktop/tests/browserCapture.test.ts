@@ -27,7 +27,7 @@ import {
     resolvePackagedBrowserNativeHostExecutable,
     type BrowserNativeHostStatus,
 } from '../electron/core/browserNativeHostInstaller.ts';
-import { selectCompatibleBojinReleaseAsset } from '../electron/core/appUpdatePolicy.ts';
+import { selectCompatibleGardenFlowReleaseAsset } from '../electron/core/appUpdatePolicy.ts';
 
 function nativeHostStatus(overrides: Partial<BrowserNativeHostStatus> = {}): BrowserNativeHostStatus {
     return {
@@ -64,17 +64,17 @@ test('fresh browser Native Host state triggers automatic installation', () => {
 test('packaged Windows Native Host uses the dedicated console executable', () => {
     assert.equal(
         resolvePackagedBrowserNativeHostExecutable({
-            appExecutable: 'C:\\Program Files\\Bojin\\Bojin.exe',
-            resourcesPath: 'C:\\Program Files\\Bojin\\resources',
+            appExecutable: 'C:\\Program Files\\GardenFlow\\GardenFlow.exe',
+            resourcesPath: 'C:\\Program Files\\GardenFlow\\resources',
         }, 'win32'),
-        'C:\\Program Files\\Bojin\\resources\\native-host\\bojin-browser-native-host.exe',
+        'C:\\Program Files\\GardenFlow\\resources\\native-host\\gardenflow-browser-native-host.exe',
     );
     assert.equal(
         resolvePackagedBrowserNativeHostExecutable({
-            appExecutable: '/Applications/Bojin.app/Contents/MacOS/Bojin',
-            resourcesPath: '/Applications/Bojin.app/Contents/Resources',
+            appExecutable: '/Applications/GardenFlow.app/Contents/MacOS/GardenFlow',
+            resourcesPath: '/Applications/GardenFlow.app/Contents/Resources',
         }, 'darwin'),
-        '/Applications/Bojin.app/Contents/MacOS/Bojin',
+        '/Applications/GardenFlow.app/Contents/MacOS/GardenFlow',
     );
 });
 
@@ -92,27 +92,27 @@ test('Windows packaging prepares and bundles the dedicated Native Host', async (
     assert.match(packageConfig.scripts['build:win'], /prepare:windows-native-host/);
     assert.equal(
         packageConfig.build.win.extraResources[0]?.to,
-        'native-host/bojin-browser-native-host.exe',
+        'native-host/gardenflow-browser-native-host.exe',
     );
     assert.match(windowsPackagingScript, /Invoke-Pnpm run prepare:windows-native-host/);
     assert.match(windowsDiagnosticScript, /native-host\.log/);
-    assert.match(windowsDiagnosticScript, /NativeMessagingHosts\\com\.redbox\.browser_control/);
+    assert.match(windowsDiagnosticScript, /NativeMessagingHosts\\com\.gardenflow\.browser_control/);
 });
 
-test('app updater accepts only Bojin installers for the current platform and architecture', () => {
+test('app updater accepts only GardenFlow installers for the current platform and architecture', () => {
     const assets = [
-        { name: 'Beav-9.9.9-x64.exe', downloadUrl: 'https://example.com/beav.exe', size: 1, digest: '' },
-        { name: 'RedBox-9.9.9-x64.exe', downloadUrl: 'https://example.com/redbox.exe', size: 1, digest: '' },
-        { name: 'Bojin-2.5.1-arm64.exe', downloadUrl: 'https://example.com/bojin-arm64.exe', size: 1, digest: '' },
-        { name: 'Bojin-2.5.1-x64.exe.blockmap', downloadUrl: 'https://example.com/bojin.blockmap', size: 1, digest: '' },
-        { name: 'Bojin-2.5.1-x64.exe', downloadUrl: 'https://example.com/bojin.exe', size: 1, digest: '' },
+        { name: 'Bojin-9.9.9-x64.exe', downloadUrl: 'https://example.com/legacy.exe', size: 1, digest: '' },
+        { name: 'RedBox-9.9.9-x64.exe', downloadUrl: 'https://example.com/legacy.exe', size: 1, digest: '' },
+        { name: 'GardenFlow-2.5.1-arm64.exe', downloadUrl: 'https://example.com/gardenflow-arm64.exe', size: 1, digest: '' },
+        { name: 'GardenFlow-2.5.1-x64.exe.blockmap', downloadUrl: 'https://example.com/gardenflow.blockmap', size: 1, digest: '' },
+        { name: 'GardenFlow-2.5.1-x64.exe', downloadUrl: 'https://example.com/gardenflow.exe', size: 1, digest: '' },
     ];
     assert.equal(
-        selectCompatibleBojinReleaseAsset(assets, 'win32', 'x64')?.name,
-        'Bojin-2.5.1-x64.exe',
+        selectCompatibleGardenFlowReleaseAsset(assets, 'win32', 'x64')?.name,
+        'GardenFlow-2.5.1-x64.exe',
     );
     assert.equal(
-        selectCompatibleBojinReleaseAsset(assets.slice(0, 2), 'win32', 'x64'),
+        selectCompatibleGardenFlowReleaseAsset(assets.slice(0, 2), 'win32', 'x64'),
         null,
     );
 });
@@ -223,9 +223,9 @@ test('renderer uses the top-level browser plugin bridge exposed by createSystemB
 });
 
 test('Desktop Bridge authenticates token and origin, enforces registration and allowlist', async () => {
-    const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'bojin-capture-bridge-'));
-    const previousStateRoot = process.env.REDBOX_BROWSER_CONTROL_STATE_DIR;
-    process.env.REDBOX_BROWSER_CONTROL_STATE_DIR = temporaryRoot;
+    const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'gardenflow-capture-bridge-'));
+    const previousStateRoot = process.env.GARDENFLOW_BROWSER_CONTROL_STATE_DIR;
+    process.env.GARDENFLOW_BROWSER_CONTROL_STATE_DIR = temporaryRoot;
     const received: string[] = [];
     const service = new BrowserCaptureBridgeService({
         appVersion: '2.5.0',
@@ -302,16 +302,16 @@ test('Desktop Bridge authenticates token and origin, enforces registration and a
         await new Promise<void>((resolve) => oversized.once('close', () => resolve()));
     } finally {
         await service.stop();
-        if (previousStateRoot === undefined) delete process.env.REDBOX_BROWSER_CONTROL_STATE_DIR;
-        else process.env.REDBOX_BROWSER_CONTROL_STATE_DIR = previousStateRoot;
+        if (previousStateRoot === undefined) delete process.env.GARDENFLOW_BROWSER_CONTROL_STATE_DIR;
+        else process.env.GARDENFLOW_BROWSER_CONTROL_STATE_DIR = previousStateRoot;
         await fs.rm(temporaryRoot, { recursive: true, force: true });
     }
 });
 
 test('Native Host re-registers the extension after Desktop Bridge restarts', async () => {
-    const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'bojin-native-host-reconnect-'));
-    const previousStateRoot = process.env.REDBOX_BROWSER_CONTROL_STATE_DIR;
-    process.env.REDBOX_BROWSER_CONTROL_STATE_DIR = temporaryRoot;
+    const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'gardenflow-native-host-reconnect-'));
+    const previousStateRoot = process.env.GARDENFLOW_BROWSER_CONTROL_STATE_DIR;
+    process.env.GARDENFLOW_BROWSER_CONTROL_STATE_DIR = temporaryRoot;
     const received: string[] = [];
     const service = new BrowserCaptureBridgeService({
         appVersion: '2.5.0',
@@ -340,8 +340,8 @@ test('Native Host re-registers the extension after Desktop Bridge restarts', asy
     } finally {
         client.close();
         await service.stop();
-        if (previousStateRoot === undefined) delete process.env.REDBOX_BROWSER_CONTROL_STATE_DIR;
-        else process.env.REDBOX_BROWSER_CONTROL_STATE_DIR = previousStateRoot;
+        if (previousStateRoot === undefined) delete process.env.GARDENFLOW_BROWSER_CONTROL_STATE_DIR;
+        else process.env.GARDENFLOW_BROWSER_CONTROL_STATE_DIR = previousStateRoot;
         await fs.rm(temporaryRoot, { recursive: true, force: true });
     }
 });

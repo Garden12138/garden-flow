@@ -7,7 +7,7 @@
 - `appDialogs.ts`
 - `markdownFrontmatter.ts`
 - `pathManager.ts`
-- `redclawAuthoring.ts`
+- `gardenflowAuthoring.ts`
 - `uiDebug.ts`
 
 ## Rules

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="gardenflow-title">
+  <title id="gardenflow-title">GardenFlow</title>
+  <rect x="16" y="16" width="992" height="992" rx="224" fill="#fff" stroke="#dedee3" stroke-width="24"/>
+  <rect x="100" y="100" width="824" height="824" rx="174" fill="#e60012"/>
+  <path d="M492 322H334c-65 0-106 44-106 108v164c0 65 41 108 106 108h158V488H361v76h55v62h-68c-28 0-44-18-44-47V445c0-30 16-47 44-47h144z" fill="#fff"/>
+  <path d="M552 322h244v76H632v99h144v76H632v129h-80z" fill="#fff"/>
+</svg>

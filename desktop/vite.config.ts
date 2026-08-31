@@ -172,7 +172,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src/vendor/freecut'),
-      '@redbox': path.resolve(__dirname, 'src'),
+      '@gardenflow': path.resolve(__dirname, 'src'),
       '@tauri-apps/api/core': path.resolve(__dirname, 'src/compat/tauri-core.ts'),
       '@tauri-apps/api/event': path.resolve(__dirname, 'src/compat/tauri-event.ts'),
       '@tauri-apps/api/window': path.resolve(__dirname, 'src/compat/tauri-window.ts'),

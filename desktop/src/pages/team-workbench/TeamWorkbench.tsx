@@ -13,8 +13,8 @@ interface TeamWorkbenchProps {
   isActive?: boolean;
 }
 
-const MEMBER_ORDER_PREFIX = 'redbox:team-member-order:';
-const ACTIVE_MEMBER_PREFIX = 'redbox:team-active-member:';
+const MEMBER_ORDER_PREFIX = 'gardenflow:team-member-order:';
+const ACTIVE_MEMBER_PREFIX = 'gardenflow:team-active-member:';
 
 function readStringArray(key: string): string[] {
   try {

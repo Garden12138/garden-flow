@@ -25,7 +25,7 @@ import {
   type SessionTranscriptRecord,
 } from '../db';
 
-const ARCHIVE_FORMAT = 'redbox-runtime-session';
+const ARCHIVE_FORMAT = 'gardenflow-runtime-session';
 const ARCHIVE_VERSION = 1;
 const MAX_ARCHIVE_ITEMS = 100_000;
 
@@ -180,7 +180,7 @@ export async function exportRuntimeSession(input: {
     };
   }
 
-  const root = path.join(getWorkspaceRootForArchive(), '.redbox', 'runtime-exports');
+  const root = path.join(getWorkspaceRootForArchive(), '.gardenflow', 'runtime-exports');
   const packagePath = path.join(root, `${safeArchiveName(sessionId)}-${Date.now()}`);
   await writeBundle(packagePath, bundle);
   return {

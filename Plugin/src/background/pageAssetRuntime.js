@@ -1,6 +1,6 @@
 import { sendContentMessage } from './dynamicContentInjection.js';
 
-export const CONTENT_PAGE_ASSETS_TYPE = 'xwow-data-ai:page-assets';
+export const CONTENT_PAGE_ASSETS_TYPE = 'gardenflow-data-ai:page-assets';
 const TARGET_PAGE_ASSET_KINDS = ['font', 'image', 'script', 'stylesheet', 'video', 'other'];
 export const ASSET_LIBRARY_REGISTRATION_SCHEMA_VERSION = 1;
 
@@ -368,7 +368,7 @@ function buildTargetPageAssetInventory(inventory = {}) {
 
 function buildTargetPageAssetBundle(targetInventory = {}, bundled = [], skipped = [], action = {}) {
   const inventoryId = String(action.inventoryId || action.inventory_id || targetInventory.id || 'page-assets');
-  const directoryPath = `xwow://page-assets/${inventoryId}`;
+  const directoryPath = `gardenflow://page-assets/${inventoryId}`;
   const manifestPath = `${directoryPath}/manifest.json`;
   const assets = bundled.map((asset) => ({
     contentType: asset.mimeType || null,

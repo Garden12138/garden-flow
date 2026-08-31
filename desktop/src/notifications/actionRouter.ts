@@ -19,7 +19,7 @@ export async function runNotificationAction(action: NotificationAction): Promise
   }
 
   if (action.action === 'open-feedback-report') {
-    window.dispatchEvent(new CustomEvent('redbox:open-feedback-report', {
+    window.dispatchEvent(new CustomEvent('gardenflow:open-feedback-report', {
       detail: {
         sourcePage: 'notifications',
         operation: action.payload.feedbackId ? `feedback:${action.payload.feedbackId}` : 'feedback',

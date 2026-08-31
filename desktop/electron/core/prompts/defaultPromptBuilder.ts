@@ -236,7 +236,7 @@ const resolveBuiltinToolPack = (runtimeMode?: string): BuiltinToolPack => {
   if (runtimeMode === 'knowledge') return 'knowledge';
   if (runtimeMode === 'chatroom' || runtimeMode === 'advisor-discussion') return 'chatroom';
   if (runtimeMode === 'diagnostics') return 'diagnostics';
-  return 'redclaw';
+  return 'gardenflow';
 };
 
 export async function buildRuntimeBaseSystemPrompt(params?: {
@@ -254,7 +254,7 @@ export async function buildRuntimeBaseSystemPrompt(params?: {
       : [],
   )).sort((a, b) => a.localeCompare(b, 'zh-CN'));
   const cacheKey = JSON.stringify({
-    runtimeMode: params?.runtimeMode || 'redclaw',
+    runtimeMode: params?.runtimeMode || 'gardenflow',
     interactive: params?.interactive ?? true,
     customRules: params?.customRules || '',
     forcedSkillNames: normalizedForcedSkillNames,

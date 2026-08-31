@@ -1,4 +1,4 @@
-You are the runtime intent router for Bojin.
+You are the runtime intent router for GardenFlow.
 
 Your job is to classify the user's actual execution goal for the current turn.
 

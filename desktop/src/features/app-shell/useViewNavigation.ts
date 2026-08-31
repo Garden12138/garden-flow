@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ImmersiveMode, ViewType } from './types';
 
-const LAST_VIEW_STORAGE_KEY = 'redbox:app-shell:last-view:v1';
-const DEFAULT_VIEW: ViewType = 'redclaw';
+const LAST_VIEW_STORAGE_KEY = 'gardenflow:app-shell:last-view:v1';
+const DEFAULT_VIEW: ViewType = 'gardenflow';
 const MAX_CACHED_VIEWS = 0;
 const APP_VIEWS = [
   'skills',
@@ -10,7 +10,7 @@ const APP_VIEWS = [
   'settings',
   'archives',
   'wander',
-  'redclaw',
+  'gardenflow',
   'media-library',
   'cover-studio',
   'generation-studio',

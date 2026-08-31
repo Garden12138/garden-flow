@@ -1,4 +1,4 @@
-export const SHOW_CURRENT_RELEASE_NOTES_EVENT = 'redbox:show-current-release-notes';
+export const SHOW_CURRENT_RELEASE_NOTES_EVENT = 'gardenflow:show-current-release-notes';
 
 export function currentReleaseNotesMarkdown(): string {
   return `### 1）声音复刻与角色克隆

@@ -374,57 +374,57 @@
         "notes": "Image generation family."
     },
     {
-        "id": "bojin-private-chat",
-        "vendor": "bojin",
-        "displayName": "Bojin gateway chat family",
+        "id": "gardenflow-private-chat",
+        "vendor": "gardenflow",
+        "displayName": "GardenFlow gateway chat family",
         "matchers": [
-            "\\bbojin-max\\b",
-            "\\bbojin-plus\\b"
+            "\\bgardenflow-max\\b",
+            "\\bgardenflow-plus\\b"
         ],
         "capabilities": ["chat"],
         "inputCapabilities": ["image", "file"],
         "notes": "Private new-api gateway chat models (qwen3.8-max / qwen3.7-plus upstream)."
     },
     {
-        "id": "bojin-private-omni",
-        "vendor": "bojin",
-        "displayName": "Bojin gateway omni family",
+        "id": "gardenflow-private-omni",
+        "vendor": "gardenflow",
+        "displayName": "GardenFlow gateway omni family",
         "matchers": [
-            "bojin.*omni"
+            "gardenflow.*omni"
         ],
         "capabilities": ["audio"],
         "inputCapabilities": ["image", "audio", "video", "file"],
         "notes": "Omni multimodal analysis; kept out of chat lists by the omni policy."
     },
     {
-        "id": "bojin-private-image",
-        "vendor": "bojin",
-        "displayName": "Bojin gateway image family",
+        "id": "gardenflow-private-image",
+        "vendor": "gardenflow",
+        "displayName": "GardenFlow gateway image family",
         "matchers": [
-            "bojin-imgae-",
-            "bojin-image-"
+            "gardenflow-imgae-",
+            "gardenflow-image-"
         ],
         "capabilities": ["image"],
         "inputCapabilities": [],
         "notes": "Covers the 'imgae' spelling used by the gateway model alias."
     },
     {
-        "id": "bojin-private-speech",
-        "vendor": "bojin",
-        "displayName": "Bojin gateway speech",
+        "id": "gardenflow-private-speech",
+        "vendor": "gardenflow",
+        "displayName": "GardenFlow gateway speech",
         "matchers": [
-            "\\bbojin-speech\\b"
+            "\\bgardenflow-speech\\b"
         ],
         "capabilities": ["tts"],
         "inputCapabilities": [],
         "notes": "MiniMax speech upstream exposed through the gateway alias."
     },
     {
-        "id": "bojin-private-embedding",
-        "vendor": "bojin",
-        "displayName": "Bojin gateway embedding",
+        "id": "gardenflow-private-embedding",
+        "vendor": "gardenflow",
+        "displayName": "GardenFlow gateway embedding",
         "matchers": [
-            "bojin-text-embedding"
+            "gardenflow-text-embedding", "gardenflow-vl-embedding"
         ],
         "capabilities": ["embedding"],
         "inputCapabilities": [],

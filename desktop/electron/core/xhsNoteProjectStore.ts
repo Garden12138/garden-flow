@@ -158,7 +158,7 @@ function createEmptyTimeline(title: string): Record<string, unknown> {
             ],
         },
         metadata: {
-            owner: 'redbox',
+            owner: 'gardenflow',
             engine: 'ai-editing',
             version: 1,
             sourceRefs: [],

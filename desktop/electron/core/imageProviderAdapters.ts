@@ -123,7 +123,7 @@ function delay(ms: number): Promise<void> {
 }
 
 function isImageGenDebugEnabled(): boolean {
-    const value = String(process.env.REDCONVERT_IMAGE_DEBUG || process.env.REDCONVERT_DEBUG || '').trim().toLowerCase();
+    const value = String(process.env.GARDENFLOW_IMAGE_DEBUG || process.env.GARDENFLOW_DEBUG || '').trim().toLowerCase();
     return value === '1' || value === 'true' || value === 'yes' || value === 'on';
 }
 
@@ -135,7 +135,7 @@ function readPositiveEnvInt(name: string, fallback: number): number {
 
 function resolveImageRequestTimeoutMs(): number {
     // OpenAI SDK default is 10 minutes. Keep a longer default for slow image providers/gateways.
-    return readPositiveEnvInt('REDCONVERT_IMAGE_TIMEOUT_MS', 20 * 60 * 1000);
+    return readPositiveEnvInt('GARDENFLOW_IMAGE_TIMEOUT_MS', 20 * 60 * 1000);
 }
 
 function resolveImage524RetryCount(): number {

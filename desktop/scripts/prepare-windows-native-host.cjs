@@ -46,7 +46,7 @@ async function main() {
     const bundledEntry = path.join(workRoot, 'browser-native-host.cjs');
     const seaConfigPath = path.join(workRoot, 'sea-config.json');
     const seaBlobPath = path.join(workRoot, 'browser-native-host.blob');
-    const executablePath = path.join(outputRoot, 'bojin-browser-native-host.exe');
+    const executablePath = path.join(outputRoot, 'gardenflow-browser-native-host.exe');
 
     fs.rmSync(outputRoot, { recursive: true, force: true });
     fs.mkdirSync(workRoot, { recursive: true });

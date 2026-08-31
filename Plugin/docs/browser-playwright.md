@@ -1,6 +1,6 @@
 # Browser Playwright
 
-Bojin exposes a limited Playwright-shaped API through `tab.playwright`. It is not full upstream Playwright.
+GardenFlow exposes a limited Playwright-shaped API through `tab.playwright`. It is not full upstream Playwright.
 
 - Use `domSnapshot()` for orientation and locator construction.
 - Use locators for scoped checks and actions.

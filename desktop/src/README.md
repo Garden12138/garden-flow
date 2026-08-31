@@ -1,6 +1,6 @@
 # `src/` Renderer
 
-本目录是 Bojin 的 React renderer，实现页面、组件、bridge 消费和运行时事件 UI。
+本目录是 GardenFlow 的 React renderer，实现页面、组件、bridge 消费和运行时事件 UI。
 
 ## Entry Points
 

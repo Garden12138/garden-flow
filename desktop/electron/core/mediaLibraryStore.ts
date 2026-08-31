@@ -288,7 +288,7 @@ function createDefaultOtioTimeline(title: string) {
       ],
     },
     metadata: {
-      owner: 'redbox',
+      owner: 'gardenflow',
       engine: 'ai-editing',
       version: 1,
       sourceRefs: [],

@@ -18,7 +18,7 @@
     "types": ["node"],
     "baseUrl": ".",
     "paths": {
-      "@redbox/*": ["src/*"],
+      "@gardenflow/*": ["src/*"],
       "@/*": ["src/vendor/freecut/*"],
       "@tauri-apps/api/core": ["src/compat/tauri-core.ts"],
       "@tauri-apps/api/event": ["src/compat/tauri-event.ts"]

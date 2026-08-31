@@ -1,7 +1,7 @@
 import { sendContentMessage } from './dynamicContentInjection.js';
 
-const CONTENT_READ_TYPE = 'xwow-data-ai:read-frame';
-const CONTENT_DOM_SNAPSHOT_TYPE = 'xwow-data-ai:dom-snapshot';
+const CONTENT_READ_TYPE = 'gardenflow-data-ai:read-frame';
+const CONTENT_DOM_SNAPSHOT_TYPE = 'gardenflow-data-ai:dom-snapshot';
 const CONTENT_TYPES = new Set(['html', 'text', 'domSnapshot']);
 
 export async function fetchUrlContents(action = {}) {

@@ -337,7 +337,7 @@ export async function runXhsStructuredCaptureRound(
     }
     const instance = io.checkPluginInstance();
     if (!instance.ok) {
-        return finalize('blocked', instance.detail || '未检测到已连接的 Bojin 浏览器插件');
+        return finalize('blocked', instance.detail || '未检测到已连接的 GardenFlow 浏览器插件');
     }
 
     const searchCardLimit = resolveXhsSearchCardLimit(maxNotes);
@@ -596,7 +596,7 @@ export function createXhsStructuredCaptureIo(
             const bridge = getBrowserCaptureBridgeService();
             const instances = bridge?.getStatus().instances || [];
             if (instances.length === 0) {
-                return { ok: false, detail: '未检测到已连接的 Bojin 浏览器插件，请确认采集浏览器已打开且插件已启用' };
+                return { ok: false, detail: '未检测到已连接的 GardenFlow 浏览器插件，请确认采集浏览器已打开且插件已启用' };
             }
             return { ok: true, detail: `已连接 ${instances.length} 个插件实例` };
         },

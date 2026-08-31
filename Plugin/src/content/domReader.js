@@ -1,7 +1,7 @@
 import { absolutizeSrcset, cssPath, normalizeWhitespace, toAbsoluteUrl, unique } from './domUtils.js';
 
 export function readFrame(options) {
-  const adapter = window.XWOW_SITE_ADAPTERS?.match?.() || null;
+  const adapter = window.GARDENFLOW_SITE_ADAPTERS?.match?.() || null;
   const clone = document.documentElement.cloneNode(true);
   cleanNodeTree(clone);
   absolutizeUrls(clone);
@@ -114,7 +114,7 @@ function cleanNodeTree(root) {
     'textarea',
     'select',
     '[data-thunderbit-ignore]',
-    '[data-xwow-ignore]',
+    '[data-gardenflow-ignore]',
     '[aria-hidden="true"]',
   ];
   for (const node of [...root.querySelectorAll(removeSelectors.join(','))]) {

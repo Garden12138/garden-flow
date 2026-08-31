@@ -35,12 +35,12 @@ export function normalizeGeneratedMediaMarkup(content: string): string {
 
     const fencedBlocks: string[] = [];
     const protectedText = text.replace(FENCED_BLOCK_RE, (block) => {
-        const token = `\u0000redclaw-media-fence-${fencedBlocks.length}\u0000`;
+        const token = `\u0000gardenflow-media-fence-${fencedBlocks.length}\u0000`;
         fencedBlocks.push(block);
         return token;
     });
     const normalized = normalizeMediaElements(protectedText);
-    return normalized.replace(/\u0000redclaw-media-fence-(\d+)\u0000/g, (_token, index: string) => (
+    return normalized.replace(/\u0000gardenflow-media-fence-(\d+)\u0000/g, (_token, index: string) => (
         fencedBlocks[Number(index)] || ''
     ));
 }

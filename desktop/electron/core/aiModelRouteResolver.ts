@@ -1,8 +1,9 @@
 import { parseAiModelRoutesValue } from '../../src/features/settings/modelRouteValue.ts';
 import { resolveModelScopeFromContextType, resolveScopedModelName } from './modelScopeSettings.ts';
 import { normalizeApiBaseUrl } from './urlUtils.ts';
+import compatibility from '../../shared/brandCompatibility.cjs';
 
-export type AiRouteScope = 'chat' | 'wander' | 'knowledge' | 'redclaw';
+export type AiRouteScope = 'chat' | 'wander' | 'knowledge' | 'gardenflow';
 
 export interface ResolvedSettingsLlm {
   modelName: string;
@@ -14,8 +15,7 @@ export interface ResolvedSettingsLlm {
 }
 
 const OFFICIAL_SOURCE_IDS = new Set([
-  'redbox_official_auto',
-  'bojin_official_auto',
+  'gardenflow_official_auto',
 ]);
 
 function text(value: unknown): string {
@@ -25,13 +25,13 @@ function text(value: unknown): string {
 function canonicalizeSourceId(sourceId: string): string {
   const normalized = text(sourceId);
   if (OFFICIAL_SOURCE_IDS.has(normalized.toLowerCase())) {
-    return 'redbox_official_auto';
+    return 'gardenflow_official_auto';
   }
   return normalized;
 }
 
 function isOfficialSourceId(sourceId: string): boolean {
-  return canonicalizeSourceId(sourceId) === 'redbox_official_auto';
+  return canonicalizeSourceId(sourceId) === 'gardenflow_official_auto';
 }
 
 function parseAiSources(settings: Record<string, unknown>): Array<Record<string, unknown>> {
@@ -72,7 +72,7 @@ function findSource(
 function scopeFromContext(contextType: string, preferChat: boolean): AiRouteScope {
   if (preferChat) return 'chat';
   const modelScope = resolveModelScopeFromContextType(contextType);
-  if (modelScope === 'redclaw') return 'redclaw';
+  if (modelScope === 'gardenflow') return 'gardenflow';
   if (modelScope === 'knowledge') return 'knowledge';
   if (modelScope === 'wander') return 'wander';
   return 'chat';
@@ -90,7 +90,8 @@ export function resolveSettingsLlm(
     contextType?: string;
   },
 ): ResolvedSettingsLlm | null {
-  const scope = scopeFromContext(String(options?.contextType || ''), Boolean(options?.preferChat));
+  settings = compatibility.migrateStructured(settings);
+  const scope = scopeFromContext(compatibility.canonicalKey(String(options?.contextType || '')), Boolean(options?.preferChat));
   const route = routeRecord(settings, scope);
   const sources = parseAiSources(settings);
   const sourceId = canonicalizeSourceId(

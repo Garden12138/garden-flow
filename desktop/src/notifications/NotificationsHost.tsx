@@ -5,7 +5,7 @@ import { playNotificationSound, RUNTIME_SUCCESS_SOUND_ASSET_URL } from './audio'
 import {
   buildNotificationFingerprint,
   mapGenerationEventToNotification,
-  mapRedclawTaskEventToNotification,
+  mapGardenFlowTaskEventToNotification,
   mapRuntimeCliEscalationToNotification,
   mapRuntimeDoneToNotification,
   mapRuntimeErrorToNotification,
@@ -139,17 +139,17 @@ export function NotificationsHost({ currentView, children = null }: Notification
     const handleGenerationUpdated = (_event: unknown, payload: unknown) => {
       void deliver(mapGenerationEventToNotification(payload, currentContextSnapshot(currentView), settingsRef.current));
     };
-    const handleRedclawTaskEvent = (_event: unknown, payload: unknown) => {
-      void deliver(mapRedclawTaskEventToNotification(payload, currentContextSnapshot(currentView), settingsRef.current));
+    const handleGardenFlowTaskEvent = (_event: unknown, payload: unknown) => {
+      void deliver(mapGardenFlowTaskEventToNotification(payload, currentContextSnapshot(currentView), settingsRef.current));
     };
 
     window.ipcRenderer.generation.onJobUpdated(handleGenerationUpdated);
-    window.ipcRenderer.redclawRunner.onTaskEvent(handleRedclawTaskEvent);
+    window.ipcRenderer.gardenflowRunner.onTaskEvent(handleGardenFlowTaskEvent);
 
     return () => {
       runtimeDispose();
       window.ipcRenderer.generation.offJobUpdated(handleGenerationUpdated);
-      window.ipcRenderer.redclawRunner.offTaskEvent(handleRedclawTaskEvent);
+      window.ipcRenderer.gardenflowRunner.offTaskEvent(handleGardenFlowTaskEvent);
     };
   }, [currentView, openCenter, push]);
 
@@ -206,7 +206,7 @@ export function NotificationsHost({ currentView, children = null }: Notification
     window.addEventListener('focus', handleFocus);
     window.addEventListener('blur', handleBlur);
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('redbox:feedback-report-submitted', handleBusinessAction);
+    window.addEventListener('gardenflow:feedback-report-submitted', handleBusinessAction);
     window.ipcRenderer.auth.onStateChanged(handleAuthStateChanged);
     return () => {
       mounted = false;
@@ -214,7 +214,7 @@ export function NotificationsHost({ currentView, children = null }: Notification
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('blur', handleBlur);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('redbox:feedback-report-submitted', handleBusinessAction);
+      window.removeEventListener('gardenflow:feedback-report-submitted', handleBusinessAction);
       window.ipcRenderer.auth.offStateChanged(handleAuthStateChanged);
     };
   }, []);

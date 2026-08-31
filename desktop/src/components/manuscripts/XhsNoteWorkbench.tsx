@@ -1,7 +1,7 @@
 import { lazy, Suspense, useMemo } from 'react';
 import { Loader2 } from 'lucide-react';
 import type { ChatMessageLinkTarget } from '../MessageItem';
-import { XhsNotePreviewPane } from '../../pages/redclaw/XhsNotePreviewPane';
+import { XhsNotePreviewPane } from '../../pages/gardenflow/XhsNotePreviewPane';
 
 const ChatWorkspace = lazy(async () => ({
   default: (await import('../../pages/Chat')).Chat,

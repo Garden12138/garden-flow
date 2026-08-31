@@ -1,7 +1,7 @@
-import { toRedboxAssetUrl } from './localAsset';
+import { toGardenFlowAssetUrl } from './localAsset';
 import type { VideoEditorV2Project, VideoTimelineClip } from './videoAutoEdit';
 
-export const VIDEO_EDITOR_V2_REMOTION_COMPOSITION_ID = 'RedBoxVideoMotion';
+export const VIDEO_EDITOR_V2_REMOTION_COMPOSITION_ID = 'GardenFlowVideoMotion';
 
 export interface VideoEditorV2RemotionOverlay {
   id: string;
@@ -101,7 +101,7 @@ export function buildVideoEditorV2RemotionComposition(project: VideoEditorV2Proj
 
   const scenes: VideoEditorV2RemotionScene[] = activePrimaryClips.map((clip, index) => {
     const asset = project.assets.find((item) => item.id === clip.assetId);
-    const src = toRedboxAssetUrl(asset?.projectPath || asset?.sourcePath || '');
+    const src = toGardenFlowAssetUrl(asset?.projectPath || asset?.sourcePath || '');
     if (!asset && String(clip.text || '').trim()) {
       return {
         id: `scene_${clip.id}`,

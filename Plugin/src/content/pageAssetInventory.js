@@ -81,7 +81,7 @@ function mediaAssetFromNode(node, type) {
 }
 
 function iconAssetFromLink(link) {
-  const href = link.dataset.xwowOriginalFaviconHref || link.getAttribute('href') || '';
+  const href = link.dataset.gardenflowOriginalFaviconHref || link.getAttribute('href') || '';
   return resourceAssetFromUrl('icon', href, {
     rel: link.getAttribute('rel') || '',
     sizes: link.getAttribute('sizes') || '',

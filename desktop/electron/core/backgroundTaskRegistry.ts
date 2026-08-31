@@ -5,7 +5,7 @@ import { getWorkspacePaths } from '../db';
 import { getWorkItemStore } from './workItemStore';
 
 export type BackgroundTaskKind =
-  | 'redclaw-project'
+  | 'gardenflow-project'
   | 'scheduled-task'
   | 'long-cycle'
   | 'heartbeat'
@@ -89,7 +89,7 @@ export class BackgroundTaskRegistry extends EventEmitter {
   private cancelHandles = new Map<string, CancelHandle>();
 
   private getStorePath(): string {
-    return path.join(getWorkspacePaths().workspaceRoot, 'redclaw', 'background-tasks.json');
+    return path.join(getWorkspacePaths().workspaceRoot, 'gardenflow', 'background-tasks.json');
   }
 
   private async ensureLoaded(): Promise<void> {

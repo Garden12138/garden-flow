@@ -21,7 +21,7 @@ import type {
 } from './types';
 
 const DEFAULT_INTENT_BY_MODE: Record<RuntimeMode, IntentRoute['intent']> = {
-  redclaw: 'manuscript_creation',
+  gardenflow: 'manuscript_creation',
   knowledge: 'knowledge_retrieval',
   chatroom: 'discussion',
   'advisor-discussion': 'discussion',
@@ -29,7 +29,7 @@ const DEFAULT_INTENT_BY_MODE: Record<RuntimeMode, IntentRoute['intent']> = {
 };
 
 const DEFAULT_ROLE_BY_MODE: Record<RuntimeMode, RoleId> = {
-  redclaw: 'copywriter',
+  gardenflow: 'copywriter',
   knowledge: 'researcher',
   chatroom: 'ops-coordinator',
   'advisor-discussion': 'researcher',
@@ -37,7 +37,7 @@ const DEFAULT_ROLE_BY_MODE: Record<RuntimeMode, RoleId> = {
 };
 
 const DEFAULT_CAPABILITIES_BY_MODE: Record<RuntimeMode, string[]> = {
-  redclaw: ['planning', 'writing', 'artifact-save'],
+  gardenflow: ['planning', 'writing', 'artifact-save'],
   knowledge: ['knowledge-retrieval', 'evidence-synthesis'],
   chatroom: ['multi-agent-discussion'],
   'advisor-discussion': ['advisor-response', 'knowledge-retrieval'],
@@ -103,7 +103,7 @@ const inferIntent = (runtimeMode: RuntimeMode, hints: ReturnType<typeof extractH
   if (runtimeMode === 'background-maintenance') return 'automation';
   if (runtimeMode === 'knowledge') return 'knowledge_retrieval';
   if (runtimeMode === 'chatroom' || runtimeMode === 'advisor-discussion') return 'discussion';
-  if (runtimeMode !== 'redclaw') return DEFAULT_INTENT_BY_MODE[runtimeMode];
+  if (runtimeMode !== 'gardenflow') return DEFAULT_INTENT_BY_MODE[runtimeMode];
 
   const metadata = hints.metadata;
   if (metadata.longCycleTaskId || metadata.longCycleRound || metadata.longCycleStep) {
@@ -123,7 +123,7 @@ const inferIntent = (runtimeMode: RuntimeMode, hints: ReturnType<typeof extractH
 };
 
 const inferRoleForIntent = (runtimeMode: RuntimeMode, intent: IntentName): RoleId => {
-  if (runtimeMode !== 'redclaw') return DEFAULT_ROLE_BY_MODE[runtimeMode];
+  if (runtimeMode !== 'gardenflow') return DEFAULT_ROLE_BY_MODE[runtimeMode];
   switch (intent) {
     case 'cover_generation':
     case 'image_creation':
@@ -215,7 +215,7 @@ const buildDirectRoute = (context: RuntimeContext): IntentRoute => {
 const resolveThinkingBudget = (runtimeMode: RuntimeMode, route: IntentRoute): ThinkingBudget => {
   if (route.requiresLongRunningTask) return 'high';
   if (route.requiresMultiAgent) return 'medium';
-  if (runtimeMode === 'redclaw') return 'low';
+  if (runtimeMode === 'gardenflow') return 'low';
   if (runtimeMode === 'knowledge') return 'medium';
   if (runtimeMode === 'advisor-discussion') return 'low';
   return 'low';
@@ -258,7 +258,7 @@ export class AgentRuntime {
   }): Promise<PreparedRuntimeExecution> {
     const hints = extractHints(params.runtimeContext);
     const baseline = this.analyzeRuntimeContext({ runtimeContext: params.runtimeContext });
-    const route = !hints.forcedIntent && params.runtimeContext.runtimeMode === 'redclaw'
+    const route = !hints.forcedIntent && params.runtimeContext.runtimeMode === 'gardenflow'
       ? await routeIntent({
         context: params.runtimeContext,
         llm: params.llm,

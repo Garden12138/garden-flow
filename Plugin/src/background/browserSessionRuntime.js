@@ -1,7 +1,7 @@
 import { getStoredMap, setStoredMap } from './storage.js';
 
-export const BROWSER_SESSIONS_KEY = 'xwowBrowserDataAiSessions';
-export const BROWSER_SESSION_EVENTS_KEY = 'xwowBrowserDataAiSessionEvents';
+export const BROWSER_SESSIONS_KEY = 'gardenflowBrowserDataAiSessions';
+export const BROWSER_SESSION_EVENTS_KEY = 'gardenflowBrowserDataAiSessionEvents';
 const MAX_BROWSER_SESSION_EVENTS = 500;
 const MAX_RECENT_BROWSER_REQUESTS = 50;
 const MAX_PERSISTED_BROWSER_RESPONSE_BYTES = 128 * 1024;
@@ -438,7 +438,7 @@ function notifyBrowserSessionEventSubscribers(event) {
     try {
       handler(event);
     } catch (error) {
-      console.warn('[XWOW BrowserDataAI] session event subscriber failed', error);
+      console.warn('[GARDENFLOW BrowserDataAI] session event subscriber failed', error);
     }
   }
 }

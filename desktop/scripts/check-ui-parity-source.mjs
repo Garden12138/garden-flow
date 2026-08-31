@@ -1,3 +1,4 @@
+import '../shared/brandEnvironment.cjs';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -6,8 +7,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const archiveRoot = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(archiveRoot, '..', '..');
 const legacyBaselineRoot = path.join(repoRoot, 'desktop');
-const baselineRoot = process.env.RED_BOX_PARITY_BASELINE?.trim()
-  ? path.resolve(process.env.RED_BOX_PARITY_BASELINE)
+const baselineRoot = process.env.GARDENFLOW_PARITY_BASELINE?.trim()
+  ? path.resolve(process.env.GARDENFLOW_PARITY_BASELINE)
   : existsSync(legacyBaselineRoot)
     ? legacyBaselineRoot
     : archiveRoot;

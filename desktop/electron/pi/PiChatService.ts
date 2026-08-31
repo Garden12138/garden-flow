@@ -1,3 +1,4 @@
+import compatibility from '../../shared/brandCompatibility.cjs';
 /**
  * PiChatService - 基于 pi-agent-core 的聊天服务
  *
@@ -39,15 +40,15 @@ import type { BuiltinToolPack } from '../core/tools/catalog';
 import { createCompressionService } from '../core/compressionService';
 import { QueryRuntime } from '../core/queryRuntime';
 import { getLongTermMemoryPrompt } from '../core/fileMemoryStore';
-import { getRedClawProjectContextPrompt } from '../core/redclawStore';
+import { getGardenFlowProjectContextPrompt } from '../core/gardenflowStore';
 import { getWorkItemStore } from '../core/workItemStore';
 import { buildMcpPromptSection } from '../core/mcpPromptSummary';
 import {
-  ensureRedClawOnboardingCompletedWithDefaults,
-  handleRedClawOnboardingTurn,
-  loadRedClawProfilePromptBundle,
-  type RedClawProfilePromptBundle,
-} from '../core/redclawProfileStore';
+  ensureGardenFlowOnboardingCompletedWithDefaults,
+  handleGardenFlowOnboardingTurn,
+  loadGardenFlowProfilePromptBundle,
+  type GardenFlowProfilePromptBundle,
+} from '../core/gardenflowProfileStore';
 import { resolveChatMaxTokens } from '../core/chatTokenConfig';
 import { resolveSettingsLlm } from '../core/aiModelRouteResolver';
 import { resolveModelScopeFromContextType, resolveScopedModelName } from '../core/modelScopeSettings';
@@ -285,7 +286,7 @@ function toPersistedRuntimeEvent(channel: string, data: unknown): PersistedRunti
   }
 }
 
-const DEFAULT_REDCLAW_AUTO_COMPACT_TOKENS = 256000;
+const DEFAULT_GARDENFLOW_AUTO_COMPACT_TOKENS = 256000;
 const DEFAULT_MODEL_CONTEXT_WINDOW_FALLBACK = 64000;
 const TOOL_GUARD_MAX_TOTAL_CALLS = 100;
 const TOOL_GUARD_MAX_CALLS_PER_TOOL = 100;
@@ -296,7 +297,7 @@ const TOOL_RESULT_MAX_DISPLAY_CHARS = 26000;
 const TOOL_RESULT_MAX_ERROR_CHARS = 4000;
 const PI_CHAT_SYSTEM_BASE_TEMPLATE = loadPrompt(
   'runtime/pi/system_base.txt',
-  'You are RedClaw, the self-media operations expert agent inside Bojin.\nCurrent date: {{current_date}}\nCurrent working directory: {{current_working_directory}}'
+  'You are GardenFlow, the self-media operations expert agent inside GardenFlow.\nCurrent date: {{current_date}}\nCurrent working directory: {{current_working_directory}}'
 );
 const RESPONSE_STYLE_TEMPLATE = loadPrompt('response_style.txt', '');
 const PI_CHAT_VIDEO_EDITOR_TEMPLATE = loadPrompt('runtime/pi/video_editor.txt', '');
@@ -306,7 +307,7 @@ interface ToolGuardState {
   totalCalls: number;
   callsByTool: Map<string, number>;
   callsBySignature: Map<string, number>;
-  restrictToAppCliInRedClaw: boolean;
+  restrictToAppCliInGardenFlow: boolean;
   blockedTools: Set<string>;
 }
 
@@ -350,7 +351,7 @@ export class PiChatService {
     this.sessionId = `session_${Date.now()}`;
     this.skillManager = new SkillManager();
     this.toolRegistry = new ToolRegistry();
-    this.toolPack = options.toolPack || 'redclaw';
+    this.toolPack = options.toolPack || 'gardenflow';
     this.workspacePathsOverride = options.workspacePathsOverride || null;
     const tools = createBuiltinTools({
       pack: this.toolPack,
@@ -772,11 +773,11 @@ export class PiChatService {
 
   async compactContextNow(sessionId: string): Promise<CompactContextResult> {
     const metadata = this.getSessionMetadata(sessionId);
-    if (metadata.contextType !== 'redclaw') {
+    if (metadata.contextType !== 'gardenflow') {
       return {
         success: false,
         compacted: false,
-        message: '当前会话不是 RedClaw 上下文会话，无法手动 compact。',
+        message: '当前会话不是 GardenFlow 上下文会话，无法手动 compact。',
       };
     }
 
@@ -806,7 +807,7 @@ export class PiChatService {
       baseURL,
       modelName,
       contextWindow: this.getModelContextWindow(model),
-      redClawCompactTargetTokens: this.getRedClawCompactTargetTokens(settings),
+      gardenFlowCompactTargetTokens: this.getGardenFlowCompactTargetTokens(settings),
       force: true,
     });
 
@@ -1083,7 +1084,7 @@ export class PiChatService {
           maxTurns,
           maxTimeMinutes: captureTask ? Math.max(maxTimeMinutes, 20) : maxTimeMinutes,
           temperature,
-          toolPack: 'redclaw',
+          toolPack: 'gardenflow',
           runtimeMode,
           interactive: runtimeMode !== 'background-maintenance',
           requiresHumanApproval: preparedExecution.route.requiresHumanApproval,
@@ -1291,14 +1292,14 @@ export class PiChatService {
       console.warn('[PiChatService] Failed to preactivate mentioned skills:', error);
     }
 
-    let redClawProfileBundle: RedClawProfilePromptBundle | null = null;
+    let gardenFlowProfileBundle: GardenFlowProfilePromptBundle | null = null;
 
-    if (this.shouldHandleRedClawOnboarding(metadata)) {
+    if (this.shouldHandleGardenFlowOnboarding(metadata)) {
       try {
-        redClawProfileBundle = await loadRedClawProfilePromptBundle();
-        const isFirstRedClawTurn = this.isFirstAssistantTurn(sessionId);
-        if (allowInteractiveOnboarding && isFirstRedClawTurn) {
-          const onboarding = await handleRedClawOnboardingTurn(content);
+        gardenFlowProfileBundle = await loadGardenFlowProfilePromptBundle();
+        const isFirstGardenFlowTurn = this.isFirstAssistantTurn(sessionId);
+        if (allowInteractiveOnboarding && isFirstGardenFlowTurn) {
+          const onboarding = await handleGardenFlowOnboardingTurn(content);
           if (onboarding.handled) {
             return {
               kind: 'handled',
@@ -1306,18 +1307,18 @@ export class PiChatService {
             };
           }
         }
-        if (!redClawProfileBundle.onboardingState.completedAt) {
-          await ensureRedClawOnboardingCompletedWithDefaults();
+        if (!gardenFlowProfileBundle.onboardingState.completedAt) {
+          await ensureGardenFlowOnboardingCompletedWithDefaults();
         }
-        redClawProfileBundle = await loadRedClawProfilePromptBundle();
+        gardenFlowProfileBundle = await loadGardenFlowProfilePromptBundle();
       } catch (error) {
-        console.warn('[PiChatService] RedClaw onboarding/profile failed:', error);
+        console.warn('[PiChatService] GardenFlow onboarding/profile failed:', error);
       }
-    } else if (metadata.contextType === 'redclaw') {
+    } else if (metadata.contextType === 'gardenflow') {
       try {
-        redClawProfileBundle = await loadRedClawProfilePromptBundle();
+        gardenFlowProfileBundle = await loadGardenFlowProfilePromptBundle();
       } catch (error) {
-        console.warn('[PiChatService] Failed to load RedClaw profile bundle for non-primary session:', error);
+        console.warn('[PiChatService] Failed to load GardenFlow profile bundle for non-primary session:', error);
       }
     }
 
@@ -1327,7 +1328,7 @@ export class PiChatService {
     }
 
     const model = this.createModelWithBaseUrl(modelName, baseURL, settings);
-    const redClawCompactTargetTokens = this.getRedClawCompactTargetTokens(settings);
+    const gardenFlowCompactTargetTokens = this.getGardenFlowCompactTargetTokens(settings);
     metadata = await this.maybeCompactContext({
       sessionId,
       currentInput: content,
@@ -1336,15 +1337,15 @@ export class PiChatService {
       baseURL,
       modelName,
       contextWindow: this.getModelContextWindow(model),
-      redClawCompactTargetTokens,
+      gardenFlowCompactTargetTokens,
     });
     const longTermMemory = await this.loadLongTermMemoryContext();
-    const redClawProjectContext = await this.loadRedClawProjectContext(metadata);
-    if (metadata.contextType === 'redclaw' && !redClawProfileBundle) {
+    const gardenFlowProjectContext = await this.loadGardenFlowProjectContext(metadata);
+    if (metadata.contextType === 'gardenflow' && !gardenFlowProfileBundle) {
       try {
-        redClawProfileBundle = await loadRedClawProfilePromptBundle();
+        gardenFlowProfileBundle = await loadGardenFlowProfilePromptBundle();
       } catch (error) {
-        console.warn('[PiChatService] Failed to reload RedClaw profile bundle:', error);
+        console.warn('[PiChatService] Failed to reload GardenFlow profile bundle:', error);
       }
     }
 
@@ -1352,8 +1353,8 @@ export class PiChatService {
       workspacePaths,
       metadata,
       longTermMemory,
-      redClawProjectContext,
-      redClawProfileBundle,
+      gardenFlowProjectContext,
+      gardenFlowProfileBundle,
       modelName,
     );
     const sessionMetadata = metadata as Record<string, unknown>;
@@ -1441,10 +1442,10 @@ export class PiChatService {
     return assistantCount === 0 && history.length <= 1;
   }
 
-  private shouldHandleRedClawOnboarding(metadata: SessionMetadata): boolean {
-    if (metadata.contextType !== 'redclaw') return false;
+  private shouldHandleGardenFlowOnboarding(metadata: SessionMetadata): boolean {
+    if (metadata.contextType !== 'gardenflow') return false;
     const contextId = String(metadata.contextId || '');
-    return contextId.startsWith('redclaw-singleton:');
+    return contextId.startsWith('gardenflow-singleton:');
   }
 
   private cleanupAgentSubscription() {
@@ -1951,7 +1952,7 @@ export class PiChatService {
 
     const agentTools = this.createAgentTools(signal);
     this.emitDebugLog('info', 'agent:tools:registered', {
-      pack: 'redclaw',
+      pack: 'gardenflow',
       count: agentTools.length,
       names: agentTools.map((tool) => tool.name),
       thinkingLevel,
@@ -1960,7 +1961,7 @@ export class PiChatService {
     const missingTools = requiredTools.filter((name) => !agentTools.some((tool) => tool.name === name));
     if (!agentTools.length || missingTools.length > 0) {
       this.emitDebugLog('error', 'agent:tools:pack-invalid', {
-        pack: 'redclaw',
+        pack: 'gardenflow',
         count: agentTools.length,
         missingTools,
       });
@@ -1977,12 +1978,12 @@ export class PiChatService {
     if (String(metadata.runtimeMode || '').trim() === 'background-maintenance') {
       return 'background-maintenance';
     }
-    if (String(metadata.editorBindingKind || '').trim() === 'xiaohongshu-note') return 'redclaw';
-    if (String(metadata.mode || '').trim() === 'xiaohongshu-note-editing') return 'redclaw';
+    if (String(metadata.editorBindingKind || '').trim() === 'xiaohongshu-note') return 'gardenflow';
+    if (String(metadata.mode || '').trim() === 'xiaohongshu-note-editing') return 'gardenflow';
     const contextType = String(metadata.contextType || '').trim().toLowerCase();
-    if (contextType === 'redclaw') return 'redclaw';
-    if (contextType === 'generation-agent') return 'redclaw';
-    if (contextType === 'weixin') return 'redclaw';
+    if (contextType === 'gardenflow') return 'gardenflow';
+    if (contextType === 'generation-agent') return 'gardenflow';
+    if (contextType === 'weixin') return 'gardenflow';
     if (contextType === 'chatroom') return 'chatroom';
     if (contextType === 'advisor' || contextType === 'discussion') return 'advisor-discussion';
     if (contextType === 'note' || contextType === 'knowledge' || contextType === 'video') return 'knowledge';
@@ -2201,7 +2202,7 @@ export class PiChatService {
   }
 
   private createToolGuardState(metadata?: SessionMetadata): ToolGuardState {
-    const isWindowsRedClaw = process.platform === 'win32' && metadata?.contextType === 'redclaw';
+    const isWindowsGardenFlow = process.platform === 'win32' && metadata?.contextType === 'gardenflow';
     const blockedTools = new Set<string>([
       'bash',
       'workspace',
@@ -2211,7 +2212,7 @@ export class PiChatService {
       totalCalls: 0,
       callsByTool: new Map<string, number>(),
       callsBySignature: new Map<string, number>(),
-      restrictToAppCliInRedClaw: isWindowsRedClaw,
+      restrictToAppCliInGardenFlow: isWindowsGardenFlow,
       blockedTools,
     };
   }
@@ -2487,8 +2488,8 @@ export class PiChatService {
         payload: videoArgs,
       });
     }
-    if (!blockReason && state.restrictToAppCliInRedClaw && state.blockedTools.has(normalizedToolName)) {
-      blockReason = `Windows RedClaw 模式下已限制 ${normalizedToolName}，请改用 app_cli 或 redclaw_* 工具，避免路径兼容问题。`;
+    if (!blockReason && state.restrictToAppCliInGardenFlow && state.blockedTools.has(normalizedToolName)) {
+      blockReason = `Windows GardenFlow 模式下已限制 ${normalizedToolName}，请改用 app_cli 或 gardenflow_* 工具，避免路径兼容问题。`;
     } else if (!blockReason && state.totalCalls > TOOL_GUARD_MAX_TOTAL_CALLS) {
       blockReason = `Tool 调用次数超过上限(${TOOL_GUARD_MAX_TOTAL_CALLS})，已阻止继续调用。请基于现有结果给出结论。`;
     } else if (!blockReason && currentToolCount > TOOL_GUARD_MAX_CALLS_PER_TOOL) {
@@ -2759,11 +2760,11 @@ export class PiChatService {
   }
 
   private createModelWithBaseUrl(modelName: string, baseURL: string, settings?: Record<string, unknown>): Model<any> {
-    const requestedModel = (modelName || 'gpt-4o').trim();
+    const requestedModel = compatibility.canonicalValue((modelName || 'gpt-4o').trim());
     const resolvedBaseUrl = normalizeApiBaseUrl(baseURL || 'https://api.openai.com/v1', 'https://api.openai.com/v1');
     const isOfficialOpenAI = this.isOfficialOpenAIEndpoint(resolvedBaseUrl);
 
-    if (isOfficialOpenAI) {
+    if (isOfficialOpenAI && !requestedModel.startsWith(`${compatibility.identity.slug}-`)) {
       const resolved = getModel('openai', requestedModel as any) as (Model<any> & { baseUrl?: string }) | undefined;
       if (resolved) {
         console.log('[PiChatService] model-resolved', { mode: 'openai-official', modelId: resolved.id, api: resolved.api });
@@ -3205,7 +3206,7 @@ export class PiChatService {
     const history = this.getHistoryMessages(sessionId, currentInput);
     let selected: HistoryMessage[] = history.slice(-30);
 
-    if (metadata?.contextType === 'redclaw') {
+    if (metadata?.contextType === 'gardenflow') {
       const compactBase = Math.max(0, Math.min(history.length, metadata.compactBaseMessageCount || 0));
       selected = history.slice(compactBase).slice(-80);
     }
@@ -3252,7 +3253,7 @@ export class PiChatService {
     baseURL: string;
     modelName: string;
     contextWindow: number;
-    redClawCompactTargetTokens?: number;
+    gardenFlowCompactTargetTokens?: number;
     force?: boolean;
   }): Promise<SessionMetadata> {
     const {
@@ -3262,12 +3263,12 @@ export class PiChatService {
       baseURL,
       modelName,
       contextWindow,
-      redClawCompactTargetTokens,
+      gardenFlowCompactTargetTokens,
       force = false,
     } = params;
     const metadata = { ...params.metadata };
 
-    if (metadata.contextType !== 'redclaw') {
+    if (metadata.contextType !== 'gardenflow') {
       return metadata;
     }
 
@@ -3284,7 +3285,7 @@ export class PiChatService {
     const activeHistory = history.slice(compactBaseCount);
     const activeHistoryChars = activeHistory.reduce((acc, msg) => acc + String(msg.content || '').length, 0);
     const estimatedTotal = this.estimateTokenCountForHistory(activeHistory) + compactSummaryTokens;
-    const compactThreshold = this.getRedClawCompactThreshold(contextWindow, redClawCompactTargetTokens);
+    const compactThreshold = this.getGardenFlowCompactThreshold(contextWindow, gardenFlowCompactTargetTokens);
     const shouldCompactByTokens = estimatedTotal >= compactThreshold;
     const shouldCompactByMessageCount = activeHistory.length >= 48;
     const shouldCompactByChars = activeHistoryChars >= 28000;
@@ -3346,19 +3347,19 @@ export class PiChatService {
     }
   }
 
-  private getRedClawCompactTargetTokens(settings: Record<string, unknown>): number {
-    const raw = settings.redclaw_compact_target_tokens ?? settings.redclawCompactTargetTokens;
+  private getGardenFlowCompactTargetTokens(settings: Record<string, unknown>): number {
+    const raw = settings.gardenflow_compact_target_tokens ?? settings.gardenflowCompactTargetTokens;
     const parsed = Number(raw);
     if (Number.isFinite(parsed) && parsed > 0) {
       return Math.floor(parsed);
     }
-    return DEFAULT_REDCLAW_AUTO_COMPACT_TOKENS;
+    return DEFAULT_GARDENFLOW_AUTO_COMPACT_TOKENS;
   }
 
-  private getRedClawCompactThreshold(contextWindow: number, targetTokens?: number): number {
+  private getGardenFlowCompactThreshold(contextWindow: number, targetTokens?: number): number {
     const target = Number.isFinite(Number(targetTokens)) && Number(targetTokens) > 0
       ? Math.floor(Number(targetTokens))
-      : DEFAULT_REDCLAW_AUTO_COMPACT_TOKENS;
+      : DEFAULT_GARDENFLOW_AUTO_COMPACT_TOKENS;
 
     // 留出安全余量，避免接近模型极限触发 provider 上下文超限。
     const safeUpperBound = Math.max(24000, Math.floor(contextWindow * 0.88));
@@ -3582,10 +3583,10 @@ export class PiChatService {
 
   private buildPiDocumentationSection(
     workspacePaths: ReturnType<typeof getWorkspacePaths>,
-    redClawProfileBundle?: RedClawProfilePromptBundle | null,
+    gardenFlowProfileBundle?: GardenFlowProfilePromptBundle | null,
   ): string {
     const memoryPath = path.join(workspacePaths.base, 'memory', 'MEMORY.md');
-    const profileRoot = redClawProfileBundle?.profileRoot || path.join(workspacePaths.redclaw, 'profile');
+    const profileRoot = gardenFlowProfileBundle?.profileRoot || path.join(workspacePaths.gardenflow, 'profile');
     const agentPath = path.join(profileRoot, 'Agent.md');
     const soulPath = path.join(profileRoot, 'Soul.md');
     const identityPath = path.join(profileRoot, 'identity.md');
@@ -3749,16 +3750,16 @@ export class PiChatService {
     }
   }
 
-  private async loadRedClawProjectContext(metadata: SessionMetadata): Promise<string> {
-    if (metadata.contextType !== 'redclaw') return '';
+  private async loadGardenFlowProjectContext(metadata: SessionMetadata): Promise<string> {
+    if (metadata.contextType !== 'gardenflow') return '';
     try {
       const [projectsPrompt, workboardPrompt] = await Promise.all([
-        getRedClawProjectContextPrompt(10),
+        getGardenFlowProjectContextPrompt(10),
         getWorkItemStore().buildContextPrompt(10),
       ]);
       return [workboardPrompt, projectsPrompt].filter(Boolean).join('\n');
     } catch (error) {
-      console.warn('[PiChatService] Failed to load RedClaw projects context:', error);
+      console.warn('[PiChatService] Failed to load GardenFlow projects context:', error);
       return '';
     }
   }
@@ -3767,8 +3768,8 @@ export class PiChatService {
     workspacePaths: ReturnType<typeof getWorkspacePaths>,
     metadata: SessionMetadata,
     longTermMemory: string,
-    redClawProjectContext: string,
-    redClawProfileBundle?: RedClawProfilePromptBundle | null,
+    gardenFlowProjectContext: string,
+    gardenFlowProfileBundle?: GardenFlowProfilePromptBundle | null,
     chatModel?: string,
   ): string {
     const workspace = workspacePaths.base;
@@ -3777,7 +3778,7 @@ export class PiChatService {
     const promptParts: string[] = [
       renderPrompt(PI_CHAT_SYSTEM_BASE_TEMPLATE, {
         available_tools: this.buildAvailableToolsSummary(),
-        pi_documentation: this.buildPiDocumentationSection(workspacePaths, redClawProfileBundle),
+        pi_documentation: this.buildPiDocumentationSection(workspacePaths, gardenFlowProfileBundle),
         project_context: this.buildProjectContextSection(workspacePaths),
         skills_section: this.buildSkillsSection(skillsXml, activeSkillContents),
         subjects_section: this.buildSubjectsSection(workspacePaths),
@@ -3796,8 +3797,8 @@ export class PiChatService {
         manuscripts_path: workspacePaths.manuscripts,
         media_path: workspacePaths.media,
         subjects_path: `${workspacePaths.base}/subjects`,
-        redclaw_path: workspacePaths.redclaw,
-        redclaw_profile_path: `${workspacePaths.redclaw}/profile`,
+        gardenflow_path: workspacePaths.gardenflow,
+        gardenflow_profile_path: `${workspacePaths.gardenflow}/profile`,
         memory_path: `${workspacePaths.base}/memory`,
       }),
       RESPONSE_STYLE_TEMPLATE,
@@ -3865,45 +3866,45 @@ export class PiChatService {
       );
     }
 
-    if (metadata.contextType === 'redclaw' && redClawProfileBundle) {
+    if (metadata.contextType === 'gardenflow' && gardenFlowProfileBundle) {
       promptParts.push(
         '',
-        '## RedClaw 个性化档案（空间隔离）',
-        `- ProfileRoot: ${redClawProfileBundle.profileRoot}`,
+        '## GardenFlow 个性化档案（空间隔离）',
+        `- ProfileRoot: ${gardenFlowProfileBundle.profileRoot}`,
         '- 档案文件: Agent.md / Soul.md / identity.md / user.md / CreatorProfile.md',
-        '<redclaw_agent_md>',
-        this.truncate(redClawProfileBundle.files.agent || '', 6000),
-        '</redclaw_agent_md>',
-        '<redclaw_soul_md>',
-        this.truncate(redClawProfileBundle.files.soul || '', 6000),
-        '</redclaw_soul_md>',
-        '<redclaw_identity_md>',
-        this.truncate(redClawProfileBundle.files.identity || '', 4000),
-        '</redclaw_identity_md>',
-        '<redclaw_user_md>',
-        this.truncate(redClawProfileBundle.files.user || '', 8000),
-        '</redclaw_user_md>',
-        '<redclaw_creator_profile_md>',
-        this.truncate(redClawProfileBundle.files.creatorProfile || '', 10000),
-        '</redclaw_creator_profile_md>',
+        '<gardenflow_agent_md>',
+        this.truncate(gardenFlowProfileBundle.files.agent || '', 6000),
+        '</gardenflow_agent_md>',
+        '<gardenflow_soul_md>',
+        this.truncate(gardenFlowProfileBundle.files.soul || '', 6000),
+        '</gardenflow_soul_md>',
+        '<gardenflow_identity_md>',
+        this.truncate(gardenFlowProfileBundle.files.identity || '', 4000),
+        '</gardenflow_identity_md>',
+        '<gardenflow_user_md>',
+        this.truncate(gardenFlowProfileBundle.files.user || '', 8000),
+        '</gardenflow_user_md>',
+        '<gardenflow_creator_profile_md>',
+        this.truncate(gardenFlowProfileBundle.files.creatorProfile || '', 10000),
+        '</gardenflow_creator_profile_md>',
         '文档职责与更新规则：',
-        '- Agent.md：RedClaw 的工作契约、执行规则、标准流程。只有当用户明确要求修改 RedClaw 的工作方式、流程、约束、职责边界时才更新，避免为临时任务改写。',
-        '- Soul.md：RedClaw 的协作语气、反馈风格、人格倾向。用户明确调整沟通风格、批判力度、表达方式时更新。',
+        '- Agent.md：GardenFlow 的工作契约、执行规则、标准流程。只有当用户明确要求修改 GardenFlow 的工作方式、流程、约束、职责边界时才更新，避免为临时任务改写。',
+        '- Soul.md：GardenFlow 的协作语气、反馈风格、人格倾向。用户明确调整沟通风格、批判力度、表达方式时更新。',
         '- user.md：用户稳定画像与长期事实，例如目标、受众、内容赛道、发布节奏、成功指标。用户明确给出新的长期事实时更新。',
         '- CreatorProfile.md：用户长期自媒体定位与策略主档案，包括定位、目标群体、内容风格、商业目标、运营边界。用户明确给出这类长期变化时更新。',
         '- 如果只是一次性任务要求、单篇稿件偏好或临时实验，不要改这些长期文档；优先体现在当前任务执行里，必要时写入普通长期记忆。',
         '- 更新这些文档时，优先先读目标 Markdown 文件，再使用 `workspace(action="edit" ...)` 或 `workspace(action="write" ...)` 做精确修改。',
       );
 
-      if (!redClawProfileBundle.onboardingState.completedAt && redClawProfileBundle.files.bootstrap) {
+      if (!gardenFlowProfileBundle.onboardingState.completedAt && gardenFlowProfileBundle.files.bootstrap) {
         promptParts.push(
           '',
-          '## RedClaw 首次设定引导状态',
+          '## GardenFlow 首次设定引导状态',
           `- completed: false`,
-          `- stepIndex: ${redClawProfileBundle.onboardingState.stepIndex || 0}`,
-          '<redclaw_bootstrap>',
-          this.truncate(redClawProfileBundle.files.bootstrap, 3000),
-          '</redclaw_bootstrap>',
+          `- stepIndex: ${gardenFlowProfileBundle.onboardingState.stepIndex || 0}`,
+          '<gardenflow_bootstrap>',
+          this.truncate(gardenFlowProfileBundle.files.bootstrap, 3000),
+          '</gardenflow_bootstrap>',
           '当前空间尚未完成首次设定。优先完成偏好采集后再推进复杂任务。',
         );
       }
@@ -3971,14 +3972,14 @@ export class PiChatService {
       );
     }
 
-    if (metadata.contextType === 'redclaw') {
+    if (metadata.contextType === 'gardenflow') {
       promptParts.push(
         '',
-        '## RedClaw 执行模式（自媒体 AI 工作台）',
+        '## GardenFlow 执行模式（自媒体 AI 工作台）',
         '- 你要以“目标->策略->文案->配图->发布计划->复盘”的流程推进，不要只给泛泛建议。',
-        '- 处理 RedClaw 业务时，统一优先使用 `app_cli`，不要假设存在单独的 `redclaw_*` 业务工具。若不确定动作名，先 `app_cli(command="help redclaw")`。',
-        '- RedClaw 的默认起手式不再是直接建项目；先查看或创建工作项：`app_cli(command="work ready")`、`app_cli(command="work create --title ... --type redclaw-note")`。',
-        '- 只有满足以下任一条件时，才把工作项升级成 RedClaw 项目：需要持续多轮跟进、需要配图包/复盘闭环、需要后台自动化、用户明确要求建项目。升级时用 `app_cli(command="work promote-redclaw --id ...")`。',
+        '- 处理 GardenFlow 业务时，统一优先使用 `app_cli`，不要假设存在单独的 `gardenflow_*` 业务工具。若不确定动作名，先 `app_cli(command="help gardenflow")`。',
+        '- GardenFlow 的默认起手式不再是直接建项目；先查看或创建工作项：`app_cli(command="work ready")`、`app_cli(command="work create --title ... --type gardenflow-note")`。',
+        '- 只有满足以下任一条件时，才把工作项升级成 GardenFlow 项目：需要持续多轮跟进、需要配图包/复盘闭环、需要后台自动化、用户明确要求建项目。升级时用 `app_cli(command="work promote-gardenflow --id ...")`。',
         '- 工作推进过程中，要持续更新工作项状态与关联：例如 `work update --id ... --status active`、`work link --id ... --file-path ... --project-id ...`。',
         '- 默认优先单代理完成任务，不要因为任务比较正式就自动进入 planner / researcher / reviewer 流水线。',
         '- 只有在用户明确要求多人协作，或任务同时具备多阶段强依赖、严格验收、长期跟进、高风险保存/发布等特征时，才升级成多 subagent。',
@@ -3986,9 +3987,9 @@ export class PiChatService {
         '- reviewer 不是默认必经步骤；只有在明确需要独立复核、严格审校、发布前验收时，才应单独拉 reviewer。',
         '- 当用户要求定时执行、周期巡检、长期跟进、每天/每周推进时，不要只回答计划；要用 `work schedule-add` 或 `work cycle-add` 创建自动化工作项，并为复杂任务配置 `subagentRoles`。',
         '- 对复杂长周期任务，主代理负责调度和汇报，实际执行优先交给子角色链路，例如 `planner -> researcher -> copywriter -> reviewer` 或 `planner -> ops-coordinator -> reviewer`。',
-        '- 若当前任务已经绑定了 RedClaw 项目，产出文案后必须调用 `app_cli(command="redclaw save-copy ...")` 保存标题候选、正文、标签、封面文案、发布计划。',
-        '- 若当前任务已经绑定了 RedClaw 项目，产出配图策略后必须调用 `app_cli(command="redclaw save-image ...")` 保存封面图和多张配图提示词。',
-        '- 若用户给出发布后数据，必须调用 `app_cli(command="redclaw save-retro ...")` 形成复盘并给出下一轮假设与动作。',
+        '- 若当前任务已经绑定了 GardenFlow 项目，产出文案后必须调用 `app_cli(command="gardenflow save-copy ...")` 保存标题候选、正文、标签、封面文案、发布计划。',
+        '- 若当前任务已经绑定了 GardenFlow 项目，产出配图策略后必须调用 `app_cli(command="gardenflow save-image ...")` 保存封面图和多张配图提示词。',
+        '- 若用户给出发布后数据，必须调用 `app_cli(command="gardenflow save-retro ...")` 形成复盘并给出下一轮假设与动作。',
         '- 若当前任务没有明确 projectId，例如“根据随机漫步结果开始创作”，默认将完整稿件写入 `manuscripts/`，并使用 `app_cli(command="manuscripts write --path ...", payload={ content: "完整 markdown" })` 落盘。',
         '- 小红书图文/视频笔记是结构化稿件的例外：必须使用 `manuscripts note-save/note-get/note-bind-media/note-export`，禁止用普通 `manuscripts write/create` 覆盖 `.redpost` 或 `.redvideo`。',
         '- 新建小红书笔记时，把完整结构放入 `payload.document`；图文至少包含标题候选、最终标题、正文、标签、封面文案、逐页方案和媒体槽位；视频还要包含口播稿、时长/比例、分镜、字幕、封面与成片槽位、生成状态。视频分镜每项还要提供根据本镜头实际需求动态生成的 `generationPrompt`。',
@@ -4000,14 +4001,14 @@ export class PiChatService {
         '- 小红书结构化笔记保存后，最终回复必须包含工具返回的 `manuscripts://...redpost|redvideo` 链接，以便显示产物卡和打开右侧预览。',
         '- 不能只在聊天里展示最终文案；完整内容产出后必须保存，并在回复中明确回显工具返回的真实保存路径。',
         '- 未收到工具成功返回前，禁止声称“已保存”“已写入稿件”“文件路径是 ...”。若保存失败或尚未执行，必须明确说明未保存。',
-        '- 在继续历史任务前，可先调用 `app_cli(command="redclaw list")` 或 `app_cli(command="redclaw get --project-id ...")` 确认项目状态。',
+        '- 在继续历史任务前，可先调用 `app_cli(command="gardenflow list")` 或 `app_cli(command="gardenflow get --project-id ...")` 确认项目状态。',
         '- 当用户提到具体人物、商品、场景、道具、品牌款式时，先查询主体库：不确定命令时先 `app_cli(command="help subjects")`；通常先 `subjects search`，命中后再 `subjects get --id ...`。',
         '- 如果主体库没有结果，必须明确说未找到，不要自行臆测主体长相、服饰、商品款式或细节。',
         '- 图片生成统一优先调用独立工具 `image_generate`。存在用户上传参考图、主体库图片、模板图、人物图或商品图时，使用其 referenceImages 参考图模式，不要退回纯文生图。',
         '- 用户上传的图片即使当前聊天模型不支持图片直传，只要系统提供了“工作暂存路径”，仍必须把该路径作为 `referenceImages` 交给 `image_generate` / `video_generate`；不得声称无法读取、无法上传或要求用户换聊天模型。',
         '- 若任务是在已有图片上加标题、加字、补局部元素、替换局部内容或延续上一张图做修改，必须优先使用 `image-to-image` 模式，并先确认上一张图的真实路径，再把该图片作为 `referenceImages` 传入。',
         '- 在 `image-to-image` 模式下，提示词只写“本次要修改的部分”；不要重新长篇描述整张图的风格、构图、氛围和主体，否则容易过拟合并破坏原图。',
-        '- 当用户要求生成短视频、动态镜头、运镜片段、首尾帧过渡时，先加载 `redbox-video-director` 技能，再使用独立工具 `video_generate`，不要把视频需求错误降级成静态图片。',
+        '- 当用户要求生成短视频、动态镜头、运镜片段、首尾帧过渡时，先加载 `gardenflow-video-director` 技能，再使用独立工具 `video_generate`，不要把视频需求错误降级成静态图片。',
         '- 当用户要求生成语音、旁白、配音或音频时，使用独立工具 `audio_generate`；音频任务必须拿到真实音频路径后才算完成。',
         '- 正式调用生视频工具前，必须先给用户一版视频脚本并等待确认；不要一上来直接生成视频。',
         '- 在脚本确认阶段，必须明确回显 `视频时长` 和 `视频比例`，让用户一起确认。',
@@ -4024,7 +4025,7 @@ export class PiChatService {
         '- `storyboard[].generationPrompt` 保持纯画面描述，但每个镜头实际需要说出的口播或对白必须写入 `storyboard[].voiceover`；有对白时写清说话者、语气和实际台词，不要使用“继续口播”“快速喊名字”等占位描述。结构化笔记生成会把它作为仅用于音轨的声音要求单独组合给支持有声生成的模型。字幕、屏幕文字、价格、步骤标签、互动文案、图标、Logo 和 UI 仍属于后期剪辑信息，默认要求模型输出无文字的干净画面，只有显式结构化开启 `renderText` 时才例外。',
         '- 一个生成片段通常只承载 1–2 个连续视觉节拍；场景、机位或核心动作改变时拆段，并在相邻片段中复用稳定的主体身份、空间透视、物件位置、材质、配色和光线锚点。',
         '- 视频模式选择规则：无参考图时用 `text-to-video`，并且不要传 `referenceImages`；当任务是“参考这些图片中的主体、元素、风格、道具、场景线索来做视频”时，用 `reference-guided` 并传入参考图；只有当用户明确强调起始状态、结束状态、首尾帧、从图A过渡到图B时，才用 `first-last-frame`，并按“首帧,尾帧”顺序传 2 张图。',
-        '- 生视频 Endpoint、API Key 和模型由用户设置决定，调用时优先使用当前设置，不得自行写死或替换模型。HappyHorse `r2v` 模型需要参考图；Bojin 与其他兼容供应商按各自运行时协议处理。',
+        '- 生视频 Endpoint、API Key 和模型由用户设置决定，调用时优先使用当前设置，不得自行写死或替换模型。HappyHorse `r2v` 模型需要参考图；GardenFlow 与其他兼容供应商按各自运行时协议处理。',
         '- 如果用户给了两张图，但意图只是“参考这两张图做视频”或“融合两张图元素”，不要直接用 `first-last-frame`；只有两张图分别承担首帧和尾帧语义时，才使用该模式。',
         '- 若当前模式不满足输入条件，必须明确说明原因；禁止静默改成别的模式后假装成功。',
         '- 当视频任务带有多张参考图或声音参考时，最终生成提示词必须先明确说明各参考资产的角色，例如“图1是人物主体，图2是场景氛围，音频1是人物声音参考”，再写镜头与动作描述。',
@@ -4042,10 +4043,10 @@ export class PiChatService {
         '- 多图参考时，提示词必须明确写出“图1/图2/图3 各自代表什么”，例如：图1是人物主体，图2是商品主体，图3是场景氛围参考。',
         '- 若本轮生图调用有参考图，但工具返回 `referenceImageCount = 0`，不能宣称“已按参考图生成成功”，必须说明参考图没有真正带入。',
         '',
-        '### RedClaw 自动化能力（强约束）',
+        '### GardenFlow 自动化能力（强约束）',
         '- 你具备后台自动化能力：可以创建/修改/删除/执行 定时任务、长周期任务、心跳与后台轮询。',
         '- 当用户提出“在某时间提醒/报时/定时执行”这类请求时，禁止回答“我无法定时/无法主动发送消息”。必须通过 `app_cli` 配置自动化任务。',
-        '- 标准流程：先 `app_cli(command="redclaw runner-status")` 检查后台状态；若未开启则 `app_cli(command="redclaw runner-start --interval 20")`；不确定自动化动作名时先 `app_cli(command="help redclaw")`，再用 `schedule-add`/`schedule-update` 完成任务。',
+        '- 标准流程：先 `app_cli(command="gardenflow runner-status")` 检查后台状态；若未开启则 `app_cli(command="gardenflow runner-start --interval 20")`；不确定自动化动作名时先 `app_cli(command="help gardenflow")`，再用 `schedule-add`/`schedule-update` 完成任务。',
         '- 配置完成后必须回显：任务名、模式、时间（或间隔）、enabled 状态、nextRunAt（若工具有返回）。',
         '- 若任务实际回执可能写入任务会话，仍需在当前会话明确说明结果同步策略，避免用户误判“未执行”。',
       );
@@ -4068,13 +4069,13 @@ export class PiChatService {
       );
     }
 
-    if (metadata.contextType === 'redclaw' && redClawProjectContext) {
+    if (metadata.contextType === 'gardenflow' && gardenFlowProjectContext) {
       promptParts.push(
         '',
-        '## RedClaw 最近项目',
-        '<redclaw_projects>',
-        this.truncate(redClawProjectContext, 8000),
-        '</redclaw_projects>',
+        '## GardenFlow 最近项目',
+        '<gardenflow_projects>',
+        this.truncate(gardenFlowProjectContext, 8000),
+        '</gardenflow_projects>',
       );
     }
 

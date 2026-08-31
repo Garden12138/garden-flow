@@ -1,12 +1,12 @@
-export const NATIVE_RECONNECT_ALARM = 'redbox-browser-control-native-reconnect';
+export const NATIVE_RECONNECT_ALARM = 'gardenflow-browser-control-native-reconnect';
 export const TARGET_NATIVE_RECONNECT_ALARM_PREFIX = 'native-transport-reconnect';
-export const NATIVE_STATUS_KEY = 'redboxBrowserControlNativeHostStatus';
+export const NATIVE_STATUS_KEY = 'gardenflowBrowserControlNativeHostStatus';
 export const NATIVE_HOST_STATUS_KEY = 'NATIVE_HOST_STATUS';
-export const NATIVE_HOST_DEFAULT = 'com.redbox.browser_control';
+export const NATIVE_HOST_DEFAULT = 'com.gardenflow.browser_control';
 export const TARGET_NATIVE_DISCONNECTED_ERROR = 'Native transport is disconnected; reconnect is pending';
 export const TARGET_NATIVE_INVALID_RESPONSE_ERROR = 'Native host returned an invalid response';
 export const TARGET_NATIVE_RESPONSE_HANDLING = 'pending_id_then_error_or_result_else_invalid_response';
-export const XWOW_NATIVE_RESPONSE_VALIDATION = 'strict_jsonrpc_expected_id_exactly_one_result_or_error';
+export const GARDENFLOW_NATIVE_RESPONSE_VALIDATION = 'strict_jsonrpc_expected_id_exactly_one_result_or_error';
 export const NATIVE_RECONNECT_DELAY_MS = 5000;
 export const NATIVE_RECONNECT_PERIOD_MINUTES = NATIVE_RECONNECT_DELAY_MS / 60_000;
 export const NATIVE_TELEMETRY_LIMIT = 50;
@@ -167,10 +167,10 @@ export async function connectNativeTransport(options = {}) {
   const connectionState = classifyDesktopBridgeHandshake(handshake);
   const desktopBridgeConnected = connectionState === 'connected';
   const connectionError = connectionState === 'upgrade_required'
-    ? '当前 Bojin 版本不支持 Desktop Bridge，请升级 Bojin'
+    ? '当前 GardenFlow 版本不支持 Desktop Bridge，请升级 GardenFlow'
     : connectionState === 'bridge_error'
-      ? `Bojin Desktop Bridge handshake failed: ${handshake?.desktopBridge?.errorCode || 'unknown'}`
-      : (desktopBridgeConnected ? '' : 'Bojin desktop app is not connected');
+      ? `GardenFlow Desktop Bridge handshake failed: ${handshake?.desktopBridge?.errorCode || 'unknown'}`
+      : (desktopBridgeConnected ? '' : 'GardenFlow desktop app is not connected');
   recordNativeTelemetry(connectionState, {
     hostName,
     handshake: true,
@@ -215,7 +215,7 @@ export function assertNativeHostVersionCompatibility(handshake = {}) {
     || !capabilities.includes('extension.register')
   ) {
     throw new Error(
-      `Native host protocol mismatch: bridge ${bridgeProtocolVersion || 'unknown'}, capture ${captureProtocolVersion || 'unknown'}. Restart Bojin and reload the extension.`,
+      `Native host protocol mismatch: bridge ${bridgeProtocolVersion || 'unknown'}, capture ${captureProtocolVersion || 'unknown'}. Restart GardenFlow and reload the extension.`,
     );
   }
   return true;
@@ -442,10 +442,10 @@ async function runNativeReconnectAttempt(hostName = '') {
       await setNativeStatus(connectionState, {
         handshake,
         error: connectionState === 'upgrade_required'
-          ? '当前 Bojin 版本不支持 Desktop Bridge，请升级 Bojin'
+          ? '当前 GardenFlow 版本不支持 Desktop Bridge，请升级 GardenFlow'
           : connectionState === 'bridge_error'
-            ? `Bojin Desktop Bridge handshake failed: ${handshake?.desktopBridge?.errorCode || 'unknown'}`
-            : 'Bojin desktop app is not connected',
+            ? `GardenFlow Desktop Bridge handshake failed: ${handshake?.desktopBridge?.errorCode || 'unknown'}`
+            : 'GardenFlow desktop app is not connected',
         nextRetryMs: NATIVE_RECONNECT_DELAY_MS,
       });
     } catch (error) {

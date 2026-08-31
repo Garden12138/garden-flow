@@ -264,7 +264,7 @@ async function grantClipboardPermissions(tabId, timeoutMs) {
 }
 
 async function readClipboardViaPasteShortcut(tabId, timeoutMs, priorError = '') {
-  const targetId = `xwow-clipboard-paste-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const targetId = `gardenflow-clipboard-paste-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   await withLocalTimeout(chrome.scripting.executeScript({
     target: { tabId },
     world: 'MAIN',

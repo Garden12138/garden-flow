@@ -1,3 +1,4 @@
+require('../shared/brandEnvironment.cjs');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
@@ -11,7 +12,7 @@ const targetDir = path.join(runtimeRoot, 'browser-extension');
 
 function resolvePnpmInvocation() {
   const cliCandidates = [
-    process.env.REDBOX_PNPM_CLI,
+    process.env.GARDENFLOW_PNPM_CLI,
     process.env.npm_execpath,
   ];
   for (const candidate of cliCandidates) {

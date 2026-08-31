@@ -204,8 +204,8 @@ export type CoverGenerationRequestInput = Omit<CoverGenerationRequest, 'type'>;
 
 export type DigitalHumanGenerationRequestInput = Omit<DigitalHumanGenerationRequest, 'type'>;
 
-export const FEED_STORAGE_KEY = 'redbox:generation-studio:feed:v1';
-export const FEED_DELETED_STORAGE_KEY = 'redbox:generation-studio:feed:deleted:v1';
+export const FEED_STORAGE_KEY = 'gardenflow:generation-studio:feed:v1';
+export const FEED_DELETED_STORAGE_KEY = 'gardenflow:generation-studio:feed:deleted:v1';
 const FEED_STORAGE_MAX_CHARS = 750_000;
 const FEED_STORAGE_MAX_ENTRIES = 150;
 
@@ -1189,7 +1189,7 @@ export function isStandaloneGenerationSource(source: GenerationFeedSource): bool
         'generation-studio',
         'tool',
         'chat',
-        'redclaw',
+        'gardenflow',
     ].includes(String(source || '').trim());
 }
 

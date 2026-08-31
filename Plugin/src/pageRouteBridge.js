@@ -1,6 +1,6 @@
 (function () {
-  const EVENT_NAME = 'redbox:locationchange';
-  const INSTALL_KEY = '__redboxPageRouteBridgeInstalled__';
+  const EVENT_NAME = 'gardenflow:locationchange';
+  const INSTALL_KEY = '__gardenflowPageRouteBridgeInstalled__';
 
   if (window[INSTALL_KEY]) {
     return;

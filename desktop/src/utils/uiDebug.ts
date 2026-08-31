@@ -1,6 +1,6 @@
 type DebugPayload = Record<string, unknown>;
 
-const UI_DEBUG_STORAGE_KEY = 'redbox:ui-debug';
+const UI_DEBUG_STORAGE_KEY = 'gardenflow:ui-debug';
 const UI_DEBUG_HOST_SCOPES = new Set(['chat', 'runtime-event']);
 
 function forwardUiDebugToHost(scope: string, event: string, payload?: DebugPayload): void {

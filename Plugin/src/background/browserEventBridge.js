@@ -4,7 +4,7 @@ export const NATIVE_CDP_EVENT_METHOD = 'onCDPEvent';
 export const NATIVE_DOWNLOAD_EVENT_METHOD = 'onDownloadChange';
 export const NATIVE_LIFECYCLE_EVENT_METHOD = 'onBrowserLifecycleEvent';
 export const NATIVE_SESSION_EVENT_METHOD = 'onBrowserSessionEvent';
-export const BROWSER_EVENT_LOG_KEY = 'xwowBrowserDataAiBrowserEvents';
+export const BROWSER_EVENT_LOG_KEY = 'gardenflowBrowserDataAiBrowserEvents';
 export const BROWSER_EVENT_LOG_LIMIT = 500;
 
 const browserEventMemoryLog = new Map();
@@ -14,7 +14,7 @@ export function createBrowserEventBridge(options = {}) {
   if (typeof sendNativeNotification !== 'function') {
     throw new Error('createBrowserEventBridge requires sendNativeNotification');
   }
-  const pluginId = options.pluginId || 'xwow-browser-data-ai';
+  const pluginId = options.pluginId || 'gardenflow-browser-data-ai';
   const getActiveSession = typeof options.getActiveSession === 'function'
     ? options.getActiveSession
     : () => null;

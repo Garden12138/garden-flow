@@ -95,7 +95,7 @@ export function useClipboardCapturePrompt() {
   }, [candidate, enqueueYoutubeFromClipboard, status]);
 
   useEffect(() => {
-    (window as unknown as { __redboxGlobalClipboardWatcher?: boolean }).__redboxGlobalClipboardWatcher = true;
+    (window as unknown as { __gardenflowGlobalClipboardWatcher?: boolean }).__gardenflowGlobalClipboardWatcher = true;
     let disposed = false;
     let pollTimerId: number | null = null;
     let nextPollDelayMs = CLIPBOARD_POLL_MIN_INTERVAL_MS;

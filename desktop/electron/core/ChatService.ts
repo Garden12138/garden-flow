@@ -101,7 +101,7 @@ export class ChatService extends EventEmitter {
             chatService: this,
             skillManager: this.skillManager,
             onSkillActivated: (payload) => this.emit('skill_activated', payload),
-            pack: 'redclaw',
+            pack: 'gardenflow',
         }));
 
         this.toolExecutor = new ToolExecutor(
@@ -219,8 +219,8 @@ export class ChatService extends EventEmitter {
                 maxTurns: this.config.maxTurns,
                 maxTimeMinutes: this.config.maxTimeMinutes,
                 temperature: this.config.temperature,
-                toolPack: 'redclaw',
-                runtimeMode: 'redclaw',
+                toolPack: 'gardenflow',
+                runtimeMode: 'gardenflow',
                 interactive: true,
                 requiresHumanApproval: false,
             },

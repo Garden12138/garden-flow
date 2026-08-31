@@ -5,8 +5,8 @@
 推荐直接从 `src` 侧导入，这样 Vite 会把资源纳入构建产物：
 
 ```tsx
-import onboardingAnimation from '@redbox/assets/lottie/onboarding.json';
-import { LottieAnimation } from '@redbox/components';
+import onboardingAnimation from '@gardenflow/assets/lottie/onboarding.json';
+import { LottieAnimation } from '@gardenflow/components';
 
 export function Example() {
   return (

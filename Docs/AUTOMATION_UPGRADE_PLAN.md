@@ -10,7 +10,7 @@
 本方案覆盖两个需求与若干补充建议:
 
 1. **Chat 创建自动化任务**:用户在聊天中用自然语言描述"每天 9 点帮我做 X",AI 完成参数确认并创建定时/长周期任务,任务出现在自动化页,可继续在 chat 或自动化页管理。
-2. **内置自动化任务(小红书自动采集)**:应用内置一个"小红书自动采集"任务,基于 computer-use 驱动**真实 Chrome**(非 Playwright/CDP),配合已安装的 RedClaw 浏览器插件完成采集入库。默认关闭,自动化页可手动开关与配置。
+2. **内置自动化任务(小红书自动采集)**:应用内置一个"小红书自动采集"任务,基于 computer-use 驱动**真实 Chrome**(非 Playwright/CDP),配合已安装的 GardenFlow 浏览器插件完成采集入库。默认关闭,自动化页可手动开关与配置。
 3. **补充建议**(第 4 节):执行历史、采集后处理流水线、内置任务模板化、接管安全机制等。
 
 ---
@@ -19,20 +19,20 @@
 
 ### 1.1 自动化模块现状
 
-当前自动化 = **RedClaw Background Runner 上的"定时/长周期 Prompt 执行器"**,不是动作编排 DSL:
+当前自动化 = **GardenFlow Background Runner 上的"定时/长周期 Prompt 执行器"**,不是动作编排 DSL:
 
-- 核心引擎:`desktop/electron/core/redclawBackgroundRunner.ts`
-  - 任务模型 `RedClawScheduledTask`(interval/daily/weekly/once)与 `RedClawLongCycleTask`(多轮推进)
-  - 持久化在 `<workspace>/redclaw/background-runner.json`
+- 核心引擎:`desktop/electron/core/gardenflowBackgroundRunner.ts`
+  - 任务模型 `GardenFlowScheduledTask`(interval/daily/weekly/once)与 `GardenFlowLongCycleTask`(多轮推进)
+  - 持久化在 `<workspace>/gardenflow/background-runner.json`
   - 约 30s 一次 maintenance tick,到期任务经 `HeadlessAgentRunner` 走与前台聊天**同一套** `PiChatService` + 工具链执行
   - 每 tick 自动化预算 `maxAutomationPerTick`(默认 2)
-- UI:`desktop/src/pages/Automation.tsx` + `desktop/src/features/redclaw/automationTasks.ts`(表单创建,`actionType` 实质只有 `redclaw_prompt` / `long_cycle`)
-- IPC:`redclaw:runner-list-scheduled / add-scheduled / remove-scheduled / set-scheduled-enabled / run-scheduled-now` 及 long-cycle 对应通道
+- UI:`desktop/src/pages/Automation.tsx` + `desktop/src/features/gardenflow/automationTasks.ts`(表单创建,`actionType` 实质只有 `gardenflow_prompt` / `long_cycle`)
+- IPC:`gardenflow:runner-list-scheduled / add-scheduled / remove-scheduled / set-scheduled-enabled / run-scheduled-now` 及 long-cycle 对应通道
 - 任务状态:仅 `enabled + lastRunAt/lastResult/lastError`,**没有独立执行历史表**
 
 ### 1.2 Chat 侧已有能力(重要:底层通道已通)
 
-`app_cli` 工具(`desktop/electron/core/tools/appCliTool.ts`)的 `redclaw` 命名空间已实现全套任务管理动作:
+`app_cli` 工具(`desktop/electron/core/tools/appCliTool.ts`)的 `gardenflow` 命名空间已实现全套任务管理动作:
 
 - `schedule-list / schedule-add / schedule-update / schedule-remove / schedule-enable / schedule-disable / schedule-run-now`
 - `long-list / long-add / long-update / long-remove / long-enable / long-disable / long-run-now`
@@ -46,7 +46,7 @@
 
 ```
 网页 DOM → Plugin(保存网页/保存笔记按钮)
-  → Native Messaging(com.redbox.browser_control)
+  → Native Messaging(com.gardenflow.browser_control)
   → Desktop Bridge(UDS/Named Pipe,allowlist 方法)
   → knowledge.ingestXhsEntryV2 等 → 知识库/媒体库入库
 ```
@@ -73,7 +73,7 @@
 
 | 环节 | 现状 | 差距 |
 |------|------|------|
-| 工具能力 | `app_cli redclaw schedule-*` 全套已有 | 无 |
+| 工具能力 | `app_cli gardenflow schedule-*` 全套已有 | 无 |
 | 提示词引导 | 已有基本规则 | 缺"创建前参数确认、创建后回显下次运行时间"的规范 |
 | 创建确认 | 工具直接执行,无确认 | 创建持久后台任务是长期副作用,应有结构化确认 |
 | 结果呈现 | 纯文本回复 | 无任务卡片,用户感知弱、无法直接启停/跳转 |
@@ -86,7 +86,7 @@
 ```
 用户:"每天早上 9 点帮我采集猫粮相关的爆款笔记并出一份选题建议"
   → 模型按提示词规范收集/推断参数(名称、频率、执行 prompt)
-  → 调用 app_cli(redclaw schedule-add ...)
+  → 调用 app_cli(gardenflow schedule-add ...)
   → 工具确认层拦截 → chat 渲染"创建自动化任务"确认卡(参数一览)
   → 用户点确认 → 任务落库,nextRunAt 计算
   → 工具结果携带结构化元数据 → chat 渲染任务卡片(名称/频率/下次运行/启停开关/跳转自动化页)
@@ -105,14 +105,14 @@
 - 工具结果增加结构化标记:`schedule-add` 等动作的返回值附 `uiHint: { kind: 'automation-task', taskId, ... }`(随 tool result 持久化到消息记录)。
 - renderer 消息渲染层识别 `uiHint.kind === 'automation-task'`,渲染任务卡片组件(新增 `desktop/src/components/AutomationTaskCard.tsx`):
   - 展示:任务名、频率描述、下次运行时间、启用状态
-  - 操作:启/停(走 `redclaw:runner-set-scheduled-enabled`)、立即运行、跳转自动化页
+  - 操作:启/停(走 `gardenflow:runner-set-scheduled-enabled`)、立即运行、跳转自动化页
 - 卡片操作直接走既有 IPC,不经过 AI。
 
 #### 2.2.4 来源标记
 
-- `RedClawScheduledTask` / `RedClawLongCycleTask` 增加字段 `source?: 'manual' | 'chat' | 'builtin'`(默认 `manual`,向后兼容旧数据)。
+- `GardenFlowScheduledTask` / `GardenFlowLongCycleTask` 增加字段 `source?: 'manual' | 'chat' | 'builtin'`(默认 `manual`,向后兼容旧数据)。
 - `app_cli` 创建路径写入 `source: 'chat'`;自动化页创建写 `manual`;内置任务写 `builtin`(见第 3 节)。
-- `Automation.tsx` 列表项显示来源徽标;`redclawTaskCompat.taskListItem` 投影透传该字段。
+- `Automation.tsx` 列表项显示来源徽标;`gardenflowTaskCompat.taskListItem` 投影透传该字段。
 
 #### 2.2.5 提示词规范强化
 
@@ -127,11 +127,11 @@
 | 文件 | 改动 |
 |------|------|
 | `desktop/electron/core/tools/appCliTool.ts` | schedule/long 写操作按 action 声明需确认;返回值附 `uiHint`;创建时写 `source: 'chat'` |
-| `desktop/electron/core/redclawBackgroundRunner.ts` | 任务模型加 `source` 字段(读写兼容) |
-| `desktop/electron/core/redclawTaskCompat.ts` | 列表投影透传 `source` |
+| `desktop/electron/core/gardenflowBackgroundRunner.ts` | 任务模型加 `source` 字段(读写兼容) |
+| `desktop/electron/core/gardenflowTaskCompat.ts` | 列表投影透传 `source` |
 | `desktop/electron/prompts/library/runtime/pi/system_base.txt` | 补充创建规范 3 条 |
 | `desktop/src/components/AutomationTaskCard.tsx`(新增) | chat 内任务卡片 |
-| chat 消息渲染入口(RedClaw/Chat 页) | 识别 `uiHint` 渲染卡片 |
+| chat 消息渲染入口(GardenFlow/Chat 页) | 识别 `uiHint` 渲染卡片 |
 | `desktop/src/pages/Automation.tsx` | 来源徽标 |
 
 ---
@@ -140,7 +140,7 @@
 
 ### 3.1 目标与原理
 
-内置一个"小红书自动采集"任务:按配置的关键词定时打开真实 Chrome,搜索并浏览笔记,点击 RedClaw 插件注入的"保存网页/保存笔记"按钮,数据经**现有** Plugin → Native Host → 知识库链路入库。默认关闭,自动化页手动开关。
+内置一个"小红书自动采集"任务:按配置的关键词定时打开真实 Chrome,搜索并浏览笔记,点击 GardenFlow 插件注入的"保存网页/保存笔记"按钮,数据经**现有** Plugin → Native Host → 知识库链路入库。默认关闭,自动化页手动开关。
 
 选择该路线的核心理由:
 
@@ -155,7 +155,7 @@ Automation 页开关(默认关)
   → Background Runner 到期调度(builtin 任务)
   → HeadlessAgentRunner(现有链路,激活 xhs-auto-capture skill)
   → AI 循环:computer-use 截图 → 视觉定位 → 点击/输入(MCP 工具)
-       Chrome(独立 profile,已登录小红书 + 已装 RedClaw 插件)
+       Chrome(独立 profile,已登录小红书 + 已装 GardenFlow 插件)
        点击插件"保存网页 / 保存笔记"按钮
   → Plugin → Native Messaging → Desktop Bridge → 知识库入库(现有链路)
   → AI 用 app_cli 查询知识库最新条目,校验入库成功(反馈闭环)
@@ -195,7 +195,7 @@ interface BuiltinTaskState {
 }
 ```
 
-调度整合:`runMaintenanceTick` 中将启用的 builtin 任务与普通 scheduled 任务一起计算 due 集合,共享 `maxAutomationPerTick` 预算;`redclaw:runner-list-scheduled` 返回时合并 builtin 投影(带 `source: 'builtin'`、`removable: false`)。
+调度整合:`runMaintenanceTick` 中将启用的 builtin 任务与普通 scheduled 任务一起计算 due 集合,共享 `maxAutomationPerTick` 预算;`gardenflow:runner-list-scheduled` 返回时合并 builtin 投影(带 `source: 'builtin'`、`removable: false`)。
 
 **小红书自动采集任务的配置项**(`settingsSchema`):
 
@@ -243,7 +243,7 @@ interface BuiltinTaskState {
 7. 遇登录失效、验证码、风控提示:**立即停止**,报告现场(附截图路径),绝不尝试绕过;
 8. 结束时输出结构化小结:关键词、尝试数、成功入库数、失败原因。
 
-首次使用引导(文档 + UI 提示):用户需在 `ComputerUse` profile 中手动登录小红书并确认 RedClaw 插件已启用——这一步涉及账号凭据,**必须人工完成**,不自动化。
+首次使用引导(文档 + UI 提示):用户需在 `ComputerUse` profile 中手动登录小红书并确认 GardenFlow 插件已启用——这一步涉及账号凭据,**必须人工完成**,不自动化。
 
 ### 3.7 开关与配置 UI
 
@@ -254,7 +254,7 @@ interface BuiltinTaskState {
 - "立即运行"按钮(就绪时可用),复用 `runner-run-scheduled-now` 语义;
 - 不可删除,不可改 prompt(prompt 由定义生成)。
 
-新增 IPC:`redclaw:runner-list-builtin` / `runner-set-builtin-enabled` / `runner-set-builtin-settings` / `runner-run-builtin-now` / `runner-builtin-readiness`(或合并进现有 scheduled 通道语义,实施时二选一,倾向独立通道以保持 payload 清晰)。
+新增 IPC:`gardenflow:runner-list-builtin` / `runner-set-builtin-enabled` / `runner-set-builtin-settings` / `runner-run-builtin-now` / `runner-builtin-readiness`(或合并进现有 scheduled 通道语义,实施时二选一,倾向独立通道以保持 payload 清晰)。
 
 ### 3.8 风控与安全
 
@@ -271,13 +271,13 @@ interface BuiltinTaskState {
 | 文件 | 改动 |
 |------|------|
 | `desktop/electron/core/builtinAutomationTasks.ts`(新增) | 定义注册表 + 就绪检查 + prompt 生成 |
-| `desktop/electron/core/redclawBackgroundRunner.ts` | `builtinTasks` 状态区;调度整合;执行分支(仍走 headless prompt 链路) |
+| `desktop/electron/core/gardenflowBackgroundRunner.ts` | `builtinTasks` 状态区;调度整合;执行分支(仍走 headless prompt 链路) |
 | `desktop/electron/appMain.ts` | builtin 相关 IPC 注册 |
 | `desktop/electron/core/mcpStore.ts` 或设置预置逻辑 | computer-use MCP server 预置条目(一键添加) |
 | headless 工具链(`HeadlessAgentRunner` / `PiChatService` 工具装配) | 后台执行加载 MCP 工具(需先验证现状) |
 | `desktop/builtin-skills/xhs-auto-capture/SKILL.md`(新增) | 采集操作规程技能 |
 | `desktop/src/pages/Automation.tsx` | 内置任务分组卡片 + 配置弹层 + 就绪面板 |
-| `desktop/src/bridge/domains/redclawBridge.ts` | builtin IPC facade |
+| `desktop/src/bridge/domains/gardenflowBridge.ts` | builtin IPC facade |
 | `Docs/USER_MANUAL.md` | 使用前提(安装 computer-use、授权、profile 登录、插件启用) |
 
 ---
@@ -288,7 +288,7 @@ interface BuiltinTaskState {
 
 现状只有 `lastRunAt/lastResult/lastError`,排查"昨天为什么没跑/跑了什么"很困难。建议新增轻量执行历史:
 
-- `<workspace>/redclaw/automation-history.jsonl`(按行追加,定期截断保留最近 N 条);
+- `<workspace>/gardenflow/automation-history.jsonl`(按行追加,定期截断保留最近 N 条);
 - 记录:taskId、触发原因(scheduled/manual/catch-up)、起止时间、结果、错误、关联 chat sessionId、产出摘要;
 - 自动化页任务详情展示最近 10 次执行,可跳转对应会话记录。
 

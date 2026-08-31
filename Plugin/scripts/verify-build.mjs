@@ -207,7 +207,7 @@ assert(outputManifest.host_permissions.includes('<all_urls>'), 'Manifest must in
 
 const builtBackground = await readText(path.join(outputDir, 'background.js'));
 assert(!/^\s*import\s/m.test(builtBackground), 'Background service worker must not rely on ESM imports');
-assert(builtBackground.includes('redbox-browser-control'), 'Built background should include browser-control runtime');
+assert(builtBackground.includes('gardenflow-browser-control'), 'Built background should include browser-control runtime');
 assert(builtBackground.includes('extension.register'), 'Built background should register its stable extension instance with the native host');
 assert(builtBackground.includes('registrationSucceeded'), 'Built background should report extension registration truth separately from host connectivity');
 assert(!backgroundSource.includes('document.cookie'), 'Content capture must not read browser cookies');
@@ -221,7 +221,7 @@ for (const capability of siteResearchCapabilities.capabilities) {
 const builtObserver = await readText(path.join(outputDir, 'pageObserver.js'));
 assert(builtObserver.includes('page-state:get'), 'Built pageObserver should retain page-state message handling');
 assert(builtObserver.includes('pageRouteBridge.js'), 'Built pageObserver should retain page route bridge injection');
-assert(!builtObserver.includes('redbox-page-overlay-host'), 'Built pageObserver must not inject a floating capture overlay');
+assert(!builtObserver.includes('gardenflow-page-overlay-host'), 'Built pageObserver must not inject a floating capture overlay');
 
 const browserMcpConfig = await readJson(path.join(pluginRoot, '.mcp.json'));
 const configuredBrowserTools = browserMcpConfig.mcpServers?.['browser-control']?.enabledTools || [];
@@ -278,7 +278,7 @@ for (const contractText of ['allTextContents', 'isEnabled', 'textContent', 'retu
 }
 
 const builtGenericCaptureContent = await readText(path.join(outputDir, 'genericCaptureContent.js'));
-for (const contractText of ['redbox:generic-capture', 'Defuddle', 'DOMPurify', 'blocked-or-login-page']) {
+for (const contractText of ['gardenflow:generic-capture', 'Defuddle', 'DOMPurify', 'blocked-or-login-page']) {
   assert(
     builtGenericCaptureContent.includes(contractText),
     `Built genericCaptureContent should preserve generic extraction contract: ${contractText}`,

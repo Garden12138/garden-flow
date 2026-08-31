@@ -1,6 +1,6 @@
 (() => {
-  const BRIDGE_FLAG = '__REDBOX_XHS_BRIDGE_INSTALLED__';
-  const RESPONSE_STORE = '__REDBOX_XHS_RESPONSES__';
+  const BRIDGE_FLAG = '__GARDENFLOW_XHS_BRIDGE_INSTALLED__';
+  const RESPONSE_STORE = '__GARDENFLOW_XHS_RESPONSES__';
   const MAX_RESPONSES = 120;
 
   if (window[BRIDGE_FLAG]) return;
@@ -41,7 +41,7 @@
     while (store.length > MAX_RESPONSES) store.shift();
     window[RESPONSE_STORE] = store;
     window.postMessage({
-      source: 'redbox-xhs-bridge',
+      source: 'gardenflow-xhs-bridge',
       type: 'api-response',
       payload: {
         url: next.url,
@@ -64,7 +64,7 @@
 
   const nativeFetch = window.fetch;
   if (typeof nativeFetch === 'function') {
-    window.fetch = async function redboxFetch(input, init) {
+    window.fetch = async function gardenflowFetch(input, init) {
       const response = await nativeFetch.apply(this, arguments);
       const url = requestUrl(input);
       if (!shouldCapture(url)) return response;
@@ -90,21 +90,21 @@
   if (window.XMLHttpRequest?.prototype) {
     const nativeOpen = XMLHttpRequest.prototype.open;
     const nativeSend = XMLHttpRequest.prototype.send;
-    XMLHttpRequest.prototype.open = function redboxXhrOpen(method, url) {
-      this.__redboxXhsMethod = method || 'GET';
-      this.__redboxXhsUrl = url || '';
+    XMLHttpRequest.prototype.open = function gardenflowXhrOpen(method, url) {
+      this.__gardenflowXhsMethod = method || 'GET';
+      this.__gardenflowXhsUrl = url || '';
       return nativeOpen.apply(this, arguments);
     };
-    XMLHttpRequest.prototype.send = function redboxXhrSend(body) {
+    XMLHttpRequest.prototype.send = function gardenflowXhrSend(body) {
       this.addEventListener('loadend', () => {
-        const url = this.responseURL || this.__redboxXhsUrl || '';
+        const url = this.responseURL || this.__gardenflowXhsUrl || '';
         if (!shouldCapture(url)) return;
         try {
           const result = parseJsonSafely(this.responseText);
           if (result) {
             remember({
               url,
-              method: this.__redboxXhsMethod || 'GET',
+              method: this.__gardenflowXhsMethod || 'GET',
               body: typeof body === 'string' ? parseJsonSafely(body) : null,
               result,
             });

@@ -173,7 +173,7 @@ export class AcpGatewayService extends EventEmitter {
 
   isAcpPath(rawPath: string): boolean {
     const normalized = normalizePath(rawPath);
-    return normalized === '/.well-known/redbox-agent.json'
+    return normalized === '/.well-known/gardenflow-agent.json'
       || normalized === ACP_BASE_PATH
       || normalized.startsWith(`${ACP_BASE_PATH}/`);
   }
@@ -198,18 +198,18 @@ export class AcpGatewayService extends EventEmitter {
     const parent = path.dirname(userData);
     return Array.from(new Set([
       path.join(userData, 'acp-gateway.json'),
-      path.join(parent, 'Bojin', 'acp-gateway.json'),
-      path.join(parent, 'RedBox', 'acp-gateway.json'),
+      path.join(parent, 'GardenFlow', 'acp-gateway.json'),
+      path.join(parent, 'GardenFlow', 'acp-gateway.json'),
     ]));
   }
 
   getManifest() {
     const baseUrl = this.getBaseUrl();
     return {
-      schemaVersion: 'redbox.acp.v1',
+      schemaVersion: 'gardenflow.acp.v1',
       agent: {
-        id: 'redbox.creator-agent',
-        name: 'Bojin Creator Agent',
+        id: 'gardenflow.creator-agent',
+        name: 'GardenFlow Creator Agent',
         description: 'A local creator agent for self-media assets, material retrieval, drafting, cover/video planning, and creator project packaging.',
         home: baseUrl,
         localOnly: true,
@@ -236,14 +236,14 @@ export class AcpGatewayService extends EventEmitter {
       ],
       endpoints: {
         manifest: `${baseUrl}${ACP_BASE_PATH}/manifest`,
-        wellKnown: `${baseUrl}/.well-known/redbox-agent.json`,
+        wellKnown: `${baseUrl}/.well-known/gardenflow-agent.json`,
         guide: `${baseUrl}${ACP_BASE_PATH}/guide`,
         sessions: `${baseUrl}${ACP_BASE_PATH}/sessions`,
         runs: `${baseUrl}${ACP_BASE_PATH}/runs`,
         artifacts: `${baseUrl}${ACP_BASE_PATH}/artifacts/{artifact_id}`,
       },
       sessionRouting: {
-        autoCreate: 'Omit sessionId/acpSessionId to create a new ACP-labeled Bojin conversation.',
+        autoCreate: 'Omit sessionId/acpSessionId to create a new ACP-labeled GardenFlow conversation.',
         explicitAttach: 'Pass sessionId/acpSessionId to continue an existing ACP or chat session.',
         chatProjection: 'Every ACP run is projected into the Electron chat history through SessionBridgeService.',
       },
@@ -255,19 +255,19 @@ export class AcpGatewayService extends EventEmitter {
       success: true,
       contentType: 'text/markdown',
       guide: [
-        '# Bojin ACP Guide',
+        '# GardenFlow ACP Guide',
         '',
-        'Bojin exposes a local Agent Communication Protocol for external agents that need a creator-side material library and content production partner.',
+        'GardenFlow exposes a local Agent Communication Protocol for external agents that need a creator-side material library and content production partner.',
         '',
         `Base URL: \`${this.getBaseUrl()}\``,
         '',
         '## Discover',
         '',
-        '- `GET /.well-known/redbox-agent.json`',
+        '- `GET /.well-known/gardenflow-agent.json`',
         '- `GET /acp/v1/manifest`',
         '- `GET /acp/v1/guide`',
         '',
-        'Preferred local discovery file: `acp-gateway.json` under the Bojin application support directory.',
+        'Preferred local discovery file: `acp-gateway.json` under the GardenFlow application support directory.',
         '',
         '## Start A Run',
         '',
@@ -282,8 +282,8 @@ export class AcpGatewayService extends EventEmitter {
         'Poll `GET /acp/v1/runs/{run_id}` and `GET /acp/v1/runs/{run_id}/events` until the run is completed, failed, or cancelled.',
       ].join('\n'),
       copyPrompts: {
-        codex: 'Read Bojin acp-gateway.json when available, then read manifestUrl and guideUrl. Use /acp/v1/runs to talk to Bojin Creator Agent. Set client.name=Codex.',
-        generic: 'Discover Bojin from acp-gateway.json or http://127.0.0.1:31937/acp/v1, then POST /acp/v1/runs with client.name and prompt.',
+        codex: 'Read GardenFlow acp-gateway.json when available, then read manifestUrl and guideUrl. Use /acp/v1/runs to talk to GardenFlow Creator Agent. Set client.name=Codex.',
+        generic: 'Discover GardenFlow from acp-gateway.json or http://127.0.0.1:31937/acp/v1, then POST /acp/v1/runs with client.name and prompt.',
       },
     };
   }
@@ -292,9 +292,9 @@ export class AcpGatewayService extends EventEmitter {
     this.setEndpoint(input);
     const baseUrl = this.getBaseUrl();
     const payload = {
-      schemaVersion: 'redbox.acp.discovery.v1',
-      product: 'Bojin',
-      agentId: 'redbox.creator-agent',
+      schemaVersion: 'gardenflow.acp.discovery.v1',
+      product: 'GardenFlow',
+      agentId: 'gardenflow.creator-agent',
       enabled: this.enabled,
       listening: Boolean(input.listening),
       baseUrl,
@@ -336,7 +336,7 @@ export class AcpGatewayService extends EventEmitter {
       if (method === 'OPTIONS') {
         return { handled: true, statusCode: 204, payload: null };
       }
-      if (method === 'GET' && (pathname === '/.well-known/redbox-agent.json' || pathname === ACP_BASE_PATH || pathname === `${ACP_BASE_PATH}/manifest`)) {
+      if (method === 'GET' && (pathname === '/.well-known/gardenflow-agent.json' || pathname === ACP_BASE_PATH || pathname === `${ACP_BASE_PATH}/manifest`)) {
         return { handled: true, statusCode: 200, payload: this.getManifest() };
       }
       if (method === 'GET' && pathname === `${ACP_BASE_PATH}/guide`) {
@@ -400,8 +400,8 @@ export class AcpGatewayService extends EventEmitter {
     const title = cleanString(payload.title) || cleanString(payload.objective) || `${client.name} ACP Session`;
     const session = await getSessionBridgeService().createSession({
       title,
-      contextType: 'redclaw',
-      runtimeMode: 'redclaw',
+      contextType: 'gardenflow',
+      runtimeMode: 'gardenflow',
       metadata: {
         source: 'acp',
         sourceLabel: client.name,

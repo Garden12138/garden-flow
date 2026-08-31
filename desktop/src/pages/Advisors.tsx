@@ -27,8 +27,8 @@ export interface Advisor {
     detectedKnowledgeLanguage?: string;
     languageDetectionStatus?: string;
     languageConfidence?: number;
-    redclawVisible?: boolean;
-    redclawOrder?: number;
+    gardenflowVisible?: boolean;
+    gardenflowOrder?: number;
     createdAt: string;
 }
 

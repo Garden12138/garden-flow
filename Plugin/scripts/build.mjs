@@ -72,5 +72,5 @@ await Promise.all(scriptEntries.map((entry) => build({
 })));
 
 const outputFiles = await readdir(outputDir);
-console.log(`Built Bojin extension into ${path.relative(pluginRoot, outputDir)}`);
+console.log(`Built GardenFlow extension into ${path.relative(pluginRoot, outputDir)}`);
 console.log(`Output entries: ${outputFiles.sort().join(', ')}`);

@@ -1,6 +1,6 @@
 import { getStoredMap, setStoredMap } from './storage.js';
 
-export const CDP_EVENT_LOG_KEY = 'xwowBrowserDataAiCdpEvents';
+export const CDP_EVENT_LOG_KEY = 'gardenflowBrowserDataAiCdpEvents';
 export const CDP_EVENT_LOG_LIMIT = 200;
 
 export async function recordCdpEvent(source = {}, method = '', params = {}) {

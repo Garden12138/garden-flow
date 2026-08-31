@@ -4,7 +4,7 @@ import type { TeamRuntimeProviderValue, TeamWorkbenchSnapshot } from './teamWork
 
 const TeamRuntimeContext = createContext<TeamRuntimeProviderValue | null>(null);
 
-const SNAPSHOT_STORAGE_PREFIX = 'redbox:team-workbench-snapshot:';
+const SNAPSHOT_STORAGE_PREFIX = 'gardenflow:team-workbench-snapshot:';
 
 function readWarmSnapshot(sessionId: string): TeamWorkbenchSnapshot | null {
   if (typeof window === 'undefined') return null;

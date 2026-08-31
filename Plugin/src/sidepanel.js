@@ -1,3 +1,4 @@
+import './brandStorage.js';
 const elements = {
   serverStatus: document.getElementById('server-status'),
   refresh: document.getElementById('refresh'),
@@ -55,17 +56,17 @@ let currentSettings = {
 };
 
 function debugLog(scope, details) {
-  console.debug(`[redbox-plugin][sidepanel][${scope}]`, details);
+  console.debug(`[gardenflow-plugin][sidepanel][${scope}]`, details);
 }
 
 function debugWarn(scope, details) {
-  console.warn(`[redbox-plugin][sidepanel][${scope}]`, details);
+  console.warn(`[gardenflow-plugin][sidepanel][${scope}]`, details);
 }
 
 init().catch((error) => {
   renderConnection({ success: false, error: error instanceof Error ? error.message : String(error) });
   renderPageIdentity({
-    platform: 'bojin',
+    platform: 'gardenflow',
     name: '识别失败',
     logo: 'B',
     title: '侧栏初始化失败',
@@ -162,7 +163,7 @@ async function refreshContext() {
     });
     renderConnection({ success: false, error: error instanceof Error ? error.message : String(error) });
     renderPageIdentity({
-      platform: 'bojin',
+      platform: 'gardenflow',
       name: '识别失败',
       logo: 'B',
       title: '当前页面状态读取失败',
@@ -188,7 +189,7 @@ function renderConnection(captureHealth, browserControlHealth) {
   const captureConnected = captureHealth?.success === true;
   const browserControlConnected = browserControlHealth?.success === true;
   if (!captureConnected && !browserControlConnected) {
-    elements.serverStatus.textContent = '未连接，请打开Bojin';
+    elements.serverStatus.textContent = '未连接，请打开GardenFlow';
     elements.serverStatus.className = 'status error';
     return;
   }
@@ -249,7 +250,7 @@ function resolvePageIdentity(nextContext) {
 }
 
 function renderPageIdentity(view) {
-  elements.platformLogo.className = `platform-logo platform-${view.platform || 'bojin'}`;
+  elements.platformLogo.className = `platform-logo platform-${view.platform || 'gardenflow'}`;
   elements.platformFallback.textContent = view.logo || 'B';
   if (view.icon) {
     elements.platformIcon.src = view.icon;
@@ -262,7 +263,7 @@ function renderPageIdentity(view) {
     elements.platformIcon.classList.add('hidden');
     elements.platformFallback.classList.remove('hidden');
   }
-  elements.platformName.textContent = view.name || 'Bojin';
+  elements.platformName.textContent = view.name || 'GardenFlow';
   elements.pageTitle.textContent = view.title || '当前页面';
   elements.pageDetail.textContent = view.detail || '';
 }
@@ -318,7 +319,7 @@ function renderCaptureActions(nextContext) {
     return;
   }
   if (!isHealthy) {
-    renderCaptureStatus('未链接，请打开Bojin', 'error');
+    renderCaptureStatus('未链接，请打开GardenFlow', 'error');
     return;
   }
   renderCaptureStatus(config.hint || '点击按钮后任务会进入下方队列', 'idle');
@@ -601,7 +602,7 @@ function renderBloggerNotesPanel(nextContext) {
     });
   } else if (!nextContext?.health?.success) {
     renderBloggerNotesProgress({
-      label: '未链接，请打开Bojin',
+      label: '未链接，请打开GardenFlow',
       meta: '',
       status: 'error',
     });
@@ -632,7 +633,7 @@ function getCaptureActionConfig(nextContext) {
   if (!tab.url) {
     return {
       variant: 'empty',
-      title: 'Bojin 页面采集',
+      title: 'GardenFlow 页面采集',
       subtitle: '打开网页后自动识别',
       actions: [],
     };
@@ -640,7 +641,7 @@ function getCaptureActionConfig(nextContext) {
   if (platform === 'xhs' && pageType === 'profile') {
     return {
       variant: 'xhs-profile',
-      title: 'Bojin 博主采集',
+      title: 'GardenFlow 博主采集',
       subtitle: '小红书博主页',
       actions: [
         { label: '采集博主笔记', action: 'bloggerNotes', primary: true, title: '采集当前博主主页笔记' },
@@ -650,86 +651,86 @@ function getCaptureActionConfig(nextContext) {
   if (platform === 'xhs' && pageType === 'note') {
     return {
       variant: 'xhs-note',
-      title: 'Bojin 笔记采集',
+      title: 'GardenFlow 笔记采集',
       subtitle: '小红书笔记页',
       actions: [
-        { label: '保存笔记', action: 'save', primary: true, title: '保存当前笔记到 Bojin' },
+        { label: '保存笔记', action: 'save', primary: true, title: '保存当前笔记到 GardenFlow' },
       ],
     };
   }
   if (platform === 'xhs') {
     return {
       variant: 'xhs-page',
-      title: 'Bojin 小红书采集',
+      title: 'GardenFlow 小红书采集',
       subtitle: '当前页面',
       actions: [
-        { label: '保存网页', action: 'savePageLink', primary: true, title: '保存当前页面链接到 Bojin' },
+        { label: '保存网页', action: 'savePageLink', primary: true, title: '保存当前页面链接到 GardenFlow' },
       ],
     };
   }
   if (platform === 'youtube') {
     return {
       variant: 'youtube',
-      title: 'Bojin 视频采集',
+      title: 'GardenFlow 视频采集',
       subtitle: 'YouTube',
       actions: [
-        { label: '保存视频', action: 'saveYoutube', primary: true, title: '保存当前 YouTube 视频到 Bojin' },
+        { label: '保存视频', action: 'saveYoutube', primary: true, title: '保存当前 YouTube 视频到 GardenFlow' },
       ],
     };
   }
   if (platform === 'douyin') {
     return {
       variant: 'douyin',
-      title: 'Bojin 视频采集',
+      title: 'GardenFlow 视频采集',
       subtitle: '抖音',
       actions: [
-        { label: '保存视频', action: 'saveDouyin', primary: true, title: '保存当前抖音视频到 Bojin' },
+        { label: '保存视频', action: 'saveDouyin', primary: true, title: '保存当前抖音视频到 GardenFlow' },
       ],
     };
   }
   if (platform === 'wechat' && pageType === 'article') {
     return {
       variant: 'wechat',
-      title: 'Bojin 文章采集',
+      title: 'GardenFlow 文章采集',
       subtitle: '微信公众号',
       actions: [
-        { label: '保存文章', action: 'savePageLink', primary: true, title: '保存当前公众号文章到 Bojin' },
+        { label: '保存文章', action: 'savePageLink', primary: true, title: '保存当前公众号文章到 GardenFlow' },
       ],
     };
   }
   if (platform === 'zhihu' && pageInfo?.kind === 'zhihu-answer') {
     return {
       variant: 'zhihu',
-      title: 'Bojin 回答采集',
+      title: 'GardenFlow 回答采集',
       subtitle: '知乎',
       actions: [
-        { label: '保存回答', action: 'saveZhihuAnswer', primary: true, title: '保存当前知乎回答到 Bojin' },
+        { label: '保存回答', action: 'saveZhihuAnswer', primary: true, title: '保存当前知乎回答到 GardenFlow' },
       ],
     };
   }
   if (platform === 'zhihu' && pageInfo?.kind === 'zhihu-article') {
     return {
       variant: 'zhihu',
-      title: 'Bojin 文章采集',
+      title: 'GardenFlow 文章采集',
       subtitle: '知乎专栏',
       actions: [
-        { label: '保存文章', action: 'saveZhihuArticle', primary: true, title: '保存当前知乎专栏文章到 Bojin' },
+        { label: '保存文章', action: 'saveZhihuArticle', primary: true, title: '保存当前知乎专栏文章到 GardenFlow' },
       ],
     };
   }
   const platformMap = {
-    bilibili: { subtitle: 'Bilibili', label: pageType === 'video' ? '保存视频' : '保存页面', action: 'saveBilibili', title: '保存当前 Bilibili 内容到 Bojin' },
-    kuaishou: { subtitle: '快手', label: pageType === 'video' ? '保存视频' : '保存页面', action: 'saveKuaishou', title: '保存当前快手内容到 Bojin' },
-    tiktok: { subtitle: 'TikTok', label: pageType === 'video' ? '保存视频' : '保存页面', action: 'saveTiktok', title: '保存当前 TikTok 内容到 Bojin' },
-    reddit: { subtitle: 'Reddit', label: pageType === 'post' ? '保存帖子' : '保存页面', action: 'saveReddit', title: '保存当前 Reddit 内容到 Bojin' },
-    x: { subtitle: 'X', label: pageType === 'post' ? '保存推文' : '保存页面', action: 'saveX', title: '保存当前 X 内容到 Bojin' },
-    instagram: { subtitle: 'Instagram', label: pageType === 'post' || pageType === 'video' ? '保存内容' : '保存页面', action: 'saveInstagram', title: '保存当前 Instagram 内容到 Bojin' },
+    bilibili: { subtitle: 'Bilibili', label: pageType === 'video' ? '保存视频' : '保存页面', action: 'saveBilibili', title: '保存当前 Bilibili 内容到 GardenFlow' },
+    kuaishou: { subtitle: '快手', label: pageType === 'video' ? '保存视频' : '保存页面', action: 'saveKuaishou', title: '保存当前快手内容到 GardenFlow' },
+    tiktok: { subtitle: 'TikTok', label: pageType === 'video' ? '保存视频' : '保存页面', action: 'saveTiktok', title: '保存当前 TikTok 内容到 GardenFlow' },
+    reddit: { subtitle: 'Reddit', label: pageType === 'post' ? '保存帖子' : '保存页面', action: 'saveReddit', title: '保存当前 Reddit 内容到 GardenFlow' },
+    x: { subtitle: 'X', label: pageType === 'post' ? '保存推文' : '保存页面', action: 'saveX', title: '保存当前 X 内容到 GardenFlow' },
+    instagram: { subtitle: 'Instagram', label: pageType === 'post' || pageType === 'video' ? '保存内容' : '保存页面', action: 'saveInstagram', title: '保存当前 Instagram 内容到 GardenFlow' },
   };
   if (platformMap[platform]) {
     const item = platformMap[platform];
     return {
       variant: platform,
-      title: 'Bojin 页面采集',
+      title: 'GardenFlow 页面采集',
       subtitle: item.subtitle,
       actions: [
         { label: item.label, action: item.action, primary: true, title: item.title },
@@ -738,23 +739,23 @@ function getCaptureActionConfig(nextContext) {
   }
   return {
     variant: 'generic',
-    title: 'Bojin 页面采集',
+    title: 'GardenFlow 页面采集',
     subtitle: tab.hostname || '当前网页',
     actions: [
-      { label: '保存网页', action: pageInfo?.action === 'save-page-auto' ? 'savePageAuto' : 'savePageLink', primary: true, title: '保存当前网页到 Bojin' },
+      { label: '保存网页', action: pageInfo?.action === 'save-page-auto' ? 'savePageAuto' : 'savePageLink', primary: true, title: '保存当前网页到 GardenFlow' },
     ],
   };
 }
 
 function getCaptureActionMeta(action) {
   const map = {
-    save: { type: 'save-xhs', pending: '保存中...', done: '已保存到 Bojin' },
+    save: { type: 'save-xhs', pending: '保存中...', done: '已保存到 GardenFlow' },
     download: { type: 'xhs:download-current-note', pending: '下载中...', done: '已创建下载任务' },
     comments: { type: 'xhs:collect-current-comments', pending: '采集中...', done: '评论已写入知识库' },
     bloggerNotes: { type: 'xhs:collect-blogger-notes', pending: '采集中...', done: '已采集主页笔记' },
     exportJson: { type: 'xhs:export-current-note-json', pending: '导出中...', done: '已导出 JSON' },
-    savePageAuto: { type: 'save-page-auto', pending: '保存中...', done: '已保存到 Bojin' },
-    savePageLink: { type: 'save-page-link', pending: '保存中...', done: '已保存到 Bojin' },
+    savePageAuto: { type: 'save-page-auto', pending: '保存中...', done: '已保存到 GardenFlow' },
+    savePageLink: { type: 'save-page-link', pending: '保存中...', done: '已保存到 GardenFlow' },
     saveYoutube: { type: 'save-youtube', pending: '保存中...', done: '已保存 YouTube 视频' },
     saveDouyin: { type: 'save-douyin', pending: '保存中...', done: '已保存抖音视频' },
     saveZhihuAnswer: { type: 'save-zhihu-answer', pending: '保存中...', done: '已保存知乎回答' },
@@ -774,7 +775,7 @@ function summarizeActionResponse(response, fallback) {
     const identity = String(response.title || response.noteId || '').trim();
     if (response.duplicate) return `知识库中已存在${identity ? `（${identity}）` : ''}`;
     if (response.updated) return `已更新知识库${identity ? `（${identity}）` : ''}`;
-    return `已保存到 Bojin${identity ? `（${identity}）` : ''}`;
+    return `已保存到 GardenFlow${identity ? `（${identity}）` : ''}`;
   }
   if (response?.mode === 'xhs-blogger-notes') {
     return `博主笔记 ${Number(response.count || 0)} 条，失败 ${Number(response.failed || 0)} 条`;
@@ -944,7 +945,7 @@ function normalizePlatform(value) {
   if (/^x$|(^|[^a-z])x\.com|twitter|platform-x|[^a-z]x[^a-z]/.test(text)) return 'x';
   if (/zhihu|知乎/.test(text)) return 'zhihu';
   if (/weixin|wechat|mp\.weixin|公众号/.test(text)) return 'wechat';
-  if (/bojin|beav|redbox|redconvert/.test(text)) return 'bojin';
+  if (/gardenflow|gardenflow|gardenflow|gardenflow/.test(text)) return 'gardenflow';
   return 'web';
 }
 
@@ -972,7 +973,7 @@ function getPlatformMeta(platform) {
     instagram: { platform: 'instagram', name: 'Instagram', logo: 'I', icon: 'assets/platforms/instagram.svg' },
     wechat: { platform: 'wechat', name: '微信公众号', logo: '微' },
     zhihu: { platform: 'zhihu', name: '知乎', logo: '知', icon: 'assets/platforms/zhihu.svg' },
-    bojin: { platform: 'bojin', name: 'Bojin', logo: 'B' },
+    gardenflow: { platform: 'gardenflow', name: 'GardenFlow', logo: 'B' },
     web: { platform: 'web', name: '网页', logo: 'W' },
   };
   return map[platform] || map.web;

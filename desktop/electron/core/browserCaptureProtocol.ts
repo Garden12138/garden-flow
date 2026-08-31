@@ -3,7 +3,7 @@ import path from 'node:path';
 
 export const BROWSER_CAPTURE_EXTENSION_ID = 'dhfphfekcjahljnefpdjoidehnhhoeie';
 export const BROWSER_CAPTURE_EXTENSION_ORIGIN = `chrome-extension://${BROWSER_CAPTURE_EXTENSION_ID}/`;
-export const BROWSER_CAPTURE_NATIVE_HOST_NAME = 'com.redbox.browser_control';
+export const BROWSER_CAPTURE_NATIVE_HOST_NAME = 'com.gardenflow.browser_control';
 export const BROWSER_CAPTURE_DESCRIPTOR_SCHEMA_VERSION = 2;
 export const BROWSER_CAPTURE_BRIDGE_PROTOCOL_VERSION = 1;
 export const BROWSER_CAPTURE_PROTOCOL_VERSION = 1;
@@ -57,26 +57,26 @@ export type BrowserCaptureBridgeDescriptor = {
 };
 
 export function browserCaptureStateRoot(): string {
-    if (process.env.REDBOX_BROWSER_CONTROL_STATE_DIR) {
-        return path.resolve(process.env.REDBOX_BROWSER_CONTROL_STATE_DIR);
+    if (process.env.GARDENFLOW_BROWSER_CONTROL_STATE_DIR) {
+        return path.resolve(process.env.GARDENFLOW_BROWSER_CONTROL_STATE_DIR);
     }
     if (process.platform === 'darwin') {
-        return path.join(os.homedir(), 'Library/Application Support/RedBox/native-host');
+        return path.join(os.homedir(), 'Library/Application Support/GardenFlow/native-host');
     }
     if (process.platform === 'win32') {
         return path.join(
             process.env.APPDATA || path.join(os.homedir(), 'AppData/Roaming'),
-            'RedBox/native-host',
+            'GardenFlow/native-host',
         );
     }
     return path.join(
         process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local/share'),
-        'RedBox/native-host',
+        'GardenFlow/native-host',
     );
 }
 
 export function browserCaptureDescriptorPath(): string {
-    return process.env.REDBOX_BROWSER_BRIDGE_DESCRIPTOR
+    return process.env.GARDENFLOW_BROWSER_BRIDGE_DESCRIPTOR
         || path.join(browserCaptureStateRoot(), 'desktop-bridge-v1.json');
 }
 

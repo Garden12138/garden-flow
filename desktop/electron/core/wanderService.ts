@@ -162,7 +162,7 @@ function toTwoLinePreview(raw: string): string {
 
 async function buildWanderLongTermContext(): Promise<string> {
     const workspacePaths = getWorkspacePaths();
-    const profileRoot = path.join(workspacePaths.redclaw, 'profile');
+    const profileRoot = path.join(workspacePaths.gardenflow, 'profile');
     const memoryPath = path.join(workspacePaths.base, 'memory', 'MEMORY.md');
     const userProfilePath = path.join(profileRoot, 'user.md');
     const creatorProfilePath = path.join(profileRoot, 'CreatorProfile.md');
@@ -207,7 +207,7 @@ async function runWanderDeepThinkWithAgent(params: {
     const existingSession = getChatSession(sessionId);
     const metadata = {
         contextId,
-        contextType: 'redclaw',
+        contextType: 'gardenflow',
         contextContent: itemsText,
         isContextBound: true,
     };

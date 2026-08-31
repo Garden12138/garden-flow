@@ -1,7 +1,7 @@
 import { BROWSER_SESSIONS_KEY, recordBrowserSessionEvent } from './browserSessionRuntime.js';
 import { getStoredMap, setStoredMap } from './storage.js';
 
-export const TAB_LEASES_KEY = 'xwowBrowserDataAiTabLeases';
+export const TAB_LEASES_KEY = 'gardenflowBrowserDataAiTabLeases';
 export const EXTENSION_INSTANCE_ID_KEY = 'extensionInstanceId';
 
 let extensionInstanceIdPromise = null;
@@ -407,11 +407,11 @@ export async function groupFinalizedTabs(finalized) {
   const deliverable = finalized.filter((item) => item.status === 'deliverable').map((item) => item.tabId);
   if (handoff.length) {
     const groupId = await chrome.tabs.group({ tabIds: handoff });
-    await chrome.tabGroups.update(groupId, { title: 'Bojin Handoff', color: 'blue' }).catch(() => {});
+    await chrome.tabGroups.update(groupId, { title: 'GardenFlow Handoff', color: 'blue' }).catch(() => {});
   }
   if (deliverable.length) {
     const groupId = await chrome.tabs.group({ tabIds: deliverable });
-    await chrome.tabGroups.update(groupId, { title: 'Bojin Deliverable', color: 'green' }).catch(() => {});
+    await chrome.tabGroups.update(groupId, { title: 'GardenFlow Deliverable', color: 'green' }).catch(() => {});
   }
 }
 
@@ -635,7 +635,7 @@ function notifyActiveTabLeaseChange(type, payload = {}) {
     try {
       handler(event);
     } catch (error) {
-      console.warn('[XWOW BrowserDataAI] active tab lease change handler failed', error);
+      console.warn('[GARDENFLOW BrowserDataAI] active tab lease change handler failed', error);
     }
   }
 }

@@ -38,11 +38,11 @@ export function buildFallbackResponse(channel: string, error: unknown): any {
   }
 
   if (
-    channel === 'redbox-auth:bootstrap'
-    || channel === 'redbox-auth:refresh'
-    || channel === 'redbox-auth:me'
-    || channel === 'redbox-auth:points'
-    || channel === 'redbox-auth:call-records'
+    channel === 'gardenflow-auth:bootstrap'
+    || channel === 'gardenflow-auth:refresh'
+    || channel === 'gardenflow-auth:me'
+    || channel === 'gardenflow-auth:points'
+    || channel === 'gardenflow-auth:call-records'
     || channel === 'auth:refresh-now'
   ) {
     return {
@@ -90,6 +90,6 @@ export function buildFallbackResponse(channel: string, error: unknown): any {
 
   return {
     success: false,
-    error: `Bojin host request failed for "${channel}": ${message}`,
+    error: `GardenFlow host request failed for "${channel}": ${message}`,
   };
 }

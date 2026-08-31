@@ -1,11 +1,11 @@
 {
-  "variant": "bojin",
-  "displayName": "Bojin",
-  "windowTitle": "Bojin",
-  "htmlTitle": "Bojin",
-  "aiDisplayName": "Bojin",
-  "logoSrc": "/branding/bojin-mark.svg",
-  "tagline": "AI content workspace",
+  "variant": "gardenflow",
+  "displayName": "GardenFlow",
+  "windowTitle": "GardenFlow",
+  "htmlTitle": "GardenFlow",
+  "aiDisplayName": "GardenFlow",
+  "logoSrc": "/branding/gardenflow-mark.svg",
+  "tagline": "Grow content with AI.",
   "visibleSettingsTabs": [
     "ai",
     "general"

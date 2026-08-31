@@ -4,19 +4,20 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 DESKTOP_DIR="$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)"
+source "$DESKTOP_DIR/shared/brandEnvironment.sh"
 TOOLS_DIR="$DESKTOP_DIR/.packaging-tools"
-NODE_VERSION="${REDBOX_NODE_VERSION:-22.23.2}"
-PNPM_VERSION="${REDBOX_PNPM_VERSION:-10.28.2}"
-NODE_DIST_URL="${REDBOX_NODE_DIST_URL:-https://nodejs.org/dist/v$NODE_VERSION}"
+NODE_VERSION="${GARDENFLOW_NODE_VERSION:-22.23.2}"
+PNPM_VERSION="${GARDENFLOW_PNPM_VERSION:-10.28.2}"
+NODE_DIST_URL="${GARDENFLOW_NODE_DIST_URL:-https://nodejs.org/dist/v$NODE_VERSION}"
 NODE_DIST_URL="${NODE_DIST_URL%/}"
 BUILD_MODE="${1:---unsigned}"
 
 log() {
-    printf '[Bojin package] %s\n' "$*"
+    printf '[GardenFlow package] %s\n' "$*"
 }
 
 fail() {
-    printf '[Bojin package] ERROR: %s\n' "$*" >&2
+    printf '[GardenFlow package] ERROR: %s\n' "$*" >&2
     exit 1
 }
 
@@ -112,7 +113,7 @@ if [[ ! -f "$PNPM_CLI" ]]; then
         --no-fund \
         "pnpm@$PNPM_VERSION"
 fi
-export REDBOX_PNPM_CLI="$PNPM_CLI"
+export GARDENFLOW_PNPM_CLI="$PNPM_CLI"
 
 run_pnpm() {
     "$NODE_BIN" "$PNPM_CLI" "$@"

@@ -275,7 +275,7 @@ export function formatWechatArticleFromMarkdown(input: WechatFormatterInput): We
 
   const titleHtml = `<h1 style="margin:0 0 24px;font-size:32px;line-height:1.35;font-weight:800;letter-spacing:0.01em;color:#111827;">${escapeHtml(title)}</h1>`;
   const html = [
-    `<section data-redconvert-wechat="true" style="${WECHAT_WRAPPER_STYLE}">`,
+    `<section data-gardenflow-wechat="true" style="${WECHAT_WRAPPER_STYLE}">`,
     titleHtml,
     renderedBlocks || `<p style="margin:16px 0;text-align:justify;">${renderInlineMarkdown(markdown || title)}</p>`,
     '</section>',

@@ -1,6 +1,6 @@
-import type { AuthoringTaskHints } from '../../utils/redclawAuthoring';
+import type { AuthoringTaskHints } from '../../utils/gardenflowAuthoring';
 
-export type ViewType = 'skills' | 'knowledge' | 'settings' | 'archives' | 'wander' | 'redclaw' | 'media-library' | 'cover-studio' | 'generation-studio' | 'subjects' | 'automation' | 'approval';
+export type ViewType = 'skills' | 'knowledge' | 'settings' | 'archives' | 'wander' | 'gardenflow' | 'media-library' | 'cover-studio' | 'generation-studio' | 'subjects' | 'automation' | 'approval';
 export type ImmersiveMode = false | 'theme' | 'dark';
 export type TeamSection = 'team-workbench' | 'members';
 
@@ -10,7 +10,7 @@ export type SettingsNavigationTarget = {
   nonce: number;
 };
 
-export type RedClawNavigationAction = {
+export type GardenFlowNavigationAction = {
   action: 'new' | 'open-team' | 'open-session';
   sessionId?: string;
   nonce: number;
@@ -23,8 +23,8 @@ export type AppIntent =
       aiModelSubTab?: SettingsNavigationTarget['aiModelSubTab'];
     }
   | {
-      type: 'redclaw.open';
-      action?: RedClawNavigationAction['action'];
+      type: 'gardenflow.open';
+      action?: GardenFlowNavigationAction['action'];
       sessionId?: string;
     }
   | {
@@ -48,7 +48,7 @@ export type LegacyNavigateEventDetail = {
   view?: ViewType;
   settingsTab?: SettingsNavigationTarget['tab'];
   aiModelSubTab?: SettingsNavigationTarget['aiModelSubTab'];
-  redclawAction?: RedClawNavigationAction['action'];
+  gardenflowAction?: GardenFlowNavigationAction['action'];
   teamSessionId?: string;
   sessionId?: string;
   docketId?: string;

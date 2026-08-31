@@ -1,4 +1,4 @@
-const RENDERABLE_ASSET_PROTOCOL = /^(https?:|file:|local-file:|redbox-asset:|data:|blob:)/i;
+const RENDERABLE_ASSET_PROTOCOL = /^(https?:|file:|local-file:|gardenflow-asset:|data:|blob:)/i;
 
 export function resolveRuntimeAssetUrl(assetPath: string): string {
     const raw = String(assetPath || '').trim();
@@ -11,10 +11,10 @@ export function resolveRuntimeAssetUrl(assetPath: string): string {
 
     try {
         const href = String(window.location.href || '');
-        if (/^(local-file|redbox-asset):/i.test(href)) {
+        if (/^(local-file|gardenflow-asset):/i.test(href)) {
             const fileBaseHref = href
                 .replace(/^local-file:/i, 'file:')
-                .replace(/^redbox-asset:\/\/asset\//i, 'file:///');
+                .replace(/^gardenflow-asset:\/\/asset\//i, 'file:///');
             return new URL(normalized, fileBaseHref).toString();
         }
         return new URL(normalized, href).toString();

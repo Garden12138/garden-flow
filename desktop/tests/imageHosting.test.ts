@@ -153,7 +153,7 @@ test('GitHub adapter PUTs Contents API with token auth and returns public URL', 
 });
 
 test('normalizeMediaValueForRemote keeps data URL when image hosting is disabled', async () => {
-    const filePath = '/tmp/redclaw-image-hosting-disabled.png';
+    const filePath = '/tmp/gardenflow-image-hosting-disabled.png';
     const result = await normalizeMediaValueForRemote(filePath, {
         settings: createDefaultImageHostingSettings(),
         readFile: async () => ONE_PIXEL_PNG,

@@ -10,12 +10,12 @@ type ElectronIpcTransport = {
 
 declare global {
   interface Window {
-    __RED_ELECTRON_IPC__?: ElectronIpcTransport;
+    __GARDENFLOW_ELECTRON_IPC__?: ElectronIpcTransport;
   }
 }
 
 export function getElectronIpcTransport(): ElectronIpcTransport {
-  const transport = window.__RED_ELECTRON_IPC__;
+  const transport = window.__GARDENFLOW_ELECTRON_IPC__;
   if (!transport) {
     throw new Error('Electron IPC transport is unavailable.');
   }

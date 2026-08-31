@@ -7,7 +7,7 @@ export interface BuiltinToolFactoryContext {
     workspaceRootOverride?: string;
 }
 
-export type BuiltinToolPack = 'redclaw' | 'knowledge' | 'chatroom' | 'diagnostics' | 'full';
+export type BuiltinToolPack = 'gardenflow' | 'knowledge' | 'chatroom' | 'diagnostics' | 'full';
 export type BuiltinToolVisibility = 'public' | 'developer' | 'internal';
 export type BuiltinToolRequiredContext = 'chatService' | null;
 

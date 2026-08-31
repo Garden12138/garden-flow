@@ -6,20 +6,20 @@ type ProjectMetadata = {
   fps: number;
 };
 
-type RedBoxProjectState = {
+type GardenFlowProjectState = {
   currentProject: {
     id: string;
     metadata: ProjectMetadata;
   } | null;
 };
 
-type RedBoxProjectActions = {
-  syncCurrentProject: (project: RedBoxProjectState['currentProject']) => void;
+type GardenFlowProjectActions = {
+  syncCurrentProject: (project: GardenFlowProjectState['currentProject']) => void;
 };
 
-export const useProjectStore = create<RedBoxProjectState & RedBoxProjectActions>((set) => ({
+export const useProjectStore = create<GardenFlowProjectState & GardenFlowProjectActions>((set) => ({
   currentProject: {
-    id: 'redbox-project',
+    id: 'gardenflow-project',
     metadata: {
       width: 1080,
       height: 1920,
@@ -29,6 +29,6 @@ export const useProjectStore = create<RedBoxProjectState & RedBoxProjectActions>
   syncCurrentProject: (currentProject) => set({ currentProject }),
 }));
 
-export function syncRedBoxTimelineProject(project: RedBoxProjectState['currentProject']) {
+export function syncGardenFlowTimelineProject(project: GardenFlowProjectState['currentProject']) {
   useProjectStore.getState().syncCurrentProject(project);
 }

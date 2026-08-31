@@ -30,7 +30,7 @@ function resolveFfmpegCommand(): string {
   } catch {
     // Fall through to environment fallback.
   }
-  if (process.env.REDBOX_ALLOW_SYSTEM_FFMPEG === '1') return 'ffmpeg';
+  if (process.env.GARDENFLOW_ALLOW_SYSTEM_FFMPEG === '1') return 'ffmpeg';
   throw new Error('Bundled ffmpeg not found. Please reinstall app/package to restore internal ffmpeg binary.');
 }
 

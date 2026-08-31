@@ -1,4 +1,4 @@
-const XWOW_FAVICON_BADGE_MARK = 'xwow-favicon-badge';
+const GARDENFLOW_FAVICON_BADGE_MARK = 'gardenflow-favicon-badge';
 const TARGET_FAVICON_BADGE_MARK = 'codex-favicon-badge';
 const TARGET_FAVICON_BADGE_MARK_ATTR = 'data-codex-favicon-badge';
 
@@ -11,7 +11,7 @@ export function applyTabFaviconBadge(options = {}) {
   if (!['active', 'handoff', 'deliverable', 'unseen-handoff', 'unseen-deliverable'].includes(badge)) {
     return { success: false, error: `unsupported favicon badge: ${badge}` };
   }
-  const preservedHref = document.querySelector('link[data-xwow-favicon-badge="true"]')?.dataset.xwowOriginalFaviconHref || '';
+  const preservedHref = document.querySelector('link[data-gardenflow-favicon-badge="true"]')?.dataset.gardenflowOriginalFaviconHref || '';
   const faviconHref = String(preservedHref || options.faviconDataUrl || options.faviconUrl || '').trim();
   if (!faviconHref) return { success: false, error: 'favicon badge requires faviconDataUrl' };
   clearTabFaviconBadge();
@@ -19,22 +19,22 @@ export function applyTabFaviconBadge(options = {}) {
   const targets = links.length ? links : [createFaviconLink()];
   for (const link of targets) {
     const originalHref = link.getAttribute('href');
-    const createdByXwow = !links.length;
+    const createdByGardenFlow = !links.length;
     link.href = buildBadgedFaviconDataUrl(badge, faviconHref);
-    link.dataset.xwowFaviconBadge = 'true';
-    link.dataset.xwowFaviconBadgeCreated = createdByXwow ? 'true' : 'false';
-    if (originalHref) link.dataset.xwowOriginalFaviconHref = originalHref;
+    link.dataset.gardenflowFaviconBadge = 'true';
+    link.dataset.gardenflowFaviconBadgeCreated = createdByGardenFlow ? 'true' : 'false';
+    if (originalHref) link.dataset.gardenflowOriginalFaviconHref = originalHref;
   }
   return { success: true, badge };
 }
 
 export function clearTabFaviconBadge() {
-  for (const link of document.querySelectorAll('link[data-xwow-favicon-badge="true"]')) {
-    const created = link.dataset.xwowFaviconBadgeCreated === 'true';
-    const originalHref = link.dataset.xwowOriginalFaviconHref || '';
-    delete link.dataset.xwowFaviconBadge;
-    delete link.dataset.xwowFaviconBadgeCreated;
-    delete link.dataset.xwowOriginalFaviconHref;
+  for (const link of document.querySelectorAll('link[data-gardenflow-favicon-badge="true"]')) {
+    const created = link.dataset.gardenflowFaviconBadgeCreated === 'true';
+    const originalHref = link.dataset.gardenflowOriginalFaviconHref || '';
+    delete link.dataset.gardenflowFaviconBadge;
+    delete link.dataset.gardenflowFaviconBadgeCreated;
+    delete link.dataset.gardenflowOriginalFaviconHref;
     if (created) {
       link.remove();
     } else if (originalHref) {
@@ -47,7 +47,7 @@ export function clearTabFaviconBadge() {
 
 function currentFaviconLinks() {
   return [...document.querySelectorAll('link[rel~="icon"], link[rel="shortcut icon"]')]
-    .filter((link) => link.dataset.xwowFaviconBadge !== 'true');
+    .filter((link) => link.dataset.gardenflowFaviconBadge !== 'true');
 }
 
 function createFaviconLink() {
@@ -60,7 +60,7 @@ function createFaviconLink() {
 function buildBadgedFaviconDataUrl(badge, faviconHref) {
   const normalizedBadge = normalizeBadgeKind(badge);
   const opacity = normalizedBadge === 'active' ? ' opacity="0.34"' : '';
-  const marker = `${TARGET_FAVICON_BADGE_MARK_ATTR}="${TARGET_FAVICON_BADGE_MARK}" data-${XWOW_FAVICON_BADGE_MARK}="true"`;
+  const marker = `${TARGET_FAVICON_BADGE_MARK_ATTR}="${TARGET_FAVICON_BADGE_MARK}" data-${GARDENFLOW_FAVICON_BADGE_MARK}="true"`;
   const overlay = faviconBadgeSvgOverlay(badge);
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" ${marker} width="32" height="32" viewBox="0 0 32 32"><image href="${escapeSvgAttribute(faviconHref)}" width="32" height="32"${opacity} />${overlay}</svg>`;
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;

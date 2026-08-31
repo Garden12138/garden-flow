@@ -10,7 +10,7 @@ allowed-tools: app_cli
 本任务由**运行时结构化执行**，不依赖模型操作键鼠、不截图猜坐标。执行链路：
 
 ```
-桌面 Bojin ── Desktop Bridge ── native host ── RedClaw 插件（已登录浏览器）
+桌面 GardenFlow ── Desktop Bridge ── native host ── GardenFlow 插件（已登录浏览器）
    │                                              │
    │  research.run search/preview                 │  页内搜索框提交，收集卡片
    │  research.run open_item                      │  结果页内点击打开笔记
@@ -21,7 +21,7 @@ allowed-tools: app_cli
 
 ## 每轮流程
 
-1. 检查插件桥接：必须有已连接的 RedClaw 插件实例（即人已打开并登录小红书、启用插件的那个浏览器）。
+1. 检查插件桥接：必须有已连接的 GardenFlow 插件实例（即人已打开并登录小红书、启用插件的那个浏览器）。
 2. `research.run { operation: 'search', depth: 'preview' }`：插件在小红书入口页用**页面里的搜索框**提交搜索（DOM 提交，非地址栏），滚动收集笔记卡片。卡片数会大于本轮配额，方便遇到重复后续翻。
 3. 逐条打开并保存，直到**新入库**达到 `maxNotesPerRun`，或结果页翻尽：
    - `research.run { executionMode: 'open_item' }` 在结果页内点击打开笔记（不直开 URL）；

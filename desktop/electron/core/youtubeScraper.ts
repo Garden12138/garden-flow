@@ -4,7 +4,7 @@ import fs from 'fs';
 import os from 'os';
 
 const YTDLP_URL = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"; // Default to macos for this user env
-const LOCAL_BIN_DIR = path.join(os.homedir(), '.redconvert', 'bin');
+const LOCAL_BIN_DIR = path.join(os.homedir(), '.gardenflow', 'bin');
 const LOCAL_YTDLP_PATH = path.join(LOCAL_BIN_DIR, 'yt-dlp');
 const LOCAL_YTDLP_META = path.join(LOCAL_BIN_DIR, 'yt-dlp.json'); // 版本信息文件
 

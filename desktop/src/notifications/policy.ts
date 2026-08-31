@@ -50,7 +50,7 @@ type RuntimeErrorPayload = {
   errorPayload: Record<string, unknown>;
 };
 
-type RedclawTaskEventPayload = {
+type GardenFlowTaskEventPayload = {
   eventType: string;
   taskId: string;
   taskName?: string;
@@ -129,7 +129,7 @@ export function mapRuntimeTaskNodeFailureToNotification(
         id: 'open-runtime',
         label: '查看',
         action: 'navigate',
-        payload: { view: 'redclaw' },
+        payload: { view: 'gardenflow' },
       },
     ],
     meta: {
@@ -164,7 +164,7 @@ export function mapRuntimeToolConfirmToNotification(
         id: 'open-runtime',
         label: '去处理',
         action: 'navigate',
-        payload: { view: 'redclaw' },
+        payload: { view: 'gardenflow' },
       },
     ],
     meta: {
@@ -247,7 +247,7 @@ export function mapRuntimeErrorToNotification(
         action: 'navigate',
         payload: shouldOpenLoginSettings
           ? { view: 'settings', settingsTab: 'ai', aiModelSubTab: 'login' }
-          : { view: 'redclaw' },
+          : { view: 'gardenflow' },
       },
     ],
   };
@@ -340,12 +340,12 @@ export function mapGenerationProjectionToNotification(
   return { ...notification, sound: resolveSound(notification.level, notification.source, context, settings) };
 }
 
-export function mapRedclawTaskEventToNotification(
+export function mapGardenFlowTaskEventToNotification(
   payload: unknown,
   context: NotificationContextSnapshot,
   settings: NotificationSettings,
 ): NotificationEnvelope | null {
-  const event = payload && typeof payload === 'object' ? payload as RedclawTaskEventPayload : null;
+  const event = payload && typeof payload === 'object' ? payload as GardenFlowTaskEventPayload : null;
   if (!event || !event.eventType || !event.taskId) return null;
 
   const normalizedEventType = String(event.eventType || '').trim().toLowerCase();
@@ -354,15 +354,15 @@ export function mapRedclawTaskEventToNotification(
   const needsConfirmation = normalizedEventType === 'task_waiting_confirmation';
 
   if (isCompleted) return null;
-  if (isFailed && !settings.rules.redclawFailed) return null;
+  if (isFailed && !settings.rules.gardenflowFailed) return null;
   if (!isCompleted && !isFailed && !needsConfirmation) return null;
 
   const createdAt = event.createdAt ? Date.parse(event.createdAt) || Date.now() : Date.now();
   const level = needsConfirmation ? 'attention' : isFailed ? 'error' : 'success';
   const eventKey = needsConfirmation ? 'task-waiting-confirmation' : isFailed ? 'task-failed' : 'task-completed';
   const notification: NotificationEnvelope = {
-    id: makeNotificationId('redclaw', event.taskId, eventKey, createdAt),
-    source: 'redclaw',
+    id: makeNotificationId('gardenflow', event.taskId, eventKey, createdAt),
+    source: 'gardenflow',
     entityId: event.taskId,
     eventKey,
     level,
@@ -378,10 +378,10 @@ export function mapRedclawTaskEventToNotification(
     showInCenter: !isCompleted,
     actions: [
       {
-        id: 'open-redclaw',
+        id: 'open-gardenflow',
         label: level === 'attention' ? '去处理' : '查看',
         action: 'navigate',
-        payload: { view: 'redclaw' },
+        payload: { view: 'gardenflow' },
       },
     ],
     meta: {

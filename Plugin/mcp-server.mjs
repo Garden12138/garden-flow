@@ -1,8 +1,10 @@
 #!/usr/bin/env node
+import compatibility from './brandCompatibility.cjs';
+compatibility.applyEnvironmentAliases(process.env);
 
 import { DesktopBridgeControlClient } from './scripts/desktop-bridge-client.mjs';
 
-const DEFAULT_TIMEOUT_MS = Number(process.env.REDBOX_BROWSER_CONTROL_MCP_TIMEOUT_MS || 30_000);
+const DEFAULT_TIMEOUT_MS = Number(process.env.GARDENFLOW_BROWSER_CONTROL_MCP_TIMEOUT_MS || 30_000);
 
 const FALLBACK_TOOLS = [
   browserTool('browser.capabilities', 'Return browser-control capabilities and action contracts.', {}),
@@ -130,7 +132,7 @@ async function handleMessage(message) {
         result: {
           protocolVersion: message.params?.protocolVersion || '2024-11-05',
           capabilities: { tools: {} },
-          serverInfo: { name: 'redbox-browser-control', version: '0.1.0' },
+          serverInfo: { name: 'gardenflow-browser-control', version: '0.1.0' },
         },
       });
       return;

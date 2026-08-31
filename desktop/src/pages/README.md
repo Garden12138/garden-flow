@@ -6,7 +6,7 @@
 
 - `Chat.tsx`
 - `Knowledge.tsx`
-- `RedClaw.tsx`
+- `GardenFlow.tsx`
 - `Settings.tsx`
 - `MediaLibrary.tsx`
 - `CoverStudio.tsx`
@@ -23,7 +23,7 @@
 
 - 页面只编排本页逻辑，不承载通用 bridge 或全局 runtime 基础设施。
 - 页面进入时不能等待慢 IPC 才显示。
-- 如页面有局部子域，优先在同目录下放配套文件，例如 `pages/redclaw/`、`pages/settings/`。
+- 如页面有局部子域，优先在同目录下放配套文件，例如 `pages/gardenflow/`、`pages/settings/`。
 
 ## Verification
 

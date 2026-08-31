@@ -6,7 +6,7 @@ import type {
 } from '../../db';
 
 export type RuntimeMode =
-  | 'redclaw'
+  | 'gardenflow'
   | 'knowledge'
   | 'chatroom'
   | 'advisor-discussion'

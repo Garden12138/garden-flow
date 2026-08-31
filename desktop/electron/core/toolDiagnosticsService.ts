@@ -57,12 +57,12 @@ const ensureSandbox = async (): Promise<{
     nestedDirPath: string;
 }> => {
     const sandboxRoot = Instance.directory || process.cwd();
-    const sandboxDir = path.join(sandboxRoot, '.redbox-dev', 'tool-diagnostics');
+    const sandboxDir = path.join(sandboxRoot, '.gardenflow-dev', 'tool-diagnostics');
     const nestedDirPath = path.join(sandboxDir, 'nested');
     const sampleFilePath = path.join(sandboxDir, 'sample.txt');
 
     await fs.mkdir(nestedDirPath, { recursive: true });
-    await fs.writeFile(sampleFilePath, 'alpha\nbeta\nredclaw diagnostic keyword\ngamma\n', 'utf8');
+    await fs.writeFile(sampleFilePath, 'alpha\nbeta\ngardenflow diagnostic keyword\ngamma\n', 'utf8');
 
     return {
         sandboxDir,
@@ -141,7 +141,7 @@ const resolveAiTestConfig = (): { baseURL: string; apiKey: string; model: string
     const settings = (getSettings() || {}) as Record<string, unknown>;
     const baseURL = normalizeApiBaseUrl(String(settings.api_endpoint || ''), 'https://api.openai.com/v1');
     const apiKey = String(settings.api_key || '').trim();
-    const model = String(settings.model_name_redclaw || settings.model_name || '').trim();
+    const model = String(settings.model_name_gardenflow || settings.model_name || '').trim();
 
     if (!baseURL || !model) {
         throw new Error('当前未配置可用的默认 AI 源或模型。');
@@ -171,10 +171,10 @@ const resolveDescriptorAvailability = (descriptor: BuiltinToolDescriptor): {
         };
     }
 
-    if (!toolDescriptorMatchesPack(descriptor, 'redclaw')) {
+    if (!toolDescriptorMatchesPack(descriptor, 'gardenflow')) {
         return {
             status: 'not_in_current_pack',
-            reason: '该工具已注册，但默认不注入到 RedClaw 工具包。',
+            reason: '该工具已注册，但默认不注入到 GardenFlow 工具包。',
         };
     }
 
@@ -188,7 +188,7 @@ const resolveDescriptorAvailability = (descriptor: BuiltinToolDescriptor): {
 
     return {
         status: 'available',
-        reason: '该工具已注册，且默认注入到 RedClaw 工具包。',
+        reason: '该工具已注册，且默认注入到 GardenFlow 工具包。',
     };
 };
 

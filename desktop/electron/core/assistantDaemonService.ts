@@ -382,7 +382,7 @@ function buildRelayPrompt(message: AssistantDaemonIngressMessage): string {
     return buildWeixinRelayPrompt(message, resolveWeixinExecutionStrategy(message));
   }
   const lines = [
-    '你现在是 Bojin 的长期在线后台助理，正在通过外部消息渠道接收用户指令。',
+    '你现在是 GardenFlow 的长期在线后台助理，正在通过外部消息渠道接收用户指令。',
     `渠道: ${message.provider}`,
     `会话键: ${message.accountId ? `${message.accountId}:` : ''}${message.peerId}`,
   ];
@@ -400,7 +400,7 @@ function buildRelayPrompt(message: AssistantDaemonIngressMessage): string {
 
 function buildWeixinRelayPrompt(message: AssistantDaemonIngressMessage, strategy: WeixinExecutionStrategy): string {
   const lines = [
-    '你现在是 Bojin 里的自媒体运营助手，负责通过微信和用户沟通。',
+    '你现在是 GardenFlow 里的自媒体运营助手，负责通过微信和用户沟通。',
     '你处理的是微信私聊消息，回复必须适合直接发送到微信文本消息。',
     `会话键: ${message.accountId ? `${message.accountId}:` : ''}${message.peerId}`,
   ];
@@ -628,24 +628,24 @@ export class AssistantDaemonService extends EventEmitter {
   }
 
   private getConfigPath(): string {
-    return path.join(getWorkspacePaths().redclaw, 'assistant-daemon.json');
+    return path.join(getWorkspacePaths().gardenflow, 'assistant-daemon.json');
   }
 
   private getLockPath(): string {
-    return path.join(getWorkspacePaths().workspaceRoot, 'redclaw', 'assistant-daemon.lock');
+    return path.join(getWorkspacePaths().workspaceRoot, 'gardenflow', 'assistant-daemon.lock');
   }
 
   private getConfigPathForSpace(spaceId: string): string {
-    return path.join(getWorkspacePathsForSpace(spaceId).redclaw, 'assistant-daemon.json');
+    return path.join(getWorkspacePathsForSpace(spaceId).gardenflow, 'assistant-daemon.json');
   }
 
   private getWeixinCursorPath(spaceId: string, config: AssistantDaemonConfig): string {
     return config.weixin.cursorFile
-      || path.join(getWorkspacePathsForSpace(spaceId).redclaw, 'weixin-sidecar.cursor.json');
+      || path.join(getWorkspacePathsForSpace(spaceId).gardenflow, 'weixin-sidecar.cursor.json');
   }
 
   private getWeixinStateRoot(spaceId: string): string {
-    return path.join(getWorkspacePathsForSpace(spaceId).redclaw, 'weixin-claw-state');
+    return path.join(getWorkspacePathsForSpace(spaceId).gardenflow, 'weixin-claw-state');
   }
 
   private getWeixinBridgeStateDir(spaceId: string): string {
@@ -817,7 +817,7 @@ export class AssistantDaemonService extends EventEmitter {
         manifestPath: '/acp/v1/manifest',
         guidePath: '/acp/v1/guide',
         baseUrl: createBaseUrl(this.config.host, this.config.port),
-        manifestUrl: createWebhookUrl(this.config.host, this.config.port, '/.well-known/redbox-agent.json'),
+        manifestUrl: createWebhookUrl(this.config.host, this.config.port, '/.well-known/gardenflow-agent.json'),
         guideUrl: createWebhookUrl(this.config.host, this.config.port, '/acp/v1/guide'),
         discoveryPath: getAcpGatewayService().getDiscoveryFilePaths()[0] || '',
       },
@@ -1360,8 +1360,8 @@ export class AssistantDaemonService extends EventEmitter {
     const env = {
       ...process.env,
       ELECTRON_RUN_AS_NODE: process.env.ELECTRON_RUN_AS_NODE || '1',
-      REDCONVERT_RELAY_URL: createWebhookUrl(this.config.host, this.config.port, config.weixin.endpointPath),
-      REDCONVERT_RELAY_TOKEN: config.weixin.authToken || config.relay.authToken || '',
+      GARDENFLOW_RELAY_URL: createWebhookUrl(this.config.host, this.config.port, config.weixin.endpointPath),
+      GARDENFLOW_RELAY_TOKEN: config.weixin.authToken || config.relay.authToken || '',
       WEIXIN_CLAW_CURSOR_FILE: this.getWeixinCursorPath(spaceId, config),
       WEIXIN_CLAW_ACCOUNT_ID: weixinRuntimeStatus.accountId || '',
       WEIXIN_BRIDGE_STATE_DIR: this.getWeixinStateRoot(spaceId),
@@ -1629,7 +1629,7 @@ export class AssistantDaemonService extends EventEmitter {
       sendJson(res, 200, {
         success: true,
         accepted: true,
-        response: '收到，RedClaw正在思考',
+        response: '收到，GardenFlow正在思考',
       });
       void processing;
       return;
@@ -1750,7 +1750,7 @@ export class AssistantDaemonService extends EventEmitter {
     }
 
     try {
-      const result = await getHeadlessAgentRunner().runRedClawTask({
+      const result = await getHeadlessAgentRunner().runGardenFlowTask({
         taskId: task.id,
         title: `${message.provider.toUpperCase()} ${message.userId || message.peerId}`,
         contextId,
@@ -1758,7 +1758,7 @@ export class AssistantDaemonService extends EventEmitter {
         prompt: buildRelayPrompt(message),
         displayContent: `[${message.provider}] ${message.text}`,
         historyUserContent: message.text,
-        runtimeMode: 'redclaw',
+        runtimeMode: 'gardenflow',
         contextType: message.provider === 'weixin' ? 'weixin' : 'feishu',
         spaceId,
         toolPack: 'chatroom',

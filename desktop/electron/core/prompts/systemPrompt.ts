@@ -132,7 +132,7 @@ function getWorkspaceContext(paths: { base: string; skills: string; knowledge: s
         ``,
         `## 📂 Workspace Directory Structure`,
         ``,
-        `This is a **Bojin** content creation workspace. Here's what each directory contains:`,
+        `This is a **GardenFlow** content creation workspace. Here's what each directory contains:`,
         ``,
         `| Directory | 中文名称 | Description |`,
         `|-----------|---------|-------------|`,
@@ -247,7 +247,7 @@ function getCoreMandates(interactive: boolean, hasSkills: boolean): string {
 - **Proactiveness:** Fulfill the user's request thoroughly. When adding features or fixing bugs, consider adding tests.`;
 
     mandates += `
-- **CLI-first for App Features:** For app-level capabilities (spaces/manuscripts/knowledge/advisors/redclaw/media/image/archives/wander/settings/skills/memory), prefer the \`app_cli\` tool first, then fallback to file/bash tools only when needed.
+- **CLI-first for App Features:** For app-level capabilities (spaces/manuscripts/knowledge/advisors/gardenflow/media/image/archives/wander/settings/skills/memory), prefer the \`app_cli\` tool first, then fallback to file/bash tools only when needed.
 - **Extensibility Rule:** New feature pages must expose corresponding \`app_cli\` subcommands so they remain automatable by AI.`;
 
     if (interactive) {
@@ -330,7 +330,7 @@ ${examples.join('\n')}`;
 }
 
 function getSkillsSection(skills: SkillDefinition[]): string {
-    const hasRedboxVideoDirector = skills.some((skill) => !skill.disabled && skill.name === 'redbox-video-director');
+    const hasGardenFlowVideoDirector = skills.some((skill) => !skill.disabled && skill.name === 'gardenflow-video-director');
     const skillsXml = skills
         .filter(s => !s.disabled)
         .map(skill => `  <skill>
@@ -360,12 +360,12 @@ function getSkillsSection(skills: SkillDefinition[]): string {
         '5. If a skill is loaded, follow its instructions for the current task until they conflict with newer user instructions',
     ];
 
-    if (hasRedboxVideoDirector) {
+    if (hasGardenFlowVideoDirector) {
         lines.push(
             '',
             '## Video Generation Hard Rule',
-            '- If the task is to generate a video, animated shot, motion clip, reference-image video, or first/last-frame transition, you must load `redbox-video-director` before using any video tool.',
-            '- Once `redbox-video-director` is loaded, you must strictly follow its workflow.',
+            '- If the task is to generate a video, animated shot, motion clip, reference-image video, or first/last-frame transition, you must load `gardenflow-video-director` before using any video tool.',
+            '- Once `gardenflow-video-director` is loaded, you must strictly follow its workflow.',
             '- Before any video tool call, first draft the video script and show it to the user for confirmation.',
             '- That confirmation must include video duration and aspect ratio.',
             '- For multi-shot videos, continuity-sensitive videos, or videos likely to need revisions, create a video project pack first and keep the brief/script/assets there instead of relying only on long chat context.',

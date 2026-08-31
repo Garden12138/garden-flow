@@ -1,7 +1,7 @@
 const TARGET_OVERLAY_ROOT_ID = 'codex-agent-overlay-root';
 const TARGET_OVERLAY_ROOT_DATASET = 'codexAgentOverlayRoot';
-const CONTROL_BADGE_ID = 'xwow-browser-data-ai-control-badge';
-const CONTROL_BADGE_STYLE_ID = 'xwow-browser-data-ai-control-badge-style';
+const CONTROL_BADGE_ID = 'gardenflow-browser-data-ai-control-badge';
+const CONTROL_BADGE_STYLE_ID = 'gardenflow-browser-data-ai-control-badge-style';
 
 export function applyControlledTabBadge(options = {}) {
   const state = normalizeBadgeState(options);
@@ -42,7 +42,7 @@ function normalizeBadgeState(options = {}) {
   const origin = String(options.origin || '').trim();
   const pageRole = String(options.pageRole || '').trim();
   const sessionName = String(options.sessionName || options.name || '').trim();
-  const baseLabel = String(options.label || '').trim() || 'Bojin 控制中';
+  const baseLabel = String(options.label || '').trim() || 'GardenFlow 控制中';
   const label = sessionName ? `${baseLabel} · ${sessionName}` : baseLabel;
   return {
     visible: options.visible !== false && options.badge !== false && state === 'active',
@@ -50,7 +50,7 @@ function normalizeBadgeState(options = {}) {
     origin,
     pageRole,
     label: label.slice(0, 40),
-    title: sessionName ? `Bojin browser-control: ${sessionName}` : 'Bojin browser-control',
+    title: sessionName ? `GardenFlow browser-control: ${sessionName}` : 'GardenFlow browser-control',
   };
 }
 
@@ -80,7 +80,7 @@ function ensureControlBadgeStyle() {
       pointer-events: none;
     }
     @media print { #codex-agent-overlay-root { display: none; } }
-    #xwow-browser-data-ai-control-badge {
+    #gardenflow-browser-data-ai-control-badge {
       position: fixed;
       top: 10px;
       right: 10px;
@@ -110,7 +110,7 @@ function ensureControlBadgeStyle() {
       backdrop-filter: blur(8px);
       -webkit-backdrop-filter: blur(8px);
     }
-    #xwow-browser-data-ai-control-badge::before {
+    #gardenflow-browser-data-ai-control-badge::before {
       content: "";
       width: 7px;
       height: 7px;

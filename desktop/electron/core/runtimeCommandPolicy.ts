@@ -1,3 +1,4 @@
+import compatibility from '../../shared/brandCompatibility.cjs';
 export type CommandPermissionClass =
   | 'read-only'
   | 'trusted-write'
@@ -37,15 +38,15 @@ const READ_ONLY_APP_ACTIONS = new Set([
  * 这类动作在前台会话中必须由用户显式确认；无人值守的后台维护模式沿用受信任写入清单。
  */
 const USER_ACKNOWLEDGED_APP_ACTIONS = new Map<string, Set<string>>([
-  ['redclaw', new Set(['schedule-add', 'schedule-remove', 'long-add', 'long-remove'])],
+  ['gardenflow', new Set(['schedule-add', 'schedule-remove', 'long-add', 'long-remove'])],
   ['work', new Set(['schedule-add', 'cycle-add'])],
 ]);
 
 const TRUSTED_INTERACTIVE_APP_ACTIONS = new Map<string, Set<string>>([
-  ['work', new Set(['create', 'update', 'link', 'dep-add', 'dep-remove', 'promote-redclaw', 'schedule-add', 'schedule-update', 'cycle-add', 'cycle-update', 'run-now'])],
+  ['work', new Set(['create', 'update', 'link', 'dep-add', 'dep-remove', 'promote-gardenflow', 'schedule-add', 'schedule-update', 'cycle-add', 'cycle-update', 'run-now'])],
   ['manuscripts', new Set(['write', 'create', 'rename', 'move'])],
   ['memory', new Set(['add', 'update', 'delete'])],
-  ['redclaw', new Set([
+  ['gardenflow', new Set([
     'create',
     'save-copy',
     'save-image',
@@ -77,7 +78,7 @@ const TRUSTED_BACKGROUND_APP_ACTIONS = new Map<string, Set<string>>([
   ['work', new Set(['update', 'link', 'run-now'])],
   ['manuscripts', new Set(['write', 'create', 'rename', 'move'])],
   ['memory', new Set(['add', 'update'])],
-  ['redclaw', new Set([
+  ['gardenflow', new Set([
     'save-copy',
     'save-image',
     'save-retrospective',
@@ -121,7 +122,7 @@ const tokenize = (input: string): string[] => {
   return tokens;
 };
 
-const normalizeAction = (value: string): string => value.trim().toLowerCase();
+const normalizeAction = (value: string): string => compatibility.canonicalKey(value.trim().toLowerCase());
 
 const mapHasAction = (map: Map<string, Set<string>>, namespace: string, action: string): boolean => {
   return map.get(namespace)?.has(action) === true;
@@ -148,7 +149,7 @@ export function analyzeAppCliCommand(command: string, options?: {
   runtimeMode?: string;
 }): CommandPermissionAnalysis {
   const tokens = tokenize(command);
-  while (tokens.length > 0 && ['app-cli', 'app_cli', 'redconvert', 'redconvert-cli'].includes(normalizeAction(tokens[0]))) {
+  while (tokens.length > 0 && ['app-cli', 'app_cli', 'gardenflow-cli', ...compatibility.identity.legacy.cliExecutables].includes(tokens[0].toLowerCase())) {
     tokens.shift();
   }
   const namespace = normalizeAction(tokens[0] || 'help');

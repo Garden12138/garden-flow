@@ -1,6 +1,6 @@
 import type { UploadedFileAttachment } from '../../components/ChatComposer';
 
-const ATTACHMENT_DRAFT_STORAGE_PREFIX = 'redbox:chat:attachment-draft:v1';
+const ATTACHMENT_DRAFT_STORAGE_PREFIX = 'gardenflow:chat:attachment-draft:v1';
 
 function storageKey(surface: string, scopeId: string): string {
   const normalizedSurface = String(surface || '').trim() || 'chat';

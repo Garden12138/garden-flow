@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import compatibility from '../brandCompatibility.cjs';
+compatibility.applyEnvironmentAliases(process.env);
 
 import fs from 'node:fs';
 import net from 'node:net';
@@ -6,32 +8,32 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const HOST_NAME = 'com.redbox.browser_control';
+const HOST_NAME = 'com.gardenflow.browser_control';
 const DEFAULT_API_BASE = '';
-const STATE_ROOT = process.env.REDBOX_BROWSER_CONTROL_STATE_DIR || (
+const STATE_ROOT = process.env.GARDENFLOW_BROWSER_CONTROL_STATE_DIR || (
   process.platform === 'darwin'
-    ? path.join(os.homedir(), 'Library/Application Support/RedBox/native-host')
+    ? path.join(os.homedir(), 'Library/Application Support/GardenFlow/native-host')
     : process.platform === 'win32'
-      ? path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData/Roaming'), 'RedBox/native-host')
-      : path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local/share'), 'RedBox/native-host')
+      ? path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData/Roaming'), 'GardenFlow/native-host')
+      : path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local/share'), 'GardenFlow/native-host')
 );
 const LOG_PATH = path.join(STATE_ROOT, 'browser-control-host.log');
-const ENDPOINT_STATE_PATH = process.env.REDBOX_BROWSER_CONTROL_ENDPOINT_STATE
+const ENDPOINT_STATE_PATH = process.env.GARDENFLOW_BROWSER_CONTROL_ENDPOINT_STATE
   || path.join(STATE_ROOT, 'browser-control-agent-endpoint.json');
-const ENDPOINTS_DIRECTORY = process.env.REDBOX_BROWSER_CONTROL_ENDPOINTS_DIRECTORY
+const ENDPOINTS_DIRECTORY = process.env.GARDENFLOW_BROWSER_CONTROL_ENDPOINTS_DIRECTORY
   || path.join(path.dirname(ENDPOINT_STATE_PATH), 'browser-control-agent-endpoints');
 const DEFAULT_AGENT_SOCKET_PATH = process.platform === 'win32'
-  ? '\\\\.\\pipe\\redbox-browser-control'
-  : path.join(os.tmpdir(), `redbox-browser-control-${typeof process.getuid === 'function' ? process.getuid() : 'user'}-${process.pid}.sock`);
-const AGENT_REQUEST_TIMEOUT_MS = Number(process.env.REDBOX_BROWSER_CONTROL_AGENT_TIMEOUT_MS || 60_000);
+  ? '\\\\.\\pipe\\gardenflow-browser-control'
+  : path.join(os.tmpdir(), `gardenflow-browser-control-${typeof process.getuid === 'function' ? process.getuid() : 'user'}-${process.pid}.sock`);
+const AGENT_REQUEST_TIMEOUT_MS = Number(process.env.GARDENFLOW_BROWSER_CONTROL_AGENT_TIMEOUT_MS || 60_000);
 const AGENT_PROTOCOL_VERSION = 3;
 
 let nextRequestId = 0;
 let nextAgentRequestId = 0;
 let nativeConnected = false;
 let agentServer = null;
-let agentSocketPath = process.env.REDBOX_BROWSER_CONTROL_SOCKET || DEFAULT_AGENT_SOCKET_PATH;
-const hostInstanceId = process.env.REDBOX_BROWSER_CONTROL_INSTANCE_ID
+let agentSocketPath = process.env.GARDENFLOW_BROWSER_CONTROL_SOCKET || DEFAULT_AGENT_SOCKET_PATH;
+const hostInstanceId = process.env.GARDENFLOW_BROWSER_CONTROL_INSTANCE_ID
   || `native-host-${process.pid}-${Math.random().toString(36).slice(2, 10)}`;
 const endpointDescriptorPath = path.join(ENDPOINTS_DIRECTORY, `${hostInstanceId}.json`);
 let extensionMetadata = {};
@@ -70,7 +72,7 @@ async function requestJson(url, options = {}) {
 
 async function resolveApiBase() {
   const candidates = [
-    process.env.REDBOX_BROWSER_CONTROL_API,
+    process.env.GARDENFLOW_BROWSER_CONTROL_API,
     DEFAULT_API_BASE,
   ].filter(Boolean);
   const errors = [];
@@ -99,7 +101,7 @@ async function handleMethod(method, params = {}) {
         platform: process.platform,
         apiDefault: DEFAULT_API_BASE,
       };
-    case 'ensureXwowAppServer':
+    case 'ensureGardenFlowAppServer':
     case 'ensureCodexAppServer': {
       const apiBase = await resolveApiBase();
       return { ok: true, apiBase };
@@ -125,7 +127,7 @@ function isHostMethod(method = '') {
   return [
     'ping',
     'getInfo',
-    'ensureXwowAppServer',
+    'ensureGardenFlowAppServer',
     'ensureCodexAppServer',
     'publishCommand',
     'onCDPEvent',
@@ -157,7 +159,7 @@ export function buildBrowserEventEnvelope(method, params = {}) {
     type: method,
     nativeEventMethod: method,
     eventId: params.eventId || '',
-    pluginId: params.pluginId || 'redbox-browser-control',
+    pluginId: params.pluginId || 'gardenflow-browser-control',
     extensionId: params.extensionId || '',
     sessionId: params.sessionId || '',
     turnId: params.turnId || '',

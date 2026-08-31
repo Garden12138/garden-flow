@@ -121,7 +121,7 @@ const DEFAULT_PROMPT_SWITCHES: CoverPromptSwitches = {
     replaceBackground: false,
 };
 
-const TEMPLATE_STORAGE_PREFIX = 'redbox:cover-templates:v1';
+const TEMPLATE_STORAGE_PREFIX = 'gardenflow:cover-templates:v1';
 const getTemplateStorageKey = (spaceId: string) => `${TEMPLATE_STORAGE_PREFIX}:${spaceId || 'default'}`;
 
 const IMAGE_PROVIDER_TEMPLATE_VALUES: Set<string> = new Set([

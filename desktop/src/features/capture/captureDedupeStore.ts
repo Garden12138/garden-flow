@@ -1,7 +1,7 @@
 import type { ClipboardCaptureCandidate } from './captureTypes';
 import { clipboardCaptureDedupeKey } from './clipboardDetector';
 
-const STORAGE_KEY = 'redbox:clipboard-capture-dedupe:v1';
+const STORAGE_KEY = 'gardenflow:clipboard-capture-dedupe:v1';
 const DEFAULT_TTL_MS = 10 * 60 * 1000;
 
 type DedupeRecord = Record<string, number>;

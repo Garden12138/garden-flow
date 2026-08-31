@@ -1,3 +1,6 @@
+import './brandRuntime.js';
+import './brandStorage.js';
+import compatibility from '../brandCompatibility.cjs';
 import { configurePluginCapture } from './browserControlBackground.js';
 import { getNativeStatus, reportNativeCaptureAccessState, requestNativeHost, shouldReportNativeConnectionFailure } from './background/nativeTransport.js';
 import { reportPluginError } from './background/diagnostics.js';
@@ -9,22 +12,22 @@ import {
 } from './capture/knowledgeEntryMapper.js';
 
 const NATIVE_KNOWLEDGE_ENDPOINT = Object.freeze({
-  baseUrl: 'native://bojin',
+  baseUrl: 'native://gardenflow',
   endpointPath: '/knowledge',
-  legacyBaseUrls: ['native://beav'],
+  legacyBaseUrls: Object.keys(compatibility.identity.legacy.values).filter(key => compatibility.identity.legacy.values[key] === 'native://gardenflow'),
 });
 const pageStateCache = new Map();
 const PAGE_STATE_NEGATIVE_TTL_MS = 350;
 const KNOWLEDGE_API_CACHE_TTL_MS = 30_000;
 const INLINE_ASSET_MAX_BYTES = 6 * 1024 * 1024;
 const UPDATE_STATE_KEY = 'pluginUpdateState';
-const UPDATE_ALARM_NAME = 'redbox-plugin-auto-update-check';
-const REDBOX_PLUGIN_SETTINGS_KEY = 'redboxPluginSettings';
+const UPDATE_ALARM_NAME = 'gardenflow-plugin-auto-update-check';
+const GARDENFLOW_PLUGIN_SETTINGS_KEY = 'gardenflowPluginSettings';
 const XHS_TASK_HISTORY_KEY = 'xhsCollectorTaskHistory';
 const XHS_TASK_QUEUE_STATE_KEY = 'xhsCollectorTaskQueueState';
 const XHS_TASK_LOG_KEY = 'xhsCollectorTaskLogs';
 const XHS_BLOGGER_PROGRESS_KEY = 'xhsBloggerCollectedNotes';
-const CAPTURE_CHECKPOINT_KEY = 'redboxCaptureCheckpoints';
+const CAPTURE_CHECKPOINT_KEY = 'gardenflowCaptureCheckpoints';
 const XHS_TASK_HISTORY_LIMIT = 80;
 const XHS_TASK_LOG_LIMIT = 80;
 const XHS_BLOGGER_PROGRESS_LIMIT = 200;
@@ -34,12 +37,12 @@ const XHS_COLLECT_INTERVAL_DEFAULT_MIN_MS = 1500;
 const XHS_COLLECT_INTERVAL_DEFAULT_MAX_MS = 3500;
 const XHS_COLLECT_INTERVAL_MIN_MS = 500;
 const XHS_COLLECT_INTERVAL_MAX_MS = 60_000;
-const MENU_ROOT_ID = 'redbox-root';
-const MENU_PAGE_ID = 'redbox-save-page-auto';
-const MENU_SELECTION_ID = 'redbox-save-selection';
-const MENU_LINK_ID = 'redbox-save-link';
-const MENU_IMAGE_ID = 'redbox-save-image';
-const MENU_VIDEO_ID = 'redbox-save-video';
+const MENU_ROOT_ID = 'gardenflow-root';
+const MENU_PAGE_ID = 'gardenflow-save-page-auto';
+const MENU_SELECTION_ID = 'gardenflow-save-selection';
+const MENU_LINK_ID = 'gardenflow-save-link';
+const MENU_IMAGE_ID = 'gardenflow-save-image';
+const MENU_VIDEO_ID = 'gardenflow-save-video';
 const PLUGIN_CAPTURE_MESSAGE_TYPES = new Set([
   'save-xhs',
   'xhs:download-current-note',
@@ -75,7 +78,7 @@ const DEFAULT_PLUGIN_SETTINGS = {
   xhsLinkBatchLimit: 50,
   xhsBloggerCollectionMode: 'api',
   xhsSaveCommentsWithNote: true,
-  saveToRedboxByDefault: true,
+  saveToGardenFlowByDefault: true,
   autoUpdateCheck: false,
 };
 
@@ -114,15 +117,15 @@ function describeError(error) {
 }
 
 function pluginLog(scope, details) {
-  console.log(`[redbox-plugin][${scope}]`, details);
+  console.log(`[gardenflow-plugin][${scope}]`, details);
 }
 
 function pluginWarn(scope, details) {
-  console.warn(`[redbox-plugin][${scope}]`, details);
+  console.warn(`[gardenflow-plugin][${scope}]`, details);
 }
 
 function pluginError(scope, details) {
-  console.error(`[redbox-plugin][${scope}]`, details);
+  console.error(`[gardenflow-plugin][${scope}]`, details);
 }
 
 function isPluginCaptureMessageType(type) {
@@ -131,12 +134,12 @@ function isPluginCaptureMessageType(type) {
 
 function queuePluginDiagnostic(error, options = {}) {
   void reportPluginError(error, options).catch((reportError) => {
-    console.warn('[redbox-plugin][diagnostics] report failed', reportError);
+    console.warn('[gardenflow-plugin][diagnostics] report failed', reportError);
   });
 }
 
 function pluginDebug(scope, details) {
-  console.debug(`[redbox-plugin][debug][${scope}]`, details);
+  console.debug(`[gardenflow-plugin][debug][${scope}]`, details);
 }
 
 function shouldLogMessageType(type) {
@@ -164,7 +167,7 @@ function ensureContextMenus() {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
       id: MENU_ROOT_ID,
-      title: '保存到 Bojin',
+      title: '保存到 GardenFlow',
       contexts: ['page', 'selection', 'link', 'image', 'video'],
     });
     chrome.contextMenus.create({
@@ -346,7 +349,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 function isBrowserControlMessage(message = {}) {
   const type = String(message?.type || '');
-  if (type.startsWith('xwow-data-ai:') || type.startsWith('redbox-browser-control:')) return true;
+  if (type.startsWith('gardenflow-data-ai:') || type.startsWith('gardenflow-browser-control:')) return true;
   if (type === 'browser.action' || type === 'GET_NATIVE_HOST_STATUS') return true;
   const method = String(message?.method || '');
   return method === 'ensureCodexAppServer' || method === 'ensure_codex_app_server';
@@ -424,7 +427,7 @@ async function handleMessage(message, sender) {
     case 'plugin-update:check':
       return await checkForPluginUpdates({ force: true, reason: 'manual' });
     case 'plugin-update:open-source':
-      return { success: false, error: 'Bojin 浏览器扩展通过桌面应用本地安装，不提供外部更新页。' };
+      return { success: false, error: 'GardenFlow 浏览器扩展通过桌面应用本地安装，不提供外部更新页。' };
     case 'sidepanel:open':
       return await openSidePanelForSender(sender);
     case 'sidepanel:get-context':
@@ -931,7 +934,7 @@ function normalizePluginSettings(input = {}) {
     xhsLinkBatchLimit: Math.round(clampNumber(source.xhsLinkBatchLimit, 1, 50, DEFAULT_PLUGIN_SETTINGS.xhsLinkBatchLimit)),
     xhsBloggerCollectionMode: normalizeText(source.xhsBloggerCollectionMode) === 'tab' ? 'tab' : 'api',
     xhsSaveCommentsWithNote: source.xhsSaveCommentsWithNote !== false,
-    saveToRedboxByDefault: source.saveToRedboxByDefault !== false,
+    saveToGardenFlowByDefault: source.saveToGardenFlowByDefault !== false,
     autoUpdateCheck: false,
   };
 }
@@ -974,15 +977,15 @@ function normalizeXhsBloggerCollectOptions(options = {}, settingsInput) {
     mode,
     limit,
     interval,
-    saveToRedBox: source.saveToRedBox !== false,
+    saveToGardenFlow: source.saveToGardenFlow !== false,
   };
 }
 
 async function readPluginSettings() {
-  const result = await getStorageLocal([REDBOX_PLUGIN_SETTINGS_KEY]);
+  const result = await getStorageLocal([GARDENFLOW_PLUGIN_SETTINGS_KEY]);
   return normalizePluginSettings({
     ...DEFAULT_PLUGIN_SETTINGS,
-    ...(result?.[REDBOX_PLUGIN_SETTINGS_KEY] || {}),
+    ...(result?.[GARDENFLOW_PLUGIN_SETTINGS_KEY] || {}),
   });
 }
 
@@ -991,7 +994,7 @@ async function writePluginSettings(nextSettings) {
     ...DEFAULT_PLUGIN_SETTINGS,
     ...(nextSettings || {}),
   });
-  await setStorageLocal({ [REDBOX_PLUGIN_SETTINGS_KEY]: settings });
+  await setStorageLocal({ [GARDENFLOW_PLUGIN_SETTINGS_KEY]: settings });
   clearCachedKnowledgeApi();
   await configureUpdateAlarm(settings);
   return settings;
@@ -1793,7 +1796,7 @@ function describeBloggerCollectOptions(options = {}) {
     limit: Number(options?.limit || 0),
     intervalMinSeconds: Number(options?.interval?.minMs || 0) / 1000,
     intervalMaxSeconds: Number(options?.interval?.maxMs || 0) / 1000,
-    saveToRedBox: options?.saveToRedBox !== false,
+    saveToGardenFlow: options?.saveToGardenFlow !== false,
   };
 }
 
@@ -2262,8 +2265,8 @@ async function applyUpdateBadge(stateInput) {
   const state = sanitizeUpdateState(stateInput);
   await chrome.action.setBadgeText({ text: '' }).catch(() => {});
   const title = state.hasUpdate
-    ? `Bojin：发现新版本 ${state.latestVersion}`
-    : `Bojin ${state.currentVersion}`;
+    ? `GardenFlow：发现新版本 ${state.latestVersion}`
+    : `GardenFlow ${state.currentVersion}`;
   await chrome.action.setTitle({ title }).catch(() => {});
 }
 
@@ -2298,12 +2301,12 @@ async function checkDesktopServer(forceRefresh = false) {
     cachedKnowledgeApi = NATIVE_KNOWLEDGE_ENDPOINT;
     cachedKnowledgeApiAt = Date.now();
     pluginLog('healthcheck-success', {
-      endpoint: 'native://bojin/knowledge',
+      endpoint: 'native://gardenflow/knowledge',
       counts: response?.counts || null,
     });
     return {
       success: true,
-      endpoint: 'native://bojin/knowledge',
+      endpoint: 'native://gardenflow/knowledge',
       health: response,
       bridge: {
         appVersion: result?.appVersion || '',
@@ -2346,7 +2349,7 @@ async function requestDesktopHealth() {
     ? host.desktopBridge
     : null;
   if (!bridge?.connected) {
-    const error = new Error('Bojin desktop bridge is not connected');
+    const error = new Error('GardenFlow desktop bridge is not connected');
     error.code = bridge?.availability === 'bridge_error'
       ? bridge.errorCode || 'DESKTOP_BRIDGE_ERROR'
       : 'APP_BRIDGE_UNAVAILABLE';
@@ -2426,7 +2429,7 @@ function knowledgeNativeMethod(path, method) {
   };
   const nativeMethod = methods[key];
   if (!nativeMethod) {
-    throw new Error(`不支持的 Bojin Desktop action: ${key}`);
+    throw new Error(`不支持的 GardenFlow Desktop action: ${key}`);
   }
   return nativeMethod;
 }
@@ -2626,8 +2629,8 @@ function createKnowledgeSourceInput(fields = {}) {
   const sourceLink = sanitizeCaptureSourceUrl(fields.sourceLink || fields.sourceUrl);
   const sourceDomain = normalizeText(fields.sourceDomain) || extractDomainFromUrl(sourceLink);
   return {
-    appId: 'redbox-capture',
-    pluginId: 'redbox-browser-extension',
+    appId: 'gardenflow-capture',
+    pluginId: 'gardenflow-browser-extension',
     sourceDomain: sourceDomain || undefined,
     sourceLink: sourceLink || undefined,
     sourceUrl: sourceLink || undefined,
@@ -4375,7 +4378,7 @@ async function saveZhihuArticleFromTab(tabId) {
 async function saveXhsNoteFromTab(tabId) {
   const payload = await runExtraction(tabId, extractXhsNotePayload, { world: 'MAIN' });
   const settings = await readPluginSettings();
-  console.log('[redbox-plugin][xhs] payload', {
+  console.log('[gardenflow-plugin][xhs] payload', {
     title: payload?.title || '',
     imageCount: Array.isArray(payload?.images) ? payload.images.length : 0,
     hasCoverUrl: Boolean(payload?.coverUrl),
@@ -4524,7 +4527,7 @@ function formatXhsCollectInterval(interval) {
   return minSeconds === maxSeconds ? `${minSeconds} 秒` : `${minSeconds}-${maxSeconds} 秒`;
 }
 
-function sanitizeFilenamePart(value, fallback = 'bojin') {
+function sanitizeFilenamePart(value, fallback = 'gardenflow') {
   const text = normalizeText(value)
     .replace(/[\\/:*?"<>|]+/g, ' ')
     .replace(/\s+/g, ' ')
@@ -4576,7 +4579,7 @@ function buildXhsDownloadItems(payload) {
     items.push({
       type,
       url,
-      filename: `Bojin/xhs/${noteId}-${title}-${String(index).padStart(2, '0')}.${ext}`,
+      filename: `GardenFlow/xhs/${noteId}-${title}-${String(index).padStart(2, '0')}.${ext}`,
     });
   }
 
@@ -4741,7 +4744,7 @@ function arrayBufferToBase64(buffer) {
 }
 
 function stripZipEntryPrefix(filename) {
-  return normalizeText(filename).replace(/^(?:Bojin|Beav|RedBox)\/xhs\//i, '') || 'xhs-media';
+  return normalizeText(filename).replace(/^(?:GardenFlow|GardenFlow|GardenFlow)\/xhs\//i, '') || 'xhs-media';
 }
 
 function dataUrlToBytes(dataUrl) {
@@ -4851,7 +4854,7 @@ async function downloadXhsMediaZipFromTab(tabId) {
   const zipBytes = buildStoredZip(entries);
   const title = sanitizeFilenamePart(payload?.title || payload?.noteId || 'xhs-note', 'xhs-note');
   const noteId = sanitizeFilenamePart(payload?.noteId || hashString(payload?.source || title), 'note');
-  const filename = `Bojin/xhs/${noteId}-${title}.zip`;
+  const filename = `GardenFlow/xhs/${noteId}-${title}.zip`;
   const dataUrl = `data:application/zip;base64,${arrayBufferToBase64(zipBytes)}`;
   const downloadId = await downloadBrowserFile(dataUrl, filename);
   const historyItem = await appendXhsTaskHistory({
@@ -5685,7 +5688,7 @@ async function collectXhsBloggerNotesViaApi(tabId, payload, options = {}) {
         message: `正在写入第 ${index + 1}/${pendingNotes.length} 条笔记`,
         mode: 'api',
       });
-      const response = options.saveToRedBox !== false ? await postKnowledgeEntry(buildXhsEntry(entryPayload)) : null;
+      const response = options.saveToGardenFlow !== false ? await postKnowledgeEntry(buildXhsEntry(entryPayload)) : null;
       const accountPost = buildXhsAccountPostFromEntry(entryPayload);
       if (response?.entryId) {
         accountPost.knowledgeEntryId = normalizeText(response.entryId);
@@ -5694,7 +5697,7 @@ async function collectXhsBloggerNotesViaApi(tabId, payload, options = {}) {
         accountPost.transcriptionStatus = response?.entryId ? 'processing' : 'waiting';
       }
       accountPosts.push(accountPost);
-      if (options.saveToRedBox !== false) {
+      if (options.saveToGardenFlow !== false) {
         await markCollectedXhsNotesForBlogger({
           userId: payloadState?.userId,
           source: payloadState?.source,
@@ -5876,7 +5879,7 @@ async function collectXhsNoteLinks(urlsInput, options = {}) {
   }
 
   const limit = Math.max(1, Math.min(Number(options?.limit || settings.xhsLinkBatchLimit || urls.length), 50));
-  const shouldSave = options?.saveToRedBox !== false;
+  const shouldSave = options?.saveToGardenFlow !== false;
   const interval = normalizeXhsCollectInterval(options?.interval || intervalOptionsFromSettings(settings));
   const results = [];
   const failures = [];
@@ -5890,7 +5893,7 @@ async function collectXhsNoteLinks(urlsInput, options = {}) {
       limit,
       intervalMinSeconds: Number(interval.minMs || 0) / 1000,
       intervalMaxSeconds: Number(interval.maxMs || 0) / 1000,
-      saveToRedBox: shouldSave,
+      saveToGardenFlow: shouldSave,
       taskType: normalizeText(options?.taskType),
       taskTitle: normalizeText(options?.taskTitle),
     },
@@ -6114,7 +6117,7 @@ async function exportCurrentXhsNoteJson(tabId) {
   const noteId = sanitizeFilenamePart(payload?.noteId || hashString(payload?.source || title), 'note');
   const json = JSON.stringify(payload, null, 2);
   const dataUrl = `data:application/json;charset=utf-8,${encodeURIComponent(json)}`;
-  const filename = `Bojin/xhs/${noteId}-${title}.json`;
+  const filename = `GardenFlow/xhs/${noteId}-${title}.json`;
   const downloadId = await downloadBrowserFile(dataUrl, filename);
   await appendXhsTaskHistory({
     id: `xhs-export-${hashString(`${payload?.source || ''}-${Date.now()}`)}`,
@@ -6130,7 +6133,7 @@ async function exportCurrentXhsNoteJson(tabId) {
 
 async function saveDouyinVideoFromTab(tabId) {
   const payload = await runExtraction(tabId, extractDouyinVideoPayload, { world: 'MAIN' });
-  console.log('[redbox-plugin][douyin] payload', {
+  console.log('[gardenflow-plugin][douyin] payload', {
     noteId: payload?.noteId || '',
     source: payload?.source || '',
     title: payload?.title || '',
@@ -6425,7 +6428,7 @@ function collectLinkArticleData() {
           node.remove();
           continue;
         }
-        const token = `__REDBOX_WECHAT_IMAGE_${imageIndex++}__`;
+        const token = `__GARDENFLOW_WECHAT_IMAGE_${imageIndex++}__`;
         imageMap.push({ token, url: resolvedSrc });
         node.setAttribute('src', token);
         node.removeAttribute('data-src');
@@ -6819,7 +6822,7 @@ async function extractCurrentPageLinkPayload() {
             node.remove();
             continue;
           }
-          const token = `__REDBOX_WECHAT_IMAGE_${imageIndex++}__`;
+          const token = `__GARDENFLOW_WECHAT_IMAGE_${imageIndex++}__`;
           imageMap.push({ token, url: resolvedSrc });
           node.setAttribute('src', token);
           node.removeAttribute('data-src');
@@ -7870,9 +7873,9 @@ async function extractXhsNotePayload() {
 }
 
 async function extractXhsCommentsPayload() {
-  const capture = window.__REDBOX_CAPTURE_RUNTIME__;
+  const capture = window.__GARDENFLOW_CAPTURE_RUNTIME__;
   if (!capture) {
-    throw new Error('Bojin capture runtime 未加载');
+    throw new Error('GardenFlow capture runtime 未加载');
   }
   const {
     normalizeText,
@@ -8509,7 +8512,7 @@ async function extractXhsBloggerNotesPayload(limitInput = 50, modeInput = 'auto'
   }
 
   function collectCapturedPostedNotes(notes, userId) {
-    const store = Array.isArray(window.__REDBOX_XHS_RESPONSES__) ? window.__REDBOX_XHS_RESPONSES__ : [];
+    const store = Array.isArray(window.__GARDENFLOW_XHS_RESPONSES__) ? window.__GARDENFLOW_XHS_RESPONSES__ : [];
     for (const record of store.slice().reverse()) {
       let parsed;
       try {
@@ -8666,7 +8669,7 @@ async function extractXhsNoteFeedByUrlFromCurrentPage(targetUrlInput, noteIdInpu
   }
 
   function readFeedFromStore(noteId) {
-    const store = Array.isArray(window.__REDBOX_XHS_RESPONSES__) ? window.__REDBOX_XHS_RESPONSES__ : [];
+    const store = Array.isArray(window.__GARDENFLOW_XHS_RESPONSES__) ? window.__GARDENFLOW_XHS_RESPONSES__ : [];
     for (let index = store.length - 1; index >= 0; index -= 1) {
       const record = store[index];
       let parsed;
@@ -8826,7 +8829,7 @@ async function extractXhsNoteFeedByUrlFromCurrentPage(targetUrlInput, noteIdInpu
       'x-xray-traceid': traceId(),
       'x-b3-traceid': xB3TraceId(),
     };
-    console.debug('[redbox-plugin][debug][xhs-feed-request]', {
+    console.debug('[gardenflow-plugin][debug][xhs-feed-request]', {
       noteId: target.noteId,
       source: target.source,
       hasToken: Boolean(target.token),
@@ -8841,7 +8844,7 @@ async function extractXhsNoteFeedByUrlFromCurrentPage(targetUrlInput, noteIdInpu
       throw new Error(`feed HTTP ${response.status}`);
     }
     const json = await response.json();
-    console.warn('[redbox-plugin][debug][xhs-feed-response-shape]', {
+    console.warn('[gardenflow-plugin][debug][xhs-feed-response-shape]', {
       noteId: target.noteId,
       status: response.status,
       topLevelKeys: json && typeof json === 'object' ? Object.keys(json).slice(0, 20) : [],
@@ -8870,7 +8873,7 @@ async function extractXhsNoteFeedByUrlFromCurrentPage(targetUrlInput, noteIdInpu
   if (!target.noteId) {
     throw new Error('未识别到目标笔记 ID');
   }
-  console.debug('[redbox-plugin][debug][xhs-feed-extract]', {
+  console.debug('[gardenflow-plugin][debug][xhs-feed-extract]', {
     noteId: target.noteId,
     source: target.source,
     hasToken: Boolean(target.token),
@@ -8879,20 +8882,20 @@ async function extractXhsNoteFeedByUrlFromCurrentPage(targetUrlInput, noteIdInpu
 
   const cached = readFeedFromStore(target.noteId);
   if (cached) {
-    console.debug('[redbox-plugin][debug][xhs-feed-extract-cache-hit]', {
+    console.debug('[gardenflow-plugin][debug][xhs-feed-extract-cache-hit]', {
       noteId: target.noteId,
     });
     return cached;
   }
   if (!target.token) {
-    console.warn('[redbox-plugin][debug][xhs-feed-extract-token-missing]', {
+    console.warn('[gardenflow-plugin][debug][xhs-feed-extract-token-missing]', {
       noteId: target.noteId,
       origin: location.origin,
     });
     throw new Error('目标笔记链接缺少 xsec_token，无法直接请求详情接口');
   }
   const feed = await requestFeed(target);
-  console.debug('[redbox-plugin][debug][xhs-feed-extract-success]', {
+  console.debug('[gardenflow-plugin][debug][xhs-feed-extract-success]', {
     noteId: target.noteId,
     mode: 'direct-fetch',
   });

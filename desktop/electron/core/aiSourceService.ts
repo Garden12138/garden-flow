@@ -1,4 +1,5 @@
 import { normalizeApiBaseUrl, safeUrlJoin } from './urlUtils';
+import compatibility from '../../shared/brandCompatibility.cjs';
 import {
   hasModelCapability,
   inferModelCapabilities,
@@ -111,7 +112,7 @@ const normalizeGeminiNativeBaseUrl = (baseURL: string): string => {
 };
 
 const toModelInfoList = (modelIds: string[]): AiModelInfo[] => {
-  return modelIds.map((id) => ({ id, capabilities: inferModelCapabilities(id) }));
+  return modelIds.map(value => compatibility.canonicalValue(value)).map((id) => ({ id, capabilities: inferModelCapabilities(id) }));
 };
 
 const dedupeModelIds = (modelIds: string[]): string[] => {

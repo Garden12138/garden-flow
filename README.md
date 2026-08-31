@@ -2,7 +2,7 @@
 
 GardenFlow — Grow content with AI.
 
-基于 RedClaw / Bojin 迁移的本地优先 AI 内容工作台，包含 Electron 桌面端与 Chrome 浏览器扩展，支持内容创作、知识库、媒体管理和自动化采集。
+本地优先 AI 内容工作台，包含 Electron 桌面端与 Chrome 浏览器扩展，支持内容创作、知识库、媒体管理和自动化采集。
 
 ## 快速开始
 
@@ -43,9 +43,11 @@ pnpm dev
 
 ## 迁移说明
 
-源码来自 `redclaw` 的 `feature/newapi-gateway-and-automation-upgrade` 分支，基线提交为 `cd8455f093e6653852ac03986f602f60662f64e2`。迁移保留 GardenFlow 仓库已有的 Git 历史与远端，不包含源仓库历史、依赖缓存、构建产物或用户运行数据。
+当前产品与代码命名已统一为 GardenFlow。原始来源、基线提交与授权说明保留在迁移记录中。
 
-本次未做应用层品牌替换：Bojin / RedClaw 名称、应用与扩展 ID、协议及数据目录保持兼容。**发布安装包前需要单独审查源项目的发布仓库、更新地址与签名配置。**
+旧版本用户请先退出应用，执行 `pnpm migrate:data --dry-run` 检查迁移源，再按 [更名与数据迁移说明](./Docs/GARDENFLOW_REBRAND.md) 完成备份迁移。应用不会在检测到旧库时静默创建空库。
+
+品牌模型已切换为 `gardenflow-*`；新网关需自行配置并验证。本机无签名构建不检查、下载或发布原项目更新。
 
 详见 [迁移记录](./Docs/MIGRATION.md)、[文档导航](./Docs/README.md) 和 [本地部署](./Docs/LOCAL_DEPLOYMENT.md)。
 

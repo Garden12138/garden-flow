@@ -34,8 +34,8 @@ const mappingHelpers = {
   hashString: () => 'fixed-hash',
   extractDomainFromUrl: () => 'example.com',
   createKnowledgeSourceInput: ({ sourceUrl, externalId }) => ({
-    appId: 'redbox-capture',
-    pluginId: 'redbox-browser-extension',
+    appId: 'gardenflow-capture',
+    pluginId: 'gardenflow-browser-extension',
     sourceDomain: 'example.com',
     sourceLink: sourceUrl,
     sourceUrl,
@@ -64,8 +64,8 @@ test('legacy page payload retains the existing Knowledge-entry contract', () => 
   assert.deepEqual(buildKnowledgeEntryFromPagePayload(payload, mappingHelpers), {
     kind: 'link-article',
     source: {
-      appId: 'redbox-capture',
-      pluginId: 'redbox-browser-extension',
+      appId: 'gardenflow-capture',
+      pluginId: 'gardenflow-browser-extension',
       sourceDomain: 'example.com',
       sourceLink: 'https://example.com/article',
       sourceUrl: 'https://example.com/article',

@@ -56,7 +56,7 @@ export class AgentExecutor {
         this.skillManager = new SkillManager();
         this.toolRegistry = new ToolRegistry();
         this.toolRegistry.registerTools(createBuiltinTools({
-            pack: 'redclaw',
+            pack: 'gardenflow',
             skillManager: this.skillManager,
             onSkillActivated: (payload) => {
                 this.onEvent({
@@ -113,8 +113,8 @@ export class AgentExecutor {
                 maxTurns: this.config.maxTurns,
                 maxTimeMinutes: this.config.maxTimeMinutes,
                 temperature: this.config.temperature,
-                toolPack: 'redclaw',
-                runtimeMode: 'redclaw',
+                toolPack: 'gardenflow',
+                runtimeMode: 'gardenflow',
                 interactive: true,
                 requiresHumanApproval: false,
             },

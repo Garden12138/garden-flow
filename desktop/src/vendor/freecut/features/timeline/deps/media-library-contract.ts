@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-type RedBoxMediaItem = {
+type GardenFlowMediaItem = {
   id: string;
   name: string;
   src: string;
@@ -20,14 +20,14 @@ type MediaPlacementHandle = {
   fileHandle?: FileSystemFileHandle | null;
 };
 
-type RedBoxMediaLibraryState = {
-  mediaItems: RedBoxMediaItem[];
-  mediaById: Record<string, RedBoxMediaItem>;
+type GardenFlowMediaLibraryState = {
+  mediaItems: GardenFlowMediaItem[];
+  mediaById: Record<string, GardenFlowMediaItem>;
   importHandlesForPlacement: Record<string, MediaPlacementHandle>;
 };
 
-type RedBoxMediaLibraryActions = {
-  syncMediaItems: (items: RedBoxMediaItem[]) => void;
+type GardenFlowMediaLibraryActions = {
+  syncMediaItems: (items: GardenFlowMediaItem[]) => void;
 };
 
 export type CompositionDragData = {
@@ -50,7 +50,7 @@ export type ExtractedMediaFileEntry = {
   label: string;
 };
 
-export const useMediaLibraryStore = create<RedBoxMediaLibraryState & RedBoxMediaLibraryActions>((set) => ({
+export const useMediaLibraryStore = create<GardenFlowMediaLibraryState & GardenFlowMediaLibraryActions>((set) => ({
   mediaItems: [],
   mediaById: {},
   importHandlesForPlacement: {},
@@ -60,7 +60,7 @@ export const useMediaLibraryStore = create<RedBoxMediaLibraryState & RedBoxMedia
   }),
 }));
 
-export function syncRedBoxMediaLibrary(items: RedBoxMediaItem[]) {
+export function syncGardenFlowMediaLibrary(items: GardenFlowMediaItem[]) {
   useMediaLibraryStore.getState().syncMediaItems(items);
 }
 

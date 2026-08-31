@@ -57,11 +57,11 @@ const PREP_ROLE_BATCHES_BY_INTENT: Partial<Record<NonNullable<AgentTaskSnapshot[
 };
 
 const MODEL_SCOPE_BY_MODE: Record<RuntimeMode, ModelScope> = {
-  redclaw: 'redclaw',
+  gardenflow: 'gardenflow',
   knowledge: 'knowledge',
   chatroom: 'chatroom',
   'advisor-discussion': 'chatroom',
-  'background-maintenance': 'redclaw',
+  'background-maintenance': 'gardenflow',
 };
 
 type CoordinatorRunOptions = {
@@ -285,10 +285,10 @@ const buildCoordinatorError = (params: {
 });
 
 const normalizeBuiltinPack = (value: string): BuiltinToolPack => {
-  if (value === 'redclaw' || value === 'knowledge' || value === 'chatroom' || value === 'diagnostics' || value === 'full') {
+  if (value === 'gardenflow' || value === 'knowledge' || value === 'chatroom' || value === 'diagnostics' || value === 'full') {
     return value;
   }
-  return 'redclaw';
+  return 'gardenflow';
 };
 
 const parseRecordJson = (value: unknown): Record<string, unknown> | null => {
@@ -810,7 +810,7 @@ export class LongTaskCoordinator {
     const settings = (getSettings() || {}) as Record<string, unknown>;
     const routed = resolveSettingsLlm(settings, {
       preferChat: runtimeMode === 'background-maintenance',
-      contextType: runtimeMode === 'knowledge' ? 'knowledge' : runtimeMode === 'redclaw' ? 'redclaw' : '',
+      contextType: runtimeMode === 'knowledge' ? 'knowledge' : runtimeMode === 'gardenflow' ? 'gardenflow' : '',
     });
     const apiKey = String(routed?.apiKey || settings.api_key || '').trim();
     const baseURL = normalizeApiBaseUrl(
@@ -972,7 +972,7 @@ export class LongTaskCoordinator {
       || task.route.recommendedRole;
     const activeRole = getRoleSpec(activeRoleId);
     const systemPrompt = assembleRuntimeSystemPrompt({
-      baseSystemPrompt: options.baseSystemPrompt || '你是 Bojin 的协调执行代理。你接收的是已经过计划和子角色拆解后的任务，必须严格按协作结果执行。',
+      baseSystemPrompt: options.baseSystemPrompt || '你是 GardenFlow 的协调执行代理。你接收的是已经过计划和子角色拆解后的任务，必须严格按协作结果执行。',
       runtimeMode: task.runtimeMode,
       route: task.route,
       role: activeRole,

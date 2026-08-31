@@ -29,7 +29,7 @@ const explicitCommandRoutes: Record<string, string> = {
   'knowledge:open-index-root': 'knowledge_open_index_root',
   'knowledge:get-file-index-dashboard': 'knowledge_get_file_index_dashboard',
   'knowledge:get-file-index-scope-status': 'knowledge_get_file_index_scope_status',
-  'redclaw:runner-status': 'redclaw_runner_status',
+  'gardenflow:runner-status': 'gardenflow_runner_status',
 };
 
 const explicitChannelByCommand = Object.fromEntries(
@@ -44,7 +44,7 @@ function isTauriRuntime(): boolean {
 
 function getElectronTransport(): ElectronIpcTransport | null {
   if (typeof window === 'undefined') return null;
-  const transport = (window as typeof window & { __RED_ELECTRON_IPC__?: Partial<ElectronIpcTransport> }).__RED_ELECTRON_IPC__;
+  const transport = (window as typeof window & { __GARDENFLOW_ELECTRON_IPC__?: Partial<ElectronIpcTransport> }).__GARDENFLOW_ELECTRON_IPC__;
   if (
     transport
     && typeof transport.invoke === 'function'
@@ -66,7 +66,7 @@ async function invokeChannel(channel: string, payload?: unknown): Promise<any> {
     }
     return await transport.invoke(channel, payload ?? null);
   } catch (error) {
-    console.warn(`[Bojin] invoke failed for ${channel}:`, error);
+    console.warn(`[GardenFlow] invoke failed for ${channel}:`, error);
     return buildFallbackResponse(channel, error);
   }
 }
@@ -74,7 +74,7 @@ async function invokeChannel(channel: string, payload?: unknown): Promise<any> {
 function sendChannel(channel: string, payload?: unknown): void {
   const transport = getElectronTransport();
   if (!transport) {
-    console.warn(`[Bojin] send skipped for ${channel}: Electron IPC transport is unavailable`);
+    console.warn(`[GardenFlow] send skipped for ${channel}: Electron IPC transport is unavailable`);
     return;
   }
   transport.send(channel, payload ?? null);
@@ -88,7 +88,7 @@ async function invokeCommand<T = unknown>(command: string, args?: unknown): Prom
     }
     return await transport.invoke(explicitChannelByCommand[command] || command, args ?? null);
   } catch (error) {
-    console.warn(`[Bojin] command invoke failed for ${command}:`, error);
+    console.warn(`[GardenFlow] command invoke failed for ${command}:`, error);
     throw error;
   }
 }
@@ -115,14 +115,14 @@ async function invokeChannelGuarded<T = unknown>(
       ? await Promise.race<unknown>([
           invokeChannel(channel, payload),
           new Promise((resolve) => {
-            window.setTimeout(() => resolve(Symbol.for('__redbox_ipc_timeout__')), timeoutMs);
+            window.setTimeout(() => resolve(Symbol.for('__gardenflow_ipc_timeout__')), timeoutMs);
           }),
         ])
       : await invokeChannel(channel, payload);
 
-    if (value === Symbol.for('__redbox_ipc_timeout__')) {
+    if (value === Symbol.for('__gardenflow_ipc_timeout__')) {
       const timeoutError = new Error(`Timed out after ${timeoutMs}ms`);
-      console.warn(`[Bojin] invoke timed out for ${channel}:`, timeoutError.message);
+      console.warn(`[GardenFlow] invoke timed out for ${channel}:`, timeoutError.message);
       return resolveGuardFallback(channel, timeoutError, options?.fallback);
     }
 
@@ -130,14 +130,14 @@ async function invokeChannelGuarded<T = unknown>(
       try {
         return options.normalize(value);
       } catch (error) {
-        console.warn(`[Bojin] invoke normalization failed for ${channel}:`, error);
+        console.warn(`[GardenFlow] invoke normalization failed for ${channel}:`, error);
         return resolveGuardFallback(channel, error, options?.fallback);
       }
     }
 
     return value as T;
   } catch (error) {
-    console.warn(`[Bojin] guarded invoke failed for ${channel}:`, error);
+    console.warn(`[GardenFlow] guarded invoke failed for ${channel}:`, error);
     return resolveGuardFallback(channel, error, options?.fallback);
   }
 }
@@ -155,14 +155,14 @@ async function invokeCommandGuarded<T = unknown>(
       ? await Promise.race<unknown>([
           invokeCommand(command, args),
           new Promise((resolve) => {
-            window.setTimeout(() => resolve(Symbol.for('__redbox_ipc_timeout__')), timeoutMs);
+            window.setTimeout(() => resolve(Symbol.for('__gardenflow_ipc_timeout__')), timeoutMs);
           }),
         ])
       : await invokeCommand(command, args);
 
-    if (value === Symbol.for('__redbox_ipc_timeout__')) {
+    if (value === Symbol.for('__gardenflow_ipc_timeout__')) {
       const timeoutError = new Error(`Timed out after ${timeoutMs}ms`);
-      console.warn(`[Bojin] command invoke timed out for ${command}:`, timeoutError.message);
+      console.warn(`[GardenFlow] command invoke timed out for ${command}:`, timeoutError.message);
       return resolveGuardFallback(fallbackKey, timeoutError, options?.fallback);
     }
 
@@ -170,7 +170,7 @@ async function invokeCommandGuarded<T = unknown>(
       try {
         return options.normalize(value);
       } catch (error) {
-        console.warn(`[Bojin] command normalization failed for ${command}:`, error);
+        console.warn(`[GardenFlow] command normalization failed for ${command}:`, error);
         return resolveGuardFallback(fallbackKey, error, options?.fallback);
       }
     }
@@ -184,7 +184,7 @@ async function invokeCommandGuarded<T = unknown>(
 function on(channel: string, listener: Listener): void {
   const transport = getElectronTransport();
   if (!transport) {
-    console.warn(`[Bojin] listener skipped for ${channel}: Electron IPC transport is unavailable`);
+    console.warn(`[GardenFlow] listener skipped for ${channel}: Electron IPC transport is unavailable`);
     return;
   }
 

@@ -6,7 +6,7 @@ import type { PendingChatMessage } from '../features/app-shell/types';
 import { useFeatureFlag } from '../hooks/useFeatureFlags';
 import { hasRenderableAssetUrl, resolveAssetUrl } from '../utils/pathManager';
 import { SAFE_REMARK_PLUGINS } from '../utils/markdownRemarkPlugins';
-import { buildRedClawAuthoringMessage } from '../utils/redclawAuthoring';
+import { buildGardenFlowAuthoringMessage } from '../utils/gardenflowAuthoring';
 import { appAlert, appConfirm } from '../utils/appDialogs';
 import { formatTimestampDateTime } from '../utils/time';
 import { SelectMenu } from '../components/ui/SelectMenu';
@@ -46,8 +46,8 @@ import {
 } from '../features/knowledge/knowledgeModel';
 
 
-const GLOBAL_KNOWLEDGE_SEARCH_EVENT = 'redbox:global-knowledge-search';
-const GLOBAL_KNOWLEDGE_SEARCH_STORAGE_KEY = 'redbox:global-knowledge-search-query';
+const GLOBAL_KNOWLEDGE_SEARCH_EVENT = 'gardenflow:global-knowledge-search';
+const GLOBAL_KNOWLEDGE_SEARCH_STORAGE_KEY = 'gardenflow:global-knowledge-search-query';
 const KNOWLEDGE_SORT_OPTIONS = [
     { value: 'updated-desc', label: '最新采集' },
     { value: 'created-desc', label: '笔记时间' },
@@ -57,7 +57,7 @@ const KNOWLEDGE_SORT_OPTIONS = [
 interface KnowledgeProps {
     isEmbedded?: boolean;
     isActive?: boolean;
-    onNavigateToRedClaw?: (message: PendingChatMessage) => void;
+    onNavigateToGardenFlow?: (message: PendingChatMessage) => void;
     onTitleBarContentChange?: (content: ReactNode | null) => void;
     referenceContent?: string; // 用于相似度排序的参考内容
 }
@@ -87,7 +87,7 @@ function ObsidianIcon({ className }: { className?: string }) {
 
 
 
-export function Knowledge({ onNavigateToRedClaw, isEmbedded = false, isActive = true, onTitleBarContentChange, referenceContent }: KnowledgeProps) {
+export function Knowledge({ onNavigateToGardenFlow, isEmbedded = false, isActive = true, onTitleBarContentChange, referenceContent }: KnowledgeProps) {
     const [notes, setNotes] = useState<Note[]>([]);
     const [youtubeVideos, setYoutubeVideos] = useState<YouTubeVideo[]>([]);
     const [documentSources, setDocumentSources] = useState<DocumentKnowledgeSource[]>([]);
@@ -464,44 +464,44 @@ export function Knowledge({ onNavigateToRedClaw, isEmbedded = false, isActive = 
         hasTranscript: Boolean(video.subtitleContent),
     }), []);
 
-    const navigateToRedClawWithKnowledge = useCallback((message: PendingChatMessage) => {
-        if (!onNavigateToRedClaw) {
+    const navigateToGardenFlowWithKnowledge = useCallback((message: PendingChatMessage) => {
+        if (!onNavigateToGardenFlow) {
             void appAlert(`${APP_BRAND.aiDisplayName} 页面暂不可用，请稍后重试。`, { title: `无法打开 ${APP_BRAND.aiDisplayName}` });
             return;
         }
-        onNavigateToRedClaw(message);
-    }, [onNavigateToRedClaw]);
+        onNavigateToGardenFlow(message);
+    }, [onNavigateToGardenFlow]);
 
-    const openNoteInRedClaw = useCallback((note: Note) => {
-        navigateToRedClawWithKnowledge({
+    const openNoteInGardenFlow = useCallback((note: Note) => {
+        navigateToGardenFlowWithKnowledge({
             content: '',
             sessionRouting: 'current',
             deliveryMode: 'draft',
             knowledgeReferences: [buildNoteKnowledgeReference(note)],
         });
-    }, [buildNoteKnowledgeReference, navigateToRedClawWithKnowledge]);
+    }, [buildNoteKnowledgeReference, navigateToGardenFlowWithKnowledge]);
 
-    const openVideoInRedClaw = useCallback((video: YouTubeVideo) => {
-        navigateToRedClawWithKnowledge({
+    const openVideoInGardenFlow = useCallback((video: YouTubeVideo) => {
+        navigateToGardenFlowWithKnowledge({
             content: '',
             sessionRouting: 'current',
             deliveryMode: 'draft',
             knowledgeReferences: [buildVideoKnowledgeReference(video)],
         });
-    }, [buildVideoKnowledgeReference, navigateToRedClawWithKnowledge]);
+    }, [buildVideoKnowledgeReference, navigateToGardenFlowWithKnowledge]);
 
     const isExpandableXiaohongshuNote = useCallback((note: Note): boolean => {
         return !note.type && note.captureKind !== 'wechat-article';
     }, []);
 
     const handleExpandToWechat = useCallback((note: Note) => {
-        if (!onNavigateToRedClaw || !isExpandableXiaohongshuNote(note)) return;
+        if (!onNavigateToGardenFlow || !isExpandableXiaohongshuNote(note)) return;
         const sourceContent = [
             note.content || '',
             note.transcript ? `视频转录：\n${note.transcript}` : '',
         ].filter(Boolean).join('\n\n');
 
-        onNavigateToRedClaw(buildRedClawAuthoringMessage({
+        onNavigateToGardenFlow(buildGardenFlowAuthoringMessage({
             platform: 'wechat_official_account',
             taskType: 'expand_from_xhs',
             brief: '请把这篇小红书内容扩写成公众号文章，并在保留原观点的前提下补足背景、论证、案例、总结和 CTA。',
@@ -512,7 +512,7 @@ export function Knowledge({ onNavigateToRedClaw, isEmbedded = false, isActive = 
             sourceContent,
         }));
         setSelectedNote(null);
-    }, [isExpandableXiaohongshuNote, onNavigateToRedClaw]);
+    }, [isExpandableXiaohongshuNote, onNavigateToGardenFlow]);
 
     const refreshIndexStatus = useCallback(async () => {
         try {
@@ -2159,7 +2159,7 @@ export function Knowledge({ onNavigateToRedClaw, isEmbedded = false, isActive = 
                         返回列表
                     </button>
                     <div className="flex items-center gap-2">
-                        {SHOW_WECHAT_KNOWLEDGE_ACTIONS && isExpandableXiaohongshuNote(selectedNote) && onNavigateToRedClaw && (
+                        {SHOW_WECHAT_KNOWLEDGE_ACTIONS && isExpandableXiaohongshuNote(selectedNote) && onNavigateToGardenFlow && (
                             <button
                                 onClick={() => handleExpandToWechat(selectedNote)}
                                 className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-white bg-gradient-to-r from-emerald-500 to-teal-500 rounded hover:from-emerald-600 hover:to-teal-600 transition-colors"
@@ -2323,10 +2323,10 @@ export function Knowledge({ onNavigateToRedClaw, isEmbedded = false, isActive = 
                         <ChevronLeft className="w-4 h-4" />
                         返回列表
                     </button>
-                    {onNavigateToRedClaw && selectedVideo.hasSubtitle && selectedVideo.subtitleContent && (
+                    {onNavigateToGardenFlow && selectedVideo.hasSubtitle && selectedVideo.subtitleContent && (
                         <button
                             onClick={() => {
-                                openVideoInRedClaw(selectedVideo);
+                                openVideoInGardenFlow(selectedVideo);
                             }}
                             className="text-xs px-2 py-1 bg-surface-secondary border border-border rounded hover:bg-surface-hover"
                         >
@@ -2924,7 +2924,7 @@ export function Knowledge({ onNavigateToRedClaw, isEmbedded = false, isActive = 
                                     const isTextArticleCard = (item.kind === 'link-article' || item.kind === 'wechat-article' || item.kind === 'zhihu-answer' || item.kind === 'zhihu-article') && !coverImage && !note.video;
                                     const notePreviewText = note.excerpt || note.content || note.sourceUrl || '暂无摘要';
                                     const isNoteTranscribing = Boolean(note.video && !note.transcript && note.transcriptionStatus === 'processing');
-                                    const canExpandToWechat = SHOW_WECHAT_KNOWLEDGE_ACTIONS && isExpandableXiaohongshuNote(note) && Boolean(onNavigateToRedClaw);
+                                    const canExpandToWechat = SHOW_WECHAT_KNOWLEDGE_ACTIONS && isExpandableXiaohongshuNote(note) && Boolean(onNavigateToGardenFlow);
 
                                     return (
                                         <button
@@ -3176,14 +3176,14 @@ export function Knowledge({ onNavigateToRedClaw, isEmbedded = false, isActive = 
                             </div>
                             <div className="flex items-center gap-2 ml-4">
                                 <button
-                                    onClick={() => openNoteInRedClaw(selectedNote)}
+                                    onClick={() => openNoteInGardenFlow(selectedNote)}
                                     className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-accent-primary text-white shadow-lg shadow-accent-primary/20 hover:bg-accent-hover transition-all active:scale-95"
                                     title={`${APP_BRAND.aiDisplayName} 聊天`}
                                     aria-label={`${APP_BRAND.aiDisplayName} 聊天`}
                                 >
                                     <MessageCircle className="w-4 h-4" />
                                 </button>
-                                {SHOW_WECHAT_KNOWLEDGE_ACTIONS && isExpandableXiaohongshuNote(selectedNote) && onNavigateToRedClaw && (
+                                {SHOW_WECHAT_KNOWLEDGE_ACTIONS && isExpandableXiaohongshuNote(selectedNote) && onNavigateToGardenFlow && (
                                     <button
                                         onClick={() => handleExpandToWechat(selectedNote)}
                                         className="inline-flex h-10 px-4 items-center gap-2 rounded-xl bg-emerald-500 text-white text-[13px] font-extrabold shadow-lg shadow-emerald-500/20 hover:bg-emerald-600 transition-all active:scale-95"
@@ -3496,7 +3496,7 @@ export function Knowledge({ onNavigateToRedClaw, isEmbedded = false, isActive = 
                             </div>
                             <div className="flex items-center gap-2 ml-6">
                                 <button
-                                    onClick={() => openVideoInRedClaw(selectedVideo)}
+                                    onClick={() => openVideoInGardenFlow(selectedVideo)}
                                     className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-accent-primary text-white shadow-lg shadow-accent-primary/20 hover:bg-accent-hover transition-all active:scale-95"
                                     title={`${APP_BRAND.aiDisplayName} 聊天`}
                                     aria-label={`${APP_BRAND.aiDisplayName} 聊天`}

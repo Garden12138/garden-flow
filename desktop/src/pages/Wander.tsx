@@ -8,8 +8,8 @@ import {
   AUTHORING_ALLOWED_OPERATE_ACTIONS,
   AUTHORING_ALLOWED_TOOLS,
   buildTaskBriefPromptSection,
-} from '../utils/redclawAuthoring';
-import type { AuthoringTaskHints, TaskBriefArticleStrategy, TaskBriefSeed } from '../utils/redclawAuthoring';
+} from '../utils/gardenflowAuthoring';
+import type { AuthoringTaskHints, TaskBriefArticleStrategy, TaskBriefSeed } from '../utils/gardenflowAuthoring';
 import { usePageRefresh } from '../hooks/usePageRefresh';
 import { uiDebug } from '../utils/uiDebug';
 import { APP_BRAND } from '../config/brand';
@@ -174,14 +174,14 @@ interface WanderProps {
   isActive?: boolean;
   onExecutionStateChange?: (active: boolean) => void;
   onTitleBarContentChange?: (content: ReactNode | null) => void;
-  onNavigateToRedClaw?: (payload: PendingChatMessage) => void;
+  onNavigateToGardenFlow?: (payload: PendingChatMessage) => void;
 }
 
 type WanderLaunchMode = 'random' | 'comments';
 type CommentSourceMode = 'random' | 'custom';
 const WANDER_SUBJECT_CATEGORY_NAMES = new Set(['品牌', '角色', '物品', '商品', '场景']);
 
-export function Wander({ isActive = true, onExecutionStateChange, onTitleBarContentChange, onNavigateToRedClaw }: WanderProps) {
+export function Wander({ isActive = true, onExecutionStateChange, onTitleBarContentChange, onNavigateToGardenFlow }: WanderProps) {
   const [items, setItems] = useState<WanderItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [multiChoiceEnabled, setMultiChoiceEnabled] = useState(false);
@@ -732,7 +732,7 @@ export function Wander({ isActive = true, onExecutionStateChange, onTitleBarCont
       .filter((block): block is WanderVisualBlock => Boolean(block));
   };
 
-  const formatWanderVisualBlocksForRedClaw = (item: WanderItem): string => {
+  const formatWanderVisualBlocksForGardenFlow = (item: WanderItem): string => {
     const blocks = getWanderVisualBlocks(item).slice(0, 6);
     if (blocks.length === 0) return '';
     return [
@@ -748,10 +748,10 @@ export function Wander({ isActive = true, onExecutionStateChange, onTitleBarCont
     ].join('\n');
   };
 
-  const canStartCreate = Boolean(parsedResult && onNavigateToRedClaw && validationIssues.length === 0 && !parseError);
+  const canStartCreate = Boolean(parsedResult && onNavigateToGardenFlow && validationIssues.length === 0 && !parseError);
 
-  const startCreateInRedClaw = () => {
-    if (!parsedResult || !onNavigateToRedClaw || validationIssues.length > 0 || parseError) return;
+  const startCreateInGardenFlow = () => {
+    if (!parsedResult || !onNavigateToGardenFlow || validationIssues.length > 0 || parseError) return;
     const selectedOption = parsedResult.options?.[selectedOptionIndex];
     const activeTopic = selectedOption?.topic || parsedResult.topic;
     const activeDirection = selectedOption?.content_direction || parsedResult.content_direction;
@@ -780,7 +780,7 @@ export function Wander({ isActive = true, onExecutionStateChange, onTitleBarCont
     const materialText = items.map((item, index) => {
       const order = index + 1;
       const folderRef = buildKnowledgeFolderReference(item);
-      const visualText = formatWanderVisualBlocksForRedClaw(item);
+      const visualText = formatWanderVisualBlocksForGardenFlow(item);
       return [
         `素材${order}`,
         `类型：${item.type === 'video' ? '视频笔记' : ((item.meta as Record<string, unknown> | undefined)?.sourceType === 'document' ? '文档' : '图文笔记')}`,
@@ -889,7 +889,7 @@ export function Wander({ isActive = true, onExecutionStateChange, onTitleBarCont
       '7. 完成后调用 `Write(path="manuscripts://current", content="<最终标题和按 articleStrategy + writing-style 自检后的完整正文>")` 保存；保存成功后的最终回复只给运行总结和稿件链接，不要重复全文。',
     ].join('\n');
 
-    onNavigateToRedClaw({
+    onNavigateToGardenFlow({
       content,
       displayContent: `基于选题中心灵感开始创作：${parsedResult.topic.title}`,
       sessionRouting: 'new',
@@ -1835,7 +1835,7 @@ export function Wander({ isActive = true, onExecutionStateChange, onTitleBarCont
         </div>
         <button
           type="button"
-          onClick={startCreateInRedClaw}
+          onClick={startCreateInGardenFlow}
           disabled={!canStartCreate}
           className="absolute right-5 top-6 inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md bg-accent-primary px-3 text-xs font-semibold text-white transition-colors hover:bg-accent-hover disabled:opacity-40"
         >

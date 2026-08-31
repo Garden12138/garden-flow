@@ -229,7 +229,7 @@ export type AiModelRouteScope =
   | 'wander'
   | 'team'
   | 'knowledge'
-  | 'redclaw'
+  | 'gardenflow'
   | 'transcription'
   | 'embedding'
   | 'image'
@@ -256,7 +256,7 @@ export const DEFAULT_AI_MODEL_ROUTES: AiModelRoutes = {
   wander: { mode: 'official', sourceId: OFFICIAL_AUTO_SOURCE_ID, model: PRIVATE_GATEWAY_SCOPE_MODELS.chat },
   team: { mode: 'official', sourceId: OFFICIAL_AUTO_SOURCE_ID, model: PRIVATE_GATEWAY_SCOPE_MODELS.chat },
   knowledge: { mode: 'official', sourceId: OFFICIAL_AUTO_SOURCE_ID, model: PRIVATE_GATEWAY_SCOPE_MODELS.chat },
-  redclaw: { mode: 'official', sourceId: OFFICIAL_AUTO_SOURCE_ID, model: PRIVATE_GATEWAY_SCOPE_MODELS.chat },
+  gardenflow: { mode: 'official', sourceId: OFFICIAL_AUTO_SOURCE_ID, model: PRIVATE_GATEWAY_SCOPE_MODELS.chat },
   transcription: { mode: 'official', sourceId: OFFICIAL_AUTO_SOURCE_ID, model: PRIVATE_GATEWAY_SCOPE_MODELS.transcription },
   embedding: { mode: 'official', sourceId: OFFICIAL_AUTO_SOURCE_ID, model: PRIVATE_GATEWAY_SCOPE_MODELS.embedding },
   image: { mode: 'official', sourceId: OFFICIAL_AUTO_SOURCE_ID, model: PRIVATE_GATEWAY_SCOPE_MODELS.image },
@@ -323,12 +323,12 @@ export function mcpDraftFromServer(server?: McpServerConfig): McpServerDraft {
     url: base.url || '',
     oauth: {
       ...(base.oauth || {}),
-      redbox: {
-        ...(base.oauth?.redbox || {}),
-        envPassthrough: base.oauth?.redbox?.envPassthrough || [],
+      gardenflow: {
+        ...(base.oauth?.gardenflow || {}),
+        envPassthrough: base.oauth?.gardenflow?.envPassthrough || [],
       },
     },
-    envPassthrough: base.oauth?.redbox?.envPassthrough || [],
+    envPassthrough: base.oauth?.gardenflow?.envPassthrough || [],
   };
 }
 
@@ -349,8 +349,8 @@ export function mcpServerFromDraft(draft: McpServerDraft): McpServerConfig {
     url: draft.transport === 'stdio' ? '' : String(draft.url || '').trim(),
     oauth: {
       ...(draft.oauth || {}),
-      redbox: {
-        ...(draft.oauth?.redbox || {}),
+      gardenflow: {
+        ...(draft.oauth?.gardenflow || {}),
         envPassthrough,
       },
     },

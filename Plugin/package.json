@@ -1,5 +1,5 @@
 {
-  "name": "bojin",
+  "name": "gardenflow-browser-extension",
   "private": true,
   "version": "2.6.19",
   "type": "module",
@@ -8,7 +8,7 @@
   },
   "packageManager": "pnpm@10.28.2+sha512.41872f037ad22f7348e3b1debbaf7e867cfd448f2726d9cf74c08f19507c31d2c8e7a11525b983febc2df640b5438dee6023ebb1f84ed43cc2d654d2bc326264",
   "scripts": {
-    "build": "node scripts/sync-manifest-version.mjs && node scripts/build.mjs",
+    "build": "node ../scripts/sync-brand.cjs && node scripts/sync-manifest-version.mjs && node scripts/build.mjs",
     "verify": "node scripts/verify-build.mjs",
     "typecheck": "tsc --noEmit",
     "check": "pnpm build && pnpm verify && pnpm typecheck && pnpm test:operation-id && pnpm test:desktop-bridge-client && pnpm test:site-research && pnpm test:generic-capture && pnpm test:plugin-diagnostics",

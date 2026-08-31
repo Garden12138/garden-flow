@@ -1,3 +1,4 @@
+import './brandStorage.js';
 const serverStatusEl = document.getElementById('server-status');
 const pageMetaEl = document.getElementById('page-meta');
 const resultEl = document.getElementById('result');
@@ -35,7 +36,7 @@ async function init() {
     serverStatusEl.textContent = '本地知识库已链接 ✅';
     serverStatusEl.className = 'status ok';
   } else {
-    serverStatusEl.textContent = '未链接，请打开Bojin';
+    serverStatusEl.textContent = '未链接，请打开GardenFlow';
     serverStatusEl.className = 'status error';
   }
 

@@ -1,3 +1,4 @@
+import '../brandEnvironment.cjs';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
@@ -10,26 +11,26 @@ export const BROWSER_PROTOCOL_VERSION = 3;
 export const MAX_DESKTOP_BRIDGE_FRAME_BYTES = 16 * 1_024 * 1_024 + 256 * 1_024;
 
 export function desktopBridgeStateRoot() {
-  if (process.env.REDBOX_BROWSER_CONTROL_STATE_DIR) {
-    return process.env.REDBOX_BROWSER_CONTROL_STATE_DIR;
+  if (process.env.GARDENFLOW_BROWSER_CONTROL_STATE_DIR) {
+    return process.env.GARDENFLOW_BROWSER_CONTROL_STATE_DIR;
   }
   if (process.platform === 'darwin') {
-    return path.join(os.homedir(), 'Library/Application Support/RedBox/native-host');
+    return path.join(os.homedir(), 'Library/Application Support/GardenFlow/native-host');
   }
   if (process.platform === 'win32') {
     return path.join(
       process.env.APPDATA || path.join(os.homedir(), 'AppData/Roaming'),
-      'RedBox/native-host',
+      'GardenFlow/native-host',
     );
   }
   return path.join(
     process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local/share'),
-    'RedBox/native-host',
+    'GardenFlow/native-host',
   );
 }
 
 export function desktopBridgeDescriptorPath() {
-  return process.env.REDBOX_BROWSER_BRIDGE_DESCRIPTOR
+  return process.env.GARDENFLOW_BROWSER_BRIDGE_DESCRIPTOR
     || path.join(desktopBridgeStateRoot(), 'desktop-bridge-v1.json');
 }
 
@@ -262,7 +263,7 @@ export class DesktopBridgeBrowserTransport {
     const instances = await this.listEndpoints();
     const instance = selectBrowserInstance(instances, this.browserId);
     return {
-      hostName: 'com.redbox.browser_control',
+      hostName: 'com.gardenflow.browser_control',
       instanceId: String(instance.hostInstanceId || instance.browserInstanceId || ''),
       extensionReady: true,
       nativeConnected: true,

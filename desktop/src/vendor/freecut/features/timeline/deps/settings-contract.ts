@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { HOTKEYS, type HotkeyBindingMap } from '@/config/hotkeys';
 
-type RedBoxSettingsState = {
+type GardenFlowSettingsState = {
   editorDensity: 'compact' | 'default';
   showWaveforms: boolean;
   showFilmstrips: boolean;
@@ -9,21 +9,21 @@ type RedBoxSettingsState = {
   maxUndoHistory: number;
 };
 
-type RedBoxSettingsActions = {
-  syncRedBoxSettings: (patch: Partial<RedBoxSettingsState>) => void;
+type GardenFlowSettingsActions = {
+  syncGardenFlowSettings: (patch: Partial<GardenFlowSettingsState>) => void;
 };
 
-export const useSettingsStore = create<RedBoxSettingsState & RedBoxSettingsActions>((set) => ({
+export const useSettingsStore = create<GardenFlowSettingsState & GardenFlowSettingsActions>((set) => ({
   editorDensity: 'compact',
   showWaveforms: true,
   showFilmstrips: true,
   defaultWhisperModel: 'base',
   maxUndoHistory: 80,
-  syncRedBoxSettings: (patch) => set((state) => ({ ...state, ...patch })),
+  syncGardenFlowSettings: (patch) => set((state) => ({ ...state, ...patch })),
 }));
 
-export function syncRedBoxTimelineSettings(patch: Partial<RedBoxSettingsState>) {
-  useSettingsStore.getState().syncRedBoxSettings(patch);
+export function syncGardenFlowTimelineSettings(patch: Partial<GardenFlowSettingsState>) {
+  useSettingsStore.getState().syncGardenFlowSettings(patch);
 }
 
 export function useResolvedHotkeys(): HotkeyBindingMap {

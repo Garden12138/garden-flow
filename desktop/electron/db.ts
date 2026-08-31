@@ -5,78 +5,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { resolveAssetSourceToPath } from './core/localAssetManager';
 
-const keepExistingLegacyUserDataPath = (): void => {
-  const currentUserData = path.resolve(app.getPath('userData'));
-  const currentDatabase = path.join(currentUserData, 'redconvert.db');
-  if (fs.existsSync(currentDatabase)) return;
-
-  const parentDir = path.dirname(currentUserData);
-  const legacyNames = ['RedBox', 'red-convert-desktop', 'RedConvert', 'redconvert-desktop', 'com.redbox.app'];
-  const legacyDir = legacyNames
-    .map((name) => path.join(parentDir, name))
-    .find((candidate) => (
-      fs.existsSync(path.join(candidate, 'redconvert.db'))
-      || fs.existsSync(path.join(candidate, 'Local Storage'))
-      || fs.existsSync(path.join(candidate, 'Preferences'))
-    ));
-  if (!legacyDir || path.resolve(legacyDir) === currentUserData) return;
-
-  app.setPath('userData', legacyDir);
-  console.log(`[UserDataCompatibility] using existing data directory: ${legacyDir}`);
-};
-
-keepExistingLegacyUserDataPath();
-
-const getLegacyUserDataDirs = (): string[] => {
-  const currentUserData = path.resolve(app.getPath('userData'));
-  const parentDir = path.dirname(currentUserData);
-  const currentBaseName = path.basename(currentUserData);
-  const candidates = [
-    'RedBox',
-    'red-convert-desktop',
-    'RedConvert',
-    'redconvert-desktop',
-    'com.redbox.app',
-    app.name,
-  ];
-  return Array.from(new Set(
-    candidates
-      .map((name) => String(name || '').trim())
-      .filter(Boolean)
-      .filter((name) => name !== currentBaseName)
-      .map((name) => path.join(parentDir, name))
-      .filter((candidate) => path.resolve(candidate) !== currentUserData),
-  ));
-};
-
-const migrateLegacyUserDataFileIfNeeded = (fileName: string): string => {
-  const currentPath = path.join(app.getPath('userData'), fileName);
-  try {
-    if (fs.existsSync(currentPath) && fs.statSync(currentPath).size > 0) {
-      return currentPath;
-    }
-  } catch {
-    // fall through to legacy probe
-  }
-
-  for (const legacyDir of getLegacyUserDataDirs()) {
-    const legacyPath = path.join(legacyDir, fileName);
-    try {
-      if (!fs.existsSync(legacyPath)) continue;
-      if (fs.statSync(legacyPath).size <= 0) continue;
-      fs.mkdirSync(path.dirname(currentPath), { recursive: true });
-      fs.copyFileSync(legacyPath, currentPath);
-      console.log(`[UserDataMigration] migrated ${fileName} from ${legacyPath} to ${currentPath}`);
-      return currentPath;
-    } catch (error) {
-      console.warn(`[UserDataMigration] failed to migrate ${fileName} from ${legacyPath}:`, error);
-    }
-  }
-
-  return currentPath;
-};
-
-const dbPath = migrateLegacyUserDataFileIfNeeded('redconvert.db');
+const dbPath = path.join(app.getPath('userData'), 'gardenflow.db');
 const db = new Database(dbPath);
 
 const DEFAULT_SPACE_ID = 'default';
@@ -113,7 +42,7 @@ const initDb = () => {
       model_name_wander TEXT,
       model_name_chatroom TEXT,
       model_name_knowledge TEXT,
-      model_name_redclaw TEXT,
+      model_name_gardenflow TEXT,
       search_provider TEXT,
       search_endpoint TEXT,
       search_api_key TEXT,
@@ -144,7 +73,7 @@ const initDb = () => {
       image_quality TEXT,
       mcp_servers_json TEXT,
       ecommerce_platforms_json TEXT,
-      redclaw_compact_target_tokens INTEGER,
+      gardenflow_compact_target_tokens INTEGER,
       wander_deep_think_enabled INTEGER,
       debug_log_enabled INTEGER,
       developer_mode_enabled INTEGER,
@@ -508,7 +437,7 @@ const initDb = () => {
     db.exec(`ALTER TABLE settings ADD COLUMN ecommerce_platforms_json TEXT;`);
   } catch { /* Column already exists */ }
   try {
-    db.exec(`ALTER TABLE settings ADD COLUMN redclaw_compact_target_tokens INTEGER;`);
+    db.exec(`ALTER TABLE settings ADD COLUMN gardenflow_compact_target_tokens INTEGER;`);
   } catch { /* Column already exists */ }
   try {
     db.exec(`ALTER TABLE settings ADD COLUMN wander_deep_think_enabled INTEGER;`);
@@ -556,7 +485,7 @@ const initDb = () => {
     db.exec(`ALTER TABLE settings ADD COLUMN proxy_bypass TEXT;`);
   } catch { /* Column already exists */ }
   try {
-    db.exec(`ALTER TABLE settings ADD COLUMN model_name_redclaw TEXT;`);
+    db.exec(`ALTER TABLE settings ADD COLUMN model_name_gardenflow TEXT;`);
   } catch { /* Column already exists */ }
   try {
     db.exec(`ALTER TABLE settings ADD COLUMN settings_extra_json TEXT;`);
@@ -662,7 +591,7 @@ initDb();
 
 // Default workspace directory
 export const getDefaultWorkspaceDir = () => {
-  return path.join(app.getPath('home'), '.redconvert');
+  return path.join(app.getPath('home'), '.gardenflow');
 };
 
 const normalizeWorkspaceDir = (raw: string | undefined | null): string => {
@@ -677,11 +606,11 @@ const normalizeWorkspaceDir = (raw: string | undefined | null): string => {
     } catch {
       // keep raw fallback
     }
-  } else if (/^(local-file|redbox-asset):\/\//i.test(next)) {
+  } else if (/^(local-file|gardenflow-asset):\/\//i.test(next)) {
     try {
       next = resolveAssetSourceToPath(next);
     } catch {
-      next = next.replace(/^(local-file|redbox-asset):\/+/i, '/');
+      next = next.replace(/^(local-file|gardenflow-asset):\/+/i, '/');
     }
   }
 
@@ -783,7 +712,7 @@ export const saveSettings = (settings: {
     model_name_wander?: string;
     model_name_chatroom?: string;
     model_name_knowledge?: string;
-    model_name_redclaw?: string;
+    model_name_gardenflow?: string;
     search_provider?: string;
     search_endpoint?: string;
     search_api_key?: string;
@@ -817,7 +746,7 @@ export const saveSettings = (settings: {
   image_quality?: string;
   mcp_servers_json?: string;
   ecommerce_platforms_json?: string;
-  redclaw_compact_target_tokens?: number;
+  gardenflow_compact_target_tokens?: number;
   wander_deep_think_enabled?: boolean;
   debug_log_enabled?: boolean;
   developer_mode_enabled?: boolean;
@@ -826,8 +755,8 @@ export const saveSettings = (settings: {
   chat_max_tokens_deepseek?: number;
 } & Record<string, unknown>) => {
   const stmt = db.prepare(`
-    INSERT INTO settings (id, api_endpoint, api_key, model_name, model_name_wander, model_name_chatroom, model_name_knowledge, model_name_redclaw, search_provider, search_endpoint, search_api_key, proxy_enabled, proxy_url, proxy_bypass, role_mapping, workspace_dir, active_space_id, transcription_model, transcription_endpoint, transcription_key, embedding_endpoint, embedding_key, embedding_model, ai_sources_json, default_ai_source_id, image_provider, image_endpoint, image_api_key, image_model, video_endpoint, video_api_key, video_model, video_models_json, video_providers_json, active_video_provider_id, image_provider_template, image_aspect_ratio, image_size, image_quality, mcp_servers_json, ecommerce_platforms_json, redclaw_compact_target_tokens, wander_deep_think_enabled, debug_log_enabled, developer_mode_enabled, developer_mode_unlocked_at, chat_max_tokens_default, chat_max_tokens_deepseek, settings_extra_json)
-    VALUES (1, @api_endpoint, @api_key, @model_name, @model_name_wander, @model_name_chatroom, @model_name_knowledge, @model_name_redclaw, @search_provider, @search_endpoint, @search_api_key, @proxy_enabled, @proxy_url, @proxy_bypass, @role_mapping, @workspace_dir, @active_space_id, @transcription_model, @transcription_endpoint, @transcription_key, @embedding_endpoint, @embedding_key, @embedding_model, @ai_sources_json, @default_ai_source_id, @image_provider, @image_endpoint, @image_api_key, @image_model, @video_endpoint, @video_api_key, @video_model, @video_models_json, @video_providers_json, @active_video_provider_id, @image_provider_template, @image_aspect_ratio, @image_size, @image_quality, @mcp_servers_json, @ecommerce_platforms_json, @redclaw_compact_target_tokens, @wander_deep_think_enabled, @debug_log_enabled, @developer_mode_enabled, @developer_mode_unlocked_at, @chat_max_tokens_default, @chat_max_tokens_deepseek, @settings_extra_json)
+    INSERT INTO settings (id, api_endpoint, api_key, model_name, model_name_wander, model_name_chatroom, model_name_knowledge, model_name_gardenflow, search_provider, search_endpoint, search_api_key, proxy_enabled, proxy_url, proxy_bypass, role_mapping, workspace_dir, active_space_id, transcription_model, transcription_endpoint, transcription_key, embedding_endpoint, embedding_key, embedding_model, ai_sources_json, default_ai_source_id, image_provider, image_endpoint, image_api_key, image_model, video_endpoint, video_api_key, video_model, video_models_json, video_providers_json, active_video_provider_id, image_provider_template, image_aspect_ratio, image_size, image_quality, mcp_servers_json, ecommerce_platforms_json, gardenflow_compact_target_tokens, wander_deep_think_enabled, debug_log_enabled, developer_mode_enabled, developer_mode_unlocked_at, chat_max_tokens_default, chat_max_tokens_deepseek, settings_extra_json)
+    VALUES (1, @api_endpoint, @api_key, @model_name, @model_name_wander, @model_name_chatroom, @model_name_knowledge, @model_name_gardenflow, @search_provider, @search_endpoint, @search_api_key, @proxy_enabled, @proxy_url, @proxy_bypass, @role_mapping, @workspace_dir, @active_space_id, @transcription_model, @transcription_endpoint, @transcription_key, @embedding_endpoint, @embedding_key, @embedding_model, @ai_sources_json, @default_ai_source_id, @image_provider, @image_endpoint, @image_api_key, @image_model, @video_endpoint, @video_api_key, @video_model, @video_models_json, @video_providers_json, @active_video_provider_id, @image_provider_template, @image_aspect_ratio, @image_size, @image_quality, @mcp_servers_json, @ecommerce_platforms_json, @gardenflow_compact_target_tokens, @wander_deep_think_enabled, @debug_log_enabled, @developer_mode_enabled, @developer_mode_unlocked_at, @chat_max_tokens_default, @chat_max_tokens_deepseek, @settings_extra_json)
     ON CONFLICT(id) DO UPDATE SET
       api_endpoint = @api_endpoint,
       api_key = @api_key,
@@ -835,7 +764,7 @@ export const saveSettings = (settings: {
       model_name_wander = @model_name_wander,
       model_name_chatroom = @model_name_chatroom,
       model_name_knowledge = @model_name_knowledge,
-      model_name_redclaw = @model_name_redclaw,
+      model_name_gardenflow = @model_name_gardenflow,
       search_provider = @search_provider,
       search_endpoint = @search_endpoint,
       search_api_key = @search_api_key,
@@ -869,7 +798,7 @@ export const saveSettings = (settings: {
       image_quality = @image_quality,
       mcp_servers_json = @mcp_servers_json,
       ecommerce_platforms_json = @ecommerce_platforms_json,
-      redclaw_compact_target_tokens = @redclaw_compact_target_tokens,
+      gardenflow_compact_target_tokens = @gardenflow_compact_target_tokens,
       wander_deep_think_enabled = @wander_deep_think_enabled,
       debug_log_enabled = @debug_log_enabled,
       developer_mode_enabled = @developer_mode_enabled,
@@ -885,7 +814,7 @@ export const saveSettings = (settings: {
     model_name_wander?: string;
     model_name_chatroom?: string;
     model_name_knowledge?: string;
-    model_name_redclaw?: string;
+    model_name_gardenflow?: string;
     search_provider?: string;
     search_endpoint?: string;
     search_api_key?: string;
@@ -919,7 +848,7 @@ export const saveSettings = (settings: {
     image_quality?: string;
     mcp_servers_json?: string;
     ecommerce_platforms_json?: string;
-    redclaw_compact_target_tokens?: number;
+    gardenflow_compact_target_tokens?: number;
     wander_deep_think_enabled?: boolean;
     debug_log_enabled?: boolean;
     developer_mode_enabled?: boolean;
@@ -941,7 +870,7 @@ export const saveSettings = (settings: {
     model_name_wander: String(settings.model_name_wander ?? current?.model_name_wander ?? '').trim(),
     model_name_chatroom: String(settings.model_name_chatroom ?? current?.model_name_chatroom ?? '').trim(),
     model_name_knowledge: String(settings.model_name_knowledge ?? current?.model_name_knowledge ?? '').trim(),
-    model_name_redclaw: String(settings.model_name_redclaw ?? current?.model_name_redclaw ?? '').trim(),
+    model_name_gardenflow: String(settings.model_name_gardenflow ?? current?.model_name_gardenflow ?? '').trim(),
     search_provider: String(settings.search_provider ?? current?.search_provider ?? 'duckduckgo').trim() || 'duckduckgo',
     search_endpoint: String(settings.search_endpoint ?? current?.search_endpoint ?? '').trim(),
     search_api_key: String(settings.search_api_key ?? current?.search_api_key ?? '').trim(),
@@ -981,10 +910,10 @@ export const saveSettings = (settings: {
     image_quality: settings.image_quality ?? current?.image_quality ?? '',
     mcp_servers_json: settings.mcp_servers_json ?? current?.mcp_servers_json ?? '[]',
     ecommerce_platforms_json: settings.ecommerce_platforms_json ?? current?.ecommerce_platforms_json ?? '',
-    redclaw_compact_target_tokens: Number.isFinite(Number(settings.redclaw_compact_target_tokens))
-      ? Math.floor(Number(settings.redclaw_compact_target_tokens))
-      : Number.isFinite(Number(current?.redclaw_compact_target_tokens))
-        ? Math.floor(Number(current?.redclaw_compact_target_tokens))
+    gardenflow_compact_target_tokens: Number.isFinite(Number(settings.gardenflow_compact_target_tokens))
+      ? Math.floor(Number(settings.gardenflow_compact_target_tokens))
+      : Number.isFinite(Number(current?.gardenflow_compact_target_tokens))
+        ? Math.floor(Number(current?.gardenflow_compact_target_tokens))
         : 256000,
     wander_deep_think_enabled: settings.wander_deep_think_enabled === undefined
       ? (current?.wander_deep_think_enabled ? 1 : 0)
@@ -1019,7 +948,7 @@ export const getSettings = () => {
     model_name_wander?: string;
     model_name_chatroom?: string;
     model_name_knowledge?: string;
-    model_name_redclaw?: string;
+    model_name_gardenflow?: string;
     search_provider?: string;
     search_endpoint?: string;
     search_api_key?: string;
@@ -1053,7 +982,7 @@ export const getSettings = () => {
     image_quality?: string;
     mcp_servers_json?: string;
     ecommerce_platforms_json?: string;
-    redclaw_compact_target_tokens?: number;
+    gardenflow_compact_target_tokens?: number;
     wander_deep_think_enabled?: number;
     debug_log_enabled?: number;
     developer_mode_enabled?: number;
@@ -1114,8 +1043,8 @@ export const getSettings = () => {
   if (result && !result.ecommerce_platforms_json) {
     result.ecommerce_platforms_json = '';
   }
-  if (result && !Number.isFinite(Number(result.redclaw_compact_target_tokens))) {
-    result.redclaw_compact_target_tokens = 256000;
+  if (result && !Number.isFinite(Number(result.gardenflow_compact_target_tokens))) {
+    result.gardenflow_compact_target_tokens = 256000;
   }
   if (result && Number(result.chat_max_tokens_default) < MIN_CHAT_MAX_TOKENS) {
     result.chat_max_tokens_default = DEFAULT_CHAT_MAX_TOKENS;
@@ -1186,7 +1115,7 @@ export const getWorkspacePathsForSpace = (spaceId: string) => {
     media: path.join(spaceBaseDir, 'media'),
     cover: path.join(spaceBaseDir, 'cover'),
     subjects: path.join(spaceBaseDir, 'subjects'),
-    redclaw: path.join(spaceBaseDir, 'redclaw'),
+    gardenflow: path.join(spaceBaseDir, 'gardenflow'),
   };
 };
 

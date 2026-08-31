@@ -239,7 +239,7 @@ export function OfficialLoginGate({ mode }: { mode: OfficialAuthGateMode }) {
     setWechatBusy(true);
     stopWechatPolling();
     try {
-      const result = await window.ipcRenderer.officialAuth.getWechatUrl({ state: 'redconvert-desktop' }) as {
+      const result = await window.ipcRenderer.officialAuth.getWechatUrl({ state: 'gardenflow-desktop' }) as {
         success?: boolean;
         data?: {
           sessionId?: string;
@@ -447,7 +447,7 @@ export function OfficialLoginGate({ mode }: { mode: OfficialAuthGateMode }) {
                           disabled={authBusy}
                           className="h-12 w-full appearance-none rounded-xl border border-slate-200/80 bg-white/80 px-4 pr-11 text-sm text-slate-700 shadow-[0_8px_24px_rgba(15,23,42,0.04)] outline-none transition focus:border-[rgb(var(--color-accent-primary)/0.45)] focus:bg-white disabled:opacity-60"
                         >
-                          {AI_SOURCE_PRESETS.filter((preset) => preset.id !== 'redbox-official').map((preset) => (
+                          {AI_SOURCE_PRESETS.filter((preset) => preset.id !== 'gardenflow-official').map((preset) => (
                             <option key={preset.id} value={preset.id}>{preset.label}</option>
                           ))}
                         </select>

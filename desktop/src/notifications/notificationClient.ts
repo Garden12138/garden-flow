@@ -21,7 +21,7 @@ type RemoteResponse = {
 const APP_SLUG = APP_BRAND.variant;
 const DEFAULT_POLL_SECONDS = 300;
 const BACKOFF_SECONDS = [60, 120, 300, 600];
-const STORAGE_PREFIX = 'redbox:notifications:server:v1';
+const STORAGE_PREFIX = 'gardenflow:notifications:server:v1';
 const FOREGROUND_SYNC_THROTTLE_MS = 15_000;
 
 function text(value: unknown, fallback = ''): string {

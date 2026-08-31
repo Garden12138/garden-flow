@@ -9,7 +9,7 @@ export interface FeatureFlags {
   vectorRecommendation: boolean; // 向量推荐 - 分栏模式下知识库按相似度排序
 }
 
-const STORAGE_KEY = 'redconvert:feature-flags';
+const STORAGE_KEY = 'gardenflow:feature-flags';
 
 const DEFAULT_FLAGS: FeatureFlags = {
   vectorRecommendation: false, // 默认关闭

@@ -1,3 +1,4 @@
+import { assertDataMigrationReady } from './brandStartup';
 import { isBrowserCaptureNativeHostInvocation } from './core/browserCaptureProtocol';
 
 if (isBrowserCaptureNativeHostInvocation()) {
@@ -7,5 +8,13 @@ if (isBrowserCaptureNativeHostInvocation()) {
             process.exitCode = 1;
         });
 } else {
-    void import('./appMain');
+    try {
+        assertDataMigrationReady();
+        void import('./appMain');
+    } catch (error) {
+        void import('electron').then(({ app, dialog }) => {
+            dialog.showErrorBox('GardenFlow 数据迁移', String(error));
+            app.exit(1);
+        });
+    }
 }

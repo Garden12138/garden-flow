@@ -90,7 +90,7 @@ const firstRequest = JSON.parse(fetchCalls[0].options.body);
 assert.equal(firstRequest.request_kind, 'plugin_error');
 assert.equal(firstRequest.source, 'browser_extension');
 assert.equal(firstRequest.category, 'plugin_connection');
-assert.equal(firstRequest.context.schema, 'redbox.browserPluginDiagnostic.v1');
+assert.equal(firstRequest.context.schema, 'gardenflow.browserPluginDiagnostic.v1');
 assert.equal(firstRequest.context.automatic, true);
 assert(!JSON.stringify(firstRequest).includes('native host disconnected at https://'));
 

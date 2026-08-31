@@ -1,3 +1,5 @@
+> 历史记录：本文保留更名前的实际名称和验证结论，不代表 GardenFlow 新模型网关已可用。当前更名与验收见 [GardenFlow 更名说明](GARDENFLOW_REBRAND.md)。
+
 # 「Bojin官方」模型源切换到私有化 new-api 网关 — 实现方案
 
 最后更新：2026-08-19（v2：新增视频渠道 `bojin-video-1.1-r2v` / `bojin-video-H3`，视频生成从「暂缓」改为「适配 new-api 视频任务协议」）

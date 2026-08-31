@@ -4587,7 +4587,7 @@ export function Chat({
     let seededOptimisticMessages = false;
     if (!targetSessionId && onEnsureSessionForSend) {
       const draftBeforeSessionCreation = input;
-      // A new RedClaw draft remounts Chat as soon as its persistent session is
+      // A new GardenFlow draft remounts Chat as soon as its persistent session is
       // created. Clear before awaiting creation so the old draft cannot be
       // persisted into that new session during the remount.
       setInput('');
@@ -5515,7 +5515,7 @@ export function Chat({
                           {structuredNotice?.tone === 'danger' && (
                             <button
                               type="button"
-                              onClick={() => window.dispatchEvent(new CustomEvent('redbox:open-feedback-report', {
+                              onClick={() => window.dispatchEvent(new CustomEvent('gardenflow:open-feedback-report', {
                                 detail: {
                                   title: noticeTitle,
                                   content: reportContent,

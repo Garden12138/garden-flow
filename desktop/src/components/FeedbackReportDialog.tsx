@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Loader2, MessageSquareWarning, X } from 'lucide-react';
 import { appAlert } from '../utils/appDialogs';
 
-export const OPEN_FEEDBACK_REPORT_EVENT = 'redbox:open-feedback-report';
+export const OPEN_FEEDBACK_REPORT_EVENT = 'gardenflow:open-feedback-report';
 
 export type FeedbackReportContext = {
   title?: string;

@@ -1,6 +1,6 @@
 import { isPrivateGatewayEndpoint } from './privateGateway.ts';
 
-export type VideoProviderKind = 'redbox' | 'aliyun-bailian' | 'minimax' | 'new-api' | 'openai-compatible';
+export type VideoProviderKind = 'gardenflow' | 'aliyun-bailian' | 'minimax' | 'new-api' | 'openai-compatible';
 
 export const ALIYUN_BAILIAN_VIDEO_SYNTHESIS_PATH = '/api/v1/services/aigc/video-generation/video-synthesis';
 export const ALIYUN_BAILIAN_BEIJING_PUBLIC_ENDPOINT = `https://dashscope.aliyuncs.com${ALIYUN_BAILIAN_VIDEO_SYNTHESIS_PATH}`;
@@ -17,7 +17,7 @@ export function resolveVideoProvider(endpoint: string, model = ''): VideoProvide
     const normalizedEndpoint = String(endpoint || '').trim().toLowerCase();
     const normalizedModel = String(model || '').trim().toLowerCase();
     if (normalizedEndpoint.includes('api.ziz.hk') && normalizedEndpoint.includes('/v1')) {
-        return 'redbox';
+        return 'gardenflow';
     }
     // 私有网关按 endpoint 结构化判定，必须排在下面两个「含模型名判定」的分支之前，
     // 以免网关对外别名与上游原名撞车时路由到直连协议。

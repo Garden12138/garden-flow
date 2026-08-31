@@ -13,7 +13,7 @@ import { useFeedbackReportDialog } from './features/app-shell/useFeedbackReportD
 import { useGenerationShellNavigation } from './features/app-shell/useGenerationShellNavigation';
 import { useGlobalIntentRouter } from './features/app-shell/useGlobalIntentRouter';
 import { useOfficialAuthNotice } from './features/app-shell/useOfficialAuthNotice';
-import { useRedClawShellNavigation } from './features/app-shell/useRedClawShellNavigation';
+import { useGardenFlowShellNavigation } from './features/app-shell/useGardenFlowShellNavigation';
 import { useSettingsShellNavigation } from './features/app-shell/useSettingsShellNavigation';
 import { useSubjectsModal } from './features/app-shell/useSubjectsModal';
 import { shouldRenderView, useViewNavigation } from './features/app-shell/useViewNavigation';
@@ -28,7 +28,7 @@ const SettingsPage = lazy(async () => ({ default: (await import('./pages/Setting
 const ManuscriptEditorHost = lazy(async () => ({ default: (await import('./components/manuscripts/ManuscriptEditorHost')).ManuscriptEditorHost }));
 const ArchivesPage = lazy(async () => ({ default: (await import('./pages/Archives')).Archives }));
 const WanderPage = lazy(async () => ({ default: (await import('./pages/Wander')).Wander }));
-const RedClawPage = lazy(async () => ({ default: (await import('./pages/RedClaw')).RedClaw }));
+const GardenFlowPage = lazy(async () => ({ default: (await import('./pages/GardenFlow')).GardenFlow }));
 const MediaLibraryPage = lazy(async () => ({ default: (await import('./pages/MediaLibrary')).MediaLibrary }));
 const CoverStudioPage = lazy(async () => ({ default: (await import('./pages/CoverStudio')).CoverStudio }));
 const GenerationStudioPage = lazy(async () => ({ default: (await import('./pages/GenerationStudio')).GenerationStudio }));
@@ -60,8 +60,8 @@ function AuthenticatedApp() {
     setViewPersistent,
     returnFromSettings,
   } = useViewNavigation();
-  const [redClawGlobalSidebarContent, setRedClawGlobalSidebarContent] = useState<ReactNode>(null);
-  const [redClawTitleBarActions, setRedClawTitleBarActions] = useState<ReactNode>(null);
+  const [gardenFlowGlobalSidebarContent, setGardenFlowGlobalSidebarContent] = useState<ReactNode>(null);
+  const [gardenFlowTitleBarActions, setGardenFlowTitleBarActions] = useState<ReactNode>(null);
   const [wanderTitleBarContent, setWanderTitleBarContent] = useState<ReactNode>(null);
   const [knowledgeTitleBarContent, setKnowledgeTitleBarContent] = useState<ReactNode>(null);
   const [approvalTargetDocketId, setApprovalTargetDocketId] = useState('');
@@ -99,19 +99,19 @@ function AuthenticatedApp() {
   } = useSettingsShellNavigation();
 
   const {
-    redclawOnboardingVersion,
-    pendingRedClawMessage,
-    redClawNavigationAction,
-    setRedClawNavigationAction,
-    navigateToRedClaw,
-    openRedClawOnboarding,
-    clearPendingRedClawMessage,
-    clearRedClawNavigationAction,
+    gardenflowOnboardingVersion,
+    pendingGardenFlowMessage,
+    gardenFlowNavigationAction,
+    setGardenFlowNavigationAction,
+    navigateToGardenFlow,
+    openGardenFlowOnboarding,
+    clearPendingGardenFlowMessage,
+    clearGardenFlowNavigationAction,
     navigateToManuscript,
     closeManuscriptEditor,
-    openRedClawChatSurface,
-    openRedClawSession,
-  } = useRedClawShellNavigation({
+    openGardenFlowChatSurface,
+    openGardenFlowSession,
+  } = useGardenFlowShellNavigation({
     currentView,
     setCurrentView,
     setActiveManuscriptEditorFile,
@@ -131,19 +131,19 @@ function AuthenticatedApp() {
     setCurrentView,
     setActiveManuscriptEditorFile,
     setSettingsNavigationTarget,
-    setRedClawNavigationAction,
+    setGardenFlowNavigationAction,
     setApprovalTargetDocketId,
     setPendingGenerationIntent,
   });
 
   const {
     handleWanderExecutionStateChange,
-    handleRedClawExecutionStateChange,
+    handleGardenFlowExecutionStateChange,
     handleGenerationStudioExecutionStateChange,
     handleCoverStudioExecutionStateChange,
   } = useExecutionPersistence(setViewPersistent);
 
-  const isManuscriptEditorActive = currentView === 'redclaw' && Boolean(activeManuscriptEditorFile);
+  const isManuscriptEditorActive = currentView === 'gardenflow' && Boolean(activeManuscriptEditorFile);
   const effectiveImmersiveMode: ImmersiveMode = isManuscriptEditorActive ? false : immersiveMode;
 
   useEffect(() => {
@@ -173,7 +173,7 @@ function AuthenticatedApp() {
         immersiveMode={effectiveImmersiveMode}
         hideGlobalSidebar={currentView === 'settings'}
         globalNotice={globalAuthNotice}
-        globalSidebarContent={redClawGlobalSidebarContent}
+        globalSidebarContent={gardenFlowGlobalSidebarContent}
         activeModalView={subjectsModalOpen ? 'subjects' : undefined}
         renderTitleBarContent={({ currentView }) => {
           if (isManuscriptEditorActive) {
@@ -190,7 +190,7 @@ function AuthenticatedApp() {
         }}
         renderTitleBarActions={({ currentView }) => (
           <>
-            {currentView === 'redclaw' && !isManuscriptEditorActive ? redClawTitleBarActions : null}
+            {currentView === 'gardenflow' && !isManuscriptEditorActive ? gardenFlowTitleBarActions : null}
             <button
               type="button"
               onClick={() => openFeedbackReport({ sourcePage: currentView })}
@@ -208,7 +208,7 @@ function AuthenticatedApp() {
             <Suspense fallback={<ViewLoadingFallback />}>
               <ManuscriptEditorHost
                 filePath={activeManuscriptEditorFile}
-                onNavigateToRedClaw={navigateToRedClaw}
+                onNavigateToGardenFlow={navigateToGardenFlow}
                 onNavigateToGenerationStudio={navigateToGenerationStudio}
                 isActive={true}
                 onClose={closeManuscriptEditor}
@@ -228,7 +228,7 @@ function AuthenticatedApp() {
           <div className={currentView === 'knowledge' ? 'h-full min-h-0 flex flex-col' : 'hidden'}>
             <Suspense fallback={currentView === 'knowledge' ? <ViewLoadingFallback /> : null}>
               <KnowledgePage
-                onNavigateToRedClaw={navigateToRedClaw}
+                onNavigateToGardenFlow={navigateToGardenFlow}
                 isActive={currentView === 'knowledge'}
                 onTitleBarContentChange={setKnowledgeTitleBarContent}
               />
@@ -240,8 +240,8 @@ function AuthenticatedApp() {
             <Suspense fallback={currentView === 'settings' ? <ViewLoadingFallback /> : null}>
               <SettingsPage
                 isActive={currentView === 'settings'}
-                onOpenRedClawOnboarding={openRedClawOnboarding}
-                redclawOnboardingVersion={redclawOnboardingVersion}
+                onOpenGardenFlowOnboarding={openGardenFlowOnboarding}
+                gardenflowOnboardingVersion={gardenflowOnboardingVersion}
                 navigationTarget={settingsNavigationTarget}
                 onReturn={returnFromSettings}
               />
@@ -259,7 +259,7 @@ function AuthenticatedApp() {
           <div className={currentView === 'wander' ? 'h-full min-h-0 flex flex-col' : 'hidden'}>
             <Suspense fallback={currentView === 'wander' ? <ViewLoadingFallback /> : null}>
               <WanderPage
-                onNavigateToRedClaw={navigateToRedClaw}
+                onNavigateToGardenFlow={navigateToGardenFlow}
                 onExecutionStateChange={handleWanderExecutionStateChange}
                 onTitleBarContentChange={setWanderTitleBarContent}
                 isActive={currentView === 'wander'}
@@ -267,24 +267,24 @@ function AuthenticatedApp() {
             </Suspense>
           </div>
         )}
-        {(currentView !== 'redclaw' || shouldRenderView(mountedViews, currentView, persistentViews, 'redclaw')) && (
-          <div className={currentView === 'redclaw' && !isManuscriptEditorActive ? 'h-full min-h-0 flex flex-col' : 'hidden'}>
-            <Suspense fallback={currentView === 'redclaw' ? <ViewLoadingFallback /> : null}>
-              <RedClawPage
-                pendingMessage={pendingRedClawMessage}
-                onPendingMessageConsumed={clearPendingRedClawMessage}
-                navigationAction={redClawNavigationAction}
-                onNavigationActionConsumed={clearRedClawNavigationAction}
-                isActive={currentView === 'redclaw' || persistentViews.has('redclaw')}
-                onExecutionStateChange={handleRedClawExecutionStateChange}
-                onOpenRedClawOnboarding={openRedClawOnboarding}
-                redclawOnboardingVersion={redclawOnboardingVersion}
-                onGlobalSidebarContentChange={setRedClawGlobalSidebarContent}
-                onTitleBarActionsChange={setRedClawTitleBarActions}
-                onOpenChatSurface={openRedClawChatSurface}
+        {(currentView !== 'gardenflow' || shouldRenderView(mountedViews, currentView, persistentViews, 'gardenflow')) && (
+          <div className={currentView === 'gardenflow' && !isManuscriptEditorActive ? 'h-full min-h-0 flex flex-col' : 'hidden'}>
+            <Suspense fallback={currentView === 'gardenflow' ? <ViewLoadingFallback /> : null}>
+              <GardenFlowPage
+                pendingMessage={pendingGardenFlowMessage}
+                onPendingMessageConsumed={clearPendingGardenFlowMessage}
+                navigationAction={gardenFlowNavigationAction}
+                onNavigationActionConsumed={clearGardenFlowNavigationAction}
+                isActive={currentView === 'gardenflow' || persistentViews.has('gardenflow')}
+                onExecutionStateChange={handleGardenFlowExecutionStateChange}
+                onOpenGardenFlowOnboarding={openGardenFlowOnboarding}
+                gardenflowOnboardingVersion={gardenflowOnboardingVersion}
+                onGlobalSidebarContentChange={setGardenFlowGlobalSidebarContent}
+                onTitleBarActionsChange={setGardenFlowTitleBarActions}
+                onOpenChatSurface={openGardenFlowChatSurface}
                 onOpenManuscriptEditor={navigateToManuscript}
                 activeManuscriptPath={activeManuscriptEditorFile}
-                titleBarActive={currentView === 'redclaw' && !isManuscriptEditorActive}
+                titleBarActive={currentView === 'gardenflow' && !isManuscriptEditorActive}
               />
             </Suspense>
           </div>
@@ -338,7 +338,7 @@ function AuthenticatedApp() {
             <Suspense fallback={currentView === 'automation' ? <ViewLoadingFallback /> : null}>
               <AutomationPage
                 isActive={currentView === 'automation'}
-                onOpenRedClawSession={openRedClawSession}
+                onOpenGardenFlowSession={openGardenFlowSession}
               />
             </Suspense>
           </div>

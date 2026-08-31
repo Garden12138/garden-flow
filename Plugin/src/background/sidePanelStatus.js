@@ -1,6 +1,7 @@
-export const SIDE_PANEL_OPEN_WINDOW_IDS_KEY = 'redboxBrowserControlSidePanelOpenWindowIds';
+import compatibility from '../../brandCompatibility.cjs';
+export const SIDE_PANEL_OPEN_WINDOW_IDS_KEY = 'gardenflowBrowserControlSidePanelOpenWindowIds';
 export const TARGET_SIDE_PANEL_OPEN_WINDOW_IDS_KEY = 'codexSidePanelOpenWindowIds';
-export const TOGGLE_SIDE_PANEL_COMMANDS = new Set(['open-redbox-side-panel', 'open-codex-side-panel']);
+export const TOGGLE_SIDE_PANEL_COMMANDS = new Set(['open-gardenflow-side-panel', 'open-codex-side-panel']);
 
 const openWindowIds = new Set();
 let sidePanelEventPublisher = null;
@@ -17,7 +18,7 @@ export function registerSidePanelStatus() {
     if (Number.isInteger(details?.windowId)) void setSidePanelOpen(details.windowId, false).catch(() => {});
   });
   chrome.commands?.onCommand?.addListener((command, tab) => {
-    if (TOGGLE_SIDE_PANEL_COMMANDS.has(command)) {
+    if (TOGGLE_SIDE_PANEL_COMMANDS.has(compatibility.canonicalKey(command))) {
       void toggleSidePanel(tab?.windowId).catch(() => {});
     }
   });
@@ -53,7 +54,7 @@ export async function requireSidePanelOpen(windowId = null, options = {}) {
   await restoreSidePanelStatus();
   const status = getSidePanelStatus(windowId);
   if (!status.sidePanelOpen) {
-    const error = new Error(options.closedError || 'Bojin side panel is not open.');
+    const error = new Error(options.closedError || 'GardenFlow side panel is not open.');
     error.code = 'side_panel_not_open';
     error.status = status;
     throw error;

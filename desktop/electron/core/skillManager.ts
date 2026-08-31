@@ -40,7 +40,7 @@ export class SkillManager {
 
     constructor() {
         const homeDir = os.homedir();
-        this.settingsPath = path.join(homeDir, '.redconvert', 'skill-settings.json');
+        this.settingsPath = path.join(homeDir, '.gardenflow', 'skill-settings.json');
     }
 
     async discoverSkills(projectRoot?: string): Promise<void> {

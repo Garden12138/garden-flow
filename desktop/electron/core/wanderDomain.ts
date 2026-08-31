@@ -337,13 +337,13 @@ export function buildWanderAgentPrompt(input: {
             ];
     const modeInstructions = input.sourceMode === 'comment_insight'
         ? [
-            '你现在处于 Bojin「评论区洞察」Agent 模式。',
+            '你现在处于 GardenFlow「评论区洞察」Agent 模式。',
             '只分析评论语料中的真实问题、痛点、反对意见、误解、需求信号和未被满足的内容机会。',
             '最终选题必须能独立创作，不要把“评论区”“有人评论”写进标题或内容方向。',
             '不要执行灵感漫步，也不要把多篇普通素材强行关联。',
         ]
         : [
-            '你现在处于 Bojin「灵感漫步」Agent 模式。',
+            '你现在处于 GardenFlow「灵感漫步」Agent 模式。',
             '分析三条知识素材的核心主题，发现至少两条素材之间有价值的新连接，并收敛成可执行选题。',
             '不要把任务改写成评论区分析。',
         ];

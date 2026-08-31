@@ -233,7 +233,7 @@ async function readFileChooserTrapPayload(tabId, startedAt, timeoutMs) {
     target: { tabId },
     world: 'MAIN',
     func: (waitStartedAt) => {
-      const payload = window.__xwowFileChooserTrapMain && window.__xwowFileChooserTrapMain.lastPayload;
+      const payload = window.__gardenflowFileChooserTrapMain && window.__gardenflowFileChooserTrapMain.lastPayload;
       if (!payload || Number(payload.emittedAt || 0) < Number(waitStartedAt || 0)) return null;
       return payload;
     },
@@ -249,14 +249,14 @@ async function installFileChooserTrap(tabId, timeoutMs) {
     target: { tabId },
     world: 'ISOLATED',
     func: (nextExpiresAt) => {
-      const state = window.__xwowFileChooserTrap || { installed: false, expiresAt: 0 };
+      const state = window.__gardenflowFileChooserTrap || { installed: false, expiresAt: 0 };
       state.expiresAt = Math.max(Number(state.expiresAt || 0), Number(nextExpiresAt || 0));
-      window.__xwowFileChooserTrap = state;
+      window.__gardenflowFileChooserTrap = state;
       if (state.installed) return;
       state.installed = true;
       const forwardFileChooser = (payload) => {
         void chrome.runtime.sendMessage({
-          type: 'xwow-data-ai:file-chooser-opened',
+          type: 'gardenflow-data-ai:file-chooser-opened',
           selector: payload.selector || '',
           is_multiple: payload.is_multiple === true,
           mode: payload.mode || (payload.is_multiple === true ? 'selectMultiple' : 'selectSingle'),
@@ -275,7 +275,7 @@ async function installFileChooserTrap(tabId, timeoutMs) {
         return `input[type="file"]:nth-of-type(${index + 1})`;
       };
       document.addEventListener('click', (event) => {
-        if (Date.now() > Number(window.__xwowFileChooserTrap?.expiresAt || 0)) return;
+        if (Date.now() > Number(window.__gardenflowFileChooserTrap?.expiresAt || 0)) return;
         const target = event.target;
         const input = target?.matches?.('input[type="file"]') ? target : target?.closest?.('input[type="file"]');
         if (!input) return;
@@ -291,34 +291,34 @@ async function installFileChooserTrap(tabId, timeoutMs) {
       window.addEventListener('message', (event) => {
         if (event.source !== window) return;
         const data = event.data || {};
-        if (data.source !== 'xwow-data-ai:file-chooser-trap') return;
-        if (Date.now() > Number(window.__xwowFileChooserTrap?.expiresAt || 0)) return;
+        if (data.source !== 'gardenflow-data-ai:file-chooser-trap') return;
+        if (Date.now() > Number(window.__gardenflowFileChooserTrap?.expiresAt || 0)) return;
         forwardFileChooser(data);
       });
-      window.addEventListener('xwow-data-ai:file-chooser-trap', (event) => {
-        if (Date.now() > Number(window.__xwowFileChooserTrap?.expiresAt || 0)) return;
+      window.addEventListener('gardenflow-data-ai:file-chooser-trap', (event) => {
+        if (Date.now() > Number(window.__gardenflowFileChooserTrap?.expiresAt || 0)) return;
         try {
           const data = JSON.parse(String(event.detail || '{}'));
-          if (data.source !== 'xwow-data-ai:file-chooser-trap') return;
+          if (data.source !== 'gardenflow-data-ai:file-chooser-trap') return;
           forwardFileChooser(data);
         } catch {
           // Ignore malformed page bridge events.
         }
       });
       const readAttributePayload = () => {
-        const raw = document.documentElement.getAttribute('data-xwow-file-chooser-payload') || '';
+        const raw = document.documentElement.getAttribute('data-gardenflow-file-chooser-payload') || '';
         if (!raw) return;
         try {
           const data = JSON.parse(raw);
-          if (data.source !== 'xwow-data-ai:file-chooser-trap') return;
-          if (Date.now() > Number(window.__xwowFileChooserTrap?.expiresAt || 0)) return;
+          if (data.source !== 'gardenflow-data-ai:file-chooser-trap') return;
+          if (Date.now() > Number(window.__gardenflowFileChooserTrap?.expiresAt || 0)) return;
           forwardFileChooser(data);
         } catch {
           // Ignore malformed page bridge attributes.
         }
       };
       const observer = new MutationObserver(readAttributePayload);
-      observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-xwow-file-chooser-payload'] });
+      observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-gardenflow-file-chooser-payload'] });
       readAttributePayload();
     },
     args: [expiresAt],
@@ -327,9 +327,9 @@ async function installFileChooserTrap(tabId, timeoutMs) {
     target: { tabId },
     world: 'MAIN',
     func: (nextExpiresAt) => {
-      const state = window.__xwowFileChooserTrapMain || { installed: false, expiresAt: 0 };
+      const state = window.__gardenflowFileChooserTrapMain || { installed: false, expiresAt: 0 };
       state.expiresAt = Math.max(Number(state.expiresAt || 0), Number(nextExpiresAt || 0));
-      window.__xwowFileChooserTrapMain = state;
+      window.__gardenflowFileChooserTrapMain = state;
       if (state.installed) return;
       state.installed = true;
       const originalClick = window.HTMLInputElement?.prototype?.click;
@@ -349,27 +349,27 @@ async function installFileChooserTrap(tabId, timeoutMs) {
       };
       const postFileChooser = (input) => {
         const payload = {
-          source: 'xwow-data-ai:file-chooser-trap',
+          source: 'gardenflow-data-ai:file-chooser-trap',
           selector: selectorForFileInput(input),
           is_multiple: input.multiple === true,
           mode: input.multiple === true ? 'selectMultiple' : 'selectSingle',
           accept: input.getAttribute('accept') || '',
           emittedAt: Date.now(),
         };
-        window.__xwowFileChooserTrapMain.lastPayload = payload;
-        document.documentElement.setAttribute('data-xwow-file-chooser-payload', JSON.stringify(payload));
-        window.dispatchEvent(new CustomEvent('xwow-data-ai:file-chooser-trap', { detail: JSON.stringify(payload) }));
+        window.__gardenflowFileChooserTrapMain.lastPayload = payload;
+        document.documentElement.setAttribute('data-gardenflow-file-chooser-payload', JSON.stringify(payload));
+        window.dispatchEvent(new CustomEvent('gardenflow-data-ai:file-chooser-trap', { detail: JSON.stringify(payload) }));
         window.postMessage(payload, '*');
       };
       window.HTMLInputElement.prototype.click = function (...args) {
-        if (this?.type === 'file' && Date.now() <= Number(window.__xwowFileChooserTrapMain?.expiresAt || 0)) {
+        if (this?.type === 'file' && Date.now() <= Number(window.__gardenflowFileChooserTrapMain?.expiresAt || 0)) {
           postFileChooser(this);
           return undefined;
         }
         return originalClick.apply(this, args);
       };
       document.addEventListener('click', (event) => {
-        if (Date.now() > Number(window.__xwowFileChooserTrapMain?.expiresAt || 0)) return;
+        if (Date.now() > Number(window.__gardenflowFileChooserTrapMain?.expiresAt || 0)) return;
         const target = event.target;
         const input = target?.matches?.('input[type="file"]') ? target : target?.closest?.('input[type="file"]');
         if (!input) return;

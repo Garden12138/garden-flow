@@ -8,7 +8,7 @@
 
 ## Module Layout
 
-- [core.ts](core.ts): Electron IPC 内核，负责通过 preload `__RED_ELECTRON_IPC__` 调用 channel、监听事件、处理 timeout、normalize 和 fallback。
+- [core.ts](core.ts): Electron IPC 内核，负责通过 preload `__GARDENFLOW_ELECTRON_IPC__` 调用 channel、监听事件、处理 timeout、normalize 和 fallback。
 - [fallbacks.ts](fallbacks.ts): 稳定 fallback response registry，优先放官方账号不可用、通知远端不可用和列表空态。
 - [types.ts](types.ts): bridge core 与 listener/fallback 公共类型，保持和正式版 domain bridge 可复用。
 - [domains/accountsBridge.ts](domains/accountsBridge.ts): 账号 facade，对齐正式版 `accounts.list/get` 方法名；Electron 开源版当前返回空账号列表或明确 unavailable，不接正式版账号后端。
@@ -32,7 +32,7 @@
 - [domains/mcpBridge.ts](domains/mcpBridge.ts): MCP facade，对齐正式版 `mcp` 方法名，复用 Electron 现有 MCP 配置、测试、导入和 session/tool/resource fallback。
 - [domains/notificationsBridge.ts](domains/notificationsBridge.ts): 通知 facade，对齐正式版方法名；Electron 开源版当前返回系统通知不可用和远端通知空集合，不接远端通知服务。
 - [domains/pluginsBridge.ts](domains/pluginsBridge.ts): 插件 facade，对齐正式版 `plugins` 方法名；Electron 版当前列表 / 市场类方法返回空态，安装 / 启停等未迁移能力返回明确 unavailable。
-- [domains/redclawBridge.ts](domains/redclawBridge.ts): RedClaw facade，对齐正式版 runner、profile、projects 和 orchestration 方法名；Electron 版 runner / profile 复用现有 IPC，未迁移的项目编排、导出和风格定义返回明确 fallback。
+- [domains/gardenflowBridge.ts](domains/gardenflowBridge.ts): GardenFlow facade，对齐正式版 runner、profile、projects 和 orchestration 方法名；Electron 版 runner / profile 复用现有 IPC，未迁移的项目编排、导出和风格定义返回明确 fallback。
 - [domains/runtimeBridge.ts](domains/runtimeBridge.ts): Runtime / task facade，对齐正式版 `runtime`、`taskPanel`、`backgroundTasks`、`backgroundWorkers`、`tasks` 和 `work` 方法名；session events、model config、session import/export、Team/review/task panel 都接入本地 SQLite / workspace store，未迁移的外部服务能力仍返回稳定 fallback。
 - [domains/settingsBridge.ts](domains/settingsBridge.ts): 设置基础 facade，对齐正式版 `getSettings/saveSettings/pickWorkspaceDir` 和 settings/data change 事件。
 - [domains/sessionsBridge.ts](domains/sessionsBridge.ts): Electron 会话 facade，收敛归档版 `sessions` 审计 API 和正式版已有 `sessionBridge` 外部会话 / 审批调用面。

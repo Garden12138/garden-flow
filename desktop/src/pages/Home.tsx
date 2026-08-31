@@ -10,7 +10,7 @@ interface HomeProps {
     onNavigateToCoverStudio?: () => void;
     onNavigateToGenerationStudio?: (mode: 'image' | 'video' | 'audio' | 'cover') => void;
     onOpenManuscript?: (filePath: string) => void;
-    onNavigateToRedClaw?: (message: {
+    onNavigateToGardenFlow?: (message: {
         content: string;
         displayContent?: string;
         sessionRouting?: 'current' | 'new';
@@ -325,7 +325,7 @@ function PluginHomeWidgetCard({
     );
 }
 
-export function Home({ isActive = true, onNavigateToCoverStudio, onNavigateToGenerationStudio, onOpenManuscript, onNavigateToRedClaw }: HomeProps) {
+export function Home({ isActive = true, onNavigateToCoverStudio, onNavigateToGenerationStudio, onOpenManuscript, onNavigateToGardenFlow }: HomeProps) {
     const [stats, setStats] = useState<HomeStats>(EMPTY_STATS);
     const [recentManuscripts, setRecentManuscripts] = useState<RecentManuscript[]>([]);
     const [pluginHomeWidgets, setPluginHomeWidgets] = useState<ThrivePluginHomeWidget[]>([]);
@@ -451,13 +451,13 @@ export function Home({ isActive = true, onNavigateToCoverStudio, onNavigateToGen
     ], [recentManuscripts]);
 
     const sendAiSuggestion = useCallback((prompt: string, label?: string) => {
-        onNavigateToRedClaw?.({
+        onNavigateToGardenFlow?.({
             content: prompt,
             displayContent: label || prompt,
             sessionRouting: 'current',
             deliveryMode: 'draft',
         });
-    }, [onNavigateToRedClaw]);
+    }, [onNavigateToGardenFlow]);
 
     const runPluginHomeCommand = useCallback((command: PluginHomeCommand) => {
         const prompt = typeof command.prompt === 'string' ? command.prompt.trim() : '';

@@ -13,7 +13,7 @@ interface TeamProps {
   onExecutionStateChange?: (active: boolean) => void;
 }
 
-const TEAM_SECTION_STORAGE_KEY = 'redbox:team-section:v1';
+const TEAM_SECTION_STORAGE_KEY = 'gardenflow:team-section:v1';
 
 function readInitialTeamSection(): TeamSection {
   if (typeof window === 'undefined') return 'team-workbench';

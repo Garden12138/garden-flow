@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import '../brandEnvironment.cjs';
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -17,12 +18,12 @@ const identity = JSON.parse(fs.readFileSync(path.join(pluginRoot, 'browser-contr
 const hostName = identity.hostName;
 const hostScript = path.join(pluginRoot, 'native-host', 'host.mjs');
 const hostTemplate = path.join(pluginRoot, 'native-host', `${hostName}.json`);
-const nativeHostStateDir = process.env.REDBOX_BROWSER_CONTROL_STATE_DIR || (
+const nativeHostStateDir = process.env.GARDENFLOW_BROWSER_CONTROL_STATE_DIR || (
   process.platform === 'darwin'
-    ? path.join(os.homedir(), 'Library/Application Support/RedBox/native-host')
+    ? path.join(os.homedir(), 'Library/Application Support/GardenFlow/native-host')
     : process.platform === 'win32'
-      ? path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData/Roaming'), 'RedBox/native-host')
-      : path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local/share'), 'RedBox/native-host')
+      ? path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData/Roaming'), 'GardenFlow/native-host')
+      : path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local/share'), 'GardenFlow/native-host')
 );
 const launcherPath = path.join(nativeHostStateDir, `${hostName}.launcher.sh`);
 const extensionSourceRoots = [
@@ -105,7 +106,7 @@ function linuxTarget(id, label, relative) {
 function parseArgs(argv) {
   const args = {
     browser: '',
-    extensionId: process.env.REDBOX_BROWSER_CONTROL_EXTENSION_ID || '',
+    extensionId: process.env.GARDENFLOW_BROWSER_CONTROL_EXTENSION_ID || '',
     json: false,
     noFail: false,
     requireConnected: false,
@@ -132,7 +133,7 @@ function printHelp() {
 
 Options:
   --browser <id>          Limit manifest checks to chrome, chrome-beta, chrome-canary, chromium, edge, or brave.
-  --extension-id <id>     Expected Chrome extension id. Also reads REDBOX_BROWSER_CONTROL_EXTENSION_ID.
+  --extension-id <id>     Expected Chrome extension id. Also reads GARDENFLOW_BROWSER_CONTROL_EXTENSION_ID.
   --timeout-ms <ms>       Desktop Bridge probe timeout. Defaults to 3000.
   --require-connected     Fail unless Desktop Bridge and extension forwarding work.
   --no-fail, --soft       Always exit 0 and print issues in the report.
@@ -217,7 +218,7 @@ function discoverInstalledExtensions(targets) {
           const name = typeof manifest.name === 'string' ? manifest.name : '';
           const description = typeof manifest.description === 'string' ? manifest.description : '';
           const sourceMatches = sourcePath && extensionSourceRoots.includes(path.resolve(sourcePath));
-          const nameMatches = /Bojin|Beav|RedBox|RedConvert/i.test(`${name}\n${description}`);
+          const nameMatches = /GardenFlow|GardenFlow|GardenFlow|GardenFlow/i.test(`${name}\n${description}`);
           if (!sourceMatches && !nameMatches) continue;
           matches.push({
             browser: target.id,
@@ -388,7 +389,7 @@ function buildSummary(report, args) {
 }
 
 function printHuman(report) {
-  console.log(`Bojin browser-control diagnosis (${report.checkedAt})`);
+  console.log(`GardenFlow browser-control diagnosis (${report.checkedAt})`);
   console.log(`Host script: ${report.source.hostScript.path} ${report.source.hostScript.exists ? 'exists' : 'missing'} ${report.source.hostScript.executable ? 'executable' : 'not-executable'}`);
   console.log(`Launcher: ${report.source.launcher.path} ${report.source.launcher.exists ? 'exists' : 'missing'} ${report.source.launcher.executable ? 'executable' : 'not-executable'}`);
   console.log(`Manifest template: ${report.source.template.path} ${report.source.template.exists ? 'exists' : 'missing'}`);

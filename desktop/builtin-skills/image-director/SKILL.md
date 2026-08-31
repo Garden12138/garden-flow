@@ -1,7 +1,7 @@
 ---
 name: image-director
 description: Use when the user wants to做一整套图片、组图、卡片图、轮播图、配图包或电商套图. First identify the user's motive and final goal, then choose the right image-set type and ordering strategy, lock the batch-level subject anchor, keep the style guide concise, define text placement and image details for each card, and always show the full batch plan to the user first. Only after the user explicitly agrees may you call Operate(resource="image", operation="generate", input={ ... }) for batch generation. Never submit multi-image generation without user approval.
-allowedRuntimeModes: [chatroom, redclaw, image-generation]
+allowedRuntimeModes: [chatroom, gardenflow, image-generation]
 allowedTools: [workflow]
 activationScope: turn
 autoActivate: false
@@ -367,7 +367,7 @@ This rule is strict:
 - The plan always comes first.
 - User approval always comes second.
 - The `image.generate` call always comes last.
-- Do not skip the approval step just because the runtime is `redclaw`.
+- Do not skip the approval step just because the runtime is `gardenflow`.
 - Do not auto-submit a batch just because the plan looks complete.
 
 ## Tool Call Contract
@@ -418,7 +418,7 @@ When reference images exist, still pass them through `referenceImages` or `subje
 ## Hard Rules
 
 - Do not call multi-image generation before confirmation in normal runtimes.
-- Do not call multi-image generation before confirmation in `redclaw` runtime either.
+- Do not call multi-image generation before confirmation in `gardenflow` runtime either.
 - Do not call `image.generate` until the user has explicitly approved the batch plan.
 - Do not infer approval from context, urgency, runtime mode, or previous similar tasks.
 - Do not auto-submit a multi-image batch after planning, even if the plan is strong and complete.

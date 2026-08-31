@@ -100,7 +100,7 @@
     },
   });
 
-  window.XWOW_SITE_ADAPTERS = {
+  window.GARDENFLOW_SITE_ADAPTERS = {
     all: registry,
     match() {
       const url = new URL(location.href);

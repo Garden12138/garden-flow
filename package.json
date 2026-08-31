@@ -13,10 +13,13 @@
   "scripts": {
     "setup": "pnpm install --frozen-lockfile && pnpm --dir Plugin install --frozen-lockfile && pnpm --dir desktop install --frozen-lockfile",
     "dev": "pnpm --dir desktop dev",
-    "check": "pnpm --dir desktop check:parity && pnpm --dir Plugin check",
+    "check": "pnpm check:brand && pnpm --dir desktop check:parity && pnpm --dir Plugin check",
     "test": "pnpm --dir desktop test",
     "build": "pnpm --dir desktop build:nosign",
-    "build:plugin": "pnpm --dir Plugin build"
+    "build:plugin": "pnpm --dir Plugin build",
+    "migrate:data": "node desktop/scripts/gardenflow-data-migration.cjs",
+    "sync:brand": "node scripts/sync-brand.cjs",
+    "check:brand": "node scripts/check-brand.cjs"
   },
   "dependencies": {
     "@types/diff": "^7.0.2",

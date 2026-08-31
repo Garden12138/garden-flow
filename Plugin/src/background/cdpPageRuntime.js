@@ -1,7 +1,7 @@
 import { attachCdpTab, getDefaultCdpTimeoutMs, sendCdpCommandWithTimeout } from './cdpTransport.js';
 import { getStoredMap, setStoredMap } from './storage.js';
 
-export const VIEWPORT_RESTORE_KEY = 'xwowBrowserDataAiViewportRestore';
+export const VIEWPORT_RESTORE_KEY = 'gardenflowBrowserDataAiViewportRestore';
 export const SCREENSHOT_MAX_BYTES = 6 * 1024 * 1024;
 
 const CDP_COMMAND_TIMEOUT_MS = getDefaultCdpTimeoutMs();

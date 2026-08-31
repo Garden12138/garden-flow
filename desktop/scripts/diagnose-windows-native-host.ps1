@@ -102,12 +102,12 @@ function Test-NativeHostHandshake {
     }
 }
 
-$StateRoot = Join-Path $env:APPDATA 'RedBox\native-host'
-$ManifestPath = Join-Path $StateRoot 'manifests\chrome.com.redbox.browser_control.json'
+$StateRoot = Join-Path $env:APPDATA 'GardenFlow\native-host'
+$ManifestPath = Join-Path $StateRoot 'manifests\chrome.com.gardenflow.browser_control.json'
 $RegistryEntries = @(
-    [PSCustomObject]@{ Browser = 'Chrome'; Path = 'Registry::HKEY_CURRENT_USER\Software\Google\Chrome\NativeMessagingHosts\com.redbox.browser_control' },
-    [PSCustomObject]@{ Browser = 'Edge'; Path = 'Registry::HKEY_CURRENT_USER\Software\Microsoft\Edge\NativeMessagingHosts\com.redbox.browser_control' },
-    [PSCustomObject]@{ Browser = 'Brave'; Path = 'Registry::HKEY_CURRENT_USER\Software\BraveSoftware\Brave-Browser\NativeMessagingHosts\com.redbox.browser_control' }
+    [PSCustomObject]@{ Browser = 'Chrome'; Path = 'Registry::HKEY_CURRENT_USER\Software\Google\Chrome\NativeMessagingHosts\com.gardenflow.browser_control' },
+    [PSCustomObject]@{ Browser = 'Edge'; Path = 'Registry::HKEY_CURRENT_USER\Software\Microsoft\Edge\NativeMessagingHosts\com.gardenflow.browser_control' },
+    [PSCustomObject]@{ Browser = 'Brave'; Path = 'Registry::HKEY_CURRENT_USER\Software\BraveSoftware\Brave-Browser\NativeMessagingHosts\com.gardenflow.browser_control' }
 )
 
 Write-DiagnosticSection 'Environment'
@@ -156,7 +156,7 @@ if ([string]::IsNullOrWhiteSpace($HostExecutable)) {
     }
 }
 
-Write-DiagnosticSection 'Bojin Native Host logs'
+Write-DiagnosticSection 'GardenFlow Native Host logs'
 Show-LogTail -Label 'Structured log' -Path (Join-Path $StateRoot 'native-host.log')
 Show-LogTail -Label 'Previous structured log' -Path (Join-Path $StateRoot 'native-host.previous.log')
 Show-LogTail -Label 'Legacy startup-error log' -Path (Join-Path $StateRoot 'native-host-errors.log')

@@ -1,10 +1,10 @@
-export type ModelScope = 'default' | 'wander' | 'chatroom' | 'knowledge' | 'redclaw';
+export type ModelScope = 'default' | 'wander' | 'chatroom' | 'knowledge' | 'gardenflow';
 
 const MODEL_SCOPE_KEY_MAP: Record<Exclude<ModelScope, 'default'>, string> = {
   wander: 'model_name_wander',
   chatroom: 'model_name_chatroom',
   knowledge: 'model_name_knowledge',
-  redclaw: 'model_name_redclaw',
+  gardenflow: 'model_name_gardenflow',
 };
 
 const readSetting = (settings: Record<string, unknown>, key: string): string => {
@@ -27,7 +27,7 @@ export const resolveScopedModelName = (
 
 export const resolveModelScopeFromContextType = (contextType: string): ModelScope => {
   const normalized = String(contextType || '').trim().toLowerCase();
-  if (normalized === 'redclaw') return 'redclaw';
+  if (normalized === 'gardenflow') return 'gardenflow';
   if (normalized === 'note' || normalized === 'knowledge') return 'knowledge';
   return 'default';
 };

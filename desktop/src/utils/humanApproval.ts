@@ -18,7 +18,7 @@ export type HumanApprovalTaskStatus =
   | 'blocked';
 export type HumanApprovalActionKind =
   | 'collab_task_completion'
-  | 'redclaw_task_draft'
+  | 'gardenflow_task_draft'
   | 'manuscript_publish'
   | 'media_generation_result'
   | 'plugin_import_batch';

@@ -1,7 +1,7 @@
 ---
 name: social-cover-director
 description: 'Use when the user wants to plan or generate a social media cover image for a Xiaohongshu note, Douyin/TikTok photo post, Reels/Shorts cover, WeChat/Video Account post, Bilibili/Weibo post, Pinterest pin, Instagram cover, Facebook/Meta social post, or similar creator/social content. Handles platform-native cover routing, aspect ratio, scroll-stopping hook, exact on-image copy, reference-image roles, and image.generate prompt construction for one cover or a small variant set.'
-allowedRuntimeModes: [chatroom, redclaw, image-generation]
+allowedRuntimeModes: [chatroom, gardenflow, image-generation]
 allowedTools: [workflow]
 activationScope: turn
 autoActivate: false
@@ -14,7 +14,7 @@ hookMode: inline
 
 Use this skill to make one social-media cover image, or a small set of cover variants, for creator content.
 
-It adapts the social-promo planning flow to Bojin:
+It adapts the social-promo planning flow to GardenFlow:
 
 ```text
 content/topic + platform/surface
@@ -53,7 +53,7 @@ These references are bundled with this skill and may be used directly:
 
 - `references/cover-routing.md`: platform, surface, aspect ratio, and variant count.
 - `references/attention-design-router.md`: attention mechanics and style packs.
-- `references/image-generate-prompt-contract.md`: Bojin `image.generate` prompt contract.
+- `references/image-generate-prompt-contract.md`: GardenFlow `image.generate` prompt contract.
 
 ## Workflow
 
@@ -86,7 +86,7 @@ These references are bundled with this skill and may be used directly:
    - optional subtitle
    - optional badge/label
    - optional short proof/CTA
-8. In normal chat/redclaw flow, show the Phase 1 plan and wait for confirmation before generation.
+8. In normal chat/gardenflow flow, show the Phase 1 plan and wait for confirmation before generation.
 9. After confirmation, call `Operate(resource="image", operation="generate", input={ ... })`.
 10. After generation, run QA and flag rerun candidates.
 

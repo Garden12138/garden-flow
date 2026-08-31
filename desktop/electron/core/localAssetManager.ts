@@ -1,8 +1,9 @@
 import path from 'node:path';
 import fsSync from 'node:fs';
+import { resolveMigratedPath } from './legacyPathResolver.ts';
 import {
     extractLocalAssetPathCandidate,
-    toRedboxAssetUrl,
+    toGardenFlowAssetUrl,
 } from '../../shared/localAsset.ts';
 
 export function normalizePathForComparison(targetPath: string): string {
@@ -56,10 +57,10 @@ export function resolveAssetSourceToPath(source: string): string {
         normalized = normalized.replace(/^\\\\([a-zA-Z]:)([\\/])/, '$1$2');
         normalized = normalized.replace(/^\\\\\?\\/, '');
     }
-    return normalized;
+    return resolveMigratedPath(normalized);
 }
 
 export function toAppAssetUrl(absolutePath: string): string {
     const normalized = path.resolve(path.normalize(String(absolutePath || '')));
-    return toRedboxAssetUrl(normalized);
+    return toGardenFlowAssetUrl(normalized);
 }

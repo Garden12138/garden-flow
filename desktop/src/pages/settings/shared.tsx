@@ -28,7 +28,7 @@ import {
   type ModelInputCapability,
 } from '../../../shared/modelCapabilities';
 
-const REDBOX_OFFICIAL_LOGO_URL = APP_BRAND.logoSrc;
+const GARDENFLOW_OFFICIAL_LOGO_URL = APP_BRAND.logoSrc;
 
 export interface UserMemory {
   id: string;
@@ -193,7 +193,7 @@ export interface BackgroundTaskTurn {
 
 export interface BackgroundTaskItem {
   id: string;
-  kind: 'redclaw-project' | 'scheduled-task' | 'long-cycle' | 'heartbeat' | 'memory-maintenance' | 'headless-runtime';
+  kind: 'gardenflow-project' | 'scheduled-task' | 'long-cycle' | 'heartbeat' | 'memory-maintenance' | 'headless-runtime';
   title: string;
   status: 'running' | 'completed' | 'failed' | 'cancelled';
   phase: 'queued' | 'starting' | 'thinking' | 'tooling' | 'responding' | 'updating' | 'completed' | 'failed' | 'cancelled';
@@ -265,7 +265,7 @@ export interface RuntimeToolResultItem {
 }
 
 export type RuntimePerfBenchmarkMode =
-  | 'redclaw'
+  | 'gardenflow'
   | 'knowledge'
   | 'team'
   | 'advisor-discussion'
@@ -458,8 +458,8 @@ export const inferImageTemplateByProvider = (provider: string, currentTemplate =
 };
 
 export const AI_PRESET_LOGO_BY_ID: Record<string, string> = {
-  'redbox-official': REDBOX_OFFICIAL_LOGO_URL,
-  [OFFICIAL_AUTO_SOURCE_ID]: REDBOX_OFFICIAL_LOGO_URL,
+  'gardenflow-official': GARDENFLOW_OFFICIAL_LOGO_URL,
+  [OFFICIAL_AUTO_SOURCE_ID]: GARDENFLOW_OFFICIAL_LOGO_URL,
   openai: 'provider-logos/openai.svg',
   anthropic: 'provider-logos/anthropic.svg',
   gemini: 'provider-logos/gemini.svg',
@@ -556,10 +556,10 @@ export const AiSourceLogo = ({
   const normalizedName = String(source.name || '').trim().toLowerCase();
   const resolvedPresetId = (
     isOfficialAutoSourceId(normalizedId)
-      || normalizedName === 'redbox official'
+      || normalizedName === 'gardenflow official'
       || normalizedName === `${APP_BRAND.displayName} official`.toLowerCase()
       || normalizedName === OFFICIAL_AI_SOURCE_DISPLAY_NAME.toLowerCase()
-      ? 'redbox-official'
+      ? 'gardenflow-official'
       : source.presetId
   );
   return <AiPresetLogo presetId={resolvedPresetId} label={source.name || 'AI'} />;
@@ -977,7 +977,7 @@ export interface McpServerConfig {
   oauth?: {
     enabled?: boolean;
     tokenPath?: string;
-    redbox?: {
+    gardenflow?: {
       required?: boolean;
       approvalMode?: 'never' | 'destructive' | 'always';
       startupTimeoutMs?: number;
@@ -1029,7 +1029,7 @@ export interface LocalAiGuide {
   tip: string;
 }
 
-export interface RedboxAuthUiSession {
+export interface GardenFlowAuthUiSession {
   accessToken: string;
   refreshToken: string;
   tokenType: string;
@@ -1040,7 +1040,7 @@ export interface RedboxAuthUiSession {
   updatedAt: number;
 }
 
-export interface RedboxProductItem {
+export interface GardenFlowProductItem {
   id: string;
   name: string;
   amount?: number;
@@ -1048,7 +1048,7 @@ export interface RedboxProductItem {
   [key: string]: unknown;
 }
 
-export interface RedboxCallRecordItem {
+export interface GardenFlowCallRecordItem {
   id: string;
   model: string;
   endpoint: string;
@@ -1116,8 +1116,8 @@ export const parseAiSources = (raw: string | undefined): AiSourceConfig[] => {
         const name = String(item.name || findAiPresetById(presetId)?.label || '供应商');
         const isOfficialSource = (
           isOfficialAutoSourceId(rawId)
-          || presetId === 'redbox-official'
-          || name.trim().toLowerCase() === 'redbox official'
+          || presetId === 'gardenflow-official'
+          || name.trim().toLowerCase() === 'gardenflow official'
           || name.trim().toLowerCase() === `${APP_BRAND.displayName} official`.toLowerCase()
           || name.trim().toLowerCase() === OFFICIAL_AI_SOURCE_DISPLAY_NAME.toLowerCase()
         );
@@ -1143,7 +1143,7 @@ export const parseAiSources = (raw: string | undefined): AiSourceConfig[] => {
         return {
           id: isOfficialSource ? OFFICIAL_AUTO_SOURCE_ID : canonicalizeOfficialAutoSourceId(rawId || generateAiSourceId()),
           name: isOfficialSource ? OFFICIAL_AI_SOURCE_DISPLAY_NAME : name,
-          presetId: isOfficialSource ? 'redbox-official' : presetId,
+          presetId: isOfficialSource ? 'gardenflow-official' : presetId,
           baseURL: isOfficialSource ? OFFICIAL_AI_SOURCE_BASE_URL : baseURL,
           apiKey: String(item.apiKey || item.key || ''),
           models: officialModels,
@@ -1183,7 +1183,7 @@ export const createDefaultMcpServer = (): McpServerConfig => ({
   url: '',
   oauth: {
     enabled: false,
-    redbox: {
+    gardenflow: {
       required: false,
       approvalMode: 'destructive',
       startupTimeoutMs: 15000,
@@ -1227,29 +1227,29 @@ export const parseMcpServers = (raw: string | undefined): McpServerConfig[] => {
                 ? undefined
                 : Boolean((item.oauth as Record<string, unknown>).enabled),
               tokenPath: String((item.oauth as Record<string, unknown>).tokenPath || ''),
-              redbox: (() => {
+              gardenflow: (() => {
                 const oauth = item.oauth as Record<string, unknown>;
-                const redbox = (oauth.redbox && typeof oauth.redbox === 'object'
-                  ? oauth.redbox
+                const gardenflow = (oauth.gardenflow && typeof oauth.gardenflow === 'object'
+                  ? oauth.gardenflow
                   : oauth.policy && typeof oauth.policy === 'object'
                     ? oauth.policy
                     : oauth.mcp && typeof oauth.mcp === 'object'
                       ? oauth.mcp
                       : {}) as Record<string, unknown>;
-                const approvalMode = String(redbox.approvalMode || redbox.defaultToolsApprovalMode || 'destructive');
+                const approvalMode = String(gardenflow.approvalMode || gardenflow.defaultToolsApprovalMode || 'destructive');
                 return {
-                  required: Boolean(redbox.required),
+                  required: Boolean(gardenflow.required),
                   approvalMode: (approvalMode === 'never' || approvalMode === 'always' ? approvalMode : 'destructive') as 'never' | 'destructive' | 'always',
-                  startupTimeoutMs: Number(redbox.startupTimeoutMs || 15000),
-                  toolTimeoutMs: Number(redbox.toolTimeoutMs || 60000),
-                  supportsParallelToolCalls: redbox.supportsParallelToolCalls === undefined ? true : Boolean(redbox.supportsParallelToolCalls),
-                  elicitationPausesTimeout: redbox.elicitationPausesTimeout === undefined ? true : Boolean(redbox.elicitationPausesTimeout),
-                  enabledTools: Array.isArray(redbox.enabledTools) ? redbox.enabledTools.map((tool) => String(tool || '').trim()).filter(Boolean) : [],
-                  disabledTools: Array.isArray(redbox.disabledTools) ? redbox.disabledTools.map((tool) => String(tool || '').trim()).filter(Boolean) : [],
-                  envPassthrough: Array.isArray(redbox.envPassthrough) ? redbox.envPassthrough.map((key) => String(key || '').trim()).filter(Boolean) : [],
-                  perTool: redbox.perTool && typeof redbox.perTool === 'object' && !Array.isArray(redbox.perTool)
+                  startupTimeoutMs: Number(gardenflow.startupTimeoutMs || 15000),
+                  toolTimeoutMs: Number(gardenflow.toolTimeoutMs || 60000),
+                  supportsParallelToolCalls: gardenflow.supportsParallelToolCalls === undefined ? true : Boolean(gardenflow.supportsParallelToolCalls),
+                  elicitationPausesTimeout: gardenflow.elicitationPausesTimeout === undefined ? true : Boolean(gardenflow.elicitationPausesTimeout),
+                  enabledTools: Array.isArray(gardenflow.enabledTools) ? gardenflow.enabledTools.map((tool) => String(tool || '').trim()).filter(Boolean) : [],
+                  disabledTools: Array.isArray(gardenflow.disabledTools) ? gardenflow.disabledTools.map((tool) => String(tool || '').trim()).filter(Boolean) : [],
+                  envPassthrough: Array.isArray(gardenflow.envPassthrough) ? gardenflow.envPassthrough.map((key) => String(key || '').trim()).filter(Boolean) : [],
+                  perTool: gardenflow.perTool && typeof gardenflow.perTool === 'object' && !Array.isArray(gardenflow.perTool)
                     ? Object.fromEntries(
-                        Object.entries(redbox.perTool as Record<string, unknown>)
+                        Object.entries(gardenflow.perTool as Record<string, unknown>)
                           .filter(([key, value]) => Boolean(key.trim()) && Boolean(value && typeof value === 'object' && !Array.isArray(value)))
                           .map(([key, value]) => {
                             const policy = value as Record<string, unknown>;

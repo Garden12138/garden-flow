@@ -1,24 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Check, ChevronDown, Clock3, Loader2, MoreHorizontal, PauseCircle, Pencil, Play, PlayCircle, Plus, Trash2 } from 'lucide-react';
 import {
-  DEFAULT_REDCLAW_AUTOMATION_DRAFT,
-  REDCLAW_AUTOMATION_WEEKDAY_OPTIONS,
-  redClawAutomationDraftFromItem,
-  redClawAutomationIntentFromDraft,
-  redClawAutomationIsTask,
-  redClawAutomationScheduledPayload,
-  redClawAutomationWeekdayLabel,
-  sortRedClawAutomationItems,
-  type RedClawAutomationDraft,
-  type RedClawAutomationScheduleMode,
-  type RedClawTaskListItem,
-} from '../features/redclaw/automationTasks';
+  DEFAULT_GARDENFLOW_AUTOMATION_DRAFT,
+  GARDENFLOW_AUTOMATION_WEEKDAY_OPTIONS,
+  gardenFlowAutomationDraftFromItem,
+  gardenFlowAutomationIntentFromDraft,
+  gardenFlowAutomationIsTask,
+  gardenFlowAutomationScheduledPayload,
+  gardenFlowAutomationWeekdayLabel,
+  sortGardenFlowAutomationItems,
+  type GardenFlowAutomationDraft,
+  type GardenFlowAutomationScheduleMode,
+  type GardenFlowTaskListItem,
+} from '../features/gardenflow/automationTasks';
 import { appAlert, appConfirm } from '../utils/appDialogs';
 import { BuiltinAutomationSection } from '../components/BuiltinAutomationSection';
 
 interface AutomationProps {
   isActive?: boolean;
-  onOpenRedClawSession?: (sessionId: string) => void;
+  onOpenGardenFlowSession?: (sessionId: string) => void;
 }
 
 type SchedulePanel = 'mode' | 'weekday' | 'time' | null;
@@ -30,7 +30,7 @@ const TIME_OPTIONS = Array.from({ length: 24 * 4 }, (_, index) => {
   return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 });
 
-function scheduleModeLabel(mode: RedClawAutomationScheduleMode): string {
+function scheduleModeLabel(mode: GardenFlowAutomationScheduleMode): string {
   switch (mode) {
     case 'hourly':
       return '每小时';
@@ -45,16 +45,16 @@ function scheduleModeLabel(mode: RedClawAutomationScheduleMode): string {
 }
 
 function weekdayLabel(value: number): string {
-  return redClawAutomationWeekdayLabel(value);
+  return gardenFlowAutomationWeekdayLabel(value);
 }
 
-function scheduleButtonLabel(draft: RedClawAutomationDraft): string {
+function scheduleButtonLabel(draft: GardenFlowAutomationDraft): string {
   if (draft.scheduleMode === 'hourly') return '每小时';
   if (draft.scheduleMode === 'weekly') return `${weekdayLabel(draft.weekday)} ${draft.time}`;
   return `${scheduleModeLabel(draft.scheduleMode)} ${draft.time}`;
 }
 
-function formatSchedule(item: RedClawTaskListItem): string {
+function formatSchedule(item: GardenFlowTaskListItem): string {
   if (item.triggerKind === 'daily') {
     return `每天 ${String(item.time || '09:00').slice(0, 5)}`;
   }
@@ -94,7 +94,7 @@ function formatSidebarTime(value: unknown): string {
   return date.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
-function latestExecutionRecord(item: RedClawTaskListItem | null): Record<string, unknown> | null {
+function latestExecutionRecord(item: GardenFlowTaskListItem | null): Record<string, unknown> | null {
   if (!item) return null;
   const latest = recordFromUnknown(item).latestExecution;
   return Object.keys(recordFromUnknown(latest)).length > 0 ? recordFromUnknown(latest) : null;
@@ -106,9 +106,9 @@ const AUTOMATION_SOURCE_LABEL: Record<string, string> = {
   builtin: '内置',
 };
 
-function sourceLabel(item: RedClawTaskListItem): string {
+function sourceLabel(item: GardenFlowTaskListItem): string {
   if (item.requiresConfirmation) return '待确认';
-  return AUTOMATION_SOURCE_LABEL[String(item.source || 'manual')] || 'Bojin';
+  return AUTOMATION_SOURCE_LABEL[String(item.source || 'manual')] || 'GardenFlow';
 }
 
 function executionStatusLabel(status: unknown): string {
@@ -157,13 +157,13 @@ function confirmedTaskId(value: unknown, fallbackTaskId: string): string {
     || fallbackTaskId;
 }
 
-export function Automation({ isActive = true, onOpenRedClawSession }: AutomationProps) {
-  const [items, setItems] = useState<RedClawTaskListItem[]>([]);
+export function Automation({ isActive = true, onOpenGardenFlowSession }: AutomationProps) {
+  const [items, setItems] = useState<GardenFlowTaskListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [draft, setDraft] = useState<RedClawAutomationDraft>(DEFAULT_REDCLAW_AUTOMATION_DRAFT);
-  const [editingItem, setEditingItem] = useState<RedClawTaskListItem | null>(null);
+  const [draft, setDraft] = useState<GardenFlowAutomationDraft>(DEFAULT_GARDENFLOW_AUTOMATION_DRAFT);
+  const [editingItem, setEditingItem] = useState<GardenFlowTaskListItem | null>(null);
   const [schedulePickerOpen, setSchedulePickerOpen] = useState(false);
   const [schedulePanel, setSchedulePanel] = useState<SchedulePanel>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -176,7 +176,7 @@ export function Automation({ isActive = true, onOpenRedClawSession }: Automation
   const selectedTimeRef = useRef<HTMLButtonElement | null>(null);
 
   const currentItems = useMemo(
-    () => sortRedClawAutomationItems(items.filter(redClawAutomationIsTask)),
+    () => sortGardenFlowAutomationItems(items.filter(gardenFlowAutomationIsTask)),
     [items],
   );
 
@@ -188,7 +188,7 @@ export function Automation({ isActive = true, onOpenRedClawSession }: Automation
     }
     setError('');
     try {
-      const result = await window.ipcRenderer.redclawRunner.taskList({ includeDrafts: true });
+      const result = await window.ipcRenderer.gardenflowRunner.taskList({ includeDrafts: true });
       if (requestId !== loadRequestRef.current) return;
       setItems(Array.isArray(result?.items) ? result.items : []);
     } catch (loadError) {
@@ -211,20 +211,20 @@ export function Automation({ isActive = true, onOpenRedClawSession }: Automation
     const listener = () => {
       void load();
     };
-    window.ipcRenderer.redclawRunner.onStatus(listener);
-    return () => window.ipcRenderer.redclawRunner.offStatus(listener);
+    window.ipcRenderer.gardenflowRunner.onStatus(listener);
+    return () => window.ipcRenderer.gardenflowRunner.offStatus(listener);
   }, [isActive, load]);
 
   const openDialog = useCallback(() => {
-    setDraft(DEFAULT_REDCLAW_AUTOMATION_DRAFT);
+    setDraft(DEFAULT_GARDENFLOW_AUTOMATION_DRAFT);
     setEditingItem(null);
     setSchedulePickerOpen(false);
     setSchedulePanel(null);
     setDialogOpen(true);
   }, []);
 
-  const openEditDialog = useCallback((item: RedClawTaskListItem) => {
-    setDraft(redClawAutomationDraftFromItem(item));
+  const openEditDialog = useCallback((item: GardenFlowTaskListItem) => {
+    setDraft(gardenFlowAutomationDraftFromItem(item));
     setEditingItem(item);
     setSchedulePickerOpen(false);
     setSchedulePanel(null);
@@ -308,9 +308,9 @@ export function Automation({ isActive = true, onOpenRedClawSession }: Automation
     }
     setSubmitting(true);
     try {
-      const directScheduledPayload = redClawAutomationScheduledPayload(draft, name, prompt);
+      const directScheduledPayload = gardenFlowAutomationScheduledPayload(draft, name, prompt);
       if (!editingItem) {
-        const created = await window.ipcRenderer.redclawRunner.addScheduled(directScheduledPayload);
+        const created = await window.ipcRenderer.gardenflowRunner.addScheduled(directScheduledPayload);
         if (!created?.success) {
           throw new Error(created?.error || '创建定时任务失败。');
         }
@@ -320,10 +320,10 @@ export function Automation({ isActive = true, onOpenRedClawSession }: Automation
         return;
       }
 
-      const intent = redClawAutomationIntentFromDraft(draft, name, prompt);
+      const intent = gardenFlowAutomationIntentFromDraft(draft, name, prompt);
 
       if (editingItem) {
-        await window.ipcRenderer.redclawRunner.taskUpdate({
+        await window.ipcRenderer.gardenflowRunner.taskUpdate({
           jobDefinitionId: editingItem.definitionId,
           patch: intent,
           reason: '用户从自动化页面更新任务',
@@ -340,7 +340,7 @@ export function Automation({ isActive = true, onOpenRedClawSession }: Automation
     }
   }, [draft, editingItem, load]);
 
-  const runNow = useCallback(async (item: RedClawTaskListItem) => {
+  const runNow = useCallback(async (item: GardenFlowTaskListItem) => {
     const sourceTaskId = String(item.sourceTaskId || '').trim();
     const definitionId = String(item.definitionId || '').trim();
     let taskId = sourceTaskId || definitionId;
@@ -351,28 +351,28 @@ export function Automation({ isActive = true, onOpenRedClawSession }: Automation
     setBusyActionId(item.definitionId);
     try {
       if (item.requiresConfirmation) {
-        const confirmed = await window.ipcRenderer.redclawRunner.taskConfirm({
+        const confirmed = await window.ipcRenderer.gardenflowRunner.taskConfirm({
           draftId: definitionId,
           confirm: true,
         });
         assertActionSuccess(confirmed, '确认自动化任务失败。');
         taskId = confirmedTaskId(confirmed, taskId);
       }
-      const runResult = await window.ipcRenderer.redclawRunner.runScheduledNow({ taskId });
+      const runResult = await window.ipcRenderer.gardenflowRunner.runScheduledNow({ taskId });
       assertActionSuccess(runResult, '立即执行定时任务失败。');
       const sessionId = extractRunSessionId(runResult);
       await load();
       if (sessionId) {
-        onOpenRedClawSession?.(sessionId);
+        onOpenGardenFlowSession?.(sessionId);
       }
     } catch (runError) {
       void appAlert(runError instanceof Error ? runError.message : String(runError));
     } finally {
       setBusyActionId('');
     }
-  }, [load, onOpenRedClawSession]);
+  }, [load, onOpenGardenFlowSession]);
 
-  const toggleTaskEnabled = useCallback(async (item: RedClawTaskListItem) => {
+  const toggleTaskEnabled = useCallback(async (item: GardenFlowTaskListItem) => {
     const sourceTaskId = String(item.sourceTaskId || '');
     if (!sourceTaskId) {
       void appAlert('未找到定时任务源记录。');
@@ -381,7 +381,7 @@ export function Automation({ isActive = true, onOpenRedClawSession }: Automation
     setMenuBusyId(item.definitionId);
     try {
       assertActionSuccess(
-        await window.ipcRenderer.redclawRunner.setScheduledEnabled({
+        await window.ipcRenderer.gardenflowRunner.setScheduledEnabled({
           taskId: sourceTaskId,
           enabled: !item.enabled,
         }),
@@ -396,7 +396,7 @@ export function Automation({ isActive = true, onOpenRedClawSession }: Automation
     }
   }, [load]);
 
-  const deleteTask = useCallback(async (item: RedClawTaskListItem) => {
+  const deleteTask = useCallback(async (item: GardenFlowTaskListItem) => {
     const confirmed = await appConfirm(`确定删除自动化“${item.title || '未命名自动化'}”吗？`, {
       title: '删除自动化',
       confirmLabel: '删除',
@@ -409,12 +409,12 @@ export function Automation({ isActive = true, onOpenRedClawSession }: Automation
       const sourceTaskId = String(item.sourceTaskId || '');
       if (sourceTaskId && !item.requiresConfirmation) {
         assertActionSuccess(
-          await window.ipcRenderer.redclawRunner.removeScheduled({ taskId: sourceTaskId }),
+          await window.ipcRenderer.gardenflowRunner.removeScheduled({ taskId: sourceTaskId }),
           '删除定时任务失败。',
         );
       } else {
         assertActionSuccess(
-          await window.ipcRenderer.redclawRunner.taskCancel({
+          await window.ipcRenderer.gardenflowRunner.taskCancel({
             jobDefinitionId: item.definitionId,
             reason: '用户从自动化页面删除任务',
             deleteSource: true,
@@ -453,7 +453,7 @@ export function Automation({ isActive = true, onOpenRedClawSession }: Automation
     try {
       const nextEnabled = !editingItem.enabled;
       assertActionSuccess(
-        await window.ipcRenderer.redclawRunner.setScheduledEnabled({
+        await window.ipcRenderer.gardenflowRunner.setScheduledEnabled({
           taskId: sourceTaskId,
           enabled: nextEnabled,
         }),
@@ -581,7 +581,7 @@ export function Automation({ isActive = true, onOpenRedClawSession }: Automation
                         </button>
                         {schedulePanel === 'mode' && (
                           <div className="automation-schedule-menu">
-                            {(['hourly', 'daily', 'workday', 'weekly'] as RedClawAutomationScheduleMode[]).map((mode) => (
+                            {(['hourly', 'daily', 'workday', 'weekly'] as GardenFlowAutomationScheduleMode[]).map((mode) => (
                               <button key={mode} type="button" onClick={() => { setDraft((current) => ({ ...current, scheduleMode: mode })); setSchedulePanel(null); }} className="automation-schedule-option">
                                 <span>{scheduleModeLabel(mode)}</span>
                                 {draft.scheduleMode === mode && <Check className="h-[18px] w-[18px]" strokeWidth={1.7} />}
@@ -597,7 +597,7 @@ export function Automation({ isActive = true, onOpenRedClawSession }: Automation
                             </button>
                             {schedulePanel === 'weekday' && (
                               <div className="automation-schedule-menu">
-                                {REDCLAW_AUTOMATION_WEEKDAY_OPTIONS.map((option) => (
+                                {GARDENFLOW_AUTOMATION_WEEKDAY_OPTIONS.map((option) => (
                                   <button key={option.value} type="button" onClick={() => { setDraft((current) => ({ ...current, weekday: option.value })); setSchedulePanel(null); }} className="automation-schedule-option">
                                     <span>{option.label}</span>
                                     {draft.weekday === option.value && <Check className="h-[18px] w-[18px]" strokeWidth={1.7} />}
@@ -638,7 +638,7 @@ export function Automation({ isActive = true, onOpenRedClawSession }: Automation
                   <div className="automation-history-row">
                     <span className="automation-history-dot"><Check className="h-3 w-3" strokeWidth={1.8} /></span>
                     <span className="automation-history-title">{editingItem?.title || draft.name || '自动化任务'}</span>
-                    <span className="automation-history-project">Bojin</span>
+                    <span className="automation-history-project">GardenFlow</span>
                     <span className="automation-history-time">{formatSidebarTime(latestExecution.updatedAt)}</span>
                     <span className="automation-history-status">{latestStatus}</span>
                   </div>

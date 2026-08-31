@@ -54,7 +54,7 @@ test('does not treat knowledge-base png paths as screenshots', () => {
     const payload = {
         items: [{
             title: '一篇笔记',
-            path: '/Users/cengjiada/.redconvert/spaces/default/media/cover.png',
+            path: '/Users/cengjiada/.gardenflow/spaces/default/media/cover.png',
         }],
     };
     assert.deepEqual(collectLocalImagePaths(payload), []);

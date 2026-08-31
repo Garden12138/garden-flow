@@ -1,10 +1,10 @@
-const XWOW_CURSOR_ARRIVED = 'xwow-data-ai:cursor-arrived';
+const GARDENFLOW_CURSOR_ARRIVED = 'gardenflow-data-ai:cursor-arrived';
 const TARGET_CURSOR_ARRIVED = 'AGENT_CURSOR_ARRIVED';
 const CURSOR_ASSET_PATH = 'images/cursor-chat.png';
 const TARGET_OVERLAY_ROOT_ID = 'codex-agent-overlay-root';
 const TARGET_OVERLAY_ROOT_DATASET = 'codexAgentOverlayRoot';
-const LEGACY_CURSOR_ID = 'xwow-browser-data-ai-cursor';
-const CURSOR_STYLE_ID = 'xwow-browser-data-ai-cursor-style';
+const LEGACY_CURSOR_ID = 'gardenflow-browser-data-ai-cursor';
+const CURSOR_STYLE_ID = 'gardenflow-browser-data-ai-cursor-style';
 const TARGET_CURSOR_PATH_CONFIG = {
   arcFlow: 0.5783555327868779,
   arcSize: 0.2765523188064277,
@@ -30,7 +30,7 @@ export function moveAgentCursor(options = {}) {
     isVisible: true,
     x,
     y,
-    label: String(options.label || 'Bojin').slice(0, 12),
+    label: String(options.label || 'GardenFlow').slice(0, 12),
     moveSequence,
     animateMovement: options.animateMovement !== false,
   };
@@ -48,7 +48,7 @@ export function applyAgentCursorState(state = {}) {
   return moveAgentCursor({
     x: state.cursor?.x,
     y: state.cursor?.y,
-    label: state.label || 'Bojin',
+    label: state.label || 'GardenFlow',
     moveSequence: state.cursor?.moveSequence,
     animateMovement: state.cursor?.animateMovement,
     sessionId: state.sessionId || '',
@@ -57,7 +57,7 @@ export function applyAgentCursorState(state = {}) {
 }
 
 export function hideAgentCursor() {
-  const cursor = document.getElementById('xwow-browser-data-ai-cursor');
+  const cursor = document.getElementById('gardenflow-browser-data-ai-cursor');
   lastCursorState = { ...(lastCursorState || {}), isVisible: false };
   cancelCursorMotion();
   if (cursor) cursor.dataset.visible = 'false';
@@ -80,12 +80,12 @@ function ensureAgentCursor() {
   cursor.setAttribute('aria-hidden', 'true');
   cursor.dataset.visible = 'false';
   cursor.innerHTML = `
-    <div data-xwow-cursor-shell>
-      <img data-browser-agent-cursor-asset data-xwow-cursor-asset alt="" draggable="false" />
-      <div data-xwow-cursor-dot></div>
+    <div data-gardenflow-cursor-shell>
+      <img data-browser-agent-cursor-asset data-gardenflow-cursor-asset alt="" draggable="false" />
+      <div data-gardenflow-cursor-dot></div>
     </div>
   `;
-  const asset = cursor.querySelector('[data-xwow-cursor-asset]');
+  const asset = cursor.querySelector('[data-gardenflow-cursor-asset]');
   if (asset) {
     asset.src = resolveCursorAssetUrl();
     asset.addEventListener('error', () => {
@@ -126,7 +126,7 @@ function ensureAgentCursorStyle() {
       pointer-events: none;
     }
     @media print { #codex-agent-overlay-root { display: none; } }
-    #xwow-browser-data-ai-cursor {
+    #gardenflow-browser-data-ai-cursor {
       position: fixed;
       left: 0;
       top: 0;
@@ -138,14 +138,14 @@ function ensureAgentCursorStyle() {
       will-change: transform, opacity, filter;
       transform-origin: 12px 12px;
     }
-    #xwow-browser-data-ai-cursor[data-visible="true"] { opacity: 1; }
-    #xwow-browser-data-ai-cursor [data-xwow-cursor-shell] {
+    #gardenflow-browser-data-ai-cursor[data-visible="true"] { opacity: 1; }
+    #gardenflow-browser-data-ai-cursor [data-gardenflow-cursor-shell] {
       position: relative;
       width: 24px;
       height: 24px;
       transform: translate(-12px, -12px);
     }
-    #xwow-browser-data-ai-cursor [data-xwow-cursor-asset] {
+    #gardenflow-browser-data-ai-cursor [data-gardenflow-cursor-asset] {
       display: block;
       width: 23px;
       height: 24px;
@@ -155,7 +155,7 @@ function ensureAgentCursorStyle() {
       user-select: none;
       -webkit-user-drag: none;
     }
-    #xwow-browser-data-ai-cursor [data-xwow-cursor-dot] {
+    #gardenflow-browser-data-ai-cursor [data-gardenflow-cursor-dot] {
       width: 14px;
       height: 14px;
       border: 2px solid #000000;
@@ -168,7 +168,7 @@ function ensureAgentCursorStyle() {
       left: 12px;
       top: 12px;
     }
-    #xwow-browser-data-ai-cursor[data-asset-loaded="false"] [data-xwow-cursor-dot] {
+    #gardenflow-browser-data-ai-cursor[data-asset-loaded="false"] [data-gardenflow-cursor-dot] {
       opacity: 1;
     }
   `;
@@ -522,7 +522,7 @@ function notifyCursorArrived(moveSequence, options = {}) {
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       chrome.runtime.sendMessage({
-        type: XWOW_CURSOR_ARRIVED,
+        type: GARDENFLOW_CURSOR_ARRIVED,
         moveSequence,
         frameUrl: location.href,
       }).catch(() => {});

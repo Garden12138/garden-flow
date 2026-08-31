@@ -26,7 +26,7 @@ export type AnalyticsEventName =
   | 'checkout_completed'
   | 'checkout_completed_inferred'
   | 'checkout_failed'
-  | 'redclaw_task_submitted'
+  | 'gardenflow_task_submitted'
   | 'media_generation_requested'
   | 'media_job_completed'
   | 'media_job_failed'

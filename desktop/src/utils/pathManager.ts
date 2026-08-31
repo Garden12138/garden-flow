@@ -1,4 +1,4 @@
-import { coerceToRedboxAssetUrl, isLocalAssetSource } from '../../shared/localAsset';
+import { coerceToGardenFlowAssetUrl, isLocalAssetSource } from '../../shared/localAsset';
 
 const SAFE_RENDERABLE_PROTOCOL = /^(https?:|data:|blob:|file:)/i;
 const IMAGE_FILE_HINT = /\.(png|jpe?g|webp|gif|bmp|svg|avif)(?:[?#].*)?$/i;
@@ -7,7 +7,7 @@ export function resolveAssetUrl(value: string | null | undefined): string {
     const raw = String(value || '').trim();
     if (!raw) return '';
     if (/^(https?:|data:|blob:)/i.test(raw)) return raw;
-    if (isLocalAssetSource(raw)) return coerceToRedboxAssetUrl(raw) || raw;
+    if (isLocalAssetSource(raw)) return coerceToGardenFlowAssetUrl(raw) || raw;
     if (SAFE_RENDERABLE_PROTOCOL.test(raw)) return raw;
     return raw;
 }

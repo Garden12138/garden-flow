@@ -28,7 +28,7 @@ export const DEFAULT_AI_PRESET_ID = 'openai';
 
 // Stable persisted/runtime contract. Display branding can vary, but the backend
 // official auth/model pipeline still uses this source id as the canonical key.
-export const OFFICIAL_AUTO_SOURCE_ID = 'redbox_official_auto';
+export const OFFICIAL_AUTO_SOURCE_ID = 'gardenflow_official_auto';
 
 export const LEGACY_OFFICIAL_AUTO_SOURCE_IDS = Array.from(new Set([
   OFFICIAL_AUTO_SOURCE_ID,
@@ -62,7 +62,7 @@ export const createOfficialAiSource = (overrides: Partial<AiSourceConfig> = {}):
   return {
     id: OFFICIAL_AUTO_SOURCE_ID,
     name: OFFICIAL_AI_SOURCE_DISPLAY_NAME,
-    presetId: 'redbox-official',
+    presetId: 'gardenflow-official',
     baseURL: OFFICIAL_AI_SOURCE_BASE_URL,
     apiKey: '',
     models: createOfficialAiSourceModels(),
@@ -75,7 +75,7 @@ export const createOfficialAiSource = (overrides: Partial<AiSourceConfig> = {}):
 
 // Presets aligned with common OpenAI-compatible providers (referencing AionUi design).
 export const AI_SOURCE_PRESETS: AiSourcePreset[] = [
-  { id: 'redbox-official', label: OFFICIAL_AI_SOURCE_DISPLAY_NAME, baseURL: OFFICIAL_AI_SOURCE_BASE_URL, protocol: 'openai' },
+  { id: 'gardenflow-official', label: OFFICIAL_AI_SOURCE_DISPLAY_NAME, baseURL: OFFICIAL_AI_SOURCE_BASE_URL, protocol: 'openai' },
   { id: 'openai', label: 'OpenAI', baseURL: 'https://api.openai.com/v1', protocol: 'openai' },
   { id: 'anthropic', label: 'Anthropic', baseURL: 'https://api.anthropic.com/v1', protocol: 'anthropic' },
   { id: 'gemini', label: 'Gemini', baseURL: 'https://generativelanguage.googleapis.com/v1beta', protocol: 'gemini' },

@@ -200,7 +200,7 @@ select {
 }
 
 .app-onboarding-acquisition-options-invalid {
-  animation: redbox-acquisition-required-shake 420ms ease-in-out;
+  animation: gardenflow-acquisition-required-shake 420ms ease-in-out;
 }
 
 .app-onboarding-acquisition-options-invalid button {
@@ -208,7 +208,7 @@ select {
   box-shadow: 0 0 0 3px rgb(var(--color-status-error) / 0.08), 0 14px 40px rgba(245, 63, 63, 0.08);
 }
 
-@keyframes redbox-acquisition-required-shake {
+@keyframes gardenflow-acquisition-required-shake {
   0%,
   100% {
     transform: translateX(0);
@@ -568,7 +568,7 @@ select {
   filter: drop-shadow(0 1px 1px rgb(58 31 8 / 0.55));
 }
 
-[data-brand='bojin'] .app-founder-sponsor-button {
+[data-brand='gardenflow'] .app-founder-sponsor-button {
   color: rgb(var(--color-text-secondary) / 0.98);
   background:
     linear-gradient(135deg, rgb(var(--color-background) / 0.82), rgb(var(--color-surface-secondary) / 0.9)),
@@ -577,13 +577,13 @@ select {
   box-shadow: 0 8px 20px -18px rgb(0 0 0 / 0.42);
 }
 
-[data-brand='bojin'] .app-founder-sponsor-button:hover {
+[data-brand='gardenflow'] .app-founder-sponsor-button:hover {
   color: rgb(var(--color-text-primary) / 1);
   border-color: rgb(var(--color-accent-primary) / 0.42);
   box-shadow: 0 12px 24px -18px rgb(0 0 0 / 0.48);
 }
 
-[data-brand='bojin'] .app-founder-sponsor-button[data-active='true'] {
+[data-brand='gardenflow'] .app-founder-sponsor-button[data-active='true'] {
   color: rgb(255 255 255 / 0.98);
   background:
     radial-gradient(circle at 18% 16%, rgb(255 255 255 / 0.18), transparent 30%),
@@ -595,7 +595,7 @@ select {
     0 1px 0 rgb(255 255 255 / 0.18) inset;
 }
 
-[data-brand='bojin'] .app-founder-sponsor-button[data-active='true']:hover {
+[data-brand='gardenflow'] .app-founder-sponsor-button[data-active='true']:hover {
   color: rgb(255 255 255 / 1);
   border-color: rgb(var(--color-accent-muted) / 0.82);
   box-shadow:
@@ -604,7 +604,7 @@ select {
     0 1px 0 rgb(255 255 255 / 0.22) inset;
 }
 
-[data-brand='bojin'] .app-founder-sponsor-button[data-active='true'] > svg {
+[data-brand='gardenflow'] .app-founder-sponsor-button[data-active='true'] > svg {
   color: rgb(255 255 255 / 1);
   filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.38));
 }
@@ -968,13 +968,13 @@ select {
     0 1px 0 rgb(255 255 255 / 0.32) inset;
 }
 
-[data-brand='bojin'] .app-founder-sponsor-backdrop {
+[data-brand='gardenflow'] .app-founder-sponsor-backdrop {
   background: rgb(0 0 0 / 0.46);
   backdrop-filter: blur(12px) saturate(1.02);
   -webkit-backdrop-filter: blur(12px) saturate(1.02);
 }
 
-[data-brand='bojin'] .app-founder-sponsor-panel {
+[data-brand='gardenflow'] .app-founder-sponsor-panel {
   color: rgb(var(--color-text-primary));
   background:
     radial-gradient(circle at 18% 0%, rgb(var(--color-accent-muted) / 0.13), transparent 34%),
@@ -985,56 +985,56 @@ select {
     0 0 0 1px rgb(255 255 255 / 0.58) inset;
 }
 
-[data-brand='bojin'] .app-founder-sponsor-header,
-[data-brand='bojin'] .app-founder-sponsor-body {
+[data-brand='gardenflow'] .app-founder-sponsor-header,
+[data-brand='gardenflow'] .app-founder-sponsor-body {
   background: transparent;
 }
 
-[data-brand='bojin'] .app-founder-sponsor-header h2,
-[data-brand='bojin'] .app-founder-sponsor-benefit-heading,
-[data-brand='bojin'] .app-founder-sponsor-benefit-tile .text-\[\#211c17\],
-[data-brand='bojin'] .app-founder-member-card .text-\[\#2a2118\] {
+[data-brand='gardenflow'] .app-founder-sponsor-header h2,
+[data-brand='gardenflow'] .app-founder-sponsor-benefit-heading,
+[data-brand='gardenflow'] .app-founder-sponsor-benefit-tile .text-\[\#211c17\],
+[data-brand='gardenflow'] .app-founder-member-card .text-\[\#2a2118\] {
   color: rgb(var(--color-text-primary));
 }
 
-[data-brand='bojin'] .app-founder-sponsor-header .text-\[\#7c746c\],
-[data-brand='bojin'] .app-founder-sponsor-benefit-tile .text-\[\#80776f\],
-[data-brand='bojin'] .app-founder-member-card .text-\[\#8a8178\],
-[data-brand='bojin'] .app-founder-member-card .text-\[\#7f7468\],
-[data-brand='bojin'] .app-founder-sponsor-panel .text-\[\#9a9289\] {
+[data-brand='gardenflow'] .app-founder-sponsor-header .text-\[\#7c746c\],
+[data-brand='gardenflow'] .app-founder-sponsor-benefit-tile .text-\[\#80776f\],
+[data-brand='gardenflow'] .app-founder-member-card .text-\[\#8a8178\],
+[data-brand='gardenflow'] .app-founder-member-card .text-\[\#7f7468\],
+[data-brand='gardenflow'] .app-founder-sponsor-panel .text-\[\#9a9289\] {
   color: rgb(var(--color-text-secondary));
 }
 
-[data-brand='bojin'] .app-founder-sponsor-panel .text-\[\#8a6a35\],
-[data-brand='bojin'] .app-founder-sponsor-panel .text-\[\#b87519\],
-[data-brand='bojin'] .app-founder-sponsor-panel .text-\[\#a86618\] {
+[data-brand='gardenflow'] .app-founder-sponsor-panel .text-\[\#8a6a35\],
+[data-brand='gardenflow'] .app-founder-sponsor-panel .text-\[\#b87519\],
+[data-brand='gardenflow'] .app-founder-sponsor-panel .text-\[\#a86618\] {
   color: rgb(var(--color-accent-hover));
 }
 
-[data-brand='bojin'] .app-founder-sponsor-panel .border-\[\#e6c78e\],
-[data-brand='bojin'] .app-founder-sponsor-panel .border-\[\#e4d5bd\],
-[data-brand='bojin'] .app-founder-sponsor-panel .border-\[\#eadcc6\] {
+[data-brand='gardenflow'] .app-founder-sponsor-panel .border-\[\#e6c78e\],
+[data-brand='gardenflow'] .app-founder-sponsor-panel .border-\[\#e4d5bd\],
+[data-brand='gardenflow'] .app-founder-sponsor-panel .border-\[\#eadcc6\] {
   border-color: rgb(var(--color-border));
 }
 
-[data-brand='bojin'] .app-founder-sponsor-panel .bg-\[\#fff7e6\],
-[data-brand='bojin'] .app-founder-sponsor-panel .bg-white\/66,
-[data-brand='bojin'] .app-founder-sponsor-panel .bg-white\/78,
-[data-brand='bojin'] .app-founder-sponsor-panel .bg-white\/80 {
+[data-brand='gardenflow'] .app-founder-sponsor-panel .bg-\[\#fff7e6\],
+[data-brand='gardenflow'] .app-founder-sponsor-panel .bg-white\/66,
+[data-brand='gardenflow'] .app-founder-sponsor-panel .bg-white\/78,
+[data-brand='gardenflow'] .app-founder-sponsor-panel .bg-white\/80 {
   background-color: rgb(var(--color-surface-secondary) / 0.72);
 }
 
-[data-brand='bojin'] .app-founder-sponsor-panel .hover\:bg-\[\#f4eadb\]:hover,
-[data-brand='bojin'] .app-founder-sponsor-panel .hover\:bg-\[\#fffaf2\]:hover {
+[data-brand='gardenflow'] .app-founder-sponsor-panel .hover\:bg-\[\#f4eadb\]:hover,
+[data-brand='gardenflow'] .app-founder-sponsor-panel .hover\:bg-\[\#fffaf2\]:hover {
   background-color: rgb(var(--color-accent-primary) / 0.10);
 }
 
-[data-brand='bojin'] .app-founder-sponsor-panel .hover\:text-\[\#2b241d\]:hover,
-[data-brand='bojin'] .app-founder-sponsor-panel .hover\:text-\[\#27211b\]:hover {
+[data-brand='gardenflow'] .app-founder-sponsor-panel .hover\:text-\[\#2b241d\]:hover,
+[data-brand='gardenflow'] .app-founder-sponsor-panel .hover\:text-\[\#27211b\]:hover {
   color: rgb(var(--color-text-primary));
 }
 
-[data-brand='bojin'] .app-founder-sponsor-panel .app-founder-sponsor-modal-icon {
+[data-brand='gardenflow'] .app-founder-sponsor-panel .app-founder-sponsor-modal-icon {
   color: rgb(var(--color-accent-primary));
   background:
     radial-gradient(circle at 38% 26%, rgb(255 255 255 / 0.94), rgb(var(--color-surface-secondary) / 0.9) 58%, rgb(var(--color-accent-muted) / 0.22)),
@@ -1045,14 +1045,14 @@ select {
     0 0 0 1px rgb(255 255 255 / 0.62) inset;
 }
 
-[data-brand='bojin'] .app-founder-sponsor-lifetime-badge {
+[data-brand='gardenflow'] .app-founder-sponsor-lifetime-badge {
   color: rgb(var(--color-accent-hover));
   background: rgb(var(--color-accent-primary) / 0.10);
   border-color: rgb(var(--color-accent-primary) / 0.34);
 }
 
-[data-brand='bojin'] .app-founder-member-card,
-[data-brand='bojin'] .app-founder-sponsor-value-hero {
+[data-brand='gardenflow'] .app-founder-member-card,
+[data-brand='gardenflow'] .app-founder-sponsor-value-hero {
   border-color: rgb(var(--color-accent-primary) / 0.28);
   background:
     radial-gradient(circle at 18% 0%, rgb(var(--color-accent-muted) / 0.22), transparent 38%),
@@ -1062,8 +1062,8 @@ select {
     0 1px 0 rgb(255 255 255 / 0.68) inset;
 }
 
-[data-brand='bojin'] .app-founder-member-card-icon,
-[data-brand='bojin'] .app-founder-member-refresh {
+[data-brand='gardenflow'] .app-founder-member-card-icon,
+[data-brand='gardenflow'] .app-founder-member-refresh {
   color: rgb(var(--color-accent-primary));
   border-color: rgb(var(--color-accent-primary) / 0.26);
   background: rgb(var(--color-background) / 0.62);
@@ -1072,38 +1072,38 @@ select {
     0 0 0 1px rgb(255 255 255 / 0.56) inset;
 }
 
-[data-brand='bojin'] .app-founder-member-refresh:hover {
+[data-brand='gardenflow'] .app-founder-member-refresh:hover {
   color: rgb(var(--color-accent-hover));
   background: rgb(var(--color-accent-primary) / 0.10);
   border-color: rgb(var(--color-accent-primary) / 0.38);
 }
 
-[data-brand='bojin'] .app-founder-sponsor-benefit-tile {
+[data-brand='gardenflow'] .app-founder-sponsor-benefit-tile {
   border-color: rgb(var(--color-border) / 0.88);
   background: rgb(var(--color-background) / 0.56);
   box-shadow: 0 1px 0 rgb(255 255 255 / 0.56) inset;
 }
 
-[data-brand='bojin'] .app-founder-sponsor-tile-icon--gold,
-[data-brand='bojin'] .app-founder-sponsor-tile-icon--purple {
+[data-brand='gardenflow'] .app-founder-sponsor-tile-icon--gold,
+[data-brand='gardenflow'] .app-founder-sponsor-tile-icon--purple {
   color: rgb(var(--color-accent-primary));
 }
 
-[data-brand='bojin'] .app-founder-sponsor-tile-icon--green,
-[data-brand='bojin'] .app-founder-sponsor-tile-icon--blue,
-[data-brand='bojin'] .app-founder-sponsor-tile-icon--cyan {
+[data-brand='gardenflow'] .app-founder-sponsor-tile-icon--green,
+[data-brand='gardenflow'] .app-founder-sponsor-tile-icon--blue,
+[data-brand='gardenflow'] .app-founder-sponsor-tile-icon--cyan {
   color: rgb(var(--color-text-primary));
 }
 
-[data-brand='bojin'] .app-founder-sponsor-heading-line {
+[data-brand='gardenflow'] .app-founder-sponsor-heading-line {
   background: linear-gradient(90deg, transparent, rgb(var(--color-border) / 0.96), transparent);
 }
 
-[data-brand='bojin'] .app-founder-sponsor-heading-dot {
+[data-brand='gardenflow'] .app-founder-sponsor-heading-dot {
   background: rgb(var(--color-accent-primary) / 0.58);
 }
 
-[data-brand='bojin'] .app-founder-sponsor-price {
+[data-brand='gardenflow'] .app-founder-sponsor-price {
   color: rgb(var(--color-accent-hover));
   background: linear-gradient(180deg, #E60012 0%, #C2000F 58%, #000000 100%);
   -webkit-background-clip: text;
@@ -1111,33 +1111,33 @@ select {
   text-shadow: 0 14px 24px rgb(0 0 0 / 0.12);
 }
 
-[data-brand='bojin'] .app-founder-sponsor-points-card {
+[data-brand='gardenflow'] .app-founder-sponsor-points-card {
   border-color: rgb(var(--color-border));
   background: rgb(var(--color-background) / 0.62);
 }
 
-[data-brand='bojin'] .app-founder-sponsor-points-ribbon,
-[data-brand='bojin'] .app-founder-sponsor-points-pill,
-[data-brand='bojin'] .app-founder-sponsor-primary-action {
+[data-brand='gardenflow'] .app-founder-sponsor-points-ribbon,
+[data-brand='gardenflow'] .app-founder-sponsor-points-pill,
+[data-brand='gardenflow'] .app-founder-sponsor-primary-action {
   background: linear-gradient(180deg, #FF2A3A 0%, #E60012 56%, #C2000F 100%);
   color: #ffffff;
 }
 
-[data-brand='bojin'] .app-founder-sponsor-points-number,
-[data-brand='bojin'] .app-founder-sponsor-points-card .text-\[\#f06a2f\],
-[data-brand='bojin'] .app-founder-sponsor-points-card .text-\[\#f05b2f\] {
+[data-brand='gardenflow'] .app-founder-sponsor-points-number,
+[data-brand='gardenflow'] .app-founder-sponsor-points-card .text-\[\#f06a2f\],
+[data-brand='gardenflow'] .app-founder-sponsor-points-card .text-\[\#f05b2f\] {
   color: rgb(var(--color-accent-primary));
 }
 
-[data-brand='bojin'] .app-founder-sponsor-points-card .text-\[\#5b4030\] {
+[data-brand='gardenflow'] .app-founder-sponsor-points-card .text-\[\#5b4030\] {
   color: rgb(var(--color-text-primary));
 }
 
-[data-brand='bojin'] .app-founder-sponsor-mini-laurel {
+[data-brand='gardenflow'] .app-founder-sponsor-mini-laurel {
   display: none;
 }
 
-[data-brand='bojin'] .app-founder-sponsor-primary-action {
+[data-brand='gardenflow'] .app-founder-sponsor-primary-action {
   box-shadow:
     0 18px 34px -24px rgb(0 0 0 / 0.64),
     0 1px 0 rgb(255 255 255 / 0.24) inset;
@@ -1252,7 +1252,7 @@ select {
   border-color: rgb(245 158 11 / 0.28);
 }
 
-[data-brand='bojin'][data-theme='dark'] .app-founder-sponsor-button {
+[data-brand='gardenflow'][data-theme='dark'] .app-founder-sponsor-button {
   color: rgb(var(--color-text-secondary));
   background:
     linear-gradient(135deg, rgb(var(--color-surface-primary) / 0.92), rgb(var(--color-surface-secondary) / 0.86)),
@@ -1261,12 +1261,12 @@ select {
   box-shadow: 0 14px 32px -24px rgb(0 0 0 / 0.58);
 }
 
-[data-brand='bojin'][data-theme='dark'] .app-founder-sponsor-button:hover {
+[data-brand='gardenflow'][data-theme='dark'] .app-founder-sponsor-button:hover {
   color: rgb(var(--color-text-primary));
   border-color: rgb(var(--color-accent-primary) / 0.38);
 }
 
-[data-brand='bojin'][data-theme='dark'] .app-founder-sponsor-button[data-active='true'] {
+[data-brand='gardenflow'][data-theme='dark'] .app-founder-sponsor-button[data-active='true'] {
   color: rgb(var(--color-primary-text));
   background:
     radial-gradient(circle at 18% 16%, rgb(var(--color-accent-muted) / 0.22), transparent 30%),
@@ -1278,7 +1278,7 @@ select {
     0 1px 0 rgb(255 255 255 / 0.12) inset;
 }
 
-[data-brand='bojin'][data-theme='dark'] .app-founder-sponsor-panel {
+[data-brand='gardenflow'][data-theme='dark'] .app-founder-sponsor-panel {
   background:
     radial-gradient(circle at 18% 0%, rgb(var(--color-accent-primary) / 0.12), transparent 34%),
     linear-gradient(180deg, rgb(var(--color-background) / 0.98), rgb(var(--color-surface-primary) / 0.98));
@@ -1288,8 +1288,8 @@ select {
     0 0 0 1px rgb(255 250 244 / 0.08) inset;
 }
 
-[data-brand='bojin'][data-theme='dark'] .app-founder-member-card,
-[data-brand='bojin'][data-theme='dark'] .app-founder-sponsor-value-hero {
+[data-brand='gardenflow'][data-theme='dark'] .app-founder-member-card,
+[data-brand='gardenflow'][data-theme='dark'] .app-founder-sponsor-value-hero {
   border-color: rgb(var(--color-accent-primary) / 0.26);
   background:
     radial-gradient(circle at 18% 0%, rgb(var(--color-accent-primary) / 0.15), transparent 38%),
@@ -1299,9 +1299,9 @@ select {
     0 1px 0 rgb(255 255 255 / 0.06) inset;
 }
 
-[data-brand='bojin'][data-theme='dark'] .app-founder-member-card-icon,
-[data-brand='bojin'][data-theme='dark'] .app-founder-member-refresh,
-[data-brand='bojin'][data-theme='dark'] .app-founder-sponsor-modal-icon {
+[data-brand='gardenflow'][data-theme='dark'] .app-founder-member-card-icon,
+[data-brand='gardenflow'][data-theme='dark'] .app-founder-member-refresh,
+[data-brand='gardenflow'][data-theme='dark'] .app-founder-sponsor-modal-icon {
   color: rgb(var(--color-accent-primary));
   border-color: rgb(var(--color-accent-primary) / 0.26);
   background:
@@ -1610,14 +1610,14 @@ select {
   color: white;
 }
 
-.redclaw-preview-sidebar {
+.gardenflow-preview-sidebar {
   transform-origin: right center;
-  animation: redclaw-preview-sidebar-in 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: gardenflow-preview-sidebar-in 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
   will-change: opacity, transform;
 }
 
-.redclaw-preview-sidebar--closing {
-  animation: redclaw-preview-sidebar-out 240ms cubic-bezier(0.4, 0, 1, 1) both;
+.gardenflow-preview-sidebar--closing {
+  animation: gardenflow-preview-sidebar-out 240ms cubic-bezier(0.4, 0, 1, 1) both;
 }
 
 .notification-center-backdrop {
@@ -1686,14 +1686,14 @@ select {
   transform: translateY(10px) scale(0.985);
 }
 
-@keyframes redclaw-preview-sidebar-in {
+@keyframes gardenflow-preview-sidebar-in {
   from {
     opacity: 0;
     transform: translateX(20px) scaleX(0.985);
   }
 }
 
-@keyframes redclaw-preview-sidebar-out {
+@keyframes gardenflow-preview-sidebar-out {
   to {
     opacity: 0;
     transform: translateX(20px) scaleX(0.985);
@@ -1701,8 +1701,8 @@ select {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .redclaw-preview-sidebar,
-  .redclaw-preview-sidebar--closing,
+  .gardenflow-preview-sidebar,
+  .gardenflow-preview-sidebar--closing,
   .notification-center-backdrop,
   .notification-center-drawer,
   .notification-center-backdrop--open,
@@ -2642,258 +2642,258 @@ select {
 .border-border\/70 { border-color: rgb(var(--color-border) / 0.7) !important; }
 .border-border\/80 { border-color: rgb(var(--color-border) / 0.8) !important; }
 
-.redclaw-history-scroll {
+.gardenflow-history-scroll {
   scrollbar-color: rgb(var(--color-accent-primary) / 0.32) transparent;
   scrollbar-width: thin;
   scrollbar-gutter: auto;
 }
 
-.redclaw-history-scroll::-webkit-scrollbar {
+.gardenflow-history-scroll::-webkit-scrollbar {
   width: 6px;
   height: 6px;
   background: transparent;
 }
 
-.redclaw-history-scroll::-webkit-scrollbar-track {
+.gardenflow-history-scroll::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.redclaw-history-scroll::-webkit-scrollbar-track-piece,
-.redclaw-history-scroll::-webkit-scrollbar-corner {
+.gardenflow-history-scroll::-webkit-scrollbar-track-piece,
+.gardenflow-history-scroll::-webkit-scrollbar-corner {
   background: transparent;
 }
 
-.redclaw-history-scroll::-webkit-scrollbar-thumb {
+.gardenflow-history-scroll::-webkit-scrollbar-thumb {
   background: rgb(var(--color-accent-primary) / 0.30);
   background-clip: padding-box;
   border: 2px solid transparent;
   border-radius: 999px;
 }
 
-.redclaw-history-scroll::-webkit-scrollbar-thumb:hover {
+.gardenflow-history-scroll::-webkit-scrollbar-thumb:hover {
   background: rgb(var(--color-accent-hover) / 0.44);
   background-clip: padding-box;
 }
 
-[data-brand='bojin'] .redclaw-history-scroll {
+[data-brand='gardenflow'] .gardenflow-history-scroll {
   scrollbar-color: rgb(var(--color-accent-primary) / 0.34) transparent;
 }
 
-[data-brand='bojin'] .redclaw-history-scroll::-webkit-scrollbar-thumb {
+[data-brand='gardenflow'] .gardenflow-history-scroll::-webkit-scrollbar-thumb {
   background: rgb(var(--color-accent-primary) / 0.32);
   background-clip: padding-box;
 }
 
-[data-brand='bojin'] .redclaw-history-scroll::-webkit-scrollbar-thumb:hover {
+[data-brand='gardenflow'] .gardenflow-history-scroll::-webkit-scrollbar-thumb:hover {
   background: rgb(var(--color-accent-hover) / 0.46);
   background-clip: padding-box;
 }
 
-.redclaw-rename-dialog-backdrop {
+.gardenflow-rename-dialog-backdrop {
   background-color: rgb(15 8 10 / 0.5) !important;
   backdrop-filter: blur(8px);
 }
 
-.redclaw-rename-dialog {
+.gardenflow-rename-dialog {
   border: 1px solid rgb(92 66 69 / 0.2);
   background-color: rgb(255 250 247 / 1) !important;
   color: rgb(45 31 33 / 1) !important;
   box-shadow: 0 26px 70px rgb(15 8 10 / 0.32);
 }
 
-[data-theme='dark'] .redclaw-rename-dialog {
+[data-theme='dark'] .gardenflow-rename-dialog {
   border-color: rgb(255 236 229 / 0.18);
   background-color: rgb(31 13 18 / 1) !important;
   color: rgb(255 247 243 / 0.96) !important;
 }
 
-.redclaw-rename-dialog-title {
+.gardenflow-rename-dialog-title {
   color: inherit;
 }
 
-.redclaw-rename-dialog-close {
+.gardenflow-rename-dialog-close {
   color: rgb(118 88 91 / 0.78);
 }
 
-.redclaw-rename-dialog-close:hover {
+.gardenflow-rename-dialog-close:hover {
   background: rgb(92 66 69 / 0.08);
   color: rgb(45 31 33 / 1);
 }
 
-[data-theme='dark'] .redclaw-rename-dialog-close {
+[data-theme='dark'] .gardenflow-rename-dialog-close {
   color: rgb(230 207 202 / 0.72);
 }
 
-[data-theme='dark'] .redclaw-rename-dialog-close:hover {
+[data-theme='dark'] .gardenflow-rename-dialog-close:hover {
   background: rgb(255 245 241 / 0.1);
   color: rgb(255 247 243 / 0.96);
 }
 
-.redclaw-rename-dialog-input {
+.gardenflow-rename-dialog-input {
   border: 1px solid rgb(92 66 69 / 0.2);
   background-color: rgb(255 255 255 / 1) !important;
   color: rgb(45 31 33 / 1) !important;
 }
 
-.redclaw-rename-dialog-input:focus {
+.gardenflow-rename-dialog-input:focus {
   border-color: rgb(var(--color-accent-primary) / 0.55);
   box-shadow: 0 0 0 3px rgb(var(--color-accent-primary) / 0.12);
 }
 
-[data-theme='dark'] .redclaw-rename-dialog-input {
+[data-theme='dark'] .gardenflow-rename-dialog-input {
   border-color: rgb(255 236 229 / 0.18);
   background-color: rgb(48 25 30 / 1) !important;
   color: rgb(255 247 243 / 0.96) !important;
 }
 
-.redclaw-rename-dialog-error {
+.gardenflow-rename-dialog-error {
   color: rgb(var(--color-status-error) / 0.95);
 }
 
-.redclaw-rename-dialog-secondary {
+.gardenflow-rename-dialog-secondary {
   border: 1px solid rgb(92 66 69 / 0.18);
   background-color: rgb(255 255 255 / 0.82) !important;
   color: rgb(88 66 69 / 0.9) !important;
 }
 
-.redclaw-rename-dialog-secondary:hover {
+.gardenflow-rename-dialog-secondary:hover {
   background: rgb(92 66 69 / 0.07);
   color: rgb(45 31 33 / 1);
 }
 
-[data-theme='dark'] .redclaw-rename-dialog-secondary {
+[data-theme='dark'] .gardenflow-rename-dialog-secondary {
   border-color: rgb(255 236 229 / 0.18);
   background-color: rgb(255 245 241 / 0.08) !important;
   color: rgb(246 235 232 / 0.76) !important;
 }
 
-[data-theme='dark'] .redclaw-rename-dialog-secondary:hover {
+[data-theme='dark'] .gardenflow-rename-dialog-secondary:hover {
   background: rgb(255 245 241 / 0.1);
   color: rgb(255 247 243 / 0.96);
 }
 
-.redclaw-rename-dialog-primary {
+.gardenflow-rename-dialog-primary {
   background-color: rgb(45 31 33 / 1) !important;
   color: rgb(255 255 255 / 1) !important;
 }
 
-.redclaw-rename-dialog-primary:hover {
+.gardenflow-rename-dialog-primary:hover {
   background: rgb(70 45 48 / 1);
 }
 
-[data-theme='dark'] .redclaw-rename-dialog-primary {
+[data-theme='dark'] .gardenflow-rename-dialog-primary {
   background-color: rgb(255 247 243 / 0.92) !important;
   color: rgb(31 13 18 / 1) !important;
 }
 
-[data-theme='dark'] .redclaw-rename-dialog-primary:hover {
+[data-theme='dark'] .gardenflow-rename-dialog-primary:hover {
   background: rgb(255 255 255 / 1);
 }
 
-.redclaw-manuscript-dialog-backdrop {
+.gardenflow-manuscript-dialog-backdrop {
   background-color: rgb(15 8 10 / 0.46) !important;
   backdrop-filter: blur(8px);
 }
 
-.redclaw-manuscript-dialog {
+.gardenflow-manuscript-dialog {
   border: 1px solid rgb(92 66 69 / 0.22);
   background-color: rgb(255 250 247 / 1) !important;
   color: rgb(45 31 33 / 1) !important;
   box-shadow: 0 26px 70px rgb(15 8 10 / 0.3);
 }
 
-[data-theme='dark'] .redclaw-manuscript-dialog {
+[data-theme='dark'] .gardenflow-manuscript-dialog {
   border-color: rgb(255 236 229 / 0.18);
   background-color: rgb(31 13 18 / 1) !important;
   color: rgb(255 247 243 / 0.96) !important;
 }
 
-.redclaw-manuscript-dialog-title {
+.gardenflow-manuscript-dialog-title {
   color: inherit;
 }
 
-.redclaw-manuscript-dialog-close {
+.gardenflow-manuscript-dialog-close {
   color: rgb(118 88 91 / 0.78);
 }
 
-.redclaw-manuscript-dialog-close:hover {
+.gardenflow-manuscript-dialog-close:hover {
   background: rgb(92 66 69 / 0.08);
   color: rgb(45 31 33 / 1);
 }
 
-[data-theme='dark'] .redclaw-manuscript-dialog-close {
+[data-theme='dark'] .gardenflow-manuscript-dialog-close {
   color: rgb(230 207 202 / 0.72);
 }
 
-[data-theme='dark'] .redclaw-manuscript-dialog-close:hover {
+[data-theme='dark'] .gardenflow-manuscript-dialog-close:hover {
   background: rgb(255 245 241 / 0.1);
   color: rgb(255 247 243 / 0.96);
 }
 
-.redclaw-manuscript-dialog-input {
+.gardenflow-manuscript-dialog-input {
   border: 1px solid rgb(92 66 69 / 0.2);
   border-color: rgb(92 66 69 / 0.2);
   background-color: rgb(255 255 255 / 1) !important;
   color: rgb(45 31 33 / 1) !important;
 }
 
-.redclaw-manuscript-dialog-input::placeholder {
+.gardenflow-manuscript-dialog-input::placeholder {
   color: rgb(118 88 91 / 0.66);
 }
 
-.redclaw-manuscript-dialog-input:focus {
+.gardenflow-manuscript-dialog-input:focus {
   border-color: rgb(var(--color-accent-primary) / 0.55);
   box-shadow: 0 0 0 3px rgb(var(--color-accent-primary) / 0.12);
 }
 
-[data-theme='dark'] .redclaw-manuscript-dialog-input {
+[data-theme='dark'] .gardenflow-manuscript-dialog-input {
   border-color: rgb(255 236 229 / 0.18);
   background-color: rgb(48 25 30 / 1) !important;
   color: rgb(255 247 243 / 0.96) !important;
 }
 
-[data-theme='dark'] .redclaw-manuscript-dialog-input::placeholder {
+[data-theme='dark'] .gardenflow-manuscript-dialog-input::placeholder {
   color: rgb(230 207 202 / 0.56);
 }
 
-.redclaw-manuscript-dialog-secondary {
+.gardenflow-manuscript-dialog-secondary {
   border: 1px solid rgb(92 66 69 / 0.18);
   border-color: rgb(92 66 69 / 0.18);
   background-color: rgb(255 255 255 / 0.82) !important;
   color: rgb(88 66 69 / 0.92) !important;
 }
 
-.redclaw-manuscript-dialog-secondary:hover {
+.gardenflow-manuscript-dialog-secondary:hover {
   background: rgb(92 66 69 / 0.07);
   color: rgb(45 31 33 / 1);
 }
 
-[data-theme='dark'] .redclaw-manuscript-dialog-secondary {
+[data-theme='dark'] .gardenflow-manuscript-dialog-secondary {
   border-color: rgb(255 236 229 / 0.18);
   background-color: rgb(255 245 241 / 0.08) !important;
   color: rgb(246 235 232 / 0.78) !important;
 }
 
-[data-theme='dark'] .redclaw-manuscript-dialog-secondary:hover {
+[data-theme='dark'] .gardenflow-manuscript-dialog-secondary:hover {
   background: rgb(255 245 241 / 0.1);
   color: rgb(255 247 243 / 0.96);
 }
 
-.redclaw-manuscript-dialog-primary {
+.gardenflow-manuscript-dialog-primary {
   background-color: rgb(45 31 33 / 1) !important;
   color: rgb(255 255 255 / 1) !important;
 }
 
-.redclaw-manuscript-dialog-primary:hover {
+.gardenflow-manuscript-dialog-primary:hover {
   background: rgb(70 45 48 / 1);
 }
 
-[data-theme='dark'] .redclaw-manuscript-dialog-primary {
+[data-theme='dark'] .gardenflow-manuscript-dialog-primary {
   background-color: rgb(255 247 243 / 0.92) !important;
   color: rgb(31 13 18 / 1) !important;
 }
 
-[data-theme='dark'] .redclaw-manuscript-dialog-primary:hover {
+[data-theme='dark'] .gardenflow-manuscript-dialog-primary:hover {
   background: rgb(255 255 255 / 1);
 }
 

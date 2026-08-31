@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import '../brandEnvironment.cjs';
 
 import fs from 'node:fs/promises';
 import net from 'node:net';
@@ -16,22 +17,22 @@ const runtimeEnv = runtimeProcess?.env && typeof runtimeProcess.env === 'object'
   : {};
 const runtimePlatform = runtimeProcess?.platform || os.platform();
 const defaultStateRoot = resolveDefaultStateRoot();
-const defaultEndpointStatePath = runtimeEnv.REDBOX_BROWSER_CONTROL_ENDPOINT_STATE
+const defaultEndpointStatePath = runtimeEnv.GARDENFLOW_BROWSER_CONTROL_ENDPOINT_STATE
   || path.join(defaultStateRoot, 'browser-control-agent-endpoint.json');
-const defaultEndpointsDirectory = runtimeEnv.REDBOX_BROWSER_CONTROL_ENDPOINTS_DIRECTORY
+const defaultEndpointsDirectory = runtimeEnv.GARDENFLOW_BROWSER_CONTROL_ENDPOINTS_DIRECTORY
   || path.join(path.dirname(defaultEndpointStatePath), 'browser-control-agent-endpoints');
 const defaultSocketPath = runtimePlatform === 'win32'
-  ? '\\\\.\\pipe\\redbox-browser-control'
-  : path.join(os.tmpdir(), `redbox-browser-control-${currentUserId()}.sock`);
-const defaultTimeoutMs = Number(runtimeEnv.REDBOX_BROWSER_CONTROL_CLIENT_TIMEOUT_MS || 30_000);
-const endpointStaleAfterMs = Number(runtimeEnv.REDBOX_BROWSER_CONTROL_ENDPOINT_STALE_MS || 120_000);
+  ? '\\\\.\\pipe\\gardenflow-browser-control'
+  : path.join(os.tmpdir(), `gardenflow-browser-control-${currentUserId()}.sock`);
+const defaultTimeoutMs = Number(runtimeEnv.GARDENFLOW_BROWSER_CONTROL_CLIENT_TIMEOUT_MS || 30_000);
+const endpointStaleAfterMs = Number(runtimeEnv.GARDENFLOW_BROWSER_CONTROL_ENDPOINT_STALE_MS || 120_000);
 const maxEndpointResponseBytes = 8 * 1024 * 1024;
 
 function resolveDefaultStateRoot() {
-  if (runtimeEnv.REDBOX_BROWSER_CONTROL_STATE_DIR) return runtimeEnv.REDBOX_BROWSER_CONTROL_STATE_DIR;
-  if (runtimePlatform === 'darwin') return path.join(os.homedir(), 'Library/Application Support/RedBox/native-host');
-  if (runtimePlatform === 'win32') return path.join(runtimeEnv.APPDATA || path.join(os.homedir(), 'AppData/Roaming'), 'RedBox/native-host');
-  return path.join(runtimeEnv.XDG_DATA_HOME || path.join(os.homedir(), '.local/share'), 'RedBox/native-host');
+  if (runtimeEnv.GARDENFLOW_BROWSER_CONTROL_STATE_DIR) return runtimeEnv.GARDENFLOW_BROWSER_CONTROL_STATE_DIR;
+  if (runtimePlatform === 'darwin') return path.join(os.homedir(), 'Library/Application Support/GardenFlow/native-host');
+  if (runtimePlatform === 'win32') return path.join(runtimeEnv.APPDATA || path.join(os.homedir(), 'AppData/Roaming'), 'GardenFlow/native-host');
+  return path.join(runtimeEnv.XDG_DATA_HOME || path.join(os.homedir(), '.local/share'), 'GardenFlow/native-host');
 }
 
 function currentUserId() {
@@ -67,7 +68,7 @@ export async function setupBrowserRuntime(options = {}) {
     documentation: runtime.documentation,
   };
   globals.agent = agent;
-  globals.redboxBrowserRuntime = runtime;
+  globals.gardenflowBrowserRuntime = runtime;
   return agent;
 }
 
@@ -82,7 +83,7 @@ export class BrowserControlTransport {
   }
 
   async listEndpoints() {
-    const explicit = this.socketPath || runtimeEnv.REDBOX_BROWSER_CONTROL_SOCKET;
+    const explicit = this.socketPath || runtimeEnv.GARDENFLOW_BROWSER_CONTROL_SOCKET;
     if (explicit) return [{ socketPath: explicit, id: 'explicit', source: 'explicit' }];
     const descriptors = [];
     try {
@@ -113,7 +114,7 @@ export class BrowserControlTransport {
   async resolveEndpoint() {
     if (this.endpoint) return this.endpoint;
     if (this.socketPath) return this.socketPath;
-    if (runtimeEnv.REDBOX_BROWSER_CONTROL_SOCKET) return runtimeEnv.REDBOX_BROWSER_CONTROL_SOCKET;
+    if (runtimeEnv.GARDENFLOW_BROWSER_CONTROL_SOCKET) return runtimeEnv.GARDENFLOW_BROWSER_CONTROL_SOCKET;
     const endpoints = await this.listEndpoints();
     const requested = this.browserId;
     if (!requested && endpoints.length > 1) {
@@ -208,7 +209,7 @@ class BrowserRuntime {
   constructor(options) {
     this.transport = options.transport;
     this.documentationRoot = options.documentationRoot;
-    this.sessionId = options.sessionId || `redbox-browser-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    this.sessionId = options.sessionId || `gardenflow-browser-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     this.turnId = options.turnId || `turn-${Date.now().toString(36)}`;
     this.documentation = new BrowserDocumentation(this.documentationRoot);
     this.browsers = new BrowserCollection(this);
@@ -299,7 +300,7 @@ class BrowserCollection {
         const id = extensionInstanceId || host?.instanceId || endpoint.instanceId || endpoint.socketPath;
         return {
           id,
-          name: data?.name || 'Bojin Browser Control',
+          name: data?.name || 'GardenFlow Browser Control',
           type: 'extension',
           metadata: {
             backend: 'native-host',
@@ -326,7 +327,7 @@ class BrowserCollection {
   async get(id) {
     const requested = String(id || '').trim();
     const browsers = await this.list();
-    const defaultRequested = !requested || ['extension', 'chrome', 'browser', 'redbox'].includes(requested);
+    const defaultRequested = !requested || ['extension', 'chrome', 'browser', 'gardenflow'].includes(requested);
     if (defaultRequested && browsers.length > 1) {
       const error = browserClientError('BROWSER_INSTANCE_SELECTION_REQUIRED', 'Multiple browser instances are available; select one returned by agent.browsers.list()');
       error.data = { instances: browsers.map(summarizeBrowserFacade) };

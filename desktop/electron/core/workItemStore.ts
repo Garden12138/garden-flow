@@ -5,8 +5,8 @@ import { getWorkspacePaths } from '../db';
 
 export type WorkItemType =
   | 'generic'
-  | 'redclaw-note'
-  | 'redclaw-project'
+  | 'gardenflow-note'
+  | 'gardenflow-project'
   | 'research'
   | 'review'
   | 'automation'
@@ -121,7 +121,7 @@ const buildId = (): string => `wk_${Date.now()}_${Math.random().toString(36).sli
 
 export class WorkItemStore extends EventEmitter {
   private getRootDir(): string {
-    return path.join(getWorkspacePaths().redclaw, 'work-items');
+    return path.join(getWorkspacePaths().gardenflow, 'work-items');
   }
 
   private resolveFilePath(id: string): string {
@@ -152,8 +152,8 @@ export class WorkItemStore extends EventEmitter {
       description: typeof raw.description === 'string' && raw.description.trim() ? raw.description.trim() : undefined,
       type: ([
         'generic',
-        'redclaw-note',
-        'redclaw-project',
+        'gardenflow-note',
+        'gardenflow-project',
         'research',
         'review',
         'automation',

@@ -6,7 +6,7 @@ import { getBackgroundTaskRegistry } from './backgroundTaskRegistry';
 import { getHeadlessWorkerProcessManager } from './headlessWorkerProcessManager';
 import type { BuiltinToolPack } from './tools/catalog';
 
-type HeadlessRuntimeMode = 'redclaw' | 'background-maintenance';
+type HeadlessRuntimeMode = 'gardenflow' | 'background-maintenance';
 
 function createBackgroundEventSink(taskId: string) {
   const registry = getBackgroundTaskRegistry();
@@ -37,7 +37,7 @@ function createBackgroundEventSink(taskId: string) {
 }
 
 export class HeadlessAgentRunner {
-  async runRedClawTask(input: {
+  async runGardenFlowTask(input: {
     taskId: string;
     title: string;
     contextId: string;
@@ -58,7 +58,7 @@ export class HeadlessAgentRunner {
     const freshSession = Boolean(input.freshSession) || input.metadata?.automationKind === 'builtin';
     const session = getBackgroundSessionStore().ensureSession({
       contextId: input.contextId,
-      contextType: input.contextType || 'redclaw',
+      contextType: input.contextType || 'gardenflow',
       title: input.title,
       contextContent: input.contextContent,
       runtimeMode: input.runtimeMode || 'background-maintenance',
@@ -87,7 +87,7 @@ export class HeadlessAgentRunner {
     });
 
     const workspacePaths = input.spaceId ? getWorkspacePathsForSpace(input.spaceId) : null;
-    const toolPack = input.toolPack || 'redclaw';
+    const toolPack = input.toolPack || 'gardenflow';
     const service = input.service || new PiChatService({
       toolPack,
       workspacePathsOverride: workspacePaths || undefined,

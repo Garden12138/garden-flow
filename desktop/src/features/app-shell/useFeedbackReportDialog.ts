@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { OPEN_FEEDBACK_REPORT_EVENT, type FeedbackReportContext } from '../../components/FeedbackReportDialog';
 import type { ViewType } from './types';
 
-const FEEDBACK_REPORT_SUBMITTED_EVENT = 'redbox:feedback-report-submitted';
+const FEEDBACK_REPORT_SUBMITTED_EVENT = 'gardenflow:feedback-report-submitted';
 
 export function useFeedbackReportDialog(currentView: ViewType) {
   const [feedbackReportOpen, setFeedbackReportOpen] = useState(false);

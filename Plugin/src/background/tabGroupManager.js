@@ -1,7 +1,7 @@
 import { getStoredMap, setStoredMap } from './storage.js';
 
-export const TAB_GROUPS_KEY = 'xwowBrowserDataAiTabGroups';
-const DEFAULT_SESSION_GROUP_TITLE = 'Bojin';
+export const TAB_GROUPS_KEY = 'gardenflowBrowserDataAiTabGroups';
+const DEFAULT_SESSION_GROUP_TITLE = 'GardenFlow';
 const TAB_GROUP_COLORS = ['grey', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange'];
 
 let initialized = false;

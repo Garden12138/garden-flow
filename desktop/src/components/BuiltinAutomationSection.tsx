@@ -3,9 +3,9 @@ import { AlertTriangle, Check, ExternalLink, Loader2, PlayCircle, RefreshCw, Set
 import { clsx } from 'clsx';
 import { appAlert } from '../utils/appDialogs';
 
-type BuiltinTask = RedClawBuiltinAutomationTask;
-type Readiness = RedClawBuiltinAutomationReadiness;
-type SettingField = RedClawBuiltinAutomationSettingField;
+type BuiltinTask = GardenFlowBuiltinAutomationTask;
+type Readiness = GardenFlowBuiltinAutomationReadiness;
+type SettingField = GardenFlowBuiltinAutomationSettingField;
 
 interface BuiltinAutomationSectionProps {
     isActive?: boolean;
@@ -85,7 +85,7 @@ export function BuiltinAutomationSection({ isActive = true }: BuiltinAutomationS
         setLoading(true);
         setError('');
         try {
-            const result = await window.ipcRenderer.redclawRunner.listBuiltin();
+            const result = await window.ipcRenderer.gardenflowRunner.listBuiltin();
             if (requestId !== loadRequestRef.current) return;
             if (result?.success === false) {
                 throw new Error(result.error || '加载内置任务失败。');
@@ -104,7 +104,7 @@ export function BuiltinAutomationSection({ isActive = true }: BuiltinAutomationS
     const refreshReadiness = useCallback(async (taskId: string) => {
         setCheckingId(taskId);
         try {
-            const result = await window.ipcRenderer.redclawRunner.builtinReadiness({ taskId });
+            const result = await window.ipcRenderer.gardenflowRunner.builtinReadiness({ taskId });
             const message = readError(result, '就绪检查失败。');
             if (message) throw new Error(message);
             if (result?.readiness) {
@@ -143,8 +143,8 @@ export function BuiltinAutomationSection({ isActive = true }: BuiltinAutomationS
                 return changed ? next : prev;
             });
         };
-        window.ipcRenderer.redclawRunner.onStatus(listener);
-        return () => window.ipcRenderer.redclawRunner.offStatus(listener);
+        window.ipcRenderer.gardenflowRunner.onStatus(listener);
+        return () => window.ipcRenderer.gardenflowRunner.offStatus(listener);
     }, [isActive, load]);
 
     const configTask = useMemo(
@@ -174,7 +174,7 @@ export function BuiltinAutomationSection({ isActive = true }: BuiltinAutomationS
         }
         setBusyId(configTask.id);
         try {
-            const result = await window.ipcRenderer.redclawRunner.setBuiltinSettings({
+            const result = await window.ipcRenderer.gardenflowRunner.setBuiltinSettings({
                 taskId: configTask.id,
                 settings,
                 scheduleTime: draftTime,
@@ -195,7 +195,7 @@ export function BuiltinAutomationSection({ isActive = true }: BuiltinAutomationS
         const stealBusy = busyId !== task.id;
         if (stealBusy) setBusyId(task.id);
         try {
-            const result = await window.ipcRenderer.redclawRunner.setBuiltinEnabled({
+            const result = await window.ipcRenderer.gardenflowRunner.setBuiltinEnabled({
                 taskId: task.id,
                 enabled: !task.enabled,
             });
@@ -216,7 +216,7 @@ export function BuiltinAutomationSection({ isActive = true }: BuiltinAutomationS
     const runNow = useCallback(async (task: BuiltinTask) => {
         setBusyId(task.id);
         try {
-            const result = await window.ipcRenderer.redclawRunner.runBuiltinNow({ taskId: task.id });
+            const result = await window.ipcRenderer.gardenflowRunner.runBuiltinNow({ taskId: task.id });
             const message = readError(result, '立即运行内置任务失败。');
             if (message) throw new Error(message);
             await load();

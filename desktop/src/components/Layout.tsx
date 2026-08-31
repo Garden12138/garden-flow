@@ -39,13 +39,13 @@ type SidebarNavItem = {
   view: ViewType;
   labelKey: I18nKey;
   icon: typeof MessageSquare;
-  redclawAction?: 'new';
+  gardenflowAction?: 'new';
   settingsTab?: 'general' | 'ai' | 'platforms' | 'tools' | 'profile' | 'remote' | 'experimental';
   primary?: boolean;
 };
 
 const NAV_ITEMS: SidebarNavItem[] = [
-  { key: 'new-chat', view: 'redclaw', labelKey: 'nav.newChat', icon: Edit, redclawAction: 'new', primary: true },
+  { key: 'new-chat', view: 'gardenflow', labelKey: 'nav.newChat', icon: Edit, gardenflowAction: 'new', primary: true },
   { key: 'search', view: 'knowledge', labelKey: 'nav.search', icon: BookOpenText, primary: true },
   { key: 'assets', view: 'subjects', labelKey: 'nav.assets', icon: Folder, primary: true },
   { key: 'automation', view: 'automation', labelKey: 'nav.automation', icon: Clock3, primary: true },
@@ -339,7 +339,7 @@ export function Layout({ children, currentView, onNavigate, immersiveMode = fals
     navigateToGlobalSearch,
   } = useGlobalKnowledgeSearch(onNavigate);
   const handleSidebarNavigate = useCallback((item: SidebarNavItem) => {
-    if (item.settingsTab || item.redclawAction) {
+    if (item.settingsTab || item.gardenflowAction) {
       if (item.settingsTab) {
         dispatchAppIntent({
           type: 'settings.open',
@@ -348,8 +348,8 @@ export function Layout({ children, currentView, onNavigate, immersiveMode = fals
         return;
       }
       dispatchAppIntent({
-        type: 'redclaw.open',
-        action: item.redclawAction,
+        type: 'gardenflow.open',
+        action: item.gardenflowAction,
       });
       return;
     }
@@ -367,7 +367,7 @@ export function Layout({ children, currentView, onNavigate, immersiveMode = fals
   const renderSidebarNavItem = (item: SidebarNavItem) => {
     const { key, view, labelKey, icon: Icon, primary } = item;
     const label = t(labelKey);
-    const isActive = !item.redclawAction && (currentView === view || activeModalView === view) && !item.settingsTab;
+    const isActive = !item.gardenflowAction && (currentView === view || activeModalView === view) && !item.settingsTab;
     return (
       <button
         key={key}

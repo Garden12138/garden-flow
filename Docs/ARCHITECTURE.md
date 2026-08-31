@@ -1,8 +1,8 @@
-# Bojin 项目架构
+# GardenFlow 项目架构
 
 ## 1. 项目定位
 
-Bojin 是一个本地优先的 AI 内容运营桌面工作区，目标是把素材采集、知识沉淀、选题、写作、视觉生成、稿件编辑和自动化执行串成一条可持续复用的内容生产链。
+GardenFlow 是一个本地优先的 AI 内容运营桌面工作区，目标是把素材采集、知识沉淀、选题、写作、视觉生成、稿件编辑和自动化执行串成一条可持续复用的内容生产链。
 
 本仓库包含两类主要应用：
 
@@ -18,7 +18,7 @@ flowchart LR
     A["网页、文件、图片、视频"] --> B["采集与导入"]
     B --> C["本地知识库"]
     C --> D["选题中心 / 检索"]
-    D --> E["RedClaw AI 会话"]
+    D --> E["GardenFlow AI 会话"]
     E --> F["稿件 / 封面 / 图片 / 视频 / 音频"]
     F --> G["媒体库与稿件编辑器"]
     E --> H["自动化任务"]
@@ -30,7 +30,7 @@ flowchart LR
 ## 3. 仓库结构
 
 ```text
-redclaw/
+gardenflow/
 ├── desktop/                   Electron 桌面应用
 │   ├── src/                   React renderer
 │   │   ├── pages/             页面级产品表面
@@ -78,7 +78,7 @@ flowchart TB
     end
 
     subgraph Storage["本地持久化"]
-        DB["redconvert.db"]
+        DB["gardenflow.db"]
         FS["workspace files"]
     end
 
@@ -102,10 +102,10 @@ flowchart TB
 
 | 入口 | 主要页面 | 作用 |
 | --- | --- | --- |
-| 新对话 | `pages/RedClaw.tsx` | AI 会话、创作、任务和稿件入口 |
+| 新对话 | `pages/GardenFlow.tsx` | AI 会话、创作、任务和稿件入口 |
 | 知识库 | `pages/Knowledge.tsx` | 素材、文档、视频、检索和转录 |
 | 资产库 | `pages/Subjects.tsx` | 品牌、角色、物品、场景和复用参考资产 |
-| 自动化 | `pages/Automation.tsx` | 定时 RedClaw 任务和执行状态 |
+| 自动化 | `pages/Automation.tsx` | 定时 GardenFlow 任务和执行状态 |
 | 自由创作 | `pages/GenerationStudio.tsx` | 图片、视频、音频、封面和数字人生成 |
 | 选题中心 | `pages/Wander.tsx` | 素材漫步、发散和选题转创作 |
 | 设置 | `pages/Settings.tsx` | AI 源、工作空间和运行配置 |
@@ -114,12 +114,12 @@ flowchart TB
 
 ### 4.2 Preload 与 bridge
 
-`desktop/electron/preload.ts` 只暴露 `__RED_ELECTRON_IPC__` 传输对象；`desktop/src/bridge/ipcRenderer.ts` 再组合成按领域划分的 facade。主要域包括：
+`desktop/electron/preload.ts` 只暴露 `__GARDENFLOW_ELECTRON_IPC__` 传输对象；`desktop/src/bridge/ipcRenderer.ts` 再组合成按领域划分的 facade。主要域包括：
 
 - `chat`、`sessions`、`runtime`、`teamRuntime`
 - `knowledge`、`manuscripts`、`media`、`subjects`
 - `generation`、`cover`、`videoEditorV2`
-- `redclawRunner`、`backgroundTasks`、`work`
+- `gardenflowRunner`、`backgroundTasks`、`work`
 - `skills`、`mcp`、`tools`
 - `settings`、`spaces`、`app`、`logs`
 
@@ -140,11 +140,11 @@ bridge 层同时承担超时、返回值归一化和开源版能力降级。生�
 
 1. 注册本地资源协议并尽快创建窗口。
 2. 初始化核心服务和可选官方功能桥。
-3. 建立当前空间目录、后台任务注册表和 RedClaw runner。
+3. 建立当前空间目录、后台任务注册表和 GardenFlow runner。
 4. 延迟启动记忆维护、助手 daemon、任务队列、顾问 YouTube runner 和文件监听。
 5. 更晚检查 `yt-dlp`，避免阻塞首次可交互时间。
 
-关闭应用时会统一停止 HTTP 服务、RedClaw runner、助手 daemon、headless workers 和 session bridge。
+关闭应用时会统一停止 HTTP 服务、GardenFlow runner、助手 daemon、headless workers 和 session bridge。
 
 ## 5. AI 与任务编排
 
@@ -166,7 +166,7 @@ bridge 层同时承担超时、返回值归一化和开源版能力降级。生�
 
 Runtime 模式：
 
-- `redclaw`
+- `gardenflow`
 - `knowledge`
 - `chatroom`
 - `advisor-discussion`
@@ -198,7 +198,7 @@ Runtime 模式：
 数据库文件是：
 
 ```text
-<Electron app.getPath('userData')>/redconvert.db
+<Electron app.getPath('userData')>/gardenflow.db
 ```
 
 `desktop/electron/db.ts` 负责 schema 初始化和迁移。主要表包括：
@@ -213,14 +213,14 @@ Runtime 模式：
 - 稿件和知识索引：`manuscript_embeddings`、`manuscript_similarity_cache`、`document_knowledge_index`
 - 选题历史：`wander_history`
 
-数据库会探测旧产品名对应的 userData 目录，并在当前数据库为空时迁移历史 `redconvert.db`。
+数据库会探测旧产品名对应的 userData 目录，并在当前数据库为空时迁移历史 `gardenflow.db`。
 
 ### 6.2 工作空间
 
 默认工作空间是：
 
 ```text
-~/.redconvert
+~/.gardenflow
 ```
 
 可以在设置中改为其他绝对目录。多空间默认使用：
@@ -237,7 +237,7 @@ Runtime 模式：
 ├── media/
 ├── cover/
 ├── subjects/
-├── redclaw/
+├── gardenflow/
 │   └── profile/
 ├── memory/
 ├── archives/
@@ -250,7 +250,7 @@ SQLite 更适合结构化状态、查询和审计；workspace 文件更适合用
 
 ### 6.3 本地资源协议
 
-媒体文件通过 `redbox-asset://`（兼容 `local-file://`）加载。主进程会把请求路径解析为本地路径，并检查是否位于允许根目录中。新增文件读取能力时应继续复用 `localAssetManager.ts` 的路径规范化和根目录校验，不能直接拼接不可信路径。
+媒体文件通过 `gardenflow-asset://`（兼容 `local-file://`）加载。主进程会把请求路径解析为本地路径，并检查是否位于允许根目录中。新增文件读取能力时应继续复用 `localAssetManager.ts` 的路径规范化和根目录校验，不能直接拼接不可信路径。
 
 ## 7. 主要业务域
 
@@ -281,7 +281,7 @@ SQLite 更适合结构化状态、查询和审计；workspace 文件更适合用
 
 ### 7.4 自动化与后台运行
 
-RedClaw runner 支持定时任务、长周期任务、立即运行、暂停/启用和执行历史。创建自动化时保存的是结构化 schedule 和 prompt；到期后由后台 runner 创建任务并调用相同 AI runtime。
+GardenFlow runner 支持定时任务、长周期任务、立即运行、暂停/启用和执行历史。创建自动化时保存的是结构化 schedule 和 prompt；到期后由后台 runner 创建任务并调用相同 AI runtime。
 
 窗口关闭后的行为依平台和配置而异。Linux/Windows 会在存在需要保活的 runner/daemon 时继续后台运行；macOS 关闭窗口通常不会立即退出应用。真正退出应用会停止后台服务。
 
@@ -327,7 +327,7 @@ Electron 入口会先识别固定官方扩展 origin：普通启动进入完整�
 
 | 项目 | 现状 | 开发影响 |
 | --- | --- | --- |
-| 品牌与版本 | Bojin、Bojin、Bojin 名称并存；桌面和插件版本不同 | 不要批量替换兼容标识；展示名与协议名分开处理 |
+| 品牌与版本 | GardenFlow、GardenFlow、GardenFlow 名称并存；桌面和插件版本不同 | 不要批量替换兼容标识；展示名与协议名分开处理 |
 | 开源/生产差异 | `desktop/private/` 和生产 Desktop Bridge 未包含 | 官方登录、会员和部分集成会明确降级 |
 | 主进程体积 | `electron/main.ts` 集中大量 IPC；`db.ts` 集中 schema/DAO | 新能力优先放 `core/` 服务，只在 main 注册薄 handler |
 | IPC 与 WebView 边界 | preload 暴露通用 IPC 传输，窗口同时启用 `webviewTag` | 新 channel 必须在主进程校验参数、来源和路径；逐步收敛 channel 白名单与导航策略 |

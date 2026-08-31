@@ -8,9 +8,9 @@ export type CustomThemePreference = {
   accentHex: string;
 };
 
-export const THEME_MODE_STORAGE_KEY = 'redbox:theme-mode:v1';
-export const CUSTOM_THEME_STORAGE_KEY = 'redbox:custom-theme:v1';
-export const CUSTOM_THEME_CHANGED_EVENT = 'redbox:custom-theme-changed';
+export const THEME_MODE_STORAGE_KEY = 'gardenflow:theme-mode:v1';
+export const CUSTOM_THEME_STORAGE_KEY = 'gardenflow:custom-theme:v1';
+export const CUSTOM_THEME_CHANGED_EVENT = 'gardenflow:custom-theme-changed';
 
 const FALLBACK_ACCENT_HEX = '#a2784b';
 

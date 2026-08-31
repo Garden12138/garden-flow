@@ -1,3 +1,4 @@
+import compatibility from '../../shared/brandCompatibility.cjs';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import os from 'os';
@@ -39,7 +40,7 @@ const IGNORE_PATTERNS = [
 ];
 
 function normalizeSkillKey(value: string): string {
-    return String(value || '')
+    return compatibility.canonicalKey(String(value || '').trim())
         .trim()
         .toLowerCase()
         .replace(/\.md$/i, '')
@@ -199,7 +200,7 @@ export async function loadSkillsFromDir(
 }
 
 export function getUserSkillsDir(): string {
-    return path.join(os.homedir(), '.redconvert', 'skills');
+    return path.join(os.homedir(), '.gardenflow', 'skills');
 }
 
 export async function getClaudeHomeSkillsDirs(): Promise<string[]> {

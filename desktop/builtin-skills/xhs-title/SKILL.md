@@ -5,7 +5,7 @@ description: |
   触发方式：/xhs-title、/小红书标题、「帮我起个小红书标题」「小红书标题公式」
   Xiaohongshu title formula tool. Pick the right formula from 75 proven templates.
   Trigger: /xhs-title, "xiaohongshu title", "RED title formula"
-allowedRuntimeModes: [wander, redclaw, chatroom]
+allowedRuntimeModes: [wander, gardenflow, chatroom]
 hookMode: inline
 autoActivate: false
 activationScope: turn

@@ -1,3 +1,5 @@
+> 历史记录：本文保留更名前的实际名称和验证结论，不代表 GardenFlow 新模型网关已可用。当前更名与验收见 [GardenFlow 更名说明](GARDENFLOW_REBRAND.md)。
+
 # 自测步骤：new-api 私有网关 + 自动化模块升级
 
 覆盖分支 `feature/newapi-gateway-and-automation-upgrade` 的两个功能：

@@ -1,5 +1,6 @@
-export const REDBOX_ASSET_PROTOCOL = 'redbox-asset';
-export const REDBOX_ASSET_HOST = 'asset';
+import compatibility from './brandCompatibility.cjs';
+export const GARDENFLOW_ASSET_PROTOCOL = 'gardenflow-asset';
+export const GARDENFLOW_ASSET_HOST = 'asset';
 export const LEGACY_LOCAL_FILE_PROTOCOL = 'local-file';
 
 export interface LocalAssetByteRange {
@@ -76,14 +77,14 @@ export function isLegacyLocalFileUrl(value: string): boolean {
     return /^local-file:\/\//i.test(String(value || '').trim());
 }
 
-export function isRedboxAssetUrl(value: string): boolean {
-    return new RegExp(`^${REDBOX_ASSET_PROTOCOL}:\\/\\/`, 'i').test(String(value || '').trim());
+export function isGardenFlowAssetUrl(value: string): boolean {
+    return [GARDENFLOW_ASSET_PROTOCOL, ...compatibility.identity.legacy.assetProtocols].some(scheme => String(value || '').toLowerCase().startsWith(scheme + '://'));
 }
 
 export function isLocalAssetSource(value: string): boolean {
     const raw = String(value || '').trim();
     if (!raw) return false;
-    if (isRedboxAssetUrl(raw) || isLegacyLocalFileUrl(raw) || isFileUrl(raw) || isLikelyAbsoluteLocalPath(raw)) {
+    if (isGardenFlowAssetUrl(raw) || isLegacyLocalFileUrl(raw) || isFileUrl(raw) || isLikelyAbsoluteLocalPath(raw)) {
         return true;
     }
     const decoded = decodeEncodedLocalPathSource(raw);
@@ -121,7 +122,7 @@ export function extractLocalAssetPathCandidate(value: string): string {
         return normalizeAssetPathForUrl(localPathSource);
     }
 
-    if (isRedboxAssetUrl(raw) || isLegacyLocalFileUrl(raw) || isFileUrl(raw)) {
+    if (isGardenFlowAssetUrl(raw) || isLegacyLocalFileUrl(raw) || isFileUrl(raw)) {
         const parseTarget = isLegacyLocalFileUrl(raw)
             ? normalizeUriForParsing(raw).replace(/^local-file:/i, 'file:')
             : normalizeUriForParsing(raw);
@@ -129,19 +130,19 @@ export function extractLocalAssetPathCandidate(value: string): string {
             const parsed = new URL(parseTarget);
             let pathname = safeDecodeUriComponent(parsed.pathname || '');
             const host = String(parsed.host || '').trim();
-            if (host === REDBOX_ASSET_HOST && pathname.startsWith('//')) {
+            if (host === GARDENFLOW_ASSET_HOST && pathname.startsWith('//')) {
                 pathname = pathname.slice(1);
             }
             if (/^\/[a-zA-Z]:/.test(pathname)) {
                 pathname = pathname.slice(1);
-            } else if (host && host !== REDBOX_ASSET_HOST && !/^localhost$/i.test(host)) {
+            } else if (host && host !== GARDENFLOW_ASSET_HOST && !/^localhost$/i.test(host)) {
                 pathname = `//${host}${pathname.startsWith('/') ? '' : '/'}${pathname}`;
             }
             return normalizeAssetPathForUrl(pathname);
         } catch {
-            if (isRedboxAssetUrl(raw)) {
+            if (isGardenFlowAssetUrl(raw)) {
                 return normalizeAssetPathForUrl(
-                    safeDecodeUriComponent(raw.replace(new RegExp(`^${REDBOX_ASSET_PROTOCOL}:\\/\\/${REDBOX_ASSET_HOST}\\/?`, 'i'), '')),
+                    safeDecodeUriComponent(raw.replace(new RegExp(`^${GARDENFLOW_ASSET_PROTOCOL}:\\/\\/${GARDENFLOW_ASSET_HOST}\\/?`, 'i'), '')),
                 );
             }
             if (isLegacyLocalFileUrl(raw)) {
@@ -158,22 +159,22 @@ export function extractLocalAssetPathCandidate(value: string): string {
     return '';
 }
 
-export function toRedboxAssetUrl(absolutePath: string): string {
+export function toGardenFlowAssetUrl(absolutePath: string): string {
     const normalized = normalizeAssetPathForUrl(absolutePath);
     if (!normalized) return '';
-    return `${REDBOX_ASSET_PROTOCOL}://${REDBOX_ASSET_HOST}/${encodeURI(normalized)}`;
+    return `${GARDENFLOW_ASSET_PROTOCOL}://${GARDENFLOW_ASSET_HOST}/${encodeURI(normalized)}`;
 }
 
-export function coerceToRedboxAssetUrl(value: string): string {
+export function coerceToGardenFlowAssetUrl(value: string): string {
     const raw = String(value || '').trim();
     if (!raw) return '';
-    if (isRedboxAssetUrl(raw)) {
+    if (isGardenFlowAssetUrl(raw)) {
         const pathCandidate = extractLocalAssetPathCandidate(raw);
-        return pathCandidate ? toRedboxAssetUrl(pathCandidate) : raw;
+        return pathCandidate ? toGardenFlowAssetUrl(pathCandidate) : raw;
     }
     if (isLegacyLocalFileUrl(raw) || isFileUrl(raw) || isLikelyAbsoluteLocalPath(raw)) {
         const pathCandidate = extractLocalAssetPathCandidate(raw);
-        return pathCandidate ? toRedboxAssetUrl(pathCandidate) : '';
+        return pathCandidate ? toGardenFlowAssetUrl(pathCandidate) : '';
     }
     return raw;
 }

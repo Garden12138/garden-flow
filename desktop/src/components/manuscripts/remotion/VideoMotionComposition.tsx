@@ -959,7 +959,7 @@ function SceneLayerContent({
                         fontWeight: 600,
                     }}
                 >
-                    {scene.overlayTitle || 'Bojin Motion Scene'}
+                    {scene.overlayTitle || 'GardenFlow Motion Scene'}
                 </AbsoluteFill>
             ) : null}
             {entities.map((entity) => (

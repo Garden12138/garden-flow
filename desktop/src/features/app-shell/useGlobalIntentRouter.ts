@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
-import { REDBOX_NAVIGATE_EVENT } from '../../notifications/types';
-import type { AppIntent, AppNavigateEventDetail, GenerationIntent, RedClawNavigationAction, SettingsNavigationTarget, ViewType } from './types';
+import { GARDENFLOW_NAVIGATE_EVENT } from '../../notifications/types';
+import type { AppIntent, AppNavigateEventDetail, GenerationIntent, GardenFlowNavigationAction, SettingsNavigationTarget, ViewType } from './types';
 
 function recordFromUnknown(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -14,7 +14,7 @@ function shouldAutoOpenTeamSession(session: Record<string, unknown>): boolean {
   const source = String(session.source || '').trim().toLowerCase();
   const metadata = recordFromUnknown(session.metadata);
   const surface = String(metadata.surface || '').trim().toLowerCase();
-  if (surface === 'redclaw' || source === 'team-workbench') return false;
+  if (surface === 'gardenflow' || source === 'team-workbench') return false;
   const metadataAutoOpen = metadata.autoOpen === true
     || String(metadata.autoOpen || '').trim().toLowerCase() === 'true';
   if (source === 'team-guide' || metadataAutoOpen) return true;
@@ -42,10 +42,10 @@ function normalizeNavigateIntent(detail: AppNavigateEventDetail | null | undefin
     };
   }
 
-  if (view === 'redclaw') {
+  if (view === 'gardenflow') {
     return {
-      type: 'redclaw.open',
-      action: detail.redclawAction,
+      type: 'gardenflow.open',
+      action: detail.gardenflowAction,
       sessionId: detail.teamSessionId || detail.sessionId,
     };
   }
@@ -68,7 +68,7 @@ type UseGlobalIntentRouterParams = {
   setCurrentView: (view: ViewType) => void;
   setActiveManuscriptEditorFile: (value: string | null) => void;
   setSettingsNavigationTarget: (value: SettingsNavigationTarget | null) => void;
-  setRedClawNavigationAction: (value: RedClawNavigationAction | null) => void;
+  setGardenFlowNavigationAction: (value: GardenFlowNavigationAction | null) => void;
   setApprovalTargetDocketId: (value: string) => void;
   setPendingGenerationIntent: (value: GenerationIntent | null) => void;
 };
@@ -78,7 +78,7 @@ export function useGlobalIntentRouter({
   setCurrentView,
   setActiveManuscriptEditorFile,
   setSettingsNavigationTarget,
-  setRedClawNavigationAction,
+  setGardenFlowNavigationAction,
   setApprovalTargetDocketId,
   setPendingGenerationIntent,
 }: UseGlobalIntentRouterParams) {
@@ -97,40 +97,40 @@ export function useGlobalIntentRouter({
         return;
       }
 
-      if (intent.type === 'redclaw.open' && intent.action === 'new') {
+      if (intent.type === 'gardenflow.open' && intent.action === 'new') {
         setActiveManuscriptEditorFile(null);
-        setRedClawNavigationAction({
+        setGardenFlowNavigationAction({
           action: 'new',
           nonce: Date.now(),
         });
-        navigateToView('redclaw');
+        navigateToView('gardenflow');
         return;
       }
 
-      if (intent.type === 'redclaw.open' && intent.action === 'open-team' && intent.sessionId) {
+      if (intent.type === 'gardenflow.open' && intent.action === 'open-team' && intent.sessionId) {
         setActiveManuscriptEditorFile(null);
-        setRedClawNavigationAction({
+        setGardenFlowNavigationAction({
           action: 'open-team',
           sessionId: intent.sessionId,
           nonce: Date.now(),
         });
-        navigateToView('redclaw');
+        navigateToView('gardenflow');
         return;
       }
 
-      if (intent.type === 'redclaw.open' && intent.action === 'open-session' && intent.sessionId) {
+      if (intent.type === 'gardenflow.open' && intent.action === 'open-session' && intent.sessionId) {
         setActiveManuscriptEditorFile(null);
-        setRedClawNavigationAction({
+        setGardenFlowNavigationAction({
           action: 'open-session',
           sessionId: intent.sessionId,
           nonce: Date.now(),
         });
-        navigateToView('redclaw');
+        navigateToView('gardenflow');
         return;
       }
 
-      if (intent.type === 'redclaw.open') {
-        navigateToView('redclaw');
+      if (intent.type === 'gardenflow.open') {
+        navigateToView('gardenflow');
         return;
       }
 
@@ -150,7 +150,7 @@ export function useGlobalIntentRouter({
         const manuscriptPath = String(intent.manuscriptPath || '').trim();
         if (!manuscriptPath) return;
         setActiveManuscriptEditorFile(manuscriptPath);
-        navigateToView('redclaw');
+        navigateToView('gardenflow');
         return;
       }
 
@@ -159,16 +159,16 @@ export function useGlobalIntentRouter({
       }
     };
 
-    window.addEventListener(REDBOX_NAVIGATE_EVENT, handleNavigate as EventListener);
+    window.addEventListener(GARDENFLOW_NAVIGATE_EVENT, handleNavigate as EventListener);
     return () => {
-      window.removeEventListener(REDBOX_NAVIGATE_EVENT, handleNavigate as EventListener);
+      window.removeEventListener(GARDENFLOW_NAVIGATE_EVENT, handleNavigate as EventListener);
     };
   }, [
     navigateToView,
     setActiveManuscriptEditorFile,
     setApprovalTargetDocketId,
     setPendingGenerationIntent,
-    setRedClawNavigationAction,
+    setGardenFlowNavigationAction,
     setSettingsNavigationTarget,
   ]);
 
@@ -183,17 +183,17 @@ export function useGlobalIntentRouter({
       if (!sessionId || openedSessionIds.has(sessionId)) return;
       if (!shouldAutoOpenTeamSession(session)) return;
       openedSessionIds.add(sessionId);
-      setRedClawNavigationAction({
+      setGardenFlowNavigationAction({
         action: 'open-team',
         sessionId,
         nonce: Date.now(),
       });
-      setCurrentView('redclaw');
+      setCurrentView('gardenflow');
     };
 
     window.ipcRenderer.teamRuntime.onEvent(handleTeamRuntimeEvent);
     return () => {
       window.ipcRenderer.teamRuntime.offEvent(handleTeamRuntimeEvent);
     };
-  }, [setCurrentView, setRedClawNavigationAction]);
+  }, [setCurrentView, setGardenFlowNavigationAction]);
 }

@@ -1,3 +1,4 @@
+import './brandRuntime.js';
 let latestPageInfo = null;
 let latestUrl = location.href;
 let updateTimer = null;
@@ -25,11 +26,11 @@ const FAST_POLL_DURATION_MS = 2500;
 const URL_WATCH_INTERVAL_MS = 150;
 const DRAG_HIDE_DELAY_MS = 140;
 const DRAG_RESULT_HIDE_DELAY_MS = 1800;
-const PAGE_ROUTE_EVENT_NAME = 'redbox:locationchange';
-const REDBOX_XHS_DETAIL_ACTIONS_ID = 'redbox-xhs-detail-actions';
-const REDBOX_XHS_PROFILE_ACTIONS_ID = 'redbox-xhs-profile-actions';
-const REDBOX_XHS_STYLE_ID = 'redbox-xhs-dom-style';
-const REDBOX_XHS_DETAIL_HOST_TAG = 'redbox-xhs-explore';
+const PAGE_ROUTE_EVENT_NAME = 'gardenflow:locationchange';
+const GARDENFLOW_XHS_DETAIL_ACTIONS_ID = 'gardenflow-xhs-detail-actions';
+const GARDENFLOW_XHS_PROFILE_ACTIONS_ID = 'gardenflow-xhs-profile-actions';
+const GARDENFLOW_XHS_STYLE_ID = 'gardenflow-xhs-dom-style';
+const GARDENFLOW_XHS_DETAIL_HOST_TAG = 'gardenflow-xhs-explore';
 const USER_PROFILE_FEATURE_ENABLED = true;
 const ACCOUNT_BINDING_FEATURE_ENABLED = false;
 
@@ -812,7 +813,7 @@ function clearDragHideTimer() {
 function ensureDragDropUi() {
     if (dragOverlayHost?.isConnected) return;
     const host = document.createElement('div');
-    host.id = 'redbox-image-dropzone-host';
+    host.id = 'gardenflow-image-dropzone-host';
     host.style.position = 'fixed';
     host.style.right = '18px';
     host.style.top = '50%';
@@ -896,8 +897,8 @@ function ensureDragDropUi() {
         }
       </style>
 	      <div class="zone" data-visible="false" data-state="idle">
-	        <div class="eyebrow">Bojin</div>
-	        <div class="title">保存图片到 Bojin</div>
+	        <div class="eyebrow">GardenFlow</div>
+	        <div class="title">保存图片到 GardenFlow</div>
 	        <div class="meta">松手后会直接保存到素材库，并保留来源域名与原页面链接。</div>
 	      </div>
 	    `;
@@ -919,7 +920,7 @@ function setDragZoneState(state, payload, message) {
     ensureDragDropUi();
     if (!dragOverlayHost || !dragZoneElement || !dragZoneTitleElement || !dragZoneMetaElement) return;
 
-    const title = normalizeText(payload?.title) || '保存图片到 Bojin';
+    const title = normalizeText(payload?.title) || '保存图片到 GardenFlow';
     dragOverlayHost.style.display = 'block';
     dragZoneElement.dataset.visible = 'true';
     dragZoneElement.dataset.state = state;
@@ -940,7 +941,7 @@ function setDragZoneState(state, payload, message) {
         return;
     }
 
-    dragZoneTitleElement.textContent = '保存图片到 Bojin';
+    dragZoneTitleElement.textContent = '保存图片到 GardenFlow';
     dragZoneMetaElement.textContent = message || title;
 }
 
@@ -1065,7 +1066,7 @@ async function persistDraggedImage(payload) {
         setDragZoneState('success', payload, '图片已保存到素材库。');
     } catch (error) {
         const message = String(error?.message || error || '图片保存失败');
-        console.warn('[redbox-plugin][page-observer] drag image save failed', message);
+        console.warn('[gardenflow-plugin][page-observer] drag image save failed', message);
         setDragZoneState('error', payload, message);
     } finally {
         dragSaveInFlight = false;
@@ -1139,7 +1140,7 @@ function handleDocumentDrop(event) {
 }
 
 function setXhsDomStatus(container, message, state = 'idle') {
-    const statusEl = container?.querySelector?.('.redbox-xhs-status');
+    const statusEl = container?.querySelector?.('.gardenflow-xhs-status');
     if (!statusEl) return;
     clearTimeout(xhsDomStatusTimer);
     statusEl.textContent = normalizeText(message);
@@ -1159,7 +1160,7 @@ function summarizeActionResponse(response, fallback) {
         if (response.duplicate) {
             return response.updated ? '知识库中已存在，已更新' : '知识库中已存在';
         }
-        return '已保存到 Bojin';
+        return '已保存到 GardenFlow';
     }
     if (response?.mode === 'xhs-link-batch') {
         return `成功 ${Number(response.count || 0)} 条，失败 ${Number(response.failed || 0)} 条`;
@@ -1188,7 +1189,7 @@ function summarizeActionResponse(response, fallback) {
 async function runXhsDomAction(action, options = {}) {
     if (!USER_PROFILE_FEATURE_ENABLED && (action === 'blogger' || action === 'bloggerNotes')) return;
     const actionMap = {
-        save: { type: 'save-xhs', pending: '保存中...', done: '已保存到 Bojin' },
+        save: { type: 'save-xhs', pending: '保存中...', done: '已保存到 GardenFlow' },
         download: { type: 'xhs:download-current-note', pending: '下载中...', done: '已创建下载任务' },
         downloadZip: { type: 'xhs:download-current-note-zip', pending: '打包中...', done: '已创建压缩包下载' },
         comments: { type: 'xhs:collect-current-comments', pending: '采集中...', done: '评论已写入知识库' },
@@ -1196,8 +1197,8 @@ async function runXhsDomAction(action, options = {}) {
         bloggerNotes: { type: 'xhs:collect-blogger-notes', pending: '采集中...', done: '已采集主页笔记' },
         exportJson: { type: 'xhs:export-current-note-json', pending: '导出中...', done: '已导出 JSON' },
         collectLink: { type: 'xhs:collect-note-links', pending: '采集中...', done: '已采集' },
-        savePageAuto: { type: 'save-page-auto', pending: '保存中...', done: '已保存到 Bojin' },
-        savePageLink: { type: 'save-page-link', pending: '保存中...', done: '已保存到 Bojin' },
+        savePageAuto: { type: 'save-page-auto', pending: '保存中...', done: '已保存到 GardenFlow' },
+        savePageLink: { type: 'save-page-link', pending: '保存中...', done: '已保存到 GardenFlow' },
         saveYoutube: { type: 'save-youtube', pending: '保存中...', done: '已保存 YouTube 视频' },
         saveDouyin: { type: 'save-douyin', pending: '保存中...', done: '已保存抖音视频' },
         saveZhihuAnswer: { type: 'save-zhihu-answer', pending: '保存中...', done: '已保存知乎回答' },
@@ -1218,7 +1219,7 @@ async function runXhsDomAction(action, options = {}) {
             ? {
                 type: config.type,
                 urls: [options.url].filter(Boolean),
-                options: { saveToRedBox: true, limit: 1 },
+                options: { saveToGardenFlow: true, limit: 1 },
             }
             : { type: config.type };
         const response = await chrome.runtime.sendMessage(message);
@@ -1229,7 +1230,7 @@ async function runXhsDomAction(action, options = {}) {
         if (statusTarget) setXhsDomStatus(statusTarget, doneText, 'success');
     } catch (error) {
         const message = String(error?.message || error || '操作失败');
-        console.warn('[redbox-plugin][page-observer] xhs dom action failed', action, message);
+        console.warn('[gardenflow-plugin][page-observer] xhs dom action failed', action, message);
         if (statusTarget) setXhsDomStatus(statusTarget, message, 'error');
     }
 }
@@ -1237,9 +1238,9 @@ async function runXhsDomAction(action, options = {}) {
 function ensureXhsDomStyle() {
     if (xhsDomStyleElement?.isConnected) return;
     const style = document.createElement('style');
-    style.id = REDBOX_XHS_STYLE_ID;
+    style.id = GARDENFLOW_XHS_STYLE_ID;
     style.textContent = `
-      .redbox-xhs-actions {
+      .gardenflow-xhs-actions {
         display: flex;
         align-items: center;
         gap: 8px;
@@ -1248,23 +1249,23 @@ function ensureXhsDomStyle() {
         padding: 8px 0;
         font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif;
       }
-      .redbox-xhs-profile-actions {
+      .gardenflow-xhs-profile-actions {
         padding: 12px 0;
         margin: 8px 0 12px;
       }
-      .redbox-xhs-detail-actions {
+      .gardenflow-xhs-detail-actions {
         margin: 0;
         padding: 0 16px 16px !important;
         gap: 12px;
       }
       @media (min-width: 1280px) {
-        .redbox-xhs-detail-actions {
+        .gardenflow-xhs-detail-actions {
           padding: 0 24px 24px !important;
           gap: 16px;
         }
       }
-      .redbox-xhs-btn,
-      .redbox-xhs-card-btn {
+      .gardenflow-xhs-btn,
+      .gardenflow-xhs-card-btn {
         border: 1px solid rgba(230, 0, 18, 0.28);
         border-radius: 8px;
         background: #ffffff;
@@ -1272,39 +1273,39 @@ function ensureXhsDomStyle() {
         cursor: pointer;
         font: 650 12px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif;
       }
-      .redbox-xhs-btn {
+      .gardenflow-xhs-btn {
         min-height: 30px;
         padding: 7px 10px;
       }
-      .redbox-xhs-btn.primary {
+      .gardenflow-xhs-btn.primary {
         background: #e60012;
         border-color: #e60012;
         color: #ffffff;
       }
-      .redbox-xhs-btn:hover,
-      .redbox-xhs-card-btn:hover {
+      .gardenflow-xhs-btn:hover,
+      .gardenflow-xhs-card-btn:hover {
         border-color: #000000;
         box-shadow: 0 6px 18px rgba(230, 0, 18, 0.14);
       }
-      .redbox-xhs-btn:disabled,
-      .redbox-xhs-card-btn:disabled {
+      .gardenflow-xhs-btn:disabled,
+      .gardenflow-xhs-card-btn:disabled {
         cursor: not-allowed;
         opacity: 0.55;
       }
-      .redbox-xhs-status {
+      .gardenflow-xhs-status {
         min-width: 88px;
         color: #166534;
         font-size: 12px;
         line-height: 1.35;
         word-break: break-word;
       }
-      .redbox-xhs-status[data-state="pending"] {
+      .gardenflow-xhs-status[data-state="pending"] {
         color: #c2000f;
       }
-      .redbox-xhs-status[data-state="error"] {
+      .gardenflow-xhs-status[data-state="error"] {
         color: #b91c1c;
       }
-      .redbox-xhs-card-btn {
+      .gardenflow-xhs-card-btn {
         position: absolute;
         right: 8px;
         top: 8px;
@@ -1314,7 +1315,7 @@ function ensureXhsDomStyle() {
         background: rgba(255, 255, 255, 0.96);
         box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
       }
-      .redbox-xhs-card-status {
+      .gardenflow-xhs-card-status {
         position: absolute;
         right: 8px;
         top: 42px;
@@ -1330,10 +1331,10 @@ function ensureXhsDomStyle() {
         line-height: 1.3;
         word-break: break-word;
       }
-      .redbox-xhs-card-status[data-state="pending"] {
+      .gardenflow-xhs-card-status[data-state="pending"] {
         color: #c2000f;
       }
-      .redbox-xhs-card-status[data-state="error"] {
+      .gardenflow-xhs-card-status[data-state="error"] {
         color: #b91c1c;
       }
     `;
@@ -1344,7 +1345,7 @@ function ensureXhsDomStyle() {
 function makeXhsDomButton(label, action, options = {}) {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = `redbox-xhs-btn${options.primary ? ' primary' : ''}`;
+    button.className = `gardenflow-xhs-btn${options.primary ? ' primary' : ''}`;
     button.textContent = label;
     button.title = options.title || label;
     button.addEventListener('click', (event) => {
@@ -1465,11 +1466,11 @@ function shouldInjectXhsDetailActions(pageInfo) {
 }
 
 function createXhsDetailHost(injectionKey) {
-    const host = document.createElement(REDBOX_XHS_DETAIL_HOST_TAG);
-    host.id = REDBOX_XHS_DETAIL_ACTIONS_ID;
-    host.dataset.redboxInjected = 'detail-actions';
+    const host = document.createElement(GARDENFLOW_XHS_DETAIL_HOST_TAG);
+    host.id = GARDENFLOW_XHS_DETAIL_ACTIONS_ID;
+    host.dataset.gardenflowInjected = 'detail-actions';
     if (injectionKey) {
-        host.dataset.redboxNoteKey = injectionKey;
+        host.dataset.gardenflowNoteKey = injectionKey;
     }
     host.style.display = 'block';
     host.style.position = 'relative';
@@ -1486,7 +1487,7 @@ function createXhsDetailHost(injectionKey) {
       *, *::before, *::after {
         box-sizing: border-box;
       }
-      .redbox-xhs-actions {
+      .gardenflow-xhs-actions {
         display: inline-flex;
         align-items: flex-start;
         flex-direction: column;
@@ -1495,7 +1496,7 @@ function createXhsDetailHost(injectionKey) {
         font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif;
       }
       @media (min-width: 1280px) {
-        .redbox-xhs-actions {
+        .gardenflow-xhs-actions {
           gap: 12px;
           padding: 0 24px 24px;
         }
@@ -1520,33 +1521,33 @@ function createXhsDetailHost(injectionKey) {
         cursor: not-allowed;
         opacity: 0.55;
       }
-      .redbox-xhs-status {
+      .gardenflow-xhs-status {
         color: #166534;
         font-size: 12px;
         line-height: 1.35;
         word-break: break-word;
       }
-      .redbox-xhs-status[data-state="pending"] {
+      .gardenflow-xhs-status[data-state="pending"] {
         color: #c2000f;
       }
-      .redbox-xhs-status[data-state="error"] {
+      .gardenflow-xhs-status[data-state="error"] {
         color: #b91c1c;
       }
     `;
     const actions = document.createElement('div');
-    actions.className = 'redbox-xhs-actions p-4 xl:p-6 !pt-0';
+    actions.className = 'gardenflow-xhs-actions p-4 xl:p-6 !pt-0';
     const saveButton = document.createElement('button');
     saveButton.type = 'button';
-    saveButton.dataset.redboxAction = 'save';
+    saveButton.dataset.gardenflowAction = 'save';
     saveButton.textContent = '保存笔记';
-    saveButton.title = '保存当前小红书笔记到 Bojin';
+    saveButton.title = '保存当前小红书笔记到 GardenFlow';
     const zipButton = document.createElement('button');
     zipButton.type = 'button';
-    zipButton.dataset.redboxAction = 'downloadZip';
+    zipButton.dataset.gardenflowAction = 'downloadZip';
     zipButton.textContent = '下载压缩包';
     zipButton.title = '下载当前笔记图片或视频压缩包';
     const status = document.createElement('span');
-    status.className = 'redbox-xhs-status';
+    status.className = 'gardenflow-xhs-status';
     status.hidden = true;
     saveButton.addEventListener('click', (event) => {
         event.preventDefault();
@@ -1568,9 +1569,9 @@ function injectXhsDetailActions(pageInfo) {
     const hasDetectedNote = shouldInjectXhsDetailActions(pageInfo);
     if (!hasDetectedNote) return;
     const injectionKey = getXhsDetailInjectionKey();
-    let container = document.getElementById(REDBOX_XHS_DETAIL_ACTIONS_ID);
+    let container = document.getElementById(GARDENFLOW_XHS_DETAIL_ACTIONS_ID);
     if (container?.isConnected) {
-        if (injectionKey && container.dataset.redboxNoteKey !== injectionKey) {
+        if (injectionKey && container.dataset.gardenflowNoteKey !== injectionKey) {
             container.remove();
             container = null;
         } else if (root && !root.contains(container)) {
@@ -1584,8 +1585,8 @@ function injectXhsDetailActions(pageInfo) {
         }
     }
     if (container?.isConnected) {
-        const saveButton = container.shadowRoot?.querySelector?.('[data-redbox-action="save"]')
-            || container.querySelector?.('[data-redbox-action="save"]');
+        const saveButton = container.shadowRoot?.querySelector?.('[data-gardenflow-action="save"]')
+            || container.querySelector?.('[data-gardenflow-action="save"]');
         if (saveButton) saveButton.disabled = false;
         return;
     }
@@ -1631,21 +1632,21 @@ function findXhsProfileActionMount() {
 function injectXhsProfileActions() {
     if (!USER_PROFILE_FEATURE_ENABLED) return;
     if (!isXhsProfilePath()) return;
-    let container = document.getElementById(REDBOX_XHS_PROFILE_ACTIONS_ID);
+    let container = document.getElementById(GARDENFLOW_XHS_PROFILE_ACTIONS_ID);
     if (container?.isConnected) return;
     const mount = findXhsProfileActionMount();
     if (!mount) return;
     ensureXhsDomStyle();
 
     container = document.createElement('div');
-    container.id = REDBOX_XHS_PROFILE_ACTIONS_ID;
-    container.className = 'redbox-xhs-actions redbox-xhs-profile-actions';
-    container.dataset.redboxInjected = 'profile-actions';
+    container.id = GARDENFLOW_XHS_PROFILE_ACTIONS_ID;
+    container.className = 'gardenflow-xhs-actions gardenflow-xhs-profile-actions';
+    container.dataset.gardenflowInjected = 'profile-actions';
     const status = document.createElement('span');
-    status.className = 'redbox-xhs-status';
+    status.className = 'gardenflow-xhs-status';
     status.hidden = true;
     if (ACCOUNT_BINDING_FEATURE_ENABLED) {
-        container.append(makeXhsDomButton('保存博主', 'blogger', { primary: true, statusTarget: container, title: '保存当前小红书博主资料到 Bojin' }));
+        container.append(makeXhsDomButton('保存博主', 'blogger', { primary: true, statusTarget: container, title: '保存当前小红书博主资料到 GardenFlow' }));
     }
     container.append(
         makeXhsDomButton('采集博主笔记', 'bloggerNotes', { primary: !ACCOUNT_BINDING_FEATURE_ENABLED, statusTarget: container, title: '采集当前博主主页全部可加载笔记' }),
@@ -1695,19 +1696,19 @@ function injectXhsCardButtons() {
         const url = normalizeXhsNoteUrl(anchor.getAttribute('href') || anchor.href || '');
         if (!url) continue;
         const card = findXhsCardRoot(anchor);
-        if (!card || card.querySelector(':scope > .redbox-xhs-card-btn')) continue;
+        if (!card || card.querySelector(':scope > .gardenflow-xhs-card-btn')) continue;
         const style = window.getComputedStyle(card);
         if (style.position === 'static') {
-            card.dataset.redboxPreviousPosition = 'static';
+            card.dataset.gardenflowPreviousPosition = 'static';
             card.style.position = 'relative';
         }
         const button = document.createElement('button');
         button.type = 'button';
-        button.className = 'redbox-xhs-card-btn';
+        button.className = 'gardenflow-xhs-card-btn';
         button.textContent = '采集';
-        button.title = '采集这条小红书笔记到 Bojin';
+        button.title = '采集这条小红书笔记到 GardenFlow';
         const status = document.createElement('span');
-        status.className = 'redbox-xhs-card-status redbox-xhs-status';
+        status.className = 'gardenflow-xhs-card-status gardenflow-xhs-status';
         status.hidden = true;
         button.addEventListener('click', (event) => {
             event.preventDefault();
@@ -1738,12 +1739,12 @@ function ensureXhsDomButtons(pageInfo) {
     if (shouldInjectXhsDetailActions(pageInfo)) {
         injectXhsDetailActions(pageInfo);
     } else {
-        document.getElementById(REDBOX_XHS_DETAIL_ACTIONS_ID)?.remove();
+        document.getElementById(GARDENFLOW_XHS_DETAIL_ACTIONS_ID)?.remove();
     }
     if (USER_PROFILE_FEATURE_ENABLED && (isXhsProfilePath() || pageInfo?.kind === 'xhs-profile')) {
         injectXhsProfileActions(pageInfo);
     } else {
-        document.getElementById(REDBOX_XHS_PROFILE_ACTIONS_ID)?.remove();
+        document.getElementById(GARDENFLOW_XHS_PROFILE_ACTIONS_ID)?.remove();
     }
     injectXhsCardButtons();
 }
@@ -1755,12 +1756,12 @@ function removeXhsDomButtons() {
         clearInterval(xhsDomInjectionTimer);
         xhsDomInjectionTimer = null;
     }
-    document.getElementById(REDBOX_XHS_DETAIL_ACTIONS_ID)?.remove();
-    document.getElementById(REDBOX_XHS_PROFILE_ACTIONS_ID)?.remove();
-    document.querySelectorAll('.redbox-xhs-card-btn, .redbox-xhs-card-status').forEach((node) => node.remove());
-    document.querySelectorAll('[data-redbox-previous-position="static"]').forEach((node) => {
+    document.getElementById(GARDENFLOW_XHS_DETAIL_ACTIONS_ID)?.remove();
+    document.getElementById(GARDENFLOW_XHS_PROFILE_ACTIONS_ID)?.remove();
+    document.querySelectorAll('.gardenflow-xhs-card-btn, .gardenflow-xhs-card-status').forEach((node) => node.remove());
+    document.querySelectorAll('[data-gardenflow-previous-position="static"]').forEach((node) => {
         node.style.position = '';
-        delete node.dataset.redboxPreviousPosition;
+        delete node.dataset.gardenflowPreviousPosition;
     });
     if (xhsDomStyleElement?.isConnected) {
         xhsDomStyleElement.remove();
@@ -1792,18 +1793,18 @@ function handlePageRouteChange() {
 function installPageRouteBridge() {
     if (pageRouteBridgeInstalled || !document.documentElement) return;
     pageRouteBridgeInstalled = true;
-    const existing = document.getElementById('redbox-page-route-bridge');
+    const existing = document.getElementById('gardenflow-page-route-bridge');
     if (existing) return;
 
     const script = document.createElement('script');
-    script.id = 'redbox-page-route-bridge';
+    script.id = 'gardenflow-page-route-bridge';
     script.src = chrome.runtime.getURL('pageRouteBridge.js');
     script.async = false;
     script.onload = () => {
         script.remove();
     };
     script.onerror = () => {
-        console.warn('[redbox-plugin][page-observer] failed to install page route bridge');
+        console.warn('[gardenflow-plugin][page-observer] failed to install page route bridge');
     };
     (document.head || document.documentElement).appendChild(script);
 }
@@ -1873,14 +1874,14 @@ function emitPageState() {
                 stopObservers();
                 return;
             }
-            console.warn('[redbox-plugin][page-observer] page-state:update failed', error);
+            console.warn('[gardenflow-plugin][page-observer] page-state:update failed', error);
         });
     } catch (error) {
         if (isContextInvalidatedError(error)) {
             stopObservers();
             return;
         }
-        console.warn('[redbox-plugin][page-observer] page-state:update threw', error);
+        console.warn('[gardenflow-plugin][page-observer] page-state:update threw', error);
     }
 }
 

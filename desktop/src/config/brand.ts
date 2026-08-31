@@ -88,12 +88,12 @@ export type AppBrandTheme = Partial<{
 }>;
 
 export const APP_BRAND = {
-  variant: String(config.variant || 'bojin'),
-  displayName: String(config.displayName || 'Bojin'),
-  windowTitle: String(config.windowTitle || config.displayName || 'Bojin'),
-  htmlTitle: String(config.htmlTitle || config.windowTitle || config.displayName || 'Bojin'),
-  aiDisplayName: String(config.aiDisplayName || config.displayName || 'Bojin'),
-  logoSrc: resolveRuntimeAssetUrl(String(config.logoSrc || 'branding/bojin-mark.svg')),
+  variant: String(config.variant || 'gardenflow'),
+  displayName: String(config.displayName || 'GardenFlow'),
+  windowTitle: String(config.windowTitle || config.displayName || 'GardenFlow'),
+  htmlTitle: String(config.htmlTitle || config.windowTitle || config.displayName || 'GardenFlow'),
+  aiDisplayName: String(config.aiDisplayName || config.displayName || 'GardenFlow'),
+  logoSrc: resolveRuntimeAssetUrl(String(config.logoSrc || 'branding/gardenflow-mark.svg')),
   tagline: String(config.tagline || ''),
   visibleSettingsTabs: Array.isArray(config.visibleSettingsTabs)
     ? config.visibleSettingsTabs.map((tab) => String(tab || '').trim()).filter(Boolean)

@@ -12,7 +12,7 @@ const explicitCommandRoutes: Record<string, string> = {
   knowledge_get_index_status: 'knowledge:get-index-status',
   knowledge_rebuild_catalog: 'knowledge:rebuild-catalog',
   knowledge_open_index_root: 'knowledge:open-index-root',
-  redclaw_runner_status: 'redclaw:runner-status',
+  gardenflow_runner_status: 'gardenflow:runner-status',
 };
 
 function toFileUrl(pathValue: string): string {

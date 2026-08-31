@@ -4,9 +4,9 @@ import { getSettings } from '../db';
 import { createGeneratedMediaAsset, type MediaAsset } from './mediaLibraryStore';
 import { normalizeApiBaseUrl } from './urlUtils';
 import {
-    REDBOX_OFFICIAL_VIDEO_BASE_URL,
-    getBojinOfficialVideoModel,
-} from '../../shared/bojinVideo';
+    GARDENFLOW_OFFICIAL_VIDEO_BASE_URL,
+    getGardenFlowOfficialVideoModel,
+} from '../../shared/gardenflowVideo';
 import {
     buildAliyunBailianVideoCreateUrl,
     buildAliyunBailianVideoCreateUrlCandidates,
@@ -97,7 +97,7 @@ const NEW_API_VIDEO_SUCCESS_STATUSES = new Set(['SUCCESS', 'SUCCEEDED', 'COMPLET
 const NEW_API_VIDEO_FAILURE_STATUSES = new Set(['FAILURE', 'FAILED', 'CANCELED', 'CANCELLED']);
 const aliyunEndpointFallbacks = new Map<string, string>();
 
-function isBojinCompatibleEndpoint(endpoint: string): boolean {
+function isGardenFlowCompatibleEndpoint(endpoint: string): boolean {
     const normalized = normalizeApiBaseUrl(endpoint).toLowerCase();
     return normalized.includes('api.ziz.hk') && normalized.includes('/v1');
 }
@@ -226,7 +226,7 @@ function buildCompatibleVideoRouteUrl(endpoint: string, suffix: string): string 
 function buildCompatibleVideoRouteUrls(endpoint: string, suffix: string): string[] {
     const primary = buildCompatibleVideoRouteUrl(endpoint, suffix);
     const urls = [primary];
-    if (isBojinCompatibleEndpoint(endpoint)) {
+    if (isGardenFlowCompatibleEndpoint(endpoint)) {
         try {
             const parsed = new URL(normalizeApiBaseUrl(endpoint));
             const apiRoute = `${parsed.origin}/api/v1${suffix}`;
@@ -389,7 +389,7 @@ async function generateViaOpenAiCompatibleVideoRoute(input: {
         seconds,
         n: input.count,
     };
-    if (isBojinCompatibleEndpoint(input.endpoint)) {
+    if (isGardenFlowCompatibleEndpoint(input.endpoint)) {
         body.resolution = input.resolution === '1080p' ? '1080P' : '720P';
         body.duration = input.durationSeconds;
 
@@ -605,7 +605,7 @@ async function generateViaOpenAiCompatibleVideoRoute(input: {
             dataBuffer: downloaded.buffer,
             mimeType: downloaded.mimeType,
             projectId: input.projectId?.trim() || undefined,
-            provider: input.endpoint.toLowerCase().includes('/redbox/') ? 'redbox' : 'openai-compatible',
+            provider: input.endpoint.toLowerCase().includes('/gardenflow/') ? 'gardenflow' : 'openai-compatible',
             model: input.model,
             aspectRatio: input.aspectRatio,
             size: input.resolution,
@@ -622,7 +622,7 @@ async function generateViaOpenAiCompatibleVideoRoute(input: {
     return {
         model: input.model,
         endpoint: input.endpoint,
-        provider: input.endpoint.toLowerCase().includes('/redbox/') ? 'redbox' : 'openai-compatible',
+        provider: input.endpoint.toLowerCase().includes('/gardenflow/') ? 'gardenflow' : 'openai-compatible',
         aspectRatio: input.aspectRatio,
         resolution: input.resolution,
         durationSeconds: input.durationSeconds,
@@ -1209,11 +1209,11 @@ export async function generateVideosToMediaLibrary(input: GenerateVideosInput): 
     const generationMode = (String(input.generationMode || '').trim() || 'text-to-video') as VideoGenerationMode;
     const configuredRoute = resolveVideoModelRoute(settings, input.model);
     const endpoint = normalizeApiBaseUrl(
-        String(input.endpoint || configuredRoute?.provider.endpoint || settings.video_endpoint || REDBOX_OFFICIAL_VIDEO_BASE_URL).trim(),
-        REDBOX_OFFICIAL_VIDEO_BASE_URL
+        String(input.endpoint || configuredRoute?.provider.endpoint || settings.video_endpoint || GARDENFLOW_OFFICIAL_VIDEO_BASE_URL).trim(),
+        GARDENFLOW_OFFICIAL_VIDEO_BASE_URL
     );
     const configuredModel = String(input.model || configuredRoute?.model || settings.video_model || '').trim();
-    const model = configuredModel || getBojinOfficialVideoModel(generationMode);
+    const model = configuredModel || getGardenFlowOfficialVideoModel(generationMode);
     const provider = resolveVideoProvider(endpoint, model);
     const inputApiKey = String(input.apiKey || '').trim();
     const videoApiKey = String(configuredRoute?.provider.apiKey || settings.video_api_key || '').trim();

@@ -183,7 +183,7 @@ export abstract class DeclarativeTool<TParams extends z.ZodType<any, any>, TResu
 
     // Required by some external code that expects LangChain interface
     get lc_namespace() {
-        return ['redconvert', 'tools'];
+        return ['gardenflow', 'tools'];
     }
 
     readonly requiresConfirmation: boolean = false;

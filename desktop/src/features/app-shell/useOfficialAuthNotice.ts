@@ -3,7 +3,7 @@ import { useI18n } from '../../i18n';
 
 const OFFICIAL_AUTH_NOTICE_ENABLED = false;
 const OFFICIAL_AUTH_SNAPSHOT_KEYS = [
-  'redbox-auth:panel-display',
+  'gardenflow-auth:panel-display',
 ] as const;
 
 function clearStaleOfficialAuthSnapshots(): boolean {

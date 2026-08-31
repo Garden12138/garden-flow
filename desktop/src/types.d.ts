@@ -63,8 +63,8 @@ export interface NotificationSettingsPayload {
     runtimeNeedsApproval: boolean;
     generationCompleted: boolean;
     generationFailed: boolean;
-    redclawCompleted: boolean;
-    redclawFailed: boolean;
+    gardenflowCompleted: boolean;
+    gardenflowFailed: boolean;
   };
 }
 
@@ -237,7 +237,7 @@ export interface ThrivePluginHomeAction {
   pluginName?: string;
   label: string;
   prompt?: string | null;
-  target?: 'redclaw' | 'coverStudio' | 'generationStudio' | 'manuscripts' | string | null;
+  target?: 'gardenflow' | 'coverStudio' | 'generationStudio' | 'manuscripts' | string | null;
   mode?: string | null;
   icon?: string | null;
   tone?: string | null;
@@ -629,7 +629,7 @@ export interface ReviewDocketStats {
 
 export interface TaskPanelItem {
   id: string;
-  source: 'redclaw' | 'collaboration' | 'approval' | string;
+  source: 'gardenflow' | 'collaboration' | 'approval' | string;
   sourceLabel: string;
   sourceId?: string | null;
   sourceTaskId?: string | null;
@@ -995,7 +995,7 @@ export interface RoleSpec {
 }
 
 declare global {
-  interface RedClawBuiltinAutomationSettingField {
+  interface GardenFlowBuiltinAutomationSettingField {
     key: string;
     label: string;
     type: 'string' | 'string-list' | 'number' | 'select';
@@ -1008,7 +1008,7 @@ declare global {
     options?: Array<{ value: string; label: string }>;
   }
 
-  interface RedClawBuiltinAutomationReadinessCheck {
+  interface GardenFlowBuiltinAutomationReadinessCheck {
     id: string;
     label: string;
     status: 'ok' | 'failed' | 'unknown';
@@ -1016,15 +1016,15 @@ declare global {
     hint?: string;
   }
 
-  interface RedClawBuiltinAutomationReadiness {
+  interface GardenFlowBuiltinAutomationReadiness {
     taskId: string;
     ready: boolean;
     checkedAt: string;
     blockingReason: string;
-    checks: RedClawBuiltinAutomationReadinessCheck[];
+    checks: GardenFlowBuiltinAutomationReadinessCheck[];
   }
 
-  interface RedClawBuiltinAutomationTask {
+  interface GardenFlowBuiltinAutomationTask {
     id: string;
     name: string;
     description: string;
@@ -1035,7 +1035,7 @@ declare global {
     scheduleMode: 'daily';
     scheduleTime: string;
     settings: Record<string, unknown>;
-    settingsSchema: RedClawBuiltinAutomationSettingField[];
+    settingsSchema: GardenFlowBuiltinAutomationSettingField[];
     documentationUrl?: string;
     lastRunAt?: string;
     lastResult?: 'success' | 'error' | 'skipped';
@@ -1173,8 +1173,8 @@ declare global {
         flush: () => Promise<unknown>;
         clearQueue: () => Promise<unknown>;
       };
-      saveSettings: (settings: { api_endpoint?: string; api_key?: string; model_name?: string; model_name_wander?: string; model_name_chatroom?: string; model_name_knowledge?: string; model_name_redclaw?: string; search_provider?: string; search_endpoint?: string; search_api_key?: string; visual_index_enabled?: boolean; visual_index_provider?: string; visual_index_endpoint?: string; visual_index_api_key?: string; visual_index_model?: string; visual_index_prompt_version?: string; visual_index_timeout_seconds?: number; visual_index_max_image_edge?: number; visual_index_skip_small_images?: boolean; visual_index_pdf_max_pages?: number; visual_index_pdf_render_dpi?: number; visual_index_concurrency?: number; video_analysis_enabled?: boolean; video_analysis_endpoint?: string; video_analysis_api_key?: string; video_analysis_model?: string; video_analysis_protocol?: string; video_analysis_max_direct_video_bytes?: number; proxy_enabled?: boolean; proxy_url?: string; proxy_bypass?: string; workspace_dir?: string; active_space_id?: string; role_mapping?: Record<string, string> | string; transcription_model?: string; transcription_endpoint?: string; transcription_key?: string; embedding_endpoint?: string; embedding_key?: string; embedding_model?: string; ai_sources_json?: string; default_ai_source_id?: string; image_provider?: string; image_endpoint?: string; image_api_key?: string; image_model?: string; video_endpoint?: string; video_api_key?: string; video_model?: string; video_models_json?: string; video_providers_json?: string; active_video_provider_id?: string; image_provider_template?: string; image_aspect_ratio?: string; image_size?: string; image_quality?: string; mcp_servers_json?: string; redclaw_compact_target_tokens?: number; wander_deep_think_enabled?: boolean; wander_skill_loading_enabled?: boolean; memberSkillDistillation?: boolean; memberRuntimeOverlay?: boolean; memberToolPolicy?: boolean; memberSkillAutoRefresh?: boolean; debug_log_enabled?: boolean; developer_mode_enabled?: boolean; developer_mode_unlocked_at?: string | null; cli_runtime_execution_mode?: string; chat_max_tokens_default?: number; chat_max_tokens_deepseek?: number; diagnostics_upload_consent?: 'none' | 'prompt' | 'approved'; diagnostics_include_advanced_context?: boolean; diagnostics_auto_send_same_crash?: boolean; diagnostics_last_prompted_at?: string | null; analytics_consent?: 'none' | 'prompt' | 'approved'; analytics_last_prompted_at?: string | null; release_log_retention_days?: number; release_log_max_file_mb?: number; notifications_json?: string; ai_model_routes_json?: string; image_hosting_json?: string }) => Promise<unknown>;
-      getSettings: () => Promise<{ api_endpoint: string; api_key: string; model_name: string; model_name_wander?: string; model_name_chatroom?: string; model_name_knowledge?: string; model_name_redclaw?: string; search_provider?: string; search_endpoint?: string; search_api_key?: string; visual_index_enabled?: boolean; visual_index_provider?: string; visual_index_endpoint?: string; visual_index_api_key?: string; visual_index_model?: string; visual_index_prompt_version?: string; visual_index_timeout_seconds?: number; visual_index_max_image_edge?: number; visual_index_skip_small_images?: boolean; visual_index_pdf_max_pages?: number; visual_index_pdf_render_dpi?: number; visual_index_concurrency?: number; video_analysis_enabled?: boolean; video_analysis_endpoint?: string; video_analysis_api_key?: string; video_analysis_model?: string; video_analysis_protocol?: string; video_analysis_max_direct_video_bytes?: number; proxy_enabled?: boolean; proxy_url?: string; proxy_bypass?: string; workspace_dir?: string; active_space_id?: string; role_mapping?: string; transcription_model?: string; transcription_endpoint?: string; transcription_key?: string; embedding_endpoint?: string; embedding_key?: string; embedding_model?: string; ai_sources_json?: string; default_ai_source_id?: string; image_provider?: string; image_endpoint?: string; image_api_key?: string; image_model?: string; video_endpoint?: string; video_api_key?: string; video_model?: string; video_models_json?: string; video_providers_json?: string; active_video_provider_id?: string; image_provider_template?: string; image_aspect_ratio?: string; image_size?: string; image_quality?: string; mcp_servers_json?: string; redclaw_compact_target_tokens?: number; wander_deep_think_enabled?: boolean; wander_skill_loading_enabled?: boolean; memberSkillDistillation?: boolean; memberRuntimeOverlay?: boolean; memberToolPolicy?: boolean; memberSkillAutoRefresh?: boolean; debug_log_enabled?: boolean; developer_mode_enabled?: boolean; developer_mode_unlocked_at?: string | null; chat_max_tokens_default?: number; chat_max_tokens_deepseek?: number; diagnostics_upload_consent?: 'none' | 'prompt' | 'approved'; diagnostics_include_advanced_context?: boolean; diagnostics_auto_send_same_crash?: boolean; diagnostics_last_prompted_at?: string | null; analytics_consent?: 'none' | 'prompt' | 'approved'; analytics_last_prompted_at?: string | null; release_log_retention_days?: number; release_log_max_file_mb?: number; notifications_json?: string; ai_model_routes_json?: string; image_hosting_json?: string } | undefined>;
+      saveSettings: (settings: { api_endpoint?: string; api_key?: string; model_name?: string; model_name_wander?: string; model_name_chatroom?: string; model_name_knowledge?: string; model_name_gardenflow?: string; search_provider?: string; search_endpoint?: string; search_api_key?: string; visual_index_enabled?: boolean; visual_index_provider?: string; visual_index_endpoint?: string; visual_index_api_key?: string; visual_index_model?: string; visual_index_prompt_version?: string; visual_index_timeout_seconds?: number; visual_index_max_image_edge?: number; visual_index_skip_small_images?: boolean; visual_index_pdf_max_pages?: number; visual_index_pdf_render_dpi?: number; visual_index_concurrency?: number; video_analysis_enabled?: boolean; video_analysis_endpoint?: string; video_analysis_api_key?: string; video_analysis_model?: string; video_analysis_protocol?: string; video_analysis_max_direct_video_bytes?: number; proxy_enabled?: boolean; proxy_url?: string; proxy_bypass?: string; workspace_dir?: string; active_space_id?: string; role_mapping?: Record<string, string> | string; transcription_model?: string; transcription_endpoint?: string; transcription_key?: string; embedding_endpoint?: string; embedding_key?: string; embedding_model?: string; ai_sources_json?: string; default_ai_source_id?: string; image_provider?: string; image_endpoint?: string; image_api_key?: string; image_model?: string; video_endpoint?: string; video_api_key?: string; video_model?: string; video_models_json?: string; video_providers_json?: string; active_video_provider_id?: string; image_provider_template?: string; image_aspect_ratio?: string; image_size?: string; image_quality?: string; mcp_servers_json?: string; gardenflow_compact_target_tokens?: number; wander_deep_think_enabled?: boolean; wander_skill_loading_enabled?: boolean; memberSkillDistillation?: boolean; memberRuntimeOverlay?: boolean; memberToolPolicy?: boolean; memberSkillAutoRefresh?: boolean; debug_log_enabled?: boolean; developer_mode_enabled?: boolean; developer_mode_unlocked_at?: string | null; cli_runtime_execution_mode?: string; chat_max_tokens_default?: number; chat_max_tokens_deepseek?: number; diagnostics_upload_consent?: 'none' | 'prompt' | 'approved'; diagnostics_include_advanced_context?: boolean; diagnostics_auto_send_same_crash?: boolean; diagnostics_last_prompted_at?: string | null; analytics_consent?: 'none' | 'prompt' | 'approved'; analytics_last_prompted_at?: string | null; release_log_retention_days?: number; release_log_max_file_mb?: number; notifications_json?: string; ai_model_routes_json?: string; image_hosting_json?: string }) => Promise<unknown>;
+      getSettings: () => Promise<{ api_endpoint: string; api_key: string; model_name: string; model_name_wander?: string; model_name_chatroom?: string; model_name_knowledge?: string; model_name_gardenflow?: string; search_provider?: string; search_endpoint?: string; search_api_key?: string; visual_index_enabled?: boolean; visual_index_provider?: string; visual_index_endpoint?: string; visual_index_api_key?: string; visual_index_model?: string; visual_index_prompt_version?: string; visual_index_timeout_seconds?: number; visual_index_max_image_edge?: number; visual_index_skip_small_images?: boolean; visual_index_pdf_max_pages?: number; visual_index_pdf_render_dpi?: number; visual_index_concurrency?: number; video_analysis_enabled?: boolean; video_analysis_endpoint?: string; video_analysis_api_key?: string; video_analysis_model?: string; video_analysis_protocol?: string; video_analysis_max_direct_video_bytes?: number; proxy_enabled?: boolean; proxy_url?: string; proxy_bypass?: string; workspace_dir?: string; active_space_id?: string; role_mapping?: string; transcription_model?: string; transcription_endpoint?: string; transcription_key?: string; embedding_endpoint?: string; embedding_key?: string; embedding_model?: string; ai_sources_json?: string; default_ai_source_id?: string; image_provider?: string; image_endpoint?: string; image_api_key?: string; image_model?: string; video_endpoint?: string; video_api_key?: string; video_model?: string; video_models_json?: string; video_providers_json?: string; active_video_provider_id?: string; image_provider_template?: string; image_aspect_ratio?: string; image_size?: string; image_quality?: string; mcp_servers_json?: string; gardenflow_compact_target_tokens?: number; wander_deep_think_enabled?: boolean; wander_skill_loading_enabled?: boolean; memberSkillDistillation?: boolean; memberRuntimeOverlay?: boolean; memberToolPolicy?: boolean; memberSkillAutoRefresh?: boolean; debug_log_enabled?: boolean; developer_mode_enabled?: boolean; developer_mode_unlocked_at?: string | null; chat_max_tokens_default?: number; chat_max_tokens_deepseek?: number; diagnostics_upload_consent?: 'none' | 'prompt' | 'approved'; diagnostics_include_advanced_context?: boolean; diagnostics_auto_send_same_crash?: boolean; diagnostics_last_prompted_at?: string | null; analytics_consent?: 'none' | 'prompt' | 'approved'; analytics_last_prompted_at?: string | null; release_log_retention_days?: number; release_log_max_file_mb?: number; notifications_json?: string; ai_model_routes_json?: string; image_hosting_json?: string } | undefined>;
       onSettingsUpdated: (listener: (...args: unknown[]) => void) => void;
       offSettingsUpdated: (listener: (...args: unknown[]) => void) => void;
       onDataChanged: (listener: (...args: unknown[]) => void) => void;
@@ -1534,7 +1534,7 @@ declare global {
           definitionId?: string;
           executionId?: string;
           sourceTaskId?: string;
-          kind: 'redclaw-project' | 'scheduled-task' | 'long-cycle' | 'heartbeat' | 'memory-maintenance' | 'headless-runtime';
+          kind: 'gardenflow-project' | 'scheduled-task' | 'long-cycle' | 'heartbeat' | 'memory-maintenance' | 'headless-runtime';
           title: string;
           status: string;
           phase: string;
@@ -1569,7 +1569,7 @@ declare global {
           definitionId?: string;
           executionId?: string;
           sourceTaskId?: string;
-          kind: 'redclaw-project' | 'scheduled-task' | 'long-cycle' | 'heartbeat' | 'memory-maintenance' | 'headless-runtime';
+          kind: 'gardenflow-project' | 'scheduled-task' | 'long-cycle' | 'heartbeat' | 'memory-maintenance' | 'headless-runtime';
           title: string;
           status: string;
           phase: string;
@@ -1604,7 +1604,7 @@ declare global {
           definitionId?: string;
           executionId?: string;
           sourceTaskId?: string;
-          kind: 'redclaw-project' | 'scheduled-task' | 'long-cycle' | 'heartbeat' | 'memory-maintenance' | 'headless-runtime';
+          kind: 'gardenflow-project' | 'scheduled-task' | 'long-cycle' | 'heartbeat' | 'memory-maintenance' | 'headless-runtime';
           title: string;
           status: string;
           phase: string;
@@ -2330,7 +2330,7 @@ declare global {
         speech: (payload: Record<string, unknown>) => Promise<Record<string, unknown>>;
         delete: (payload: { voiceId: string }) => Promise<Record<string, unknown>>;
       };
-      redclawRunner: {
+      gardenflowRunner: {
         getStatus: () => Promise<{
           enabled: boolean;
           lockState: 'owner' | 'passive';
@@ -2500,28 +2500,28 @@ declare global {
         listBuiltin: () => Promise<{
           success: boolean;
           error?: string;
-          tasks: RedClawBuiltinAutomationTask[];
+          tasks: GardenFlowBuiltinAutomationTask[];
         }>;
         builtinReadiness: (payload: { taskId: string }) => Promise<{
           success: boolean;
           error?: string;
-          readiness?: RedClawBuiltinAutomationReadiness;
+          readiness?: GardenFlowBuiltinAutomationReadiness;
         }>;
         setBuiltinEnabled: (payload: { taskId: string; enabled: boolean }) => Promise<{
           success: boolean;
           error?: string;
-          task?: RedClawBuiltinAutomationTask;
-          readiness?: RedClawBuiltinAutomationReadiness | null;
+          task?: GardenFlowBuiltinAutomationTask;
+          readiness?: GardenFlowBuiltinAutomationReadiness | null;
         }>;
         setBuiltinSettings: (payload: {
           taskId: string;
           settings?: Record<string, unknown>;
           scheduleTime?: string;
-        }) => Promise<{ success: boolean; error?: string; task?: RedClawBuiltinAutomationTask }>;
+        }) => Promise<{ success: boolean; error?: string; task?: GardenFlowBuiltinAutomationTask }>;
         runBuiltinNow: (payload: { taskId: string }) => Promise<{
           success: boolean;
           error?: string;
-          task?: RedClawBuiltinAutomationTask;
+          task?: GardenFlowBuiltinAutomationTask;
         }>;
         installBuiltinMcpPreset: (payload?: { presetId?: string }) => Promise<{
           success: boolean;
@@ -2622,7 +2622,7 @@ declare global {
         onTaskEvent: (listener: (...args: unknown[]) => void) => void;
         offTaskEvent: (listener: (...args: unknown[]) => void) => void;
       };
-      redclawOrchestration: {
+      gardenflowOrchestration: {
         createRun: (payload: {
           goal: string;
           sessionId?: string;
@@ -2665,7 +2665,7 @@ declare global {
           memoryScopes: string[];
         }>;
       };
-      redclawProjects: {
+      gardenflowProjects: {
         list: () => Promise<{
           success?: boolean;
           count?: number;
@@ -2770,7 +2770,7 @@ declare global {
           error?: string;
         }>;
       };
-      redclawProfile: {
+      gardenflowProfile: {
         getBundle: () => Promise<{
           activeSpaceId?: string;
           profileRoot?: string;

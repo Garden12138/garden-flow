@@ -1,11 +1,11 @@
-# Bojin 本地部署方案
+# GardenFlow 本地部署方案
 
 ## 1. 目标与推荐范围
 
 本方案面向当前仓库的 Electron 开源快照，优先保证桌面核心链路在本机运行：
 
 ```text
-本地工作空间 → 自选 AI Endpoint → RedClaw / 知识库 / 稿件 / 媒体 / 自动化
+本地工作空间 → 自选 AI Endpoint → GardenFlow / 知识库 / 稿件 / 媒体 / 自动化
 ```
 
 当前模块的部署状态：
@@ -123,9 +123,9 @@ pnpm dev
 
 首次启动会创建：
 
-- SQLite：`<Electron userData>/redconvert.db`
-- 默认工作空间：`~/.redconvert`
-- 当前空间的知识、稿件、媒体、资产、记忆和 RedClaw 子目录
+- SQLite：`<Electron userData>/gardenflow.db`
+- 默认工作空间：`~/.gardenflow`
+- 当前空间的知识、稿件、媒体、资产、记忆和 GardenFlow 子目录
 
 开发服务启动后，完成以下最低 smoke test：
 
@@ -155,7 +155,7 @@ pnpm dev
 https://provider.example.com/v1
 ```
 
-主 AI QueryRuntime 当前以 `/chat/completions` 为核心。虽然设置页可识别 Anthropic Native 和 Gemini Native，若希望 RedClaw、工具循环和长任务获得最完整兼容性，优先选择供应商提供的 OpenAI-compatible Endpoint。
+主 AI QueryRuntime 当前以 `/chat/completions` 为核心。虽然设置页可识别 Anthropic Native 和 Gemini Native，若希望 GardenFlow、工具循环和长任务获得最完整兼容性，优先选择供应商提供的 OpenAI-compatible Endpoint。
 
 ### 5.2 Ollama
 
@@ -166,7 +166,7 @@ ollama pull <model-name>
 ollama serve
 ```
 
-Bojin 中填写：
+GardenFlow 中填写：
 
 ```text
 协议：OpenAI Compatible
@@ -204,7 +204,7 @@ API Key：按本地服务要求填写，Ollama 默认可留空
 
 | 端口 | 服务 | 默认状态 | 安全说明 |
 | --- | --- | --- | --- |
-| `23456` | 旧插件采集 HTTP API | 默认关闭 | 仅设置 `REDBOX_ENABLE_LEGACY_PLUGIN_HTTP=1` 时绑定 `127.0.0.1`；历史接口无强认证，不应在生产环境启用 |
+| `23456` | 旧插件采集 HTTP API | 默认关闭 | 仅设置 `GARDENFLOW_ENABLE_LEGACY_PLUGIN_HTTP=1` 时绑定 `127.0.0.1`；历史接口无强认证，不应在生产环境启用 |
 | `31957` | Session Bridge HTTP/WebSocket | 按需启动 | 使用进程级随机 token，仅供受信任本地 Agent |
 | `31937` | Assistant daemon / ACP / 渠道 webhook | 默认禁用 | 启用前配置 token，并限制监听地址和防火墙 |
 
@@ -265,7 +265,7 @@ Windows 打包应在 Windows 主机或已验证的交叉构建环境中完成。
 5. 导入一份媒体文件，确认预览和本地路径。
 6. 创建一个定时任务，执行“立即运行”。
 7. 退出应用，确认后台进程和本地端口按预期释放。
-8. 重新安装新版，确认旧 `redconvert.db` 和 workspace 未丢失。
+8. 重新安装新版，确认旧 `gardenflow.db` 和 workspace 未丢失。
 
 ## 9. 浏览器插件部署
 
@@ -299,7 +299,7 @@ pnpm build
 
 ### 9.3 平台登录边界
 
-公开网页、公开 YouTube 和知乎内容不要求登录 Bojin 或绑定平台账号。若用户已在浏览器登录平台，页面自己的请求会自然复用该浏览器会话；插件不申请 Cookie 权限，也不读取或传输密码、验证码、Cookie。遇到登录墙或安全挑战时，只引导用户回到原网页自行处理。
+公开网页、公开 YouTube 和知乎内容不要求登录 GardenFlow 或绑定平台账号。若用户已在浏览器登录平台，页面自己的请求会自然复用该浏览器会话；插件不申请 Cookie 权限，也不读取或传输密码、验证码、Cookie。遇到登录墙或安全挑战时，只引导用户回到原网页自行处理。
 
 本次 Electron Bridge 只覆盖内容采集；AI 浏览器控制和 `accounts.*` 账号档案绑定不属于这条闭环。
 
@@ -307,15 +307,15 @@ pnpm build
 
 完整备份需要同时保存：
 
-1. 当前工作空间根目录，默认 `~/.redconvert`。
-2. `<Electron app.getPath('userData')>/redconvert.db`。
+1. 当前工作空间根目录，默认 `~/.gardenflow`。
+2. `<Electron app.getPath('userData')>/gardenflow.db`。
 
-数据库精确父目录会因系统、应用名和历史迁移而不同。常见名称包括 Bojin、Beav、RedBox、RedConvert 和 `red-convert-desktop`。不要只按品牌展示名猜目录；应在退出应用后搜索 `redconvert.db` 或通过诊断日志确认实际 userData。
+数据库精确父目录会因系统、应用名和历史迁移而不同。常见名称包括 GardenFlow、GardenFlow、GardenFlow、GardenFlow 和 `gardenflow-desktop`。不要只按品牌展示名猜目录；应在退出应用后搜索 `gardenflow.db` 或通过诊断日志确认实际 userData。
 
 推荐备份流程：
 
 1. 真正退出应用，等待后台任务停止。
-2. 复制 `redconvert.db`，如存在 `-wal`、`-shm` 文件也一起复制。
+2. 复制 `gardenflow.db`，如存在 `-wal`、`-shm` 文件也一起复制。
 3. 复制整个 workspace，而不是只复制 `manuscripts/`。
 4. 在新机器先安装同版本应用，再恢复数据库和 workspace。
 5. 启动后检查空间、会话、知识、媒体和自动化任务。
@@ -346,7 +346,7 @@ API Key、Endpoint、代理和 MCP 配置保存在本地 SQLite，当前开源�
 pnpm prepare:ffmpeg
 ```
 
-### AI 连接测试成功，但 RedClaw 失败
+### AI 连接测试成功，但 GardenFlow 失败
 
 检查：
 

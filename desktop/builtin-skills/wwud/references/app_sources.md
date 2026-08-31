@@ -1,4 +1,4 @@
-# Bojin Evidence Sources For WWUD
+# GardenFlow Evidence Sources For WWUD
 
 Use this map when deciding what the user would do.
 
@@ -6,11 +6,11 @@ Use this map when deciding what the user would do.
 
 - `profiles://user`: user-level identity, operating style, and persistent preferences.
 - `profiles://creator_profile`: current creator/account positioning, audience, content goals, and expression boundaries.
-- `Operate(resource="redclaw.profile", operation="bundle", input={})`: app-provided profile bundle when available.
+- `Operate(resource="gardenflow.profile", operation="bundle", input={})`: app-provided profile bundle when available.
 
-## RedClaw
+## GardenFlow
 
-- Current RedClaw session metadata and task hints.
+- Current GardenFlow session metadata and task hints.
 - Active skills listed in runtime context.
 - Advisor/member skill references for member-specific role logic.
 - Session transcripts and session bundles under the app support directory when debugging or reviewing actual execution.

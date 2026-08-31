@@ -1,7 +1,7 @@
 ---
 name: video-director
 description: 'Canonical entrypoint for every AI chat request that asks to make, generate, plan, or edit a video, including promotional films, ads, short videos, product videos, reference-image videos, image-to-video, first/last-frame transitions, storyboard/keyframes, character talking-head videos, 宣传片, 广告片, 短视频, 视频, 口播视频, 分镜图, 图片转视频, and 商品宣传片. Do not invoke cosyvoice-ssml or tts-director as the first response to a video request. This skill must draft a script and shot table, generate storyboard contact-sheet preview images through image.generate, ask the user to confirm the script plus storyboard together, and only then call video generation.'
-allowedRuntimeModes: [chatroom, redclaw]
+allowedRuntimeModes: [chatroom, gardenflow]
 allowedTools: [workflow]
 activationScope: session
 activationHint: 'Invoke this before any media generation when the user asks for 宣传片, 广告片, 短片, 短视频, 视频, 口播视频, 数字人视频, 分镜, 分镜图, 图片转视频, reference-image video, product promotional video, character talking-head video, or an attached/reference image to become a video. In AI chat, all video-generation requests must enter this skill first. Do not call cosyvoice-ssml, tts-director, image.generate, voice.speech, or video.generate first; load this skill and follow its staged workflow.'

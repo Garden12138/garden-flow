@@ -1,11 +1,11 @@
-export const PENDING_UPDATE_VERSION_KEY = 'xwowBrowserDataAiPendingUpdateVersion';
+export const PENDING_UPDATE_VERSION_KEY = 'gardenflowBrowserDataAiPendingUpdateVersion';
 export const TARGET_PENDING_UPDATE_VERSION_KEY = 'codexPendingUpdateVersion';
-export const CLIENT_HEARTBEAT_ALARM = 'xwow-browser-data-ai-client-heartbeat';
+export const CLIENT_HEARTBEAT_ALARM = 'gardenflow-browser-data-ai-client-heartbeat';
 export const TARGET_CLIENT_HEARTBEAT_ALARM = 'client-heartbeat-alarm';
 export const EXTENSION_INSTANCE_ID_KEY = 'extensionInstanceId';
-export const CLIENT_HEARTBEAT_STATE_KEY = 'xwowBrowserDataAiClientHeartbeatState';
+export const CLIENT_HEARTBEAT_STATE_KEY = 'gardenflowBrowserDataAiClientHeartbeatState';
 export const TARGET_CLIENT_HEARTBEAT_STATE_KEY = 'codexClientHeartbeatState';
-export const LIFECYCLE_CLEANUP_RESULT_KEY = 'xwowBrowserDataAiLifecycleCleanupResult';
+export const LIFECYCLE_CLEANUP_RESULT_KEY = 'gardenflowBrowserDataAiLifecycleCleanupResult';
 export const TARGET_LIFECYCLE_CLEANUP_RESULT_KEY = 'codexLifecycleCleanupResult';
 export const HEARTBEAT_TIMEOUT_MS = 3000;
 export const HEARTBEAT_PERIOD_MINUTES = 0.5;

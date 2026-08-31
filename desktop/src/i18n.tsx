@@ -8,7 +8,7 @@ type I18nContextValue = {
   t: (key: I18nKey, params?: Record<string, string | number>) => string;
 };
 
-const LANGUAGE_STORAGE_KEY = 'redbox:language:v1';
+const LANGUAGE_STORAGE_KEY = 'gardenflow:language:v1';
 
 const LANGUAGE_LABELS: Record<AppLanguage, string> = {
   'zh-CN': '中文',
@@ -84,7 +84,7 @@ const zhCN = {
   'layout.founderSponsor.entryLabel': '创始赞助',
   'layout.founderSponsor.memberLabel': '创始会员',
   'layout.founderSponsor.title': '创始赞助会员',
-  'layout.founderSponsor.subtitle': '支持 Bojin 持续迭代成长',
+  'layout.founderSponsor.subtitle': '支持 GardenFlow 持续迭代成长',
   'layout.founderSponsor.activeStatus': '已拥有专属创始会员标识',
   'layout.founderSponsor.planLabel': '会员身份',
   'layout.founderSponsor.planName': '创始赞助会员',
@@ -160,7 +160,7 @@ const zhCN = {
   'settings.general.browserPlugin': '浏览器插件',
   'settings.general.installPlugin': '安装插件',
   'settings.general.workspaceRoot': '工作区根目录',
-  'settings.general.workspaceDescription': 'Bojin 会在这里创建完整工作区结构。留空则使用兼容的本地默认目录。',
+  'settings.general.workspaceDescription': 'GardenFlow 会在这里创建完整工作区结构。留空则使用兼容的本地默认目录。',
   'settings.general.pickFolder': '选择文件夹',
   'settings.general.restoreDefault': '恢复默认',
   'settings.general.workspaceWarningPrefix': '不要直接选择现有的稿件目录、',
@@ -243,7 +243,7 @@ const enUS: Record<keyof typeof zhCN, string> = {
   'layout.founderSponsor.entryLabel': 'Founder sponsor',
   'layout.founderSponsor.memberLabel': 'Founder member',
   'layout.founderSponsor.title': 'Founder sponsor membership',
-  'layout.founderSponsor.subtitle': 'Support Bojin as it keeps growing',
+  'layout.founderSponsor.subtitle': 'Support GardenFlow as it keeps growing',
   'layout.founderSponsor.activeStatus': 'Your founder badge is active',
   'layout.founderSponsor.planLabel': 'Membership',
   'layout.founderSponsor.planName': 'Founder sponsor',
@@ -266,7 +266,7 @@ const enUS: Record<keyof typeof zhCN, string> = {
   'layout.founderSponsor.benefitPrivilegesTitle': 'Member privileges',
   'layout.founderSponsor.benefitPrivilegesDesc': 'Use feature entries opened for members',
   'layout.founderSponsor.benefitUnlimitedDevicesTitle': 'Unlimited signed-in devices',
-  'layout.founderSponsor.benefitUnlimitedDevicesDesc': 'Use Bojin across devices',
+  'layout.founderSponsor.benefitUnlimitedDevicesDesc': 'Use GardenFlow across devices',
   'layout.founderSponsor.benefitUnlimitedSpacesTitle': 'Unlimited space creation',
   'layout.founderSponsor.benefitUnlimitedSpacesDesc': 'Create and manage unlimited spaces',
   'layout.founderSponsor.benefitSupportTitle': 'Early access & support',
@@ -319,12 +319,12 @@ const enUS: Record<keyof typeof zhCN, string> = {
   'settings.general.browserPlugin': 'Browser plugin',
   'settings.general.installPlugin': 'Install plugin',
   'settings.general.workspaceRoot': 'Workspace root',
-  'settings.general.workspaceDescription': 'Bojin creates the full workspace structure here. Leave blank to use the compatible local default.',
+  'settings.general.workspaceDescription': 'GardenFlow creates the full workspace structure here. Leave blank to use the compatible local default.',
   'settings.general.pickFolder': 'Choose folder',
   'settings.general.restoreDefault': 'Restore default',
   'settings.general.workspaceWarningPrefix': 'Do not choose an existing draft directory, ',
   'settings.general.workspaceWarningMiddle': ' directory, or ',
-  'settings.general.workspaceWarningSuffix': ' directory directly. Bojin will create ',
+  'settings.general.workspaceWarningSuffix': ' directory directly. GardenFlow will create ',
   'settings.general.workspaceWarningEnd': ' and the rest of the workspace structure inside it.',
   'settings.general.notificationCenter': 'Notifications',
   'settings.general.enabled': 'On',

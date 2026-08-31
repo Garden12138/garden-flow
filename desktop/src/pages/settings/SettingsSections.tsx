@@ -677,7 +677,7 @@ function GeneralSettingsSectionInner({
                             type="text"
                             value={formData.workspace_dir}
                             onChange={(e) => setFormData((d: any) => ({ ...d, workspace_dir: e.target.value }))}
-                            placeholder="~/Bojin"
+                            placeholder="~/GardenFlow"
                             className="w-full bg-surface-secondary/30 rounded border border-border pl-10 pr-3 py-2 text-sm focus:outline-none focus:border-accent-primary transition-colors"
                         />
                     </div>
@@ -1504,24 +1504,24 @@ function RemoteConnectionSettingsSectionInner({
         const port = String(assistantDaemonDraft.port || '').trim() || '31937';
         return `http://${host}:${port}`;
     }, [assistantDaemonDraft.host, assistantDaemonDraft.port]);
-    const acpManifestUrl = `${acpBaseUrl}/.well-known/redbox-agent.json`;
+    const acpManifestUrl = `${acpBaseUrl}/.well-known/gardenflow-agent.json`;
     const acpGuideUrl = `${acpBaseUrl}/acp/v1/guide`;
     const acpClients = assistantDaemonStatus?.acpGateway?.clients || [];
     const acpCopyPrompts = useMemo(() => ([
         {
             id: 'codex',
             label: 'Codex',
-            text: `Read Bojin ACP manifest at ${acpManifestUrl}, then use /acp/v1/runs to talk to Bojin Creator Agent. Set client.name=Codex.`,
+            text: `Read GardenFlow ACP manifest at ${acpManifestUrl}, then use /acp/v1/runs to talk to GardenFlow Creator Agent. Set client.name=Codex.`,
         },
         {
             id: 'hermes',
             label: 'Hermes',
-            text: `Use Bojin local ACP at ${acpBaseUrl}/acp/v1. Read /guide first. Set client.name=Hermes.`,
+            text: `Use GardenFlow local ACP at ${acpBaseUrl}/acp/v1. Read /guide first. Set client.name=Hermes.`,
         },
         {
             id: 'openclaw',
             label: 'OpenClaw',
-            text: `Connect to Bojin Creator Agent through ${acpBaseUrl}/acp/v1/runs. Omit sessionId to auto-create an ACP-labeled Bojin session. Set client.name=OpenClaw.`,
+            text: `Connect to GardenFlow Creator Agent through ${acpBaseUrl}/acp/v1/runs. Omit sessionId to auto-create an ACP-labeled GardenFlow session. Set client.name=OpenClaw.`,
         },
     ]), [acpBaseUrl, acpManifestUrl]);
     const handleToggleExpandedChannel = (id: RemoteChannelId) => {
@@ -2150,7 +2150,7 @@ function RemoteConnectionSettingsSectionInner({
                                             type="text"
                                             value={assistantDaemonDraft.weixin.cursorFile}
                                             onChange={(e) => setAssistantDaemonDraft((prev) => ({ ...prev, weixin: { ...prev.weixin, cursorFile: e.target.value } }))}
-                                            placeholder="留空使用 redclaw/weixin-sidecar.cursor.json"
+                                            placeholder="留空使用 gardenflow/weixin-sidecar.cursor.json"
                                             className="w-full rounded border border-border bg-surface-secondary/30 px-3 py-2 text-sm focus:border-accent-primary focus:outline-none"
                                         />
                                     </div>
@@ -2440,7 +2440,7 @@ export function MemorySettingsSection({
                                     void onSearchMemories();
                                 }
                             }}
-                            placeholder="搜索记忆，例如：redclaw、用户偏好、封面..."
+                            placeholder="搜索记忆，例如：gardenflow、用户偏好、封面..."
                             className="w-full bg-surface-primary/60 border border-border rounded pl-10 pr-3 py-2 text-sm focus:outline-none focus:border-accent-primary"
                         />
                     </div>
@@ -2779,8 +2779,8 @@ interface ToolsSettingsSectionProps {
     }>;
     runtimeDraftInput: string;
     setRuntimeDraftInput: Dispatch<SetStateAction<string>>;
-    runtimeDraftMode: 'redclaw' | 'knowledge' | 'team' | 'advisor-discussion' | 'background-maintenance' | 'diagnostics';
-    setRuntimeDraftMode: Dispatch<SetStateAction<'redclaw' | 'knowledge' | 'team' | 'advisor-discussion' | 'background-maintenance' | 'diagnostics'>>;
+    runtimeDraftMode: 'gardenflow' | 'knowledge' | 'team' | 'advisor-discussion' | 'background-maintenance' | 'diagnostics';
+    setRuntimeDraftMode: Dispatch<SetStateAction<'gardenflow' | 'knowledge' | 'team' | 'advisor-discussion' | 'background-maintenance' | 'diagnostics'>>;
     isRuntimeLoading: boolean;
     isRuntimeTraceLoading: boolean;
     isRuntimeSessionLoading: boolean;
@@ -3802,13 +3802,13 @@ export function ToolsSettingsSection({
                                         <label className="inline-flex items-center gap-2 text-xs text-text-secondary">
                                             <input
                                                 type="checkbox"
-                                                checked={Boolean(server.oauth?.redbox?.required)}
+                                                checked={Boolean(server.oauth?.gardenflow?.required)}
                                                 onChange={(e) => handleUpdateMcpServer(server.id, (item) => ({
                                                     ...item,
                                                     oauth: {
                                                         ...(item.oauth || {}),
-                                                        redbox: {
-                                                            ...(item.oauth?.redbox || {}),
+                                                        gardenflow: {
+                                                            ...(item.oauth?.gardenflow || {}),
                                                             required: e.target.checked,
                                                         },
                                                     },
@@ -3819,13 +3819,13 @@ export function ToolsSettingsSection({
                                         <label className="inline-flex items-center gap-2 text-xs text-text-secondary">
                                             <input
                                                 type="checkbox"
-                                                checked={server.oauth?.redbox?.supportsParallelToolCalls !== false}
+                                                checked={server.oauth?.gardenflow?.supportsParallelToolCalls !== false}
                                                 onChange={(e) => handleUpdateMcpServer(server.id, (item) => ({
                                                     ...item,
                                                     oauth: {
                                                         ...(item.oauth || {}),
-                                                        redbox: {
-                                                            ...(item.oauth?.redbox || {}),
+                                                        gardenflow: {
+                                                            ...(item.oauth?.gardenflow || {}),
                                                             supportsParallelToolCalls: e.target.checked,
                                                         },
                                                     },
@@ -3836,13 +3836,13 @@ export function ToolsSettingsSection({
                                         <label className="inline-flex items-center gap-2 text-xs text-text-secondary">
                                             <input
                                                 type="checkbox"
-                                                checked={server.oauth?.redbox?.elicitationPausesTimeout !== false}
+                                                checked={server.oauth?.gardenflow?.elicitationPausesTimeout !== false}
                                                 onChange={(e) => handleUpdateMcpServer(server.id, (item) => ({
                                                     ...item,
                                                     oauth: {
                                                         ...(item.oauth || {}),
-                                                        redbox: {
-                                                            ...(item.oauth?.redbox || {}),
+                                                        gardenflow: {
+                                                            ...(item.oauth?.gardenflow || {}),
                                                             elicitationPausesTimeout: e.target.checked,
                                                         },
                                                     },
@@ -3853,13 +3853,13 @@ export function ToolsSettingsSection({
                                         <div>
                                             <label className="block text-[11px] text-text-tertiary mb-1">审批策略</label>
                                             <select
-                                                value={server.oauth?.redbox?.approvalMode || 'destructive'}
+                                                value={server.oauth?.gardenflow?.approvalMode || 'destructive'}
                                                 onChange={(e) => handleUpdateMcpServer(server.id, (item) => ({
                                                     ...item,
                                                     oauth: {
                                                         ...(item.oauth || {}),
-                                                        redbox: {
-                                                            ...(item.oauth?.redbox || {}),
+                                                        gardenflow: {
+                                                            ...(item.oauth?.gardenflow || {}),
                                                             approvalMode: e.target.value as 'never' | 'destructive' | 'always',
                                                         },
                                                     },
@@ -3878,13 +3878,13 @@ export function ToolsSettingsSection({
                                                     type="number"
                                                     min={1000}
                                                     max={300000}
-                                                    value={server.oauth?.redbox?.startupTimeoutMs ?? 15000}
+                                                    value={server.oauth?.gardenflow?.startupTimeoutMs ?? 15000}
                                                     onChange={(e) => handleUpdateMcpServer(server.id, (item) => ({
                                                         ...item,
                                                         oauth: {
                                                             ...(item.oauth || {}),
-                                                            redbox: {
-                                                                ...(item.oauth?.redbox || {}),
+                                                            gardenflow: {
+                                                                ...(item.oauth?.gardenflow || {}),
                                                                 startupTimeoutMs: Number(e.target.value || 15000),
                                                             },
                                                         },
@@ -3898,13 +3898,13 @@ export function ToolsSettingsSection({
                                                     type="number"
                                                     min={1000}
                                                     max={600000}
-                                                    value={server.oauth?.redbox?.toolTimeoutMs ?? 60000}
+                                                    value={server.oauth?.gardenflow?.toolTimeoutMs ?? 60000}
                                                     onChange={(e) => handleUpdateMcpServer(server.id, (item) => ({
                                                         ...item,
                                                         oauth: {
                                                             ...(item.oauth || {}),
-                                                            redbox: {
-                                                                ...(item.oauth?.redbox || {}),
+                                                            gardenflow: {
+                                                                ...(item.oauth?.gardenflow || {}),
                                                                 toolTimeoutMs: Number(e.target.value || 60000),
                                                             },
                                                         },
@@ -3918,13 +3918,13 @@ export function ToolsSettingsSection({
                                         <div>
                                             <label className="block text-[11px] text-text-tertiary mb-1">Enabled tools（每行一个；空=全部）</label>
                                             <textarea
-                                                value={(server.oauth?.redbox?.enabledTools || []).join('\n')}
+                                                value={(server.oauth?.gardenflow?.enabledTools || []).join('\n')}
                                                 onChange={(e) => handleUpdateMcpServer(server.id, (item) => ({
                                                     ...item,
                                                     oauth: {
                                                         ...(item.oauth || {}),
-                                                        redbox: {
-                                                            ...(item.oauth?.redbox || {}),
+                                                        gardenflow: {
+                                                            ...(item.oauth?.gardenflow || {}),
                                                             enabledTools: e.target.value.split('\n').map((tool) => tool.trim()).filter(Boolean),
                                                         },
                                                     },
@@ -3936,13 +3936,13 @@ export function ToolsSettingsSection({
                                         <div>
                                             <label className="block text-[11px] text-text-tertiary mb-1">Disabled tools（每行一个）</label>
                                             <textarea
-                                                value={(server.oauth?.redbox?.disabledTools || []).join('\n')}
+                                                value={(server.oauth?.gardenflow?.disabledTools || []).join('\n')}
                                                 onChange={(e) => handleUpdateMcpServer(server.id, (item) => ({
                                                     ...item,
                                                     oauth: {
                                                         ...(item.oauth || {}),
-                                                        redbox: {
-                                                            ...(item.oauth?.redbox || {}),
+                                                        gardenflow: {
+                                                            ...(item.oauth?.gardenflow || {}),
                                                             disabledTools: e.target.value.split('\n').map((tool) => tool.trim()).filter(Boolean),
                                                         },
                                                     },
@@ -3956,23 +3956,23 @@ export function ToolsSettingsSection({
                                         <label className="block text-[11px] text-text-tertiary mb-1">Per-tool policy JSON</label>
                                         <textarea
                                             key={`${server.id}:perTool`}
-                                            defaultValue={JSON.stringify(server.oauth?.redbox?.perTool || {}, null, 2)}
+                                            defaultValue={JSON.stringify(server.oauth?.gardenflow?.perTool || {}, null, 2)}
                                             onBlur={(e) => handleUpdateMcpServer(server.id, (item) => {
-                                                let perTool = item.oauth?.redbox?.perTool || {};
+                                                let perTool = item.oauth?.gardenflow?.perTool || {};
                                                 try {
                                                     const parsed = JSON.parse(e.target.value) as unknown;
                                                     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
                                                         perTool = parsed as typeof perTool;
                                                     }
                                                 } catch {
-                                                    perTool = item.oauth?.redbox?.perTool || {};
+                                                    perTool = item.oauth?.gardenflow?.perTool || {};
                                                 }
                                                 return {
                                                     ...item,
                                                     oauth: {
                                                         ...(item.oauth || {}),
-                                                        redbox: {
-                                                            ...(item.oauth?.redbox || {}),
+                                                        gardenflow: {
+                                                            ...(item.oauth?.gardenflow || {}),
                                                             perTool,
                                                         },
                                                     },
@@ -4637,7 +4637,7 @@ export function ToolsSettingsSection({
                                             <option value="team">team</option>
                                             <option value="knowledge">knowledge</option>
                                             <option value="advisor-discussion">advisor-discussion</option>
-                                            <option value="redclaw">redclaw</option>
+                                            <option value="gardenflow">gardenflow</option>
                                             <option value="background-maintenance">background-maintenance</option>
                                         </select>
                                     </div>
@@ -4931,7 +4931,7 @@ export function ToolsSettingsSection({
                                         onChange={(e) => setRuntimeDraftMode(e.target.value as typeof runtimeDraftMode)}
                                         className="w-full bg-surface-secondary/30 rounded border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent-primary transition-colors"
                                     >
-                                        <option value="redclaw">redclaw</option>
+                                        <option value="gardenflow">gardenflow</option>
                                         <option value="knowledge">knowledge</option>
                                         <option value="team">team</option>
                                         <option value="advisor-discussion">advisor-discussion</option>

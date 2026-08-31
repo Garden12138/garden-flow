@@ -50,8 +50,8 @@ export function buildKnowledgeEntryFromPagePayload(payload = {}, helpers = {}) {
   const hashString = helpers.hashString || fallbackHashString;
   const extractDomainFromUrl = helpers.extractDomainFromUrl || fallbackDomain;
   const createKnowledgeSourceInput = helpers.createKnowledgeSourceInput || ((fields) => ({
-    appId: 'redbox-capture',
-    pluginId: 'redbox-browser-extension',
+    appId: 'gardenflow-capture',
+    pluginId: 'gardenflow-browser-extension',
     sourceDomain: fields.sourceDomain || undefined,
     sourceLink: fields.sourceUrl || undefined,
     sourceUrl: fields.sourceUrl || undefined,

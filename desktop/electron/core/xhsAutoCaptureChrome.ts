@@ -235,7 +235,7 @@ export async function ensureChromeOnXhsSearch(input?: {
       ok: false,
       url,
       method: 'plugin-bound-focus',
-      error: '未检测到已连接的 Bojin 插件。请先人工打开已登录小红书并启用采集插件的那个浏览器，不要靠进程名猜 Chrome。',
+      error: '未检测到已连接的 GardenFlow 插件。请先人工打开已登录小红书并启用采集插件的那个浏览器，不要靠进程名猜 Chrome。',
     };
   }
   if (process.platform !== 'darwin') {
@@ -255,7 +255,7 @@ export async function ensureChromeOnXhsSearch(input?: {
       url,
       method: 'plugin-bound-focus',
       extensionInstanceId: instance.extensionInstanceId,
-      error: '插件已连接，但还没有 native host 进程号。请完全退出 Bojin 后重载插件再试。',
+      error: '插件已连接，但还没有 native host 进程号。请完全退出 GardenFlow 后重载插件再试。',
     };
   }
   try {
@@ -288,7 +288,7 @@ export async function ensureChromeOnXhsSearch(input?: {
       extensionInstanceId: instance.extensionInstanceId,
       nativeHostPid,
       browserPid,
-      note: `Focused the browser process that owns the connected Bojin plugin (pid ${browserPid}). Did not pick a Chrome by process name.`,
+      note: `Focused the browser process that owns the connected GardenFlow plugin (pid ${browserPid}). Did not pick a Chrome by process name.`,
     };
   } catch (error) {
     return {
@@ -346,7 +346,7 @@ export async function maybeRewriteComputerUseNavigation(
         url: captureSession.searchUrl,
         rewritten: true,
         blockedNativeSave: true,
-        error: 'Blocked Chrome Save Page (Cmd+S). That downloads a tiny .html file and does not ingest into the knowledge base. Click the red 保存网页 button in the Bojin sidebar on the right. After a correct click the sidebar queue leaves 空闲 and a new log line appears.',
+        error: 'Blocked Chrome Save Page (Cmd+S). That downloads a tiny .html file and does not ingest into the knowledge base. Click the red 保存网页 button in the GardenFlow sidebar on the right. After a correct click the sidebar queue leaves 空闲 and a new log line appears.',
       },
     };
   }

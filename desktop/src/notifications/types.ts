@@ -1,4 +1,4 @@
-export type NotificationSource = 'runtime' | 'generation' | 'redclaw' | 'system' | 'server';
+export type NotificationSource = 'runtime' | 'generation' | 'gardenflow' | 'system' | 'server';
 export type NotificationLevel = 'success' | 'error' | 'attention' | 'info';
 export type NotificationSound = 'success' | 'failure' | 'attention' | 'none';
 
@@ -35,7 +35,7 @@ export type NotificationAction =
     };
 
 export type NotificationView =
-  | 'redclaw'
+  | 'gardenflow'
   | 'approval'
   | 'generation-studio'
   | 'manuscripts'
@@ -87,8 +87,8 @@ export type NotificationRuleMap = {
   runtimeNeedsApproval: boolean;
   generationCompleted: boolean;
   generationFailed: boolean;
-  redclawCompleted: boolean;
-  redclawFailed: boolean;
+  gardenflowCompleted: boolean;
+  gardenflowFailed: boolean;
 };
 
 export interface NotificationSettings {
@@ -133,7 +133,7 @@ export interface NotificationContextSnapshot {
   visibilityState: DocumentVisibilityState;
 }
 
-export const REDBOX_NAVIGATE_EVENT = 'redbox:navigate';
+export const GARDENFLOW_NAVIGATE_EVENT = 'gardenflow:navigate';
 
 export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   enabled: true,
@@ -164,8 +164,8 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
     runtimeNeedsApproval: true,
     generationCompleted: true,
     generationFailed: true,
-    redclawCompleted: true,
-    redclawFailed: true,
+    gardenflowCompleted: true,
+    gardenflowFailed: true,
   },
 };
 
@@ -225,8 +225,8 @@ export function parseNotificationSettings(value: unknown): NotificationSettings 
       runtimeNeedsApproval: rules.runtimeNeedsApproval !== false,
       generationCompleted: rules.generationCompleted !== false,
       generationFailed: rules.generationFailed !== false,
-      redclawCompleted: rules.redclawCompleted !== false,
-      redclawFailed: rules.redclawFailed !== false,
+      gardenflowCompleted: rules.gardenflowCompleted !== false,
+      gardenflowFailed: rules.gardenflowFailed !== false,
     },
   };
 }

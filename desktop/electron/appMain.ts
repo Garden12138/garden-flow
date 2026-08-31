@@ -1,3 +1,5 @@
+import compatibility from '../shared/brandCompatibility.cjs';
+import { backgroundAutomationHeld } from './core/gardenflowMigrationState';
 import { app, BrowserWindow, ipcMain, protocol, nativeImage, shell, clipboard, dialog, type IpcMainInvokeEvent, type WebContents } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs/promises'
@@ -100,16 +102,16 @@ import {
   deleteUserMemoryFromFile,
   updateUserMemoryInFile,
 } from './core/fileMemoryStore';
-import { getRedClawProject, listRedClawProjects } from './core/redclawStore';
+import { getGardenFlowProject, listGardenFlowProjects } from './core/gardenflowStore';
 import {
-  handleRedClawOnboardingTurn,
-  loadRedClawProfilePromptBundle,
-  completeRedClawInitialization,
-  completeRedClawStyleDefinition,
-  saveRedClawInitializationProgress,
-  startRedClawStyleDefinition,
-  updateRedClawProfileDocument,
-} from './core/redclawProfileStore';
+  handleGardenFlowOnboardingTurn,
+  loadGardenFlowProfilePromptBundle,
+  completeGardenFlowInitialization,
+  completeGardenFlowStyleDefinition,
+  saveGardenFlowInitializationProgress,
+  startGardenFlowStyleDefinition,
+  updateGardenFlowProfileDocument,
+} from './core/gardenflowProfileStore';
 import {
   listMediaAssets,
   bindMediaAssetToManuscript,
@@ -147,8 +149,8 @@ import {
   installBrowserNativeHost,
 } from './core/browserNativeHostInstaller';
 import {
-  BOJIN_UPDATE_LATEST_RELEASE_API_URL,
-  selectCompatibleBojinReleaseAsset,
+  GARDENFLOW_UPDATE_LATEST_RELEASE_API_URL,
+  selectCompatibleGardenFlowReleaseAsset,
   type AppUpdateAsset,
 } from './core/appUpdatePolicy';
 import { BrowserCaptureOperationCache } from './core/browserCaptureOperationCache';
@@ -219,14 +221,14 @@ import { exportRuntimeSession, importRuntimeSession } from './core/runtimeSessio
 import { listRuntimeHooks, registerRuntimeHook, unregisterRuntimeHook } from './core/runtimeHooks';
 import { getWorkItemStore } from './core/workItemStore';
 import {
-  cancelRedClawTask,
-  confirmRedClawTask,
-  createRedClawTask,
-  listRedClawTasks,
-  previewRedClawTask,
-  redClawTaskStats,
-  updateRedClawTask,
-} from './core/redclawTaskCompat';
+  cancelGardenFlowTask,
+  confirmGardenFlowTask,
+  createGardenFlowTask,
+  listGardenFlowTasks,
+  previewGardenFlowTask,
+  gardenFlowTaskStats,
+  updateGardenFlowTask,
+} from './core/gardenflowTaskCompat';
 import { formatWechatArticleFromMarkdown } from './core/wechatFormatter';
 import {
   bindWechatOfficialAccount,
@@ -274,7 +276,7 @@ import {
 import {
   isLocalAssetSource,
   LEGACY_LOCAL_FILE_PROTOCOL,
-  REDBOX_ASSET_PROTOCOL,
+  GARDENFLOW_ASSET_PROTOCOL,
   resolveLocalAssetByteRange,
 } from '../shared/localAsset';
 import {
@@ -306,8 +308,9 @@ import {
 } from './core/wanderService';
 
 protocol.registerSchemesAsPrivileged([
+  ...compatibility.identity.legacy.assetProtocols.filter(scheme => scheme !== LEGACY_LOCAL_FILE_PROTOCOL).map(scheme => ({ scheme, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } })),
   {
-    scheme: REDBOX_ASSET_PROTOCOL,
+    scheme: GARDENFLOW_ASSET_PROTOCOL,
     privileges: {
       standard: true,
       secure: true,
@@ -338,7 +341,7 @@ let win: BrowserWindow | null
 let mediaGenerationListenersAttached = false;
 let teamRuntimeListenersAttached = false;
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
-let redClawRunnerListenersAttached = false;
+let gardenFlowRunnerListenersAttached = false;
 let backgroundTaskRegistryListenersAttached = false;
 let advisorYoutubeRunnerListenersAttached = false;
 let assistantDaemonListenersAttached = false;
@@ -661,9 +664,9 @@ function attachWorkItemStoreListeners() {
   });
 }
 
-async function getRedClawBackgroundRunnerLazy() {
-  const module = await import('./core/redclawBackgroundRunner');
-  return module.getRedClawBackgroundRunner();
+async function getGardenFlowBackgroundRunnerLazy() {
+  const module = await import('./core/gardenflowBackgroundRunner');
+  return module.getGardenFlowBackgroundRunner();
 }
 
 async function getAdvisorYoutubeRunnerLazy() {
@@ -746,7 +749,7 @@ async function shouldAutoStartAssistantDaemonAcrossSpaces(): Promise<boolean> {
     getActiveSpaceId(),
   ].filter(Boolean)));
   for (const spaceId of knownSpaceIds) {
-    const configPath = path.join(getWorkspacePathsForSpace(spaceId).redclaw, 'assistant-daemon.json');
+    const configPath = path.join(getWorkspacePathsForSpace(spaceId).gardenflow, 'assistant-daemon.json');
     try {
       const raw = await fs.readFile(configPath, 'utf-8');
       const parsed = JSON.parse(raw) as {
@@ -767,7 +770,7 @@ const appStartupEpochMs = Date.now();
 const startupPhaseMarks = new Map<string, number>();
 const DOWNLOAD_RETRY_DELAYS_MS = [0, 600, 1600];
 const XHS_ASSET_REQUEST_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Bojin/1.0',
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 GardenFlow/1.0',
   'Referer': 'https://www.xiaohongshu.com/',
   'Origin': 'https://www.xiaohongshu.com',
   'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
@@ -807,16 +810,16 @@ const SIX_HAT_PROMPTS = {
   green: loadPrompt('runtime/six_hats/green.txt', '你是六顶思考帽中的绿帽。'),
   blue: loadPrompt('runtime/six_hats/blue.txt', '你是六顶思考帽中的蓝帽。'),
 };
-const REDCLAW_WRITE_XHS_TEMPLATE = loadPrompt(
-  'runtime/redclaw/write_xiaohongshu.txt',
+const GARDENFLOW_WRITE_XHS_TEMPLATE = loadPrompt(
+  'runtime/gardenflow/write_xiaohongshu.txt',
   '请按小红书创作要求完成任务，并最终保存文案包。\n\n{{user_brief}}',
 );
-const REDCLAW_WRITE_WECHAT_TEMPLATE = loadPrompt(
-  'runtime/redclaw/write_wechat_article.txt',
+const GARDENFLOW_WRITE_WECHAT_TEMPLATE = loadPrompt(
+  'runtime/gardenflow/write_wechat_article.txt',
   '请按公众号文章创作要求完成任务，并最终保存稿件包。\n\n{{user_brief}}',
 );
-const REDCLAW_EXPAND_XHS_TO_WECHAT_TEMPLATE = loadPrompt(
-  'runtime/redclaw/expand_xhs_to_wechat.txt',
+const GARDENFLOW_EXPAND_XHS_TO_WECHAT_TEMPLATE = loadPrompt(
+  'runtime/gardenflow/expand_xhs_to_wechat.txt',
   '请把下面的小红书内容扩写成公众号文章，并最终保存稿件包。\n\n{{user_brief}}',
 );
 let appUpdateLastNotifiedVersion = '';
@@ -888,14 +891,14 @@ async function buildAdvisorDetail(advisorId: string): Promise<AdvisorDetailRecor
 }
 let localAssetProtocolsRegistered = false;
 const BROWSER_PLUGIN_BUNDLE_RELATIVE_PATH = path.join('.plugin-runtime', 'browser-extension');
-const BROWSER_PLUGIN_EXPORT_RELATIVE_PATH = path.join('integrations', 'browser-extension', 'redbox-capture');
+const BROWSER_PLUGIN_EXPORT_RELATIVE_PATH = path.join('integrations', 'browser-extension', 'gardenflow-capture');
 
 const appSingleInstanceLock = app.requestSingleInstanceLock();
 const browserCaptureBridgeService = createBrowserCaptureBridgeService({
   appVersion: app.getVersion(),
   handleRequest: handleBrowserCaptureBridgeRequest,
 });
-type RedClawAuthoringHints = {
+type GardenFlowAuthoringHints = {
   platform: 'xiaohongshu' | 'wechat_official_account';
   taskType: 'direct_write' | 'expand_from_xhs';
   formatTarget?: 'markdown' | 'wechat_rich_text';
@@ -914,7 +917,7 @@ type RedClawAuthoringHints = {
 
 const WECHAT_OFFICIAL_SKILL_NAME = 'wechat-official-formatter';
 
-function normalizeRedClawAuthoringHints(raw: unknown): RedClawAuthoringHints | null {
+function normalizeGardenFlowAuthoringHints(raw: unknown): GardenFlowAuthoringHints | null {
   if (!raw || typeof raw !== 'object') return null;
   const record = raw as Record<string, unknown>;
   const platform = String(record.platform || '').trim();
@@ -957,12 +960,12 @@ function normalizeRedClawAuthoringHints(raw: unknown): RedClawAuthoringHints | n
   };
 }
 
-function buildRedClawAuthoringPrompt(userBrief: string, hints: RedClawAuthoringHints): string {
+function buildGardenFlowAuthoringPrompt(userBrief: string, hints: GardenFlowAuthoringHints): string {
   const template = hints.taskType === 'expand_from_xhs'
-    ? REDCLAW_EXPAND_XHS_TO_WECHAT_TEMPLATE
+    ? GARDENFLOW_EXPAND_XHS_TO_WECHAT_TEMPLATE
     : hints.platform === 'wechat_official_account'
-      ? REDCLAW_WRITE_WECHAT_TEMPLATE
-      : REDCLAW_WRITE_XHS_TEMPLATE;
+      ? GARDENFLOW_WRITE_WECHAT_TEMPLATE
+      : GARDENFLOW_WRITE_XHS_TEMPLATE;
   return renderPrompt(template, {
     platform: hints.platform,
     task_type: hints.taskType,
@@ -998,8 +1001,8 @@ function resolveForcedSkillNames(input: unknown): string[] {
     if (xhsNoteType === 'image' && !forcedSkillNames.includes('image-director')) {
       forcedSkillNames.push('image-director');
     }
-    if (xhsNoteType === 'video' && !forcedSkillNames.includes('redbox-video-director')) {
-      forcedSkillNames.push('redbox-video-director');
+    if (xhsNoteType === 'video' && !forcedSkillNames.includes('gardenflow-video-director')) {
+      forcedSkillNames.push('gardenflow-video-director');
     }
   }
   if (
@@ -1232,7 +1235,7 @@ const getExportedBrowserPluginDir = (): string => {
 };
 
 const getExportedBrowserPluginMetaPath = (): string => {
-  return path.join(getExportedBrowserPluginDir(), '.redbox-plugin-meta.json');
+  return path.join(getExportedBrowserPluginDir(), '.gardenflow-plugin-meta.json');
 };
 
 const pathExists = async (targetPath: string): Promise<boolean> => {
@@ -1374,8 +1377,8 @@ const normalizeSettingsInput = (settings: Record<string, unknown>) => {
   if (Object.prototype.hasOwnProperty.call(settings, 'model_name_knowledge')) {
     normalized.model_name_knowledge = String(settings.model_name_knowledge || '').trim();
   }
-  if (Object.prototype.hasOwnProperty.call(settings, 'model_name_redclaw')) {
-    normalized.model_name_redclaw = String(settings.model_name_redclaw || '').trim();
+  if (Object.prototype.hasOwnProperty.call(settings, 'model_name_gardenflow')) {
+    normalized.model_name_gardenflow = String(settings.model_name_gardenflow || '').trim();
   }
   if (Object.prototype.hasOwnProperty.call(settings, 'ai_sources_json')) {
     normalized.ai_sources_json = normalizeAiSourceListJson(settings.ai_sources_json);
@@ -1427,7 +1430,7 @@ const sanitizeRemoteReleaseCopy = (value: string): string => String(value || '')
   .replace(/!\[[^\]]*\]\([^\s)]+(?:\s+"[^"]*")?\)/g, '')
   .replace(/\[([^\]]+)\]\([^\s)]+(?:\s+"[^"]*")?\)/g, '$1')
   .replace(/https?:\/\/\S+/gi, '')
-  .replace(/\b(?:Beav|RedBox|RedConvert)\b/gi, 'Bojin')
+  .replace(/\b(?:GardenFlow|GardenFlow|GardenFlow)\b/gi, 'GardenFlow')
   .trim();
 
 async function fetchLatestGithubRelease(): Promise<{
@@ -1443,14 +1446,15 @@ async function fetchLatestGithubRelease(): Promise<{
     digest: string;
   }>;
 }> {
+  if (!compatibility.identity.updatesEnabled) throw new Error('GardenFlow 尚未配置更新源；本机版本不检查或下载远程更新。');
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), APP_UPDATE_CHECK_TIMEOUT_MS);
   try {
-    const response = await fetch(BOJIN_UPDATE_LATEST_RELEASE_API_URL, {
+    const response = await fetch(GARDENFLOW_UPDATE_LATEST_RELEASE_API_URL, {
       method: 'GET',
       headers: {
         'Accept': 'application/vnd.github+json',
-        'User-Agent': `Bojin/${app.getVersion()}`,
+        'User-Agent': `GardenFlow/${app.getVersion()}`,
       },
       signal: controller.signal,
     });
@@ -1547,7 +1551,7 @@ const downloadAppUpdateAsset = async (input: {
   const response = await fetch(input.downloadUrl, {
     headers: {
       'Accept': 'application/octet-stream',
-      'User-Agent': `Bojin/${app.getVersion()}`,
+      'User-Agent': `GardenFlow/${app.getVersion()}`,
     },
     redirect: 'follow',
   });
@@ -1665,8 +1669,8 @@ async function checkForAppUpdate(force = false, forceNotify = false): Promise<Ap
 
 function createWindow() {
   attachWorkItemStoreListeners();
-  const iconPath = path.join(app.getAppPath(), 'bojin.png');
-  const devIconPath = path.join(process.cwd(), 'bojin.png');
+  const iconPath = path.join(app.getAppPath(), 'gardenflow.png');
+  const devIconPath = path.join(process.cwd(), 'gardenflow.png');
   const resolvedIconPath = app.isPackaged ? iconPath : devIconPath;
 
   win = new BrowserWindow({
@@ -1758,7 +1762,7 @@ async function shutdownBackgroundServices(): Promise<void> {
     await Promise.allSettled([
       capture('http-server', () => stopHttpServer()),
       capture('browser-capture-bridge', () => browserCaptureBridgeService.stop()),
-      capture('redclaw-runner', async () => (await getRedClawBackgroundRunnerLazy()).stop({ persist: false })),
+      capture('gardenflow-runner', async () => (await getGardenFlowBackgroundRunnerLazy()).stop({ persist: false })),
       capture('assistant-daemon', async () => (await getAssistantDaemonServiceLazy()).dispose()),
       capture('headless-workers', async () => (await getHeadlessWorkerProcessManagerLazy()).dispose()),
       capture('session-bridge', async () => (await getSessionBridgeServiceLazy()).stop()),
@@ -1782,14 +1786,14 @@ app.on('window-all-closed', async () => {
       return;
     }
     try {
-      const [keepRedClawAlive, keepAdvisorYoutubeAlive, keepAssistantDaemonAlive] = await Promise.all([
-        (await getRedClawBackgroundRunnerLazy()).shouldKeepAliveWhenNoWindow(),
+      const [keepGardenFlowAlive, keepAdvisorYoutubeAlive, keepAssistantDaemonAlive] = await Promise.all([
+        (await getGardenFlowBackgroundRunnerLazy()).shouldKeepAliveWhenNoWindow(),
         (await getAdvisorYoutubeRunnerLazy()).shouldKeepAliveWhenNoWindow(),
         (await getAssistantDaemonServiceLazy()).shouldKeepAliveWhenNoWindow(),
       ]);
-      if (keepRedClawAlive || keepAdvisorYoutubeAlive || keepAssistantDaemonAlive) {
+      if (keepGardenFlowAlive || keepAdvisorYoutubeAlive || keepAssistantDaemonAlive) {
         console.log('[BackgroundRunner] Keep app alive in background (no window).', {
-          redclaw: keepRedClawAlive,
+          gardenflow: keepGardenFlowAlive,
           advisorYoutube: keepAdvisorYoutubeAlive,
           assistantDaemon: keepAssistantDaemonAlive,
         });
@@ -1976,7 +1980,8 @@ const registerLocalAssetProtocols = () => {
     });
   };
 
-  protocol.handle(REDBOX_ASSET_PROTOCOL, handleAssetRequest(REDBOX_ASSET_PROTOCOL));
+  for (const scheme of compatibility.identity.legacy.assetProtocols.filter(scheme => scheme !== LEGACY_LOCAL_FILE_PROTOCOL)) protocol.handle(scheme, handleAssetRequest(scheme));
+  protocol.handle(GARDENFLOW_ASSET_PROTOCOL, handleAssetRequest(GARDENFLOW_ASSET_PROTOCOL));
   protocol.handle(LEGACY_LOCAL_FILE_PROTOCOL, handleAssetRequest(LEGACY_LOCAL_FILE_PROTOCOL));
 };
 
@@ -1994,8 +1999,8 @@ async function ensureWorkspaceStructureFor(paths: ReturnType<typeof getWorkspace
     paths.media,
     paths.cover || path.join(paths.base, 'cover'),
     paths.subjects || path.join(paths.base, 'subjects'),
-    paths.redclaw,
-    path.join(paths.redclaw, 'profile'),
+    paths.gardenflow,
+    path.join(paths.gardenflow, 'profile'),
     path.join(paths.base, 'memory'),
     path.join(paths.base, 'archives'),
     path.join(paths.base, 'chatrooms'),
@@ -2018,7 +2023,7 @@ const EXISTING_WORKSPACE_MARKERS = new Set([
   'advisors',
   'manuscripts',
   'media',
-  'redclaw',
+  'gardenflow',
   'memory',
   'archives',
   'chatrooms',
@@ -2096,7 +2101,7 @@ async function confirmWorkspaceBootstrapIfNeeded(
       `目录路径：${paths.base}`,
       `目录名：${risk.baseName}`,
       `已检测到 ${risk.markdownCount} 个 Markdown 文件。`,
-      '如果继续，Bojin 会在这个目录里创建 skills、knowledge、advisors、manuscripts、media、redclaw、memory、archives、chatrooms 等完整工作区结构。',
+      '如果继续，GardenFlow 会在这个目录里创建 skills、knowledge、advisors、manuscripts、media、gardenflow、memory、archives、chatrooms 等完整工作区结构。',
       '如果这本来就是你的稿件目录，请返回设置，把工作区改成它的上一级目录。',
     ].join('\n'),
     buttons: ['继续创建工作区结构', '暂不创建'],
@@ -2599,26 +2604,26 @@ async function refreshForSpaceChange() {
 
   const { vectorStore } = await import('./core/vector/VectorStore');
   await vectorStore.refreshCache();
-  await (await getRedClawBackgroundRunnerLazy()).reloadForWorkspaceChange();
+  await (await getGardenFlowBackgroundRunnerLazy()).reloadForWorkspaceChange();
   await (await getMemoryMaintenanceServiceLazy()).reloadForWorkspaceChange();
   await (await getAssistantDaemonServiceLazy()).reloadForWorkspaceChange();
 
   win?.webContents.send('space:changed', { activeSpaceId: getActiveSpaceId() });
 }
 
-async function initializeRedClawBackgroundRunner() {
-  const runner = await getRedClawBackgroundRunnerLazy();
-  if (!redClawRunnerListenersAttached) {
+async function initializeGardenFlowBackgroundRunner() {
+  const runner = await getGardenFlowBackgroundRunnerLazy();
+  if (!gardenFlowRunnerListenersAttached) {
     runner.on('status', (status) => {
-      win?.webContents.send('redclaw:runner-status', status);
+      win?.webContents.send('gardenflow:runner-status', status);
     });
     runner.on('log', (log) => {
-      win?.webContents.send('redclaw:runner-log', log);
+      win?.webContents.send('gardenflow:runner-log', log);
     });
     runner.on('message', (payload) => {
-      win?.webContents.send('redclaw:runner-message', payload);
+      win?.webContents.send('gardenflow:runner-message', payload);
     });
-    redClawRunnerListenersAttached = true;
+    gardenFlowRunnerListenersAttached = true;
   }
   await runner.init();
 }
@@ -2731,7 +2736,7 @@ app.whenReady().then(async () => {
   // 先让窗口尽快可交互，再分阶段初始化重量后台服务
   let backgroundServicesScheduled = false;
   const bootstrapBackgroundServices = async () => {
-    if (backgroundServicesScheduled) return;
+    if (backgroundServicesScheduled || backgroundAutomationHeld()) return;
     backgroundServicesScheduled = true;
 
     void initializeStartupCoreServices();
@@ -2753,9 +2758,9 @@ app.whenReady().then(async () => {
 
         await warmupBrowserPluginPrepared();
         try {
-          await initializeRedClawBackgroundRunner();
+          await initializeGardenFlowBackgroundRunner();
         } catch (e) {
-          console.error('[RedClawRunner] Init failed:', e);
+          console.error('[GardenFlowRunner] Init failed:', e);
         }
 
         try {
@@ -3179,7 +3184,7 @@ ipcMain.handle('runtime:get-model-config', () => {
   return {
     success: true,
     baseURL: normalizeApiBaseUrl(String(settings.api_endpoint || '').trim()),
-    model: String(resolveScopedModelName(settings, 'redclaw', String(settings.model_name || 'gpt-4o-mini'))).trim(),
+    model: String(resolveScopedModelName(settings, 'gardenflow', String(settings.model_name || 'gpt-4o-mini'))).trim(),
     apiKeyConfigured: Boolean(String(settings.api_key || '').trim()),
     imageModel: String(settings.image_model || '').trim() || null,
     videoModel: String(settings.video_model || '').trim() || null,
@@ -3223,10 +3228,10 @@ ipcMain.handle('task-panel:list', async (_event, payload?: { limit?: number }) =
   const approvals = (await getSessionBridgeServiceLazy()).listPermissionRequests();
   const graphTasks = getTaskGraphRuntime().listTasks({ limit });
   const teamSessions = await teamRuntime.listSessions();
-  const [teamSnapshots, teamDockets, redclawTaskResult] = await Promise.all([
+  const [teamSnapshots, teamDockets, gardenflowTaskResult] = await Promise.all([
     Promise.all(teamSessions.map((session) => teamRuntime.getSession({ sessionId: session.id }))),
     teamRuntime.listDockets(),
-    listRedClawTasks({ includeDrafts: true }),
+    listGardenFlowTasks({ includeDrafts: true }),
   ]);
   const teamTasks = teamSnapshots.flatMap((snapshot) => Array.isArray(snapshot.tasks) ? snapshot.tasks : []);
   const teamMemberNames = new Map(
@@ -3256,8 +3261,8 @@ ipcMain.handle('task-panel:list', async (_event, payload?: { limit?: number }) =
     if (status === 'skipped' || status === 'archived') return 'paused';
     return 'review';
   };
-  const redclawItems = Array.isArray(redclawTaskResult.items)
-    ? redclawTaskResult.items as Array<Record<string, unknown>>
+  const gardenflowItems = Array.isArray(gardenflowTaskResult.items)
+    ? gardenflowTaskResult.items as Array<Record<string, unknown>>
     : [];
   const items = [
     ...approvals.map((request) => ({
@@ -3285,14 +3290,14 @@ ipcMain.handle('task-panel:list', async (_event, payload?: { limit?: number }) =
       const completedNodes = task.graph.filter((node) => node.status === 'completed' || node.status === 'skipped').length;
       return {
         id: `task:${task.id}`,
-        source: 'redclaw',
-        sourceLabel: 'RedClaw',
+        source: 'gardenflow',
+        sourceLabel: 'GardenFlow',
         sourceId: task.id,
         sourceTaskId: task.id,
         title: task.goal || task.intent || 'AI 任务',
         summary: task.lastError || task.checkpoints.at(-1)?.summary || '',
         status: statusForTask(task.status),
-        owner: task.roleId || 'RedClaw',
+        owner: task.roleId || 'GardenFlow',
         sessionTitle: session?.title || task.ownerSessionId || '-',
         priorityLabel: '普通',
         progress: task.graph.length ? Math.round((completedNodes / task.graph.length) * 100) : 0,
@@ -3357,7 +3362,7 @@ ipcMain.handle('task-panel:list', async (_event, payload?: { limit?: number }) =
         failureReason: String(taskRecord.failureReason || '') || null,
       };
     }),
-    ...redclawItems.map((task) => {
+    ...gardenflowItems.map((task) => {
       const latestExecution = task.latestExecution && typeof task.latestExecution === 'object'
         ? task.latestExecution as Record<string, unknown>
         : null;
@@ -3374,15 +3379,15 @@ ipcMain.handle('task-panel:list', async (_event, payload?: { limit?: number }) =
       const totalRounds = Number(task.totalRounds || 0);
       const completedRounds = Number(task.completedRounds || 0);
       return {
-        id: `redclaw:${String(task.definitionId || task.draftId || '')}`,
-        source: 'redclaw',
-        sourceLabel: task.kind === 'long_cycle' ? '长周期' : 'RedClaw',
+        id: `gardenflow:${String(task.definitionId || task.draftId || '')}`,
+        source: 'gardenflow',
+        sourceLabel: task.kind === 'long_cycle' ? '长周期' : 'GardenFlow',
         sourceId: String(task.definitionId || task.draftId || ''),
         sourceTaskId: task.sourceTaskId || null,
         title: String(task.title || '未命名任务'),
         summary: String(task.goal || task.prompt || task.objective || task.stepPrompt || ''),
         status,
-        owner: String(task.ownerScope || 'RedClaw'),
+        owner: String(task.ownerScope || 'GardenFlow'),
         sessionTitle: String(task.kind || 'scheduled'),
         priorityLabel: task.requiresConfirmation === true ? '待确认' : task.enabled === false ? '已停用' : '已启用',
         progress: task.kind === 'long_cycle' && totalRounds > 0 ? Math.max(0, Math.min(100, Math.round((completedRounds * 100) / totalRounds))) : status === 'completed' ? 100 : status === 'running' ? 50 : 0,
@@ -3398,7 +3403,7 @@ ipcMain.handle('task-panel:list', async (_event, payload?: { limit?: number }) =
     }),
     ...backgroundTasks.map((task) => ({
       id: `background:${task.id}`,
-      source: 'redclaw',
+      source: 'gardenflow',
       sourceLabel: '后台任务',
       sourceId: task.id,
       sourceTaskId: task.id,
@@ -3623,7 +3628,7 @@ ipcMain.handle('tasks:create', async (_event, payload?: {
   userInput?: string;
   metadata?: Record<string, unknown>;
 }) => {
-  const runtimeMode = (payload?.runtimeMode || 'redclaw') as RuntimeMode;
+  const runtimeMode = (payload?.runtimeMode || 'gardenflow') as RuntimeMode;
   const sessionId = String(payload?.sessionId || `session_${Date.now()}`);
   const userInput = String(payload?.userInput || '').trim();
   const settings = (getSettings() || {}) as Record<string, unknown>;
@@ -3639,7 +3644,7 @@ ipcMain.handle('tasks:create', async (_event, payload?: {
     llm: {
       apiKey: String(settings.api_key || '').trim(),
       baseURL: normalizeApiBaseUrl(String(settings.api_endpoint || '').trim()),
-      model: String(resolveScopedModelName(settings, runtimeMode === 'background-maintenance' ? 'redclaw' : runtimeMode as any, String(settings.model_name || 'gpt-4o-mini'))).trim(),
+      model: String(resolveScopedModelName(settings, runtimeMode === 'background-maintenance' ? 'gardenflow' : runtimeMode as any, String(settings.model_name || 'gpt-4o-mini'))).trim(),
     },
   });
   return prepared.task;
@@ -3789,15 +3794,15 @@ ipcMain.handle('auth:login-sms', async () => buildElectronArchiveAuthUnavailable
 ipcMain.handle('auth:login-wechat-start', async () => buildElectronArchiveAuthUnavailableResult());
 ipcMain.handle('auth:login-wechat-poll', async () => buildElectronArchiveAuthUnavailableResult());
 ipcMain.handle('auth:logout', async () => buildElectronArchiveAuthUnavailableResult());
-ipcMain.handle('redbox-auth:bootstrap', async () => buildElectronArchiveAuthUnavailableResult('官方账号未登录'));
-ipcMain.handle('redbox-auth:pricing', async () => ({ success: true, pricing: [], unavailable: true }));
-ipcMain.handle('redbox-auth:pricing-refresh', async () => ({ success: true, pricing: [], unavailable: true }));
-ipcMain.handle('redbox-auth:product', async () => ({
+ipcMain.handle('gardenflow-auth:bootstrap', async () => buildElectronArchiveAuthUnavailableResult('官方账号未登录'));
+ipcMain.handle('gardenflow-auth:pricing', async () => ({ success: true, pricing: [], unavailable: true }));
+ipcMain.handle('gardenflow-auth:pricing-refresh', async () => ({ success: true, pricing: [], unavailable: true }));
+ipcMain.handle('gardenflow-auth:product', async () => ({
   success: false,
   product: null,
   error: 'Official products are unavailable in the Electron archive',
 }));
-ipcMain.handle('redbox-auth:set-realm', async () => buildElectronArchiveAuthUnavailableResult());
+ipcMain.handle('gardenflow-auth:set-realm', async () => buildElectronArchiveAuthUnavailableResult());
 ipcMain.handle('llm-readiness:get-state', async () => ({
   ready: false,
   mode: 'custom',
@@ -3869,7 +3874,7 @@ async function buildBrowserPluginStatus() {
     problems.push({
       code: 'PLUGIN_BUNDLE_MISSING',
       message: '内置浏览器插件资源不完整',
-      recovery: '重新安装或更新 Bojin 后重试',
+      recovery: '重新安装或更新 GardenFlow 后重试',
     });
   }
   if (!exported) {
@@ -3883,7 +3888,7 @@ async function buildBrowserPluginStatus() {
     problems.push({
       code: 'DESKTOP_BRIDGE_NOT_LISTENING',
       message: 'Desktop Bridge 未启动',
-      recovery: '重启 Bojin 后重试',
+      recovery: '重启 GardenFlow 后重试',
     });
   }
   if (nativeHost.staleTargets.length > 0) {
@@ -4000,7 +4005,7 @@ ipcMain.handle('plugin:prepare-browser-extension', async () => {
       path: '',
       code: 'PLUGIN_PREPARE_FAILED',
       error: String(error),
-      recovery: '重新安装或更新 Bojin 后再次执行准备；如仍失败，请导出诊断信息',
+      recovery: '重新安装或更新 GardenFlow 后再次执行准备；如仍失败，请导出诊断信息',
     };
   }
 });
@@ -4037,14 +4042,14 @@ ipcMain.handle('app:install-update', async () => {
     if (compareSemverLike(app.getVersion(), release.version) >= 0) {
       return { success: true, hasUpdate: false };
     }
-    const asset = selectCompatibleBojinReleaseAsset(release.assets as AppUpdateAsset[]);
+    const asset = selectCompatibleGardenFlowReleaseAsset(release.assets as AppUpdateAsset[]);
     if (!asset) {
       throw new Error('当前系统暂无可用的应用内安装包');
     }
     const extension = path.extname(asset.name).toLowerCase() || '.bin';
     const updateDir = path.join(app.getPath('userData'), 'updates');
     await fs.mkdir(updateDir, { recursive: true });
-    installerPath = path.join(updateDir, `Bojin-update-${release.version}${extension}`);
+    installerPath = path.join(updateDir, `GardenFlow-update-${release.version}${extension}`);
     await fs.rm(installerPath, { force: true });
     emitAppUpdateInstallProgress({
       status: 'downloading',
@@ -4275,7 +4280,7 @@ ipcMain.handle('file:save-as', async (_, payload?: { source?: string; defaultNam
       throw new Error('只能另存为文件');
     }
 
-    const preferredName = String(payload?.defaultName || path.basename(resolvedPath) || 'redbox-file').trim();
+    const preferredName = String(payload?.defaultName || path.basename(resolvedPath) || 'gardenflow-file').trim();
     const safeName = path.basename(preferredName).replace(/[<>:"/\\|?*\x00-\x1F]+/g, '_') || path.basename(resolvedPath);
     const picker = await dialog.showSaveDialog({
       title: '另存为',
@@ -4526,7 +4531,7 @@ ipcMain.handle('file:preview-resolve', async (_, payload?: { source?: string }) 
         title: note.document.finalTitle || path.basename(resolvedPath),
         extension,
         kind: 'manuscript',
-        mimeType: 'application/vnd.redclaw.xiaohongshu-note+json',
+        mimeType: 'application/vnd.gardenflow.xiaohongshu-note+json',
         sizeBytes: stats?.size ?? null,
         previewText: renderXhsNoteMarkdown(note.document),
         artifactType: note.artifactType,
@@ -4661,14 +4666,14 @@ ipcMain.handle('background-tasks:retry', async (_, payload?: { taskId?: string }
   if (task.status === 'running') return { success: false, error: '后台任务仍在运行' };
   try {
     const contextId = String(task.contextId || '').trim();
-    if (task.kind === 'redclaw-project') {
-      await (await getRedClawBackgroundRunnerLazy()).runNow(contextId || undefined);
+    if (task.kind === 'gardenflow-project') {
+      await (await getGardenFlowBackgroundRunnerLazy()).runNow(contextId || undefined);
     } else if (task.kind === 'scheduled-task') {
       if (!contextId) throw new Error('定时任务缺少 definition id');
-      await (await getRedClawBackgroundRunnerLazy()).runScheduledTaskNow(contextId);
+      await (await getGardenFlowBackgroundRunnerLazy()).runScheduledTaskNow(contextId);
     } else if (task.kind === 'long-cycle') {
       if (!contextId) throw new Error('长周期任务缺少 definition id');
-      await (await getRedClawBackgroundRunnerLazy()).runLongCycleTaskNow(contextId);
+      await (await getGardenFlowBackgroundRunnerLazy()).runLongCycleTaskNow(contextId);
     } else if (task.kind === 'memory-maintenance') {
       await (await getMemoryMaintenanceServiceLazy()).runNow();
     } else {
@@ -5506,18 +5511,18 @@ ipcMain.handle('chat:create-diagnostics-session', async (_, payload?: {
   };
 });
 
-ipcMain.handle('redclaw:list-projects', async (_, { limit }: { limit?: number } = {}) => {
+ipcMain.handle('gardenflow:list-projects', async (_, { limit }: { limit?: number } = {}) => {
   try {
-    return await listRedClawProjects(limit || 20);
+    return await listGardenFlowProjects(limit || 20);
   } catch (error) {
-    console.error('Failed to list RedClaw projects:', error);
+    console.error('Failed to list GardenFlow projects:', error);
     return [];
   }
 });
 
-ipcMain.handle('redclaw:profile:get-bundle', async () => {
+ipcMain.handle('gardenflow:profile:get-bundle', async () => {
   try {
-    const bundle = await loadRedClawProfilePromptBundle();
+    const bundle = await loadGardenFlowProfilePromptBundle();
     return {
       success: true,
       profileRoot: bundle.profileRoot,
@@ -5537,7 +5542,7 @@ ipcMain.handle('redclaw:profile:get-bundle', async () => {
   }
 });
 
-ipcMain.handle('redclaw:profile:update-doc', async (_, payload?: {
+ipcMain.handle('gardenflow:profile:update-doc', async (_, payload?: {
   docType?: 'agent' | 'soul' | 'user' | 'creator_profile';
   markdown?: string;
   reason?: string;
@@ -5552,7 +5557,7 @@ ipcMain.handle('redclaw:profile:update-doc', async (_, payload?: {
   }
 
   try {
-    const result = await updateRedClawProfileDocument(docType, markdown);
+    const result = await updateGardenFlowProfileDocument(docType, markdown);
     return {
       success: true,
       docType: result.docType,
@@ -5569,9 +5574,9 @@ ipcMain.handle('redclaw:profile:update-doc', async (_, payload?: {
   }
 });
 
-ipcMain.handle('redclaw:profile:onboarding-status', async () => {
+ipcMain.handle('gardenflow:profile:onboarding-status', async () => {
   try {
-    const bundle = await loadRedClawProfilePromptBundle();
+    const bundle = await loadGardenFlowProfilePromptBundle();
     return {
       success: true,
       completed: Boolean(bundle.onboardingState.completedAt),
@@ -5586,9 +5591,9 @@ ipcMain.handle('redclaw:profile:onboarding-status', async () => {
   }
 });
 
-ipcMain.handle('redclaw:profile:onboarding-turn', async (_, payload?: { input?: string }) => {
+ipcMain.handle('gardenflow:profile:onboarding-turn', async (_, payload?: { input?: string }) => {
   try {
-    const result = await handleRedClawOnboardingTurn(String(payload?.input || ''));
+    const result = await handleGardenFlowOnboardingTurn(String(payload?.input || ''));
     return {
       success: true,
       handled: result.handled,
@@ -5609,59 +5614,59 @@ ipcMain.handle('redclaw:profile:onboarding-turn', async (_, payload?: { input?: 
   }
 });
 
-ipcMain.handle('redclaw:profile:start-style-definition', async (_, payload?: { forceRestart?: boolean }) => {
+ipcMain.handle('gardenflow:profile:start-style-definition', async (_, payload?: { forceRestart?: boolean }) => {
   try {
-    const state = await startRedClawStyleDefinition(Boolean(payload?.forceRestart));
+    const state = await startGardenFlowStyleDefinition(Boolean(payload?.forceRestart));
     return { success: true, state };
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 });
 
-ipcMain.handle('redclaw:profile:save-initialization-progress', async (_, payload?: {
+ipcMain.handle('gardenflow:profile:save-initialization-progress', async (_, payload?: {
   stepIndex?: number;
   answers?: Record<string, unknown>;
 }) => {
   try {
-    const state = await saveRedClawInitializationProgress(Number(payload?.stepIndex || 0), payload?.answers || {});
+    const state = await saveGardenFlowInitializationProgress(Number(payload?.stepIndex || 0), payload?.answers || {});
     return { success: true, state };
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 });
 
-ipcMain.handle('redclaw:profile:complete-initialization', async (_, payload?: { answers?: Record<string, unknown> }) => {
+ipcMain.handle('gardenflow:profile:complete-initialization', async (_, payload?: { answers?: Record<string, unknown> }) => {
   try {
-    const state = await completeRedClawInitialization(payload?.answers || {});
+    const state = await completeGardenFlowInitialization(payload?.answers || {});
     return { success: true, completed: true, state };
   } catch (error) {
     return { success: false, completed: false, error: error instanceof Error ? error.message : String(error) };
   }
 });
 
-ipcMain.handle('redclaw:profile:complete-style-definition', async (_, payload?: Record<string, unknown>) => {
+ipcMain.handle('gardenflow:profile:complete-style-definition', async (_, payload?: Record<string, unknown>) => {
   try {
-    const bundle = await completeRedClawStyleDefinition(payload || {});
+    const bundle = await completeGardenFlowStyleDefinition(payload || {});
     return { success: true, completed: true, bundle };
   } catch (error) {
     return { success: false, completed: false, error: error instanceof Error ? error.message : String(error) };
   }
 });
 
-ipcMain.handle('redclaw:get-project', async (_, { projectId }: { projectId: string }) => {
+ipcMain.handle('gardenflow:get-project', async (_, { projectId }: { projectId: string }) => {
   try {
     if (!projectId) {
       return { success: false, error: 'projectId is required' };
     }
-    const detail = await getRedClawProject(projectId);
+    const detail = await getGardenFlowProject(projectId);
     return { success: true, ...detail };
   } catch (error) {
-    console.error('Failed to get RedClaw project:', error);
+    console.error('Failed to get GardenFlow project:', error);
     return { success: false, error: String(error) };
   }
 });
 
-ipcMain.handle('redclaw:open-project', async (_, { projectDir }: { projectDir: string }) => {
+ipcMain.handle('gardenflow:open-project', async (_, { projectDir }: { projectDir: string }) => {
   try {
     if (!projectDir) {
       return { success: false, error: 'projectDir is required' };
@@ -5672,16 +5677,16 @@ ipcMain.handle('redclaw:open-project', async (_, { projectDir }: { projectDir: s
     }
     return { success: true };
   } catch (error) {
-    console.error('Failed to open RedClaw project:', error);
+    console.error('Failed to open GardenFlow project:', error);
     return { success: false, error: String(error) };
   }
 });
 
-ipcMain.handle('redclaw:runner-status', async () => {
-  return (await getRedClawBackgroundRunnerLazy()).getStatus();
+ipcMain.handle('gardenflow:runner-status', async () => {
+  return (await getGardenFlowBackgroundRunnerLazy()).getStatus();
 });
 
-ipcMain.handle('redclaw:runner-start', async (_, payload: {
+ipcMain.handle('gardenflow:runner-start', async (_, payload: {
   intervalMinutes?: number;
   keepAliveWhenNoWindow?: boolean;
   maxProjectsPerTick?: number;
@@ -5690,41 +5695,41 @@ ipcMain.handle('redclaw:runner-start', async (_, payload: {
   heartbeatIntervalMinutes?: number;
 } = {}) => {
   try {
-    return await (await getRedClawBackgroundRunnerLazy()).start(payload);
+    return await (await getGardenFlowBackgroundRunnerLazy()).start(payload);
   } catch (error) {
     return { success: false, error: String(error) };
   }
 });
 
-ipcMain.handle('redclaw:runner-stop', async () => {
+ipcMain.handle('gardenflow:runner-stop', async () => {
   try {
-    return await (await getRedClawBackgroundRunnerLazy()).stop();
+    return await (await getGardenFlowBackgroundRunnerLazy()).stop();
   } catch (error) {
     return { success: false, error: String(error) };
   }
 });
 
-ipcMain.handle('redclaw:runner-run-now', async (_, payload: { projectId?: string } = {}) => {
+ipcMain.handle('gardenflow:runner-run-now', async (_, payload: { projectId?: string } = {}) => {
   try {
-    return await (await getRedClawBackgroundRunnerLazy()).runNow(payload.projectId);
+    return await (await getGardenFlowBackgroundRunnerLazy()).runNow(payload.projectId);
   } catch (error) {
     return { success: false, error: String(error) };
   }
 });
 
-ipcMain.handle('redclaw:runner-set-project', async (_, payload: {
+ipcMain.handle('gardenflow:runner-set-project', async (_, payload: {
   projectId: string;
   enabled: boolean;
   prompt?: string;
 }) => {
   try {
-    return await (await getRedClawBackgroundRunnerLazy()).setProjectState(payload);
+    return await (await getGardenFlowBackgroundRunnerLazy()).setProjectState(payload);
   } catch (error) {
     return { success: false, error: String(error) };
   }
 });
 
-ipcMain.handle('redclaw:runner-set-config', async (_, payload: {
+ipcMain.handle('gardenflow:runner-set-config', async (_, payload: {
   intervalMinutes?: number;
   keepAliveWhenNoWindow?: boolean;
   maxProjectsPerTick?: number;
@@ -5736,22 +5741,22 @@ ipcMain.handle('redclaw:runner-set-config', async (_, payload: {
   heartbeatPrompt?: string;
 } = {}) => {
   try {
-    return await (await getRedClawBackgroundRunnerLazy()).setRunnerConfig(payload);
+    return await (await getGardenFlowBackgroundRunnerLazy()).setRunnerConfig(payload);
   } catch (error) {
     return { success: false, error: String(error) };
   }
 });
 
-ipcMain.handle('redclaw:runner-list-scheduled', async () => {
+ipcMain.handle('gardenflow:runner-list-scheduled', async () => {
   try {
-    const tasks = (await getRedClawBackgroundRunnerLazy()).listScheduledTasks();
+    const tasks = (await getGardenFlowBackgroundRunnerLazy()).listScheduledTasks();
     return { success: true, tasks };
   } catch (error) {
     return { success: false, error: String(error), tasks: [] };
   }
 });
 
-ipcMain.handle('redclaw:runner-add-scheduled', async (_, payload: {
+ipcMain.handle('gardenflow:runner-add-scheduled', async (_, payload: {
   name: string;
   mode: 'interval' | 'daily' | 'weekly' | 'once';
   prompt: string;
@@ -5763,63 +5768,63 @@ ipcMain.handle('redclaw:runner-add-scheduled', async (_, payload: {
   enabled?: boolean;
 }) => {
   try {
-    const task = await (await getRedClawBackgroundRunnerLazy()).addScheduledTask(payload);
+    const task = await (await getGardenFlowBackgroundRunnerLazy()).addScheduledTask(payload);
     return { success: true, task };
   } catch (error) {
     return { success: false, error: String(error) };
   }
 });
 
-ipcMain.handle('redclaw:runner-remove-scheduled', async (_, payload: { taskId: string }) => {
+ipcMain.handle('gardenflow:runner-remove-scheduled', async (_, payload: { taskId: string }) => {
   try {
-    const status = await (await getRedClawBackgroundRunnerLazy()).removeScheduledTask(payload?.taskId || '');
+    const status = await (await getGardenFlowBackgroundRunnerLazy()).removeScheduledTask(payload?.taskId || '');
     return { success: true, status };
   } catch (error) {
     return { success: false, error: String(error) };
   }
 });
 
-ipcMain.handle('redclaw:runner-set-scheduled-enabled', async (_, payload: { taskId: string; enabled: boolean }) => {
+ipcMain.handle('gardenflow:runner-set-scheduled-enabled', async (_, payload: { taskId: string; enabled: boolean }) => {
   try {
-    const task = await (await getRedClawBackgroundRunnerLazy()).setScheduledTaskEnabled(payload?.taskId || '', Boolean(payload?.enabled));
+    const task = await (await getGardenFlowBackgroundRunnerLazy()).setScheduledTaskEnabled(payload?.taskId || '', Boolean(payload?.enabled));
     return { success: true, task };
   } catch (error) {
     return { success: false, error: String(error) };
   }
 });
 
-ipcMain.handle('redclaw:runner-run-scheduled-now', async (_, payload: { taskId: string }) => {
+ipcMain.handle('gardenflow:runner-run-scheduled-now', async (_, payload: { taskId: string }) => {
   try {
-    const status = await (await getRedClawBackgroundRunnerLazy()).runScheduledTaskNow(payload?.taskId || '');
+    const status = await (await getGardenFlowBackgroundRunnerLazy()).runScheduledTaskNow(payload?.taskId || '');
     return { success: true, status };
   } catch (error) {
     return { success: false, error: String(error) };
   }
 });
 
-ipcMain.handle('redclaw:runner-list-builtin', async () => {
+ipcMain.handle('gardenflow:runner-list-builtin', async () => {
   try {
-    const tasks = await (await getRedClawBackgroundRunnerLazy()).listBuiltinTasks();
+    const tasks = await (await getGardenFlowBackgroundRunnerLazy()).listBuiltinTasks();
     return { success: true, tasks };
   } catch (error) {
     return { success: false, error: String(error), tasks: [] };
   }
 });
 
-ipcMain.handle('redclaw:runner-builtin-readiness', async (_, payload: { taskId?: string }) => {
+ipcMain.handle('gardenflow:runner-builtin-readiness', async (_, payload: { taskId?: string }) => {
   const taskId = String(payload?.taskId || '').trim();
   if (!taskId) {
     return { success: false, error: 'taskId is required' };
   }
   try {
-    const readiness = await (await getRedClawBackgroundRunnerLazy()).getBuiltinTaskReadiness(taskId);
+    const readiness = await (await getGardenFlowBackgroundRunnerLazy()).getBuiltinTaskReadiness(taskId);
     return { success: true, readiness };
   } catch (error) {
     return { success: false, error: String(error) };
   }
 });
 
-ipcMain.handle('redclaw:runner-set-builtin-enabled', async (_, payload: { taskId?: string; enabled?: boolean }) => {
+ipcMain.handle('gardenflow:runner-set-builtin-enabled', async (_, payload: { taskId?: string; enabled?: boolean }) => {
   const taskId = String(payload?.taskId || '').trim();
   if (!taskId) {
     return { success: false, error: 'taskId is required' };
@@ -5828,14 +5833,14 @@ ipcMain.handle('redclaw:runner-set-builtin-enabled', async (_, payload: { taskId
     return { success: false, error: 'enabled must be a boolean' };
   }
   try {
-    const result = await (await getRedClawBackgroundRunnerLazy()).setBuiltinTaskEnabled(taskId, payload.enabled);
+    const result = await (await getGardenFlowBackgroundRunnerLazy()).setBuiltinTaskEnabled(taskId, payload.enabled);
     return { success: true, task: result.task, readiness: result.readiness };
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 });
 
-ipcMain.handle('redclaw:runner-set-builtin-settings', async (_, payload: {
+ipcMain.handle('gardenflow:runner-set-builtin-settings', async (_, payload: {
   taskId?: string;
   settings?: Record<string, unknown>;
   scheduleTime?: string;
@@ -5853,7 +5858,7 @@ ipcMain.handle('redclaw:runner-set-builtin-settings', async (_, payload: {
     return { success: false, error: 'scheduleTime must be a HH:mm string' };
   }
   try {
-    const task = await (await getRedClawBackgroundRunnerLazy()).setBuiltinTaskSettings(taskId, {
+    const task = await (await getGardenFlowBackgroundRunnerLazy()).setBuiltinTaskSettings(taskId, {
       settings: settings as Record<string, unknown> | undefined,
       scheduleTime,
     });
@@ -5863,20 +5868,20 @@ ipcMain.handle('redclaw:runner-set-builtin-settings', async (_, payload: {
   }
 });
 
-ipcMain.handle('redclaw:runner-run-builtin-now', async (_, payload: { taskId?: string }) => {
+ipcMain.handle('gardenflow:runner-run-builtin-now', async (_, payload: { taskId?: string }) => {
   const taskId = String(payload?.taskId || '').trim();
   if (!taskId) {
     return { success: false, error: 'taskId is required' };
   }
   try {
-    const task = await (await getRedClawBackgroundRunnerLazy()).runBuiltinTaskNow(taskId);
+    const task = await (await getGardenFlowBackgroundRunnerLazy()).runBuiltinTaskNow(taskId);
     return { success: true, task };
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 });
 
-ipcMain.handle('redclaw:runner-install-builtin-mcp', async (_, payload: { presetId?: string }) => {
+ipcMain.handle('gardenflow:runner-install-builtin-mcp', async (_, payload: { presetId?: string }) => {
   const presetId = String(payload?.presetId || '').trim() || COMPUTER_USE_MCP_PRESET.id;
   try {
     const result = ensurePresetMcpServer(presetId);
@@ -5886,16 +5891,16 @@ ipcMain.handle('redclaw:runner-install-builtin-mcp', async (_, payload: { preset
   }
 });
 
-ipcMain.handle('redclaw:runner-list-long-cycle', async () => {
+ipcMain.handle('gardenflow:runner-list-long-cycle', async () => {
   try {
-    const tasks = (await getRedClawBackgroundRunnerLazy()).listLongCycleTasks();
+    const tasks = (await getGardenFlowBackgroundRunnerLazy()).listLongCycleTasks();
     return { success: true, tasks };
   } catch (error) {
     return { success: false, error: String(error), tasks: [] };
   }
 });
 
-ipcMain.handle('redclaw:runner-add-long-cycle', async (_, payload: {
+ipcMain.handle('gardenflow:runner-add-long-cycle', async (_, payload: {
   name: string;
   objective: string;
   stepPrompt: string;
@@ -5905,53 +5910,53 @@ ipcMain.handle('redclaw:runner-add-long-cycle', async (_, payload: {
   enabled?: boolean;
 }) => {
   try {
-    const task = await (await getRedClawBackgroundRunnerLazy()).addLongCycleTask(payload);
+    const task = await (await getGardenFlowBackgroundRunnerLazy()).addLongCycleTask(payload);
     return { success: true, task };
   } catch (error) {
     return { success: false, error: String(error) };
   }
 });
 
-ipcMain.handle('redclaw:runner-remove-long-cycle', async (_, payload: { taskId: string }) => {
+ipcMain.handle('gardenflow:runner-remove-long-cycle', async (_, payload: { taskId: string }) => {
   try {
-    const status = await (await getRedClawBackgroundRunnerLazy()).removeLongCycleTask(payload?.taskId || '');
+    const status = await (await getGardenFlowBackgroundRunnerLazy()).removeLongCycleTask(payload?.taskId || '');
     return { success: true, status };
   } catch (error) {
     return { success: false, error: String(error) };
   }
 });
 
-ipcMain.handle('redclaw:runner-set-long-cycle-enabled', async (_, payload: { taskId: string; enabled: boolean }) => {
+ipcMain.handle('gardenflow:runner-set-long-cycle-enabled', async (_, payload: { taskId: string; enabled: boolean }) => {
   try {
-    const task = await (await getRedClawBackgroundRunnerLazy()).setLongCycleTaskEnabled(payload?.taskId || '', Boolean(payload?.enabled));
+    const task = await (await getGardenFlowBackgroundRunnerLazy()).setLongCycleTaskEnabled(payload?.taskId || '', Boolean(payload?.enabled));
     return { success: true, task };
   } catch (error) {
     return { success: false, error: String(error) };
   }
 });
 
-ipcMain.handle('redclaw:runner-run-long-cycle-now', async (_, payload: { taskId: string }) => {
+ipcMain.handle('gardenflow:runner-run-long-cycle-now', async (_, payload: { taskId: string }) => {
   try {
-    const status = await (await getRedClawBackgroundRunnerLazy()).runLongCycleTaskNow(payload?.taskId || '');
+    const status = await (await getGardenFlowBackgroundRunnerLazy()).runLongCycleTaskNow(payload?.taskId || '');
     return { success: true, status };
   } catch (error) {
     return { success: false, error: String(error) };
   }
 });
 
-ipcMain.handle('redclaw:task-preview', async (_, payload?: Record<string, unknown>) =>
-  previewRedClawTask(payload || {}));
-ipcMain.handle('redclaw:task-create', async (_, payload?: Record<string, unknown>) =>
-  createRedClawTask(payload || {}));
-ipcMain.handle('redclaw:task-confirm', async (_, payload?: Record<string, unknown>) =>
-  confirmRedClawTask(payload || {}));
-ipcMain.handle('redclaw:task-update', async (_, payload?: Record<string, unknown>) =>
-  updateRedClawTask(payload || {}));
-ipcMain.handle('redclaw:task-cancel', async (_, payload?: Record<string, unknown>) =>
-  cancelRedClawTask(payload || {}));
-ipcMain.handle('redclaw:task-list', async (_, payload?: Record<string, unknown>) =>
-  listRedClawTasks(payload || {}));
-ipcMain.handle('redclaw:task-stats', async () => redClawTaskStats());
+ipcMain.handle('gardenflow:task-preview', async (_, payload?: Record<string, unknown>) =>
+  previewGardenFlowTask(payload || {}));
+ipcMain.handle('gardenflow:task-create', async (_, payload?: Record<string, unknown>) =>
+  createGardenFlowTask(payload || {}));
+ipcMain.handle('gardenflow:task-confirm', async (_, payload?: Record<string, unknown>) =>
+  confirmGardenFlowTask(payload || {}));
+ipcMain.handle('gardenflow:task-update', async (_, payload?: Record<string, unknown>) =>
+  updateGardenFlowTask(payload || {}));
+ipcMain.handle('gardenflow:task-cancel', async (_, payload?: Record<string, unknown>) =>
+  cancelGardenFlowTask(payload || {}));
+ipcMain.handle('gardenflow:task-list', async (_, payload?: Record<string, unknown>) =>
+  listGardenFlowTasks(payload || {}));
+ipcMain.handle('gardenflow:task-stats', async () => gardenFlowTaskStats());
 
 ipcMain.handle('media:list', async (_, payload: { limit?: number; cursor?: string | number | null } = {}) => {
   try {
@@ -7463,7 +7468,7 @@ ipcMain.handle('chat:get-context-usage', async (_, sessionId: string) => {
   const estimatedTotalTokens = activeHistoryTokens + compactSummaryTokens;
 
   const settings = (getSettings() || {}) as Record<string, unknown>;
-  const targetTokensRaw = Number(settings.redclaw_compact_target_tokens);
+  const targetTokensRaw = Number(settings.gardenflow_compact_target_tokens);
   const compactTargetTokens = Number.isFinite(targetTokensRaw) && targetTokensRaw > 0
     ? Math.floor(targetTokensRaw)
     : 256000;
@@ -7569,7 +7574,7 @@ ipcMain.handle('chat:pick-attachment', async (event, payload?: { sessionId?: str
     }
 
     const workspacePaths = getWorkspacePaths();
-    const uploadsDir = path.join(workspacePaths.redclaw, 'uploads');
+    const uploadsDir = path.join(workspacePaths.gardenflow, 'uploads');
     await fs.mkdir(uploadsDir, { recursive: true });
 
     const safeBaseName = path.basename(selectedPath).replace(/[^\w.\-\u4e00-\u9fa5]+/g, '_');
@@ -7606,7 +7611,7 @@ ipcMain.handle('chat:create-path-attachment', async (_event, payload?: {
     }
 
     const workspacePaths = getWorkspacePaths();
-    const uploadsDir = path.join(workspacePaths.redclaw, 'uploads');
+    const uploadsDir = path.join(workspacePaths.gardenflow, 'uploads');
     await fs.mkdir(uploadsDir, { recursive: true });
 
     const safeBaseName = path.basename(sourcePath).replace(/[^\w.\-\u4e00-\u9fa5]+/g, '_');
@@ -7644,7 +7649,7 @@ ipcMain.handle('chat:create-inline-attachment', async (_event, payload?: {
     const extension = extensionFromPath(safeBaseName) || extensionFromPath(`.${(match[1] || '').split('/')[1] || ''}`);
     const targetName = `${Date.now()}_${safeBaseName}${extension && !safeBaseName.toLowerCase().endsWith(`.${extension}`) ? `.${extension}` : ''}`;
     const workspacePaths = getWorkspacePaths();
-    const uploadsDir = path.join(workspacePaths.redclaw, 'uploads');
+    const uploadsDir = path.join(workspacePaths.gardenflow, 'uploads');
     await fs.mkdir(uploadsDir, { recursive: true });
 
     const targetPath = path.join(uploadsDir, targetName);
@@ -7688,7 +7693,7 @@ ipcMain.handle('chat:discard-attachments', async (_event, payload?: {
 }) => {
   try {
     const workspacePaths = getWorkspacePaths();
-    const uploadsDir = path.resolve(path.join(workspacePaths.redclaw, 'uploads'));
+    const uploadsDir = path.resolve(path.join(workspacePaths.gardenflow, 'uploads'));
     const attachments = Array.isArray(payload?.attachments) ? payload.attachments : [];
     forgetStagedChatAttachments(
       payload?.sessionId,
@@ -7837,7 +7842,7 @@ function reconcileInterruptedChatRun(sessionId: string): void {
 async function runStructuredXhsVideoGeneration(params: {
   sender: WebContents;
   sessionId: string;
-  hints: RedClawAuthoringHints;
+  hints: GardenFlowAuthoringHints;
   attachments: Record<string, unknown>[];
   emitChatEvent?: (channel: string, data: unknown) => void;
 }): Promise<void> {
@@ -7929,8 +7934,8 @@ async function executeChatMessage(
   } = payload || {};
   const resolveRuntimeModeForSession = (value: string): RuntimeMode => {
     const normalized = String(value || '').trim().toLowerCase();
-    if (normalized === 'redclaw') return 'redclaw';
-    if (normalized === 'generation-agent') return 'redclaw';
+    if (normalized === 'gardenflow') return 'gardenflow';
+    if (normalized === 'generation-agent') return 'gardenflow';
     if (normalized === 'knowledge' || normalized === 'note' || normalized === 'video' || normalized === 'youtube' || normalized === 'document' || normalized === 'link-article' || normalized === 'wechat-article') return 'knowledge';
     if (normalized === 'advisor-discussion') return 'advisor-discussion';
     if (normalized === 'background-maintenance') return 'background-maintenance';
@@ -8061,10 +8066,10 @@ async function executeChatMessage(
   persistedChatRun.publishLegacy('chat:phase-start', { name: '正在准备回复' });
 
   try {
-    const redClawAuthoringHints = normalizeRedClawAuthoringHints(taskHints);
+    const gardenFlowAuthoringHints = normalizeGardenFlowAuthoringHints(taskHints);
     const sessionMeta = recoverActiveXhsSessionBinding(
       sessionId,
-      redClawAuthoringHints?.activeXhsNotePath,
+      gardenFlowAuthoringHints?.activeXhsNotePath,
     );
     const rawTaskHints = taskHints && typeof taskHints === 'object' && !Array.isArray(taskHints)
       ? taskHints as Record<string, unknown>
@@ -8091,9 +8096,9 @@ async function executeChatMessage(
     const isStructuredXhsEditor = String(sessionMeta.editorBindingKind || '').trim() === 'xiaohongshu-note';
     if (
       isStructuredXhsEditor
-      && redClawAuthoringHints?.editorAction === 'generate-video'
+      && gardenFlowAuthoringHints?.editorAction === 'generate-video'
     ) {
-      const generationKey = String(redClawAuthoringHints.activeXhsNotePath || '').trim();
+      const generationKey = String(gardenFlowAuthoringHints.activeXhsNotePath || '').trim();
       if (structuredXhsVideoGenerationRuns.has(generationKey)) {
         throw Object.assign(new Error('当前稿件的视频仍在生成，请等待完成后再试。'), {
           chatErrorMessage: '视频仍在生成',
@@ -8104,7 +8109,7 @@ async function executeChatMessage(
       const generationRun = runStructuredXhsVideoGeneration({
         sender,
         sessionId,
-        hints: redClawAuthoringHints,
+        hints: gardenFlowAuthoringHints,
         attachments: runtimeAttachments,
         emitChatEvent: (channel, data) => persistedChatRun.publishLegacy(channel, data),
       });
@@ -8118,12 +8123,12 @@ async function executeChatMessage(
         }
       }
     }
-    if (redClawAuthoringHints) {
-      outgoingMessage = buildRedClawAuthoringPrompt(outgoingMessage, redClawAuthoringHints);
+    if (gardenFlowAuthoringHints) {
+      outgoingMessage = buildGardenFlowAuthoringPrompt(outgoingMessage, gardenFlowAuthoringHints);
     }
 
     const runtimeMode = String(sessionMeta.editorBindingKind || '').trim() === 'xiaohongshu-note'
-      ? 'redclaw'
+      ? 'gardenflow'
       : resolveRuntimeModeForSession(String(sessionMeta.contextType || ''));
     const routeAnalysis = getAgentRuntime().analyzeRuntimeContext({
       runtimeContext: {
@@ -8174,7 +8179,7 @@ async function executeChatMessage(
         llm: {
           apiKey: resolvedChatApiKey,
           baseURL: resolvedChatBaseURL,
-          model: resolvedModelName || String(resolveScopedModelName(settings, 'redclaw', String(settings.model_name || 'gpt-4o-mini'))).trim(),
+          model: resolvedModelName || String(resolveScopedModelName(settings, 'gardenflow', String(settings.model_name || 'gpt-4o-mini'))).trim(),
         },
       });
       persistedChatRun.setTaskId(prepared.task.id);
@@ -8508,7 +8513,7 @@ const clawHubRequest = async (
     const response = await fetch(url.toString(), {
       headers: {
         'Accept': options?.responseType === 'text' ? 'text/plain,*/*' : 'application/json',
-        'User-Agent': 'Bojin-Skill-Market/1.0',
+        'User-Agent': 'GardenFlow-Skill-Market/1.0',
       },
     });
 
@@ -8771,7 +8776,7 @@ function resolveAdvisorAvatarForList(advisorDir: string, config: Record<string, 
     }
     return avatar;
   }
-  if (avatar.startsWith('data:') || /^(local-file|redbox-asset):\/\//i.test(avatar)) {
+  if (avatar.startsWith('data:') || /^(local-file|gardenflow-asset):\/\//i.test(avatar)) {
     return avatar;
   }
   if (avatar.match(/^[\w\u4e00-\u9fa5]+$/)) {
@@ -8800,7 +8805,7 @@ function localizeAdvisorAvatarInBackground(
       const originalAvatar = String(nextConfig.avatar || '').trim();
       await localizeAdvisorAvatar(advisorDir, nextConfig);
       const localizedAvatar = String(nextConfig.avatar || '').trim();
-      if (!localizedAvatar || localizedAvatar === originalAvatar || /^(local-file|redbox-asset):\/\//i.test(localizedAvatar)) {
+      if (!localizedAvatar || localizedAvatar === originalAvatar || /^(local-file|gardenflow-asset):\/\//i.test(localizedAvatar)) {
         return;
       }
       await fs.writeFile(configPath, JSON.stringify(nextConfig, null, 2), 'utf-8');
@@ -8969,7 +8974,7 @@ ipcMain.handle('advisors:update', async (_, data: { id: string; name: string; av
     // 检查头像是否改变
     let newAvatar = data.avatar;
     // 如果传入的是托管本地资源协议，说明没变，还原为 config 中的相对路径
-    if (/^(local-file|redbox-asset):\/\//i.test(newAvatar)) {
+    if (/^(local-file|gardenflow-asset):\/\//i.test(newAvatar)) {
         newAvatar = existing.avatar;
     } else if (newAvatar !== existing.avatar) {
         // 头像变了，保存新头像
@@ -10589,7 +10594,7 @@ function createEmptyOtioTimeline(title: string) {
       ],
     },
     metadata: {
-      owner: 'redbox',
+      owner: 'gardenflow',
       engine: 'ai-editing',
       version: 1,
     },
@@ -14281,7 +14286,7 @@ async function handleBrowserCaptureBridgeRequest(
     return {
       success: true,
       status: 'ok',
-      app: 'Bojin',
+      app: 'GardenFlow',
       appVersion: app.getVersion(),
       bridgeProtocolVersion: browserCaptureBridgeService.getStatus().protocolVersion,
       captureProtocolVersion: browserCaptureBridgeService.getStatus().captureProtocolVersion,
@@ -14506,7 +14511,7 @@ const isProbablyFilePath = (value: string): boolean => {
 };
 
 const resolveFfmpegCommand = (): string => {
-  const envPath = String(process.env.REDCONVERT_FFMPEG_PATH || process.env.FFMPEG_PATH || '').trim();
+  const envPath = String(process.env.GARDENFLOW_FFMPEG_PATH || process.env.FFMPEG_PATH || '').trim();
   const candidates: string[] = [];
   if (envPath) candidates.push(resolveBundledExecutablePath(envPath));
 
@@ -14541,7 +14546,7 @@ const resolveFfmpegCommand = (): string => {
   }
 
   // Strict mode by default: never fall back to system ffmpeg to avoid environment inconsistency.
-  const allowSystemFallback = String(process.env.REDCONVERT_ALLOW_SYSTEM_FFMPEG || '').trim().toLowerCase();
+  const allowSystemFallback = String(process.env.GARDENFLOW_ALLOW_SYSTEM_FFMPEG || '').trim().toLowerCase();
   if (allowSystemFallback === '1' || allowSystemFallback === 'true' || allowSystemFallback === 'yes') {
     console.warn('[Transcription] bundled ffmpeg missing, fallback to system ffmpeg by env override');
     return 'ffmpeg';
@@ -14564,7 +14569,7 @@ const extractAudioWithFfmpeg = async (inputPath: string): Promise<{
   outputPath: string;
   cleanup: () => Promise<void>;
 }> => {
-  const tempDir = await fs.mkdtemp(path.join(app.getPath('temp'), 'redbox-stt-'));
+  const tempDir = await fs.mkdtemp(path.join(app.getPath('temp'), 'gardenflow-stt-'));
   const outputPath = path.join(tempDir, `${path.parse(path.basename(inputPath)).name || 'audio'}.mp3`);
   const ffmpegCommand = resolveFfmpegCommand();
 
@@ -15779,7 +15784,7 @@ function startHttpServer() {
         res.end(JSON.stringify({
           success: true,
           status: 'ok',
-          app: 'Bojin',
+          app: 'GardenFlow',
           counts: {
             redbook: countTruthyDirectoryEntries(redbookDirs.filter((entry: fsSync.Dirent) => entry.isDirectory())),
             youtube: countTruthyDirectoryEntries(youtubeDirs.filter((entry: fsSync.Dirent) => entry.isDirectory())),
@@ -16203,7 +16208,7 @@ function startHttpServer() {
       });
     } else if (req.method === 'GET' && req.url === '/api/status') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: 'ok', app: 'Bojin' }));
+      res.end(JSON.stringify({ status: 'ok', app: 'GardenFlow' }));
     } else if (req.method === 'POST' && req.url === '/api/youtube-notes') {
       let body = '';
       req.on('data', chunk => { body += chunk; });
@@ -16258,7 +16263,7 @@ ipcMain.handle('youtube:save-note', async (_event, payload: {
 app.whenReady().then(() => {
   ensureKnowledgeRedbookDir();
   ensureKnowledgeYoutubeDir();
-  if (process.env.REDBOX_ENABLE_LEGACY_PLUGIN_HTTP === '1') {
+  if (process.env.GARDENFLOW_ENABLE_LEGACY_PLUGIN_HTTP === '1') {
     startHttpServer();
   }
 });

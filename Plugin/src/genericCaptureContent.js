@@ -1,3 +1,4 @@
+import './brandRuntime.js';
 import Defuddle from 'defuddle';
 import DOMPurify from 'dompurify';
 import {
@@ -8,7 +9,7 @@ import {
 import { applyCaptureQuality } from './capture/captureQuality.js';
 import { GENERIC_CAPTURE_MESSAGE_TYPE } from './capture/genericCaptureProtocol.js';
 
-const GENERIC_CAPTURE_LISTENER_KEY = '__redboxGenericCaptureListenerV1__';
+const GENERIC_CAPTURE_LISTENER_KEY = '__gardenflowGenericCaptureListenerV1__';
 
 function getMeta(document, selector) {
   return document.querySelector(selector)?.getAttribute('content') || '';

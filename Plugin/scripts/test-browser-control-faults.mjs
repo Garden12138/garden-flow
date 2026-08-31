@@ -13,7 +13,7 @@ import {
   shouldReportNativeConnectionFailure,
 } from '../src/background/nativeTransport.js';
 
-const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'redbox-browser-faults-'));
+const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'gardenflow-browser-faults-'));
 const endpointsDirectory = path.join(tempRoot, 'endpoints');
 const endpointStatePath = path.join(tempRoot, 'legacy-endpoint.json');
 const servers = [];
@@ -92,14 +92,14 @@ function testDesktopBridgeHandshakeClassification() {
   );
   assert.equal(
     shouldReportNativeConnectionFailure(
-      new Error('Bojin desktop app is not connected'),
+      new Error('GardenFlow desktop app is not connected'),
       { state: 'app_not_running' },
     ),
     false,
   );
   assert.equal(
     shouldReportNativeConnectionFailure(
-      new Error('Bojin desktop app is not connected'),
+      new Error('GardenFlow desktop app is not connected'),
       { state: 'app_not_running' },
       { state: 'connected' },
     ),

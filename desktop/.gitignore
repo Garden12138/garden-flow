@@ -7,7 +7,7 @@ release/
 .native-host-runtime/
 .packaging-tools/
 .opencode/
-.redbox-dev/
+.gardenflow-dev/
 .DS_Store
 .env.local
 .env.*.local

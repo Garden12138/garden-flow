@@ -1,4 +1,4 @@
-# Bojin 桌面安装包构建指南
+# GardenFlow 桌面安装包构建指南
 
 ## 1. 当前支持的安装包
 
@@ -69,7 +69,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps
 默认生成无签名的 Windows x64 NSIS 安装程序：
 
 ```text
-desktop\release\Bojin-<版本>-x64.exe
+desktop\release\GardenFlow-<版本>-x64.exe
 ```
 
 通常预编译原生依赖可以直接安装。如果出现 `node-gyp`、C++ 编译或 `better-sqlite3` 错误，需要安装：
@@ -134,9 +134,9 @@ bash ./scripts/package-macos.sh --signed
 验证签名、公证和安装包：
 
 ```bash
-codesign --verify --deep --strict --verbose=2 release/mac-arm64/Bojin.app
-spctl --assess --verbose --type execute release/mac-arm64/Bojin.app
-xcrun stapler validate release/Bojin-<版本>-arm64.dmg
+codesign --verify --deep --strict --verbose=2 release/mac-arm64/GardenFlow.app
+spctl --assess --verbose --type execute release/mac-arm64/GardenFlow.app
+xcrun stapler validate release/GardenFlow-<版本>-arm64.dmg
 ```
 
 Intel Mac 构建时，将路径中的 `mac-arm64` 和 `arm64` 换成 `mac`/实际输出目录及 `x64` 文件名。
@@ -181,10 +181,10 @@ $env:npm_config_registry = 'https://registry.npmmirror.com'
 powershell -NoProfile -ExecutionPolicy Bypass -File .\desktop\scripts\package-windows.ps1
 ```
 
-也可以通过 `REDBOX_NODE_DIST_URL` 指定包含目标 Node 压缩包和 `SHASUMS256.txt` 的版本目录。示例：
+也可以通过 `GARDENFLOW_NODE_DIST_URL` 指定包含目标 Node 压缩包和 `SHASUMS256.txt` 的版本目录。示例：
 
 ```bash
-REDBOX_NODE_DIST_URL=https://nodejs.org/dist/v22.23.2 bash ./desktop/scripts/package-macos.sh
+GARDENFLOW_NODE_DIST_URL=https://nodejs.org/dist/v22.23.2 bash ./desktop/scripts/package-macos.sh
 ```
 
 ## 6. 常见问题

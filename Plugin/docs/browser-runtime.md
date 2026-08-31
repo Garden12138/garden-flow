@@ -1,8 +1,8 @@
-# Bojin Browser Runtime
+# GardenFlow Browser Runtime
 
 This file defines the developer-facing browser facade and its production compatibility contract. It is not a second discovery, retry, or selection source of truth.
 
-Use this as the supported agent-side browser surface. It mirrors the Codex Browser Use shape while routing through Bojin Browser Control.
+Use this as the supported agent-side browser surface. It mirrors the Codex Browser Use shape while routing through GardenFlow Browser Control.
 
 ```js
 const { setupBrowserRuntime } = await import("./Plugin/scripts/browser-client.mjs");
@@ -27,11 +27,11 @@ await browser.tabs.finalize({ keep: [] });
 - `browser.user.claimTab(tab)` claims a tab returned by `openTabs()`.
 - `browser.user.history({ query, limit })` reads bounded browser history metadata.
 - `browser.tabs.new({ url, active })` creates a controlled tab.
-- Claimed or newly created active tabs show a small non-interactive `Bojin 控制中` page badge until the tab is finalized, released, or the turn ends.
+- Claimed or newly created active tabs show a small non-interactive `GardenFlow 控制中` page badge until the tab is finalized, released, or the turn ends.
 - `browser.tabs.get(id)` returns a controlled tab facade.
 - `browser.tabs.selected()` returns the active tab when available.
 - `browser.tabs.finalize({ keep })` closes or releases tabs at the end of the task.
-- `tab.goto(url)`, `tab.back()`, `tab.forward()`, `tab.reload()`, `tab.close()`, `tab.url()`, `tab.title()`, and `tab.screenshot()` map to Bojin browser-control tools.
+- `tab.goto(url)`, `tab.back()`, `tab.forward()`, `tab.reload()`, `tab.close()`, `tab.url()`, `tab.title()`, and `tab.screenshot()` map to GardenFlow browser-control tools.
 - `tab.playwright.locator(selector)`, `getByRole`, `getByText`, `getByLabel`, `getByPlaceholder`, and `getByTestId` create locator facades.
 - Locator methods include `count`, `allTextContents`, `innerText`, `textContent`, `isEnabled`, `isVisible`, `getAttribute`, `click`, `dblclick`, `fill`, `type`, `press`, `check`, `uncheck`, `setChecked`, `selectOption`, and `waitFor`.
 - `tab.cua` exposes coordinate mouse and keyboard primitives.

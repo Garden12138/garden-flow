@@ -8,7 +8,7 @@ Set-StrictMode -Version Latest
 
 function Write-PackageLog {
     param([string]$Message)
-    Write-Host "[Bojin package] $Message"
+    Write-Host "[GardenFlow package] $Message"
 }
 
 function Invoke-CheckedCommand {
@@ -50,10 +50,10 @@ if ($env:OS -ne 'Windows_NT') {
 
 $DesktopDir = Split-Path -Parent $PSScriptRoot
 $ToolsDir = Join-Path $DesktopDir '.packaging-tools'
-$NodeVersion = if ($env:REDBOX_NODE_VERSION) { $env:REDBOX_NODE_VERSION } else { '22.23.2' }
-$PnpmVersion = if ($env:REDBOX_PNPM_VERSION) { $env:REDBOX_PNPM_VERSION } else { '10.28.2' }
-$NodeDistUrl = if ($env:REDBOX_NODE_DIST_URL) {
-    $env:REDBOX_NODE_DIST_URL.TrimEnd('/')
+$NodeVersion = if ($env:GARDENFLOW_NODE_VERSION) { $env:GARDENFLOW_NODE_VERSION } else { '22.23.2' }
+$PnpmVersion = if ($env:GARDENFLOW_PNPM_VERSION) { $env:GARDENFLOW_PNPM_VERSION } else { '10.28.2' }
+$NodeDistUrl = if ($env:GARDENFLOW_NODE_DIST_URL) {
+    $env:GARDENFLOW_NODE_DIST_URL.TrimEnd('/')
 } else {
     "https://nodejs.org/dist/v$NodeVersion"
 }
@@ -120,7 +120,7 @@ if (-not (Test-Path -LiteralPath $PnpmCli -PathType Leaf)) {
     $NpmCommand = Join-Path $NodeHome 'npm.cmd'
     Invoke-CheckedCommand $NpmCommand install --prefix $PnpmHome --no-audit --no-fund "pnpm@$PnpmVersion"
 }
-$env:REDBOX_PNPM_CLI = $PnpmCli
+$env:GARDENFLOW_PNPM_CLI = $PnpmCli
 
 function Invoke-Pnpm {
     param(

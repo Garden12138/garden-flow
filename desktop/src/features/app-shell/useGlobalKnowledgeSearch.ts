@@ -18,8 +18,8 @@ type GlobalKnowledgeSearchResponse = {
 };
 
 const GLOBAL_SEARCH_ANIMATION_MS = 220;
-const GLOBAL_KNOWLEDGE_SEARCH_EVENT = 'redbox:global-knowledge-search';
-const GLOBAL_KNOWLEDGE_SEARCH_STORAGE_KEY = 'redbox:global-knowledge-search-query';
+const GLOBAL_KNOWLEDGE_SEARCH_EVENT = 'gardenflow:global-knowledge-search';
+const GLOBAL_KNOWLEDGE_SEARCH_STORAGE_KEY = 'gardenflow:global-knowledge-search-query';
 
 export function useGlobalKnowledgeSearch(onNavigate: (view: ViewType) => void) {
   const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);

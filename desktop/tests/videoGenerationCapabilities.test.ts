@@ -42,10 +42,10 @@ test('video model routes retain the provider endpoint and prefer the active prov
         active_video_provider_id: 'aliyun',
         video_providers_json: JSON.stringify([
             {
-                id: 'bojin',
-                name: 'Bojin',
-                endpoint: 'https://api.ziz.hk/bojin/v1',
-                apiKey: 'bojin-key',
+                id: 'gardenflow',
+                name: 'GardenFlow',
+                endpoint: 'https://api.ziz.hk/gardenflow/v1',
+                apiKey: 'gardenflow-key',
                 model: 'seedance-2.0',
                 models: ['seedance-2.0'],
             },
@@ -65,14 +65,14 @@ test('video model routes retain the provider endpoint and prefer the active prov
     assert.equal(routes[0].provider.id, 'aliyun');
     assert.match(routes[0].provider.endpoint, /dashscope\.aliyuncs\.com/);
 
-    const bojinRoute = resolveVideoModelRoute(settings, 'seedance-2.0');
-    assert.equal(bojinRoute?.provider.id, 'bojin');
-    assert.equal(bojinRoute?.provider.endpoint, 'https://api.ziz.hk/bojin/v1');
+    const gardenflowRoute = resolveVideoModelRoute(settings, 'seedance-2.0');
+    assert.equal(gardenflowRoute?.provider.id, 'gardenflow');
+    assert.equal(gardenflowRoute?.provider.endpoint, 'https://api.ziz.hk/gardenflow/v1');
 });
 
 test('the private gateway endpoint routes to the new-api task protocol', () => {
-    assert.equal(resolveVideoProvider(PRIVATE_GATEWAY_BASE_URL, 'bojin-video-1.1-r2v'), 'new-api');
-    assert.equal(resolveVideoProvider(PRIVATE_GATEWAY_BASE_URL, 'bojin-video-H3'), 'new-api');
+    assert.equal(resolveVideoProvider(PRIVATE_GATEWAY_BASE_URL, 'gardenflow-video-1.1-r2v'), 'new-api');
+    assert.equal(resolveVideoProvider(PRIVATE_GATEWAY_BASE_URL, 'gardenflow-video-H3'), 'new-api');
     // endpoint 判定优先于模型名判定，网关别名与上游原名撞车时不会误走直连协议。
     assert.equal(resolveVideoProvider(PRIVATE_GATEWAY_BASE_URL, 'happyhorse-1.1-r2v'), 'new-api');
     assert.equal(resolveVideoProvider(PRIVATE_GATEWAY_BASE_URL, 'MiniMax-H3'), 'new-api');
@@ -87,11 +87,11 @@ test('direct upstream routing is unchanged by the private gateway branch', () =>
         'aliyun-bailian',
     );
     assert.equal(resolveVideoProvider('https://api.minimaxi.com', 'MiniMax-H3'), 'minimax');
-    assert.equal(resolveVideoProvider('https://api.ziz.hk/bojin/v1', 'seedance-2.0'), 'redbox');
+    assert.equal(resolveVideoProvider('https://api.ziz.hk/gardenflow/v1', 'seedance-2.0'), 'gardenflow');
 });
 
 test('gateway video models expose the modes their upstream supports through new-api', () => {
-    const referenceOnly = getVideoModelCapabilities('bojin-video-1.1-r2v', PRIVATE_GATEWAY_BASE_URL);
+    const referenceOnly = getVideoModelCapabilities('gardenflow-video-1.1-r2v', PRIVATE_GATEWAY_BASE_URL);
     assert.equal(referenceOnly.providerKind, 'new-api');
     assert.deepEqual(referenceOnly.supportedModes, ['reference-guided']);
     assert.equal(referenceOnly.minReferenceImages, 1);
@@ -100,7 +100,7 @@ test('gateway video models expose the modes their upstream supports through new-
     assert.ok(referenceOnly.durationSeconds.includes(3));
     assert.ok(referenceOnly.durationSeconds.includes(15));
 
-    const miniMaxViaGateway = getVideoModelCapabilities('bojin-video-H3', PRIVATE_GATEWAY_BASE_URL);
+    const miniMaxViaGateway = getVideoModelCapabilities('gardenflow-video-H3', PRIVATE_GATEWAY_BASE_URL);
     assert.deepEqual(miniMaxViaGateway.supportedModes, ['text-to-video', 'reference-guided', 'first-last-frame']);
     assert.equal(miniMaxViaGateway.maxReferenceImages, 9);
     // 参考音频经网关会被丢弃，直连 MiniMax 才有该能力。
@@ -109,7 +109,7 @@ test('gateway video models expose the modes their upstream supports through new-
 });
 
 test('unregistered gateway video models fall back to text-to-video only', () => {
-    const capabilities = getVideoModelCapabilities('bojin-video-unknown', PRIVATE_GATEWAY_BASE_URL);
+    const capabilities = getVideoModelCapabilities('gardenflow-video-unknown', PRIVATE_GATEWAY_BASE_URL);
     assert.equal(capabilities.providerKind, 'new-api');
     assert.deepEqual(capabilities.supportedModes, ['text-to-video']);
     assert.equal(capabilities.maxReferenceImages, 0);
@@ -129,7 +129,7 @@ test('new-api task urls use the singular /video/generations path', () => {
 
 test('aliyun upstream reference images go into metadata.input.media and never the top level', () => {
     const body = buildPrivateGatewayVideoRequest({
-        model: 'bojin-video-1.1-r2v',
+        model: 'gardenflow-video-1.1-r2v',
         prompt: '参考图人物在咖啡厅微笑',
         upstream: 'aliyun-bailian',
         generationMode: 'reference-guided',
@@ -165,7 +165,7 @@ test('aliyun Model not exist create errors are treated as transient retries', ()
 
 test('minimax upstream uses flat metadata fields per generation mode', () => {
     const firstLast = buildPrivateGatewayVideoRequest({
-        model: 'bojin-video-H3',
+        model: 'gardenflow-video-H3',
         prompt: '首尾帧过渡',
         upstream: 'minimax',
         generationMode: 'first-last-frame',
@@ -181,7 +181,7 @@ test('minimax upstream uses flat metadata fields per generation mode', () => {
     });
 
     const reference = buildPrivateGatewayVideoRequest({
-        model: 'bojin-video-H3',
+        model: 'gardenflow-video-H3',
         prompt: '参考角色',
         upstream: 'minimax',
         generationMode: 'reference-guided',
@@ -196,7 +196,7 @@ test('minimax upstream uses flat metadata fields per generation mode', () => {
     });
 
     const textOnly = buildPrivateGatewayVideoRequest({
-        model: 'bojin-video-H3',
+        model: 'gardenflow-video-H3',
         prompt: '文生视频',
         upstream: 'minimax',
         generationMode: 'text-to-video',
@@ -214,15 +214,15 @@ test('private gateway video providers surface both gateway video models', () => 
         video_providers_json: JSON.stringify([
             {
                 id: 'video-provider-private-gateway',
-                name: 'Bojin私有网关',
+                name: 'GardenFlow私有网关',
                 endpoint: PRIVATE_GATEWAY_BASE_URL,
                 apiKey: 'sk-gateway',
-                model: 'bojin-video-1.1-r2v',
-                models: ['bojin-video-1.1-r2v', 'bojin-video-H3'],
+                model: 'gardenflow-video-1.1-r2v',
+                models: ['gardenflow-video-1.1-r2v', 'gardenflow-video-H3'],
             },
         ]),
     });
 
-    assert.deepEqual(routes.map((route) => route.model), ['bojin-video-1.1-r2v', 'bojin-video-H3']);
+    assert.deepEqual(routes.map((route) => route.model), ['gardenflow-video-1.1-r2v', 'gardenflow-video-H3']);
     assert.ok(routes.every((route) => route.capabilities.providerKind === 'new-api'));
 });

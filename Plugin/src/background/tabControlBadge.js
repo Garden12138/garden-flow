@@ -5,7 +5,7 @@ import { TAB_LEASES_KEY, subscribeActiveTabLeaseChanges } from './tabLeaseManage
 
 export const TARGET_CONTROL_BADGE_TYPE = 'AGENT_CONTROL_BADGE';
 export const TARGET_GET_CONTROL_BADGE_STATE_TYPE = 'GET_AGENT_CONTROL_BADGE_STATE';
-export const XWOW_CONTROL_BADGE_TYPE = 'xwow-data-ai:control-badge';
+export const GARDENFLOW_CONTROL_BADGE_TYPE = 'gardenflow-data-ai:control-badge';
 
 let initialized = false;
 let unsubscribeLeaseChanges = null;
@@ -31,7 +31,7 @@ export async function readTabControlBadgeState(tabId) {
   return {
     visible: true,
     state: 'active',
-    label: 'Bojin 控制中',
+    label: 'GardenFlow 控制中',
     sessionName: String(session.name || '').trim(),
     sessionId: lease.sessionId || '',
     turnId: lease.turnId || '',

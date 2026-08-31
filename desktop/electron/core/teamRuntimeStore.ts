@@ -269,7 +269,7 @@ export class TeamRuntimeStore extends EventEmitter {
   private readonly responseBuffers = new Map<string, string>();
 
   private statePath(): string {
-    return path.join(getWorkspacePaths().base, '.redbox', 'team-runtime.json');
+    return path.join(getWorkspacePaths().base, '.gardenflow', 'team-runtime.json');
   }
 
   private async ensureLoaded(): Promise<void> {
@@ -348,7 +348,7 @@ export class TeamRuntimeStore extends EventEmitter {
     const member: TeamMember = {
       id: memberId,
       sessionId: session.id,
-      displayName: text(payload.displayName) || (coordinator ? 'RedClaw' : '协作成员'),
+      displayName: text(payload.displayName) || (coordinator ? 'GardenFlow' : '协作成员'),
       roleId: text(payload.roleId) || (coordinator ? 'coordinator' : 'member'),
       sourceKind: text(payload.sourceKind) || 'local',
       backend: text(payload.backend) || 'pi-agent-core',
@@ -477,7 +477,7 @@ export class TeamRuntimeStore extends EventEmitter {
     this.state.sessions.push(session);
     if (session.runtimeMode === 'team' || session.source === 'team-workbench') {
       const coordinator = this.createMember(session, {
-        displayName: 'RedClaw',
+        displayName: 'GardenFlow',
         roleId: 'coordinator',
         backend: 'pi-agent-core',
         status: 'active',

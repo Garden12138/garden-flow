@@ -24,7 +24,7 @@ import {
     X,
 } from 'lucide-react';
 import clsx from 'clsx';
-import { REDBOX_OFFICIAL_VIDEO_BASE_URL } from '../../shared/bojinVideo';
+import { GARDENFLOW_OFFICIAL_VIDEO_BASE_URL } from '../../shared/gardenflowVideo';
 import {
     buildVideoModelRoutes,
     type VideoModelCapabilities,
@@ -329,7 +329,7 @@ const SOURCE_LABELS: Record<string, string> = {
     'cover-studio': '封面',
     cover_studio: '封面',
     tool: 'Agent 工具',
-    redclaw: 'RedClaw',
+    gardenflow: 'GardenFlow',
 };
 
 type AssetContextMenuState = {
@@ -2201,7 +2201,7 @@ export function GenerationStudio({
     );
     const effectiveVideoModel = String(videoModel || selectedVideoModelRoute?.model || '').trim();
     const activeVideoCapabilities: VideoModelCapabilities | null = selectedVideoModelRoute?.capabilities || null;
-    const resolvedVideoEndpoint = String(selectedVideoModelRoute?.provider.endpoint || settings.video_endpoint || REDBOX_OFFICIAL_VIDEO_BASE_URL).trim();
+    const resolvedVideoEndpoint = String(selectedVideoModelRoute?.provider.endpoint || settings.video_endpoint || GARDENFLOW_OFFICIAL_VIDEO_BASE_URL).trim();
     const resolvedVideoApiKey = String(selectedVideoModelRoute?.provider.apiKey || settings.video_api_key || settings.api_key || '').trim();
     const hasVideoConfig = Boolean(resolvedVideoEndpoint) && Boolean(resolvedVideoApiKey) && Boolean(effectiveVideoModel);
     const videoModelOptions = useMemo<PickerOption[]>(() => videoModelRoutes.map((route) => ({

@@ -3,12 +3,12 @@ import { Composition } from 'remotion';
 import { VideoMotionComposition } from '../components/manuscripts/remotion/VideoMotionComposition';
 import type { RemotionCompositionConfig } from '../components/manuscripts/remotion/types';
 
-export const REDBOX_REMOTION_COMPOSITION_ID = 'RedBoxVideoMotion';
+export const GARDENFLOW_REMOTION_COMPOSITION_ID = 'GardenFlowVideoMotion';
 
 const DEFAULT_COMPOSITION: RemotionCompositionConfig = {
     version: 1,
-    title: 'Bojin Motion',
-    entryCompositionId: REDBOX_REMOTION_COMPOSITION_ID,
+    title: 'GardenFlow Motion',
+    entryCompositionId: GARDENFLOW_REMOTION_COMPOSITION_ID,
     width: 1080,
     height: 1920,
     fps: 30,
@@ -20,7 +20,7 @@ const DEFAULT_COMPOSITION: RemotionCompositionConfig = {
 export const RemotionRoot: React.FC = () => {
     return (
         <Composition
-            id={REDBOX_REMOTION_COMPOSITION_ID}
+            id={GARDENFLOW_REMOTION_COMPOSITION_ID}
             component={VideoMotionComposition}
             width={DEFAULT_COMPOSITION.width}
             height={DEFAULT_COMPOSITION.height}
@@ -49,12 +49,12 @@ export const RemotionRoot: React.FC = () => {
                 const defaultOutName = typeof requestedRender.defaultOutName === 'string' && requestedRender.defaultOutName.trim()
                     ? requestedRender.defaultOutName.trim()
                     : String(
-                        (composition.title || 'redbox-motion')
+                        (composition.title || 'gardenflow-motion')
                             .trim()
                             .replace(/[^\w\u4e00-\u9fa5-]+/g, '-')
                             .replace(/-+/g, '-')
                             .replace(/^-|-$/g, '')
-                            || 'redbox-motion',
+                            || 'gardenflow-motion',
                     );
                 return {
                     width: composition.width,

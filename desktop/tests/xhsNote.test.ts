@@ -19,7 +19,7 @@ import {
     uniqueXhsMaterialFileName,
 } from '../shared/xhsNote.ts';
 import { writeXhsMaterialZip } from '../electron/core/xhsMaterialZip.ts';
-import { coerceToRedboxAssetUrl } from '../shared/localAsset.ts';
+import { coerceToGardenFlowAssetUrl } from '../shared/localAsset.ts';
 
 test('accepts only media compatible with an XHS note slot', () => {
     assert.equal(isXhsMediaCompatible('cover', 'image/png'), true);
@@ -211,15 +211,15 @@ test('rejects binding generated media to an incompatible XHS slot', () => {
 });
 
 test('keeps local previews on the Electron asset protocol', () => {
-    const existingUrl = 'redbox-asset://asset//Users/demo/media/cover.png';
-    assert.equal(coerceToRedboxAssetUrl(existingUrl), existingUrl);
+    const existingUrl = 'gardenflow-asset://asset//Users/demo/media/cover.png';
+    assert.equal(coerceToGardenFlowAssetUrl(existingUrl), existingUrl);
     assert.equal(
-        coerceToRedboxAssetUrl('/Users/demo/media/封面.png'),
-        'redbox-asset://asset//Users/demo/media/%E5%B0%81%E9%9D%A2.png',
+        coerceToGardenFlowAssetUrl('/Users/demo/media/封面.png'),
+        'gardenflow-asset://asset//Users/demo/media/%E5%B0%81%E9%9D%A2.png',
     );
     assert.equal(
-        coerceToRedboxAssetUrl('redbox-asset://asset///server/share/cover.png'),
-        'redbox-asset://asset///server/share/cover.png',
+        coerceToGardenFlowAssetUrl('gardenflow-asset://asset///server/share/cover.png'),
+        'gardenflow-asset://asset///server/share/cover.png',
     );
 });
 
@@ -251,7 +251,7 @@ test('builds warning-preserving package manifest', () => {
         exportedAt: '2026-08-11T00:00:00.000Z',
     });
 
-    assert.equal(manifest.schema, 'redclaw-xiaohongshu-material-package');
+    assert.equal(manifest.schema, 'gardenflow-xiaohongshu-material-package');
     assert.equal(manifest.revision, 7);
     assert.equal(manifest.assets[0].status, 'missing');
     assert.deepEqual(manifest.warnings, ['最终成片未包含可用文件']);
@@ -269,7 +269,7 @@ test('normalizes archive names and deduplicates Unicode file names', () => {
 });
 
 test('writes an offline ZIP with HTML, Markdown, manifest and Unicode assets', async () => {
-    const tempDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'redclaw-xhs-note-'));
+    const tempDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'gardenflow-xhs-note-'));
     try {
         const sourceAsset = path.join(tempDirectory, '封面图片.png');
         const outputPath = path.join(tempDirectory, '素材包.zip');

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Bojin",
-  "description": "将网页、链接、选中文字、图片、视频和评论保存到本机 Bojin 创作工作区。",
+  "name": "GardenFlow",
+  "description": "将网页、链接、选中文字、图片、视频和评论保存到本机 GardenFlow 创作工作区。",
   "version": "2.6.19.65535",
   "version_name": "2.6.19",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA555DgAsqFvpstJ4unuQPxrkcPD6suJcXbPJhNNi4rOp8wCAkJ3hm2voQr1XT1jQQpEb5SIfwsgL1CoxkQPHaU3k2ot/GrdKnwvUwn7nxLKPRyeB+LzA4owQy7+LAAgDKqkY2r7cfhIaNEsfpDrrPnpSgrtrtv4JOlvOUQx3VW9IBVKq+/xql+2420npDWnLI+Ro0RKWhYl2cLjtd0pauLCb899v3qpYIlw/zgQ41sh8k24rJNmDR2FEX7WA1FOL+iLL51cC1WT6yJFGGYy3IbOl2TzlHZHKiuQPZ1DgxPSCQqjYwa0t0z+RtGqd2mG1Z2vzQQKmBcDV/l+uhC58pTwIDAQAB",
@@ -47,36 +47,48 @@
         "https://www.xiaohongshu.com/*",
         "https://www.rednote.com/*"
       ],
-      "js": ["vendor/md5.min.js", "xhsBridge.js"],
+      "js": [
+        "vendor/md5.min.js",
+        "xhsBridge.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN"
     },
     {
-      "matches": ["<all_urls>"],
-      "js": ["pageObserver.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "pageObserver.js"
+      ],
       "run_at": "document_end"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["pageRouteBridge.js", "images/cursor-chat.png"],
-      "matches": ["<all_urls>"]
+      "resources": [
+        "pageRouteBridge.js",
+        "images/cursor-chat.png"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ],
   "commands": {
-    "open-redbox-side-panel": {
+    "open-gardenflow-side-panel": {
       "suggested_key": {
         "default": "Ctrl+Shift+Y",
         "mac": "Command+Shift+Y"
       },
-      "description": "Open Bojin browser control side panel"
+      "description": "Open GardenFlow browser control side panel"
     },
     "open-codex-side-panel": {
       "description": "Open Codex-compatible browser control side panel"
     }
   },
   "action": {
-    "default_title": "Bojin",
+    "default_title": "GardenFlow",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",

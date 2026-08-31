@@ -28,7 +28,7 @@ function resolveFfmpegCommand(): string {
   } catch {
     // Fall through to environment fallback.
   }
-  if (process.env.REDBOX_ALLOW_SYSTEM_FFMPEG === '1') return 'ffmpeg';
+  if (process.env.GARDENFLOW_ALLOW_SYSTEM_FFMPEG === '1') return 'ffmpeg';
   throw new Error('Bundled ffmpeg not found. Please reinstall app/package to restore internal ffmpeg binary.');
 }
 
@@ -171,7 +171,7 @@ async function generateThumbnail(input: {
 }
 
 function shouldGenerateProxy(probe: MediaProbeRecord): boolean {
-  const thresholdMs = Math.max(10000, Number(process.env.REDBOX_VIDEO_PROXY_THRESHOLD_MS || 120000) || 120000);
+  const thresholdMs = Math.max(10000, Number(process.env.GARDENFLOW_VIDEO_PROXY_THRESHOLD_MS || 120000) || 120000);
   const durationMs = Number(probe.durationMs || 0);
   const width = Number(probe.width || 0);
   const height = Number(probe.height || 0);

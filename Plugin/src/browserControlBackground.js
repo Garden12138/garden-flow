@@ -1,3 +1,4 @@
+import './brandRuntime.js';
 import { assertBrowserActionAllowed, BROWSER_ACTION_LEVELS, browserPolicyError, buildBrowserPolicyMetadata, classifyBrowserAction, DANGEROUS_ACTION_TEXT, DANGEROUS_CDP_METHODS, resolveBrowserPolicyPageUrl } from './background/browserPolicy.js';
 import { createActiveTabObserver } from './background/activeTabObserver.js';
 import { buildBrowserCapabilityMetadata, buildPluginRegistrationPayload } from './background/browserCapabilities.js';
@@ -36,37 +37,37 @@ import { unsupportedBrowserCommandError } from './background/unsupportedCommandR
 import { configureWebMcpTelemetry, invokeWebMcpTool, listWebMcpTools } from './background/webMcpRuntime.js';
 import { closeSiteResearchItem, openSiteResearchItem } from './background/siteResearchNavigation.js';
 
-const PLUGIN_ID = 'redbox-browser-control';
+const PLUGIN_ID = 'gardenflow-browser-control';
 const API_CANDIDATES = [];
-const SETTINGS_KEY = 'redboxBrowserControlSettings';
-const SCRAPERS_KEY = 'redboxBrowserControlScrapers';
-const POLL_ALARM = 'redbox-browser-control-poll';
-const CONTENT_READ_TYPE = 'xwow-data-ai:read-frame';
-const CONTENT_DOM_SNAPSHOT_TYPE = 'xwow-data-ai:dom-snapshot';
-const CONTENT_SITE_RESEARCH_EXTRACT_TYPE = 'xwow-data-ai:site-research-extract';
-const CONTENT_SITE_RESEARCH_APPLY_FILTERS_TYPE = 'xwow-data-ai:site-research-apply-filters';
-const CONTENT_SITE_RESEARCH_SUBMIT_SEARCH_TYPE = 'xwow-data-ai:site-research-submit-search';
-const CONTENT_SITE_RESEARCH_PREPARE_ITEM_CLICK_TYPE = 'xwow-data-ai:site-research-prepare-item-click';
-const CONTENT_SITE_RESEARCH_PREPARE_ITEM_CLOSE_TYPE = 'xwow-data-ai:site-research-prepare-item-close';
-const CONTENT_SCROLL_TYPE = 'xwow-data-ai:scroll-page';
-const CONTENT_CLICK_NEXT_TYPE = 'xwow-data-ai:click-next';
-const CONTENT_CLICK_ELEMENT_TYPE = 'xwow-data-ai:click-element';
-const CONTENT_CLICK_NODE_TYPE = 'xwow-data-ai:click-node';
-const CONTENT_HOVER_ELEMENT_TYPE = 'xwow-data-ai:hover-element';
-const CONTENT_INSPECT_POINT_TYPE = 'xwow-data-ai:inspect-point';
-const CONTENT_SCROLL_NODE_TYPE = 'xwow-data-ai:scroll-node';
-const CONTENT_SELECT_ELEMENT_TYPE = 'xwow-data-ai:select-element';
-const CONTENT_TYPE_ELEMENT_TYPE = 'xwow-data-ai:type-element';
-const CONTENT_WAIT_STABLE_TYPE = 'xwow-data-ai:wait-stable';
-const CONTENT_WAIT_SELECTOR_TYPE = 'xwow-data-ai:wait-selector';
-const CONTENT_WAIT_NODE_TYPE = 'xwow-data-ai:wait-node';
-const CONTENT_CHECK_ELEMENT_TYPE = 'xwow-data-ai:check-element';
-const CONTENT_IS_CHECKED_TYPE = 'xwow-data-ai:is-checked';
-const CONTENT_IS_VISIBLE_TYPE = 'xwow-data-ai:is-visible';
-const CONTENT_GET_VALUE_TYPE = 'xwow-data-ai:get-value';
-const CONTENT_GET_VALUES_TYPE = 'xwow-data-ai:get-values';
-const CONTENT_GET_ATTRIBUTE_TYPE = 'xwow-data-ai:get-attribute';
-const CONTENT_QUERY_ELEMENTS_TYPE = 'xwow-data-ai:query-elements';
+const SETTINGS_KEY = 'gardenflowBrowserControlSettings';
+const SCRAPERS_KEY = 'gardenflowBrowserControlScrapers';
+const POLL_ALARM = 'gardenflow-browser-control-poll';
+const CONTENT_READ_TYPE = 'gardenflow-data-ai:read-frame';
+const CONTENT_DOM_SNAPSHOT_TYPE = 'gardenflow-data-ai:dom-snapshot';
+const CONTENT_SITE_RESEARCH_EXTRACT_TYPE = 'gardenflow-data-ai:site-research-extract';
+const CONTENT_SITE_RESEARCH_APPLY_FILTERS_TYPE = 'gardenflow-data-ai:site-research-apply-filters';
+const CONTENT_SITE_RESEARCH_SUBMIT_SEARCH_TYPE = 'gardenflow-data-ai:site-research-submit-search';
+const CONTENT_SITE_RESEARCH_PREPARE_ITEM_CLICK_TYPE = 'gardenflow-data-ai:site-research-prepare-item-click';
+const CONTENT_SITE_RESEARCH_PREPARE_ITEM_CLOSE_TYPE = 'gardenflow-data-ai:site-research-prepare-item-close';
+const CONTENT_SCROLL_TYPE = 'gardenflow-data-ai:scroll-page';
+const CONTENT_CLICK_NEXT_TYPE = 'gardenflow-data-ai:click-next';
+const CONTENT_CLICK_ELEMENT_TYPE = 'gardenflow-data-ai:click-element';
+const CONTENT_CLICK_NODE_TYPE = 'gardenflow-data-ai:click-node';
+const CONTENT_HOVER_ELEMENT_TYPE = 'gardenflow-data-ai:hover-element';
+const CONTENT_INSPECT_POINT_TYPE = 'gardenflow-data-ai:inspect-point';
+const CONTENT_SCROLL_NODE_TYPE = 'gardenflow-data-ai:scroll-node';
+const CONTENT_SELECT_ELEMENT_TYPE = 'gardenflow-data-ai:select-element';
+const CONTENT_TYPE_ELEMENT_TYPE = 'gardenflow-data-ai:type-element';
+const CONTENT_WAIT_STABLE_TYPE = 'gardenflow-data-ai:wait-stable';
+const CONTENT_WAIT_SELECTOR_TYPE = 'gardenflow-data-ai:wait-selector';
+const CONTENT_WAIT_NODE_TYPE = 'gardenflow-data-ai:wait-node';
+const CONTENT_CHECK_ELEMENT_TYPE = 'gardenflow-data-ai:check-element';
+const CONTENT_IS_CHECKED_TYPE = 'gardenflow-data-ai:is-checked';
+const CONTENT_IS_VISIBLE_TYPE = 'gardenflow-data-ai:is-visible';
+const CONTENT_GET_VALUE_TYPE = 'gardenflow-data-ai:get-value';
+const CONTENT_GET_VALUES_TYPE = 'gardenflow-data-ai:get-values';
+const CONTENT_GET_ATTRIBUTE_TYPE = 'gardenflow-data-ai:get-attribute';
+const CONTENT_QUERY_ELEMENTS_TYPE = 'gardenflow-data-ai:query-elements';
 const CONTROLLED_PAGE_MUTATION_ACTIONS = new Set(['page.navigate', 'page.goto', 'page.waitForLoadState', 'page.waitForURL', 'page.waitForTimeout', 'page.evaluate', 'page.evaluateScript', 'page.scroll', 'page.click', 'page.clickNode', 'node.click', 'page.hover', 'page.inspectPoint', 'page.hitTest', 'page.scrollNode', 'node.scroll', 'page.waitForNode', 'node.wait', 'page.waitForSelector', 'page.waitSelector', 'page.check', 'page.setChecked', 'page.isChecked', 'page.isVisible', 'page.getValue', 'page.getValues', 'page.getAttribute', 'page.queryElements', 'page.domSnapshot', 'page.export', 'tab.export', 'page.consoleLogs', 'tab_console_logs', 'tab.consoleLogs', 'page.select', 'page.type', 'page.frames', 'page.readClipboard', 'clipboard.read', 'page.readClipboardText', 'clipboard.readText', 'page.writeClipboard', 'clipboard.write', 'page.writeClipboardText', 'clipboard.writeText', 'page.waitForFileChooser', 'page.acceptFileChooser', 'page.setInputFiles', 'fileChooser.accept', 'webmcp.listTools', 'webmcp.invokeTool', 'webmcp_list_tools', 'webmcp_invoke_tool', 'input.mouseDrag', 'input.mouseWheel', 'input.keyboardType', 'input.keyboardPress', 'input.keyboardCombo']);
 const CDP_COMMAND_TIMEOUT_MS = getDefaultCdpTimeoutMs();
 
@@ -527,7 +528,7 @@ const localCommandActionRouter = createLocalCommandActionRouter({
   connectNativeTransport,
   disconnectNativeTransport,
   requestNativeCommand: async (payload) => {
-    if (payload.method === 'ensureCodexAppServer' || payload.method === 'ensure_xwow_app_server' || payload.method === 'ensure_codex_app_server') {
+    if (payload.method === 'ensureCodexAppServer' || payload.method === 'ensure_gardenflow_app_server' || payload.method === 'ensure_codex_app_server') {
       return await ensureAppServerWithSidePanelGate({ method: payload.method, params: payload.params || {}, timeoutMs: payload.timeoutMs, windowId: payload.windowId });
     }
     return await requestNativeHost(payload.method || 'ping', payload.params || {}, payload.timeoutMs);
@@ -634,7 +635,7 @@ function detectBrowserFamily() {
 
 function queuePluginDiagnostic(error, options = {}) {
   void reportPluginError(error, options).catch((reportError) => {
-    console.warn('[redbox-plugin][diagnostics] report failed', reportError);
+    console.warn('[gardenflow-plugin][diagnostics] report failed', reportError);
   });
 }
 
@@ -670,7 +671,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 function isBrowserControlRuntimeMessage(message = {}) {
   const type = String(message?.type || '');
-  if (type.startsWith('xwow-data-ai:') || type.startsWith('redbox-browser-control:')) return true;
+  if (type.startsWith('gardenflow-data-ai:') || type.startsWith('gardenflow-browser-control:')) return true;
   if (type === 'browser.action' || type === 'GET_NATIVE_HOST_STATUS') return true;
   if (type === TARGET_GET_CURSOR_STATE_TYPE || type === TARGET_CURSOR_ARRIVED_TYPE) return true;
   if (type === TARGET_GET_CONTROL_BADGE_STATE_TYPE) return true;
@@ -736,7 +737,7 @@ async function handleMessage(message, sender = {}) {
     case TARGET_CURSOR_ARRIVED_TYPE:
       notifyCursorArrived(message);
       return { success: true };
-    case 'xwow-data-ai:file-chooser-opened':
+    case 'gardenflow-data-ai:file-chooser-opened':
       return { success: true, fileChooser: handleFileChooserDomEvent(message, sender) };
     case TARGET_GET_CURSOR_STATE_TYPE: {
       const tabId = Number(message.tabId || sender?.tab?.id || activeBrowserSession?.activeTabId || 0);
@@ -746,73 +747,73 @@ async function handleMessage(message, sender = {}) {
       const tabId = Number(message.tabId || sender?.tab?.id || activeBrowserSession?.activeTabId || 0);
       return { ok: true, success: true, state: await readTabControlBadgeState(tabId) };
     }
-    case 'xwow-data-ai:get-status':
+    case 'gardenflow-data-ai:get-status':
       return { success: true, status: { ...lastStatus, nativeHost: nativeStatus } };
-    case 'xwow-data-ai:get-active-tab':
+    case 'gardenflow-data-ai:get-active-tab':
       return { success: true, tab: await getActiveTabInfo() };
-    case 'xwow-data-ai:register':
+    case 'gardenflow-data-ai:register':
       await registerPlugin(true);
       return { success: true, status: lastStatus };
-    case 'xwow-data-ai:analyze-active-tab':
+    case 'gardenflow-data-ai:analyze-active-tab':
       return await analyzeActiveTab(message.options || {});
-    case 'xwow-data-ai:suggest-columns':
+    case 'gardenflow-data-ai:suggest-columns':
       return await suggestColumns(message.capture || null, message.options || {});
-    case 'xwow-data-ai:preview-active-tab':
+    case 'gardenflow-data-ai:preview-active-tab':
       return await previewActiveTab(message.scraper || {}, message.options || {});
-    case 'xwow-data-ai:run-scraper':
+    case 'gardenflow-data-ai:run-scraper':
       return await runScraper(message.scraper || {});
-    case 'xwow-data-ai:stop-run':
+    case 'gardenflow-data-ai:stop-run':
       if (activeRun) activeRun.cancelled = true;
       setStatus({ activeRun });
       return { success: true, activeRun };
-    case 'xwow-data-ai:create-browser-session':
+    case 'gardenflow-data-ai:create-browser-session':
       return await createBrowserSession(message.owner || 'manual_repair', message.metadata || {});
-      case 'xwow-data-ai:list-browser-sessions':
+      case 'gardenflow-data-ai:list-browser-sessions':
       return { success: true, sessions: await listBrowserSessions(), tabLeases: await listTabLeases() };
-    case 'xwow-data-ai:end-browser-session':
+    case 'gardenflow-data-ai:end-browser-session':
       return await endBrowserSession(message.sessionId || '', { releaseTabs: message.releaseTabs !== false });
-    case 'xwow-data-ai:run-browser-action':
+    case 'gardenflow-data-ai:run-browser-action':
       return await runBrowserAction(message.action || {}, {
         session: await resolveBrowserActionSession(message.sessionId || '', message.owner || 'manual_repair'),
       });
-    case 'xwow-data-ai:native-status':
+    case 'gardenflow-data-ai:native-status':
     case 'GET_NATIVE_HOST_STATUS':
       {
         const status = refreshNativeStatus();
         return { success: status.state === 'connected', status };
       }
-    case 'xwow-data-ai:native-connect':
+    case 'gardenflow-data-ai:native-connect':
       return { success: true, status: await connectNativeTransport({ force: true, hostName: message.hostName }) };
-    case 'xwow-data-ai:native-disconnect':
+    case 'gardenflow-data-ai:native-disconnect':
       await disconnectNativeTransport('manual_disconnect');
       return { success: true, status: nativeStatus };
-    case 'xwow-data-ai:native-request':
+    case 'gardenflow-data-ai:native-request':
       return await requestNativeHost(message.method || 'ping', message.params || {}, message.timeoutMs);
-    case 'ensure_xwow_app_server':
+    case 'ensure_gardenflow_app_server':
     case 'ensure_codex_app_server':
     case 'ensureCodexAppServer':
       return await ensureAppServerWithSidePanelGate(message);
-    case 'xwow-data-ai:side-panel-status':
+    case 'gardenflow-data-ai:side-panel-status':
       return getSidePanelStatus(message.windowId);
-    case 'xwow-data-ai:side-panel-open':
+    case 'gardenflow-data-ai:side-panel-open':
       return await openSidePanel(message.windowId);
-    case 'xwow-data-ai:side-panel-close':
+    case 'gardenflow-data-ai:side-panel-close':
       return await closeSidePanel(message.windowId);
-    case 'xwow-data-ai:side-panel-toggle':
+    case 'gardenflow-data-ai:side-panel-toggle':
       return await toggleSidePanel(message.windowId);
-    case 'xwow-data-ai:save-scraper':
+    case 'gardenflow-data-ai:save-scraper':
       return await saveScraper(message.scraper || {});
-    case 'xwow-data-ai:list-scrapers':
+    case 'gardenflow-data-ai:list-scrapers':
       return { success: true, scrapers: await listScrapers() };
-    case 'xwow-data-ai:list-captures':
+    case 'gardenflow-data-ai:list-captures':
       return await listCaptures(message.options || {});
-    case 'xwow-data-ai:list-commands':
+    case 'gardenflow-data-ai:list-commands':
       return await listCommands(message.options || {});
-    case 'xwow-data-ai:poll-command':
+    case 'gardenflow-data-ai:poll-command':
       return await pollCommandOnce();
-    case 'xwow-data-ai:capture-active-tab':
+    case 'gardenflow-data-ai:capture-active-tab':
       return await captureActiveTab({ store: true, aiInstruction: message.aiInstruction || '', options: message.options || {} });
-    case 'xwow-data-ai:ingest-manual-capture':
+    case 'gardenflow-data-ai:ingest-manual-capture':
       return await ingestManualCapture(message.capture || {});
     default:
       return { success: false, error: 'Unknown message type' };
@@ -832,7 +833,7 @@ async function initialize() {
   initializeTabFaviconBadges();
   initializeTabControlBadges();
   await reconcileInterruptedBrowserRuntime().catch((error) => {
-    console.warn('[XWOW BrowserDataAI] interrupted browser runtime reconciliation failed', error);
+    console.warn('[GARDENFLOW BrowserDataAI] interrupted browser runtime reconciliation failed', error);
   });
   setStatus({
     connected: nativeStatus.state === 'connected',
@@ -898,7 +899,7 @@ async function getSettings() {
 async function resolveApiBase(force = false) {
   void force;
   cachedBaseUrl = null;
-  throw new Error('Bojin browser-control HTTP bridge has been retired; use Native Messaging');
+  throw new Error('GardenFlow browser-control HTTP bridge has been retired; use Native Messaging');
 }
 
 async function registerPlugin(force) {
@@ -928,7 +929,7 @@ async function ensureAppServerWithSidePanelGate(message = {}) {
   const isTargetCodexAlias = method === 'ensure_codex_app_server';
   try {
     const sidePanel = await requireSidePanelOpen(message.windowId || message.params?.windowId, {
-      closedError: isTargetCodexAlias ? 'Codex side panel is not open.' : 'Bojin side panel is not open.',
+      closedError: isTargetCodexAlias ? 'Codex side panel is not open.' : 'GardenFlow side panel is not open.',
     });
     const result = await requestNativeHost('ensureCodexAppServer', message.params || {}, message.timeoutMs);
     const status = refreshNativeStatus();
@@ -3901,7 +3902,7 @@ function researchDownloadStaging(asset = {}, options = {}) {
     extension = asset.type === 'video' ? 'mp4' : asset.type === 'audio' ? 'bin' : 'jpg';
   }
   return {
-    filename: `Bojin/research/${runId}/${mediaId}.${extension}`,
+    filename: `GardenFlow/research/${runId}/${mediaId}.${extension}`,
     runId,
     mediaId,
   };

@@ -1,9 +1,9 @@
 import { getNativeStatus } from './nativeTransport.js';
 
-export const PLUGIN_DIAGNOSTICS_QUEUE_KEY = 'redboxPluginDiagnosticsQueue';
-export const PLUGIN_DIAGNOSTICS_RECENT_KEY = 'redboxPluginDiagnosticsRecent';
-export const PLUGIN_DIAGNOSTICS_RETRY_ALARM = 'redbox-plugin-diagnostics-retry';
-export const PLUGIN_FEEDBACK_ENDPOINT = 'https://api.ziz.hk/beav/v1/public-feedback';
+export const PLUGIN_DIAGNOSTICS_QUEUE_KEY = 'gardenflowPluginDiagnosticsQueue';
+export const PLUGIN_DIAGNOSTICS_RECENT_KEY = 'gardenflowPluginDiagnosticsRecent';
+export const PLUGIN_DIAGNOSTICS_RETRY_ALARM = 'gardenflow-plugin-diagnostics-retry';
+export const PLUGIN_FEEDBACK_ENDPOINT = 'https://api.ziz.hk/gardenflow/v1/public-feedback';
 
 const QUEUE_LIMIT = 40;
 const RECENT_LIMIT = 120;
@@ -165,7 +165,7 @@ export function buildPluginFeedbackRequest(payload = {}, reportId = '') {
   const browser = safeToken(fields.browser || 'unknown', 'unknown');
   const message = redactText(payload.message || 'Browser plugin error', 1_000);
   const context = sanitizeValue({
-    schema: 'redbox.browserPluginDiagnostic.v1',
+    schema: 'gardenflow.browserPluginDiagnostic.v1',
     automatic: true,
     reportId: safeToken(reportId, ''),
     event,
@@ -182,7 +182,7 @@ export function buildPluginFeedbackRequest(payload = {}, reportId = '') {
     source: 'browser_extension',
     request_kind: 'plugin_error',
     client: {
-      product: 'bojin',
+      product: 'gardenflow',
       extensionVersion,
       browser,
     },

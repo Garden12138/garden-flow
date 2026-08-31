@@ -135,8 +135,8 @@ function normalizeExportFormat(value) {
 }
 
 function buildExportFilename(format, page) {
-  const title = slugify(page.title || new URL(page.url || 'https://bojin.local').hostname || 'page');
-  return `bojin-page-export-${title}-${Date.now()}.${format}`;
+  const title = slugify(page.title || new URL(page.url || 'https://gardenflow.local').hostname || 'page');
+  return `gardenflow-page-export-${title}-${Date.now()}.${format}`;
 }
 
 function exportMimeType(format) {

@@ -6,7 +6,7 @@ import { buildXhsSearchUrl } from './xhsAutoCaptureChrome';
  * 内置自动化任务：定义在代码，状态在配置。
  *
  * 这里只描述“任务是什么、需要什么配置、就绪条件是什么、执行 prompt 怎么生成”，
- * 用户态（开关 / 频率覆盖 / 配置值 / 上次结果）由 redclawBackgroundRunner 持久化。
+ * 用户态（开关 / 频率覆盖 / 配置值 / 上次结果）由 gardenflowBackgroundRunner 持久化。
  */
 
 export type BuiltinAutomationSettingFieldType = 'string' | 'string-list' | 'number' | 'select';
@@ -140,7 +140,7 @@ function buildXhsAutoCapturePrompt(settings: Record<string, unknown>): string {
     const keywords = toStringList(settings.keywords);
 
     return [
-        '[RedClaw 内置自动化任务：小红书自动采集]',
+        '[GardenFlow 内置自动化任务：小红书自动采集]',
         `任务ID: ${XHS_AUTO_CAPTURE_ID}`,
         '',
         '本轮参数：',
@@ -178,10 +178,10 @@ async function checkXhsAutoCaptureReadiness(
         id: 'plugin-bridge',
         label: '浏览器插件桥接',
         status: bridgeOk ? 'ok' : 'failed',
-        detail: bridgeOk ? `已连接 ${bridgeInstances.length} 个插件实例` : '未检测到已连接的 RedClaw 插件',
+        detail: bridgeOk ? `已连接 ${bridgeInstances.length} 个插件实例` : '未检测到已连接的 GardenFlow 插件',
         hint: bridgeOk
             ? undefined
-            : '请打开采集用的浏览器（已登录小红书并启用 RedClaw 插件），确认插件与 Bojin 的原生消息通道已连通。',
+            : '请打开采集用的浏览器（已登录小红书并启用 GardenFlow 插件），确认插件与 GardenFlow 的原生消息通道已连通。',
     });
 
     const accessProblem = bridgeInstances
@@ -213,7 +213,7 @@ const BUILTIN_AUTOMATION_DEFINITIONS: BuiltinAutomationDefinition[] = [
     {
         id: XHS_AUTO_CAPTURE_ID,
         name: '小红书自动采集',
-        description: '按关键词定时在已登录的浏览器里（通过 RedClaw 插件）页内搜索小红书、逐条打开笔记做 DOM 级提取，并按 noteId 去重入库。默认关闭。',
+        description: '按关键词定时在已登录的浏览器里（通过 GardenFlow 插件）页内搜索小红书、逐条打开笔记做 DOM 级提取，并按 noteId 去重入库。默认关闭。',
         supportedPlatforms: ['darwin', 'win32', 'linux'],
         defaultSchedule: { mode: 'daily', time: '10:00' },
         requiredSkills: ['xhs-auto-capture'],

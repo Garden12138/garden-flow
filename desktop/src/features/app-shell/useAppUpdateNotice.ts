@@ -38,7 +38,7 @@ export interface AppUpdateInstallState {
   error: string;
 }
 
-const UPDATE_NOTICE_SHOWN_VERSION_STORAGE_KEY = 'redbox:update-notice-shown-version:v1';
+const UPDATE_NOTICE_SHOWN_VERSION_STORAGE_KEY = 'gardenflow:update-notice-shown-version:v1';
 
 const initialInstallState: AppUpdateInstallState = {
   status: 'idle',
@@ -101,7 +101,7 @@ export function useAppUpdateNotice(openDownloadFailedLabel: string) {
         currentVersion: version,
         latestVersion: version,
         htmlUrl: '',
-        name: `Bojin v${version}`,
+        name: `GardenFlow v${version}`,
         publishedAt: '2026-05-14',
         body: currentReleaseNotesMarkdown(),
         mode: 'current',

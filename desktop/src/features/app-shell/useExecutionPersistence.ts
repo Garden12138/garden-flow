@@ -6,8 +6,8 @@ export function useExecutionPersistence(setViewPersistent: (view: ViewType, pers
     setViewPersistent('wander', active);
   }, [setViewPersistent]);
 
-  const handleRedClawExecutionStateChange = useCallback((active: boolean) => {
-    setViewPersistent('redclaw', active);
+  const handleGardenFlowExecutionStateChange = useCallback((active: boolean) => {
+    setViewPersistent('gardenflow', active);
   }, [setViewPersistent]);
 
   const handleGenerationStudioExecutionStateChange = useCallback((active: boolean) => {
@@ -20,7 +20,7 @@ export function useExecutionPersistence(setViewPersistent: (view: ViewType, pers
 
   return {
     handleWanderExecutionStateChange,
-    handleRedClawExecutionStateChange,
+    handleGardenFlowExecutionStateChange,
     handleGenerationStudioExecutionStateChange,
     handleCoverStudioExecutionStateChange,
   };

@@ -37,10 +37,10 @@ test('recognizes structured automation task ui hints', () => {
 
 test('requires explicit user acknowledgement for persistent task mutations in foreground chat', () => {
     for (const command of [
-        'redclaw schedule-add --name "每日巡检" --mode daily --time 09:00 --prompt "..."',
-        'redclaw schedule-remove --task-id sched_1',
-        'redclaw long-add --name x --objective y --step-prompt z',
-        'redclaw long-remove --task-id long_1',
+        'gardenflow schedule-add --name "每日巡检" --mode daily --time 09:00 --prompt "..."',
+        'gardenflow schedule-remove --task-id sched_1',
+        'gardenflow long-add --name x --objective y --step-prompt z',
+        'gardenflow long-remove --task-id long_1',
         'work schedule-add --title x --prompt y',
         'work cycle-add --title x --objective y --step-prompt z',
     ]) {
@@ -75,20 +75,28 @@ test('denies unrelated mcp servers in background maintenance', () => {
 });
 
 test('keeps unattended automation links unblocked', () => {
-    const background = analyzeAppCliCommand('redclaw schedule-add --name x --prompt y', {
+    const background = analyzeAppCliCommand('gardenflow schedule-add --name x --prompt y', {
         interactive: true,
         runtimeMode: 'background-maintenance',
     });
     assert.equal(background.className, 'trusted-write');
     assert.equal(background.requiresUserAcknowledgement, undefined);
 
-    const headless = analyzeAppCliCommand('redclaw schedule-add --name x --prompt y', { interactive: false });
+    const headless = analyzeAppCliCommand('gardenflow schedule-add --name x --prompt y', { interactive: false });
     assert.equal(headless.className, 'trusted-write');
     assert.equal(headless.requiresUserAcknowledgement, undefined);
 });
 
-test('leaves non-persistent redclaw writes on the trusted path', () => {
-    const analysis = analyzeAppCliCommand('redclaw schedule-update --task-id sched_1 --name x', { interactive: true });
+test('leaves non-persistent gardenflow writes on the trusted path', () => {
+    const analysis = analyzeAppCliCommand('gardenflow schedule-update --task-id sched_1 --name x', { interactive: true });
     assert.equal(analysis.className, 'trusted-write');
     assert.equal(analysis.requiresUserAcknowledgement, undefined);
+});
+
+// Historical commands must retain the same confirmation boundary as the new namespace.
+test('legacy CLI aliases and GardenFlow commands have identical permissions', () => {
+    const expected = analyzeAppCliCommand('gardenflow schedule-add --name task --prompt test', { interactive: true });
+    for (const command of ['redclaw schedule-add --name task --prompt test', 'redconvert redclaw schedule-add --name task --prompt test', 'app_cli gardenflow schedule-add --name task --prompt test']) {
+        assert.deepEqual(analyzeAppCliCommand(command, { interactive: true }), expected);
+    }
 });

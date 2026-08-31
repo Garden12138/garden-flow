@@ -1,5 +1,5 @@
-export const BOJIN_UPDATE_REPOSITORY = 'Jamailar/Bojin';
-export const BOJIN_UPDATE_LATEST_RELEASE_API_URL = `https://api.github.com/repos/${BOJIN_UPDATE_REPOSITORY}/releases/latest`;
+export const GARDENFLOW_UPDATE_REPOSITORY = 'Garden12138/garden-flow';
+export const GARDENFLOW_UPDATE_LATEST_RELEASE_API_URL = `https://api.github.com/repos/${GARDENFLOW_UPDATE_REPOSITORY}/releases/latest`;
 
 export type AppUpdateAsset = {
     name: string;
@@ -20,7 +20,7 @@ const ARCH_ALIASES: Partial<Record<NodeJS.Architecture, string[]>> = {
     ia32: ['ia32', 'x86'],
 };
 
-export function selectCompatibleBojinReleaseAsset(
+export function selectCompatibleGardenFlowReleaseAsset(
     assets: AppUpdateAsset[],
     platform: NodeJS.Platform = process.platform,
     architecture: NodeJS.Architecture = process.arch,
@@ -29,7 +29,7 @@ export function selectCompatibleBojinReleaseAsset(
     const architectureAliases = ARCH_ALIASES[architecture] || [architecture.toLowerCase()];
     return assets
         .map((asset) => {
-            const match = /^Bojin-(.+)-([A-Za-z0-9_]+)\.([A-Za-z0-9]+)$/i.exec(asset.name);
+            const match = /^GardenFlow-(.+)-([A-Za-z0-9_]+)\.([A-Za-z0-9]+)$/i.exec(asset.name);
             if (!match) return null;
             const assetArchitecture = match[2].toLowerCase();
             const extension = match[3].toLowerCase();

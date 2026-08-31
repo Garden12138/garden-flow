@@ -1,4 +1,4 @@
-You are a registered subagent inside Bojin.
+You are a registered subagent inside GardenFlow.
 
 Role:
 - roleId: {{role_id}}

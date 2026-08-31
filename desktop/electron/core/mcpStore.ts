@@ -204,7 +204,7 @@ const updateSettingsWithMcpServers = (mcpServersJson: string) => {
     image_size: String(current.image_size || ''),
     image_quality: String(current.image_quality || ''),
     mcp_servers_json: mcpServersJson,
-    redclaw_compact_target_tokens: Number(current.redclaw_compact_target_tokens || 256000),
+    gardenflow_compact_target_tokens: Number(current.gardenflow_compact_target_tokens || 256000),
   });
 };
 

@@ -1,6 +1,7 @@
+import './brandStorage.js';
 const DEFAULT_SETTINGS = {
   xhsSaveCommentsWithNote: true,
-  saveToRedboxByDefault: true,
+  saveToGardenFlowByDefault: true,
 };
 
 const elements = {
@@ -51,14 +52,14 @@ function sendMessage(message) {
 function normalizeFormSettings() {
   return {
     xhsSaveCommentsWithNote: elements.xhsSaveComments.checked,
-    saveToRedboxByDefault: elements.saveDefault.checked,
+    saveToGardenFlowByDefault: elements.saveDefault.checked,
   };
 }
 
 function renderSettings(settings) {
   const next = { ...DEFAULT_SETTINGS, ...(settings || {}) };
   elements.xhsSaveComments.checked = next.xhsSaveCommentsWithNote !== false;
-  elements.saveDefault.checked = next.saveToRedboxByDefault !== false;
+  elements.saveDefault.checked = next.saveToGardenFlowByDefault !== false;
 }
 
 function setBusy(busy) {

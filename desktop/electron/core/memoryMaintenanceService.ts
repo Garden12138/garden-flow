@@ -134,7 +134,7 @@ function buildRecentConversationSummaries(prioritizedSessionIds: string[] = []):
   const sessions = getChatSessions();
   const preferred = sessions.filter((session) => {
     const metadata = parseSessionMetadata(session);
-    return String(metadata.contextType || '').trim().toLowerCase() === 'redclaw';
+    return String(metadata.contextType || '').trim().toLowerCase() === 'gardenflow';
   });
   const baseSessions = preferred.length > 0 ? preferred : sessions;
   const prioritizedSet = new Set(prioritizedSessionIds.filter(Boolean));
@@ -247,7 +247,7 @@ export class MemoryMaintenanceService {
   private readonly recentSessionSignals = new Map<string, SessionLifecycleSignal>();
 
   private getLockPath(): string {
-    return path.join(getWorkspacePaths().redclaw, 'memory-maintenance.lock');
+    return path.join(getWorkspacePaths().gardenflow, 'memory-maintenance.lock');
   }
 
   private async acquireRunLock(): Promise<boolean> {
@@ -456,7 +456,7 @@ export class MemoryMaintenanceService {
       const settings = (getSettings() || {}) as Record<string, unknown>;
       const apiKey = String(settings.api_key || '').trim();
       const baseURL = normalizeApiBaseUrl(String(settings.api_endpoint || ''), 'https://api.openai.com/v1');
-      const model = resolveScopedModelName(settings, 'redclaw', DEFAULT_MODEL_FALLBACK);
+      const model = resolveScopedModelName(settings, 'gardenflow', DEFAULT_MODEL_FALLBACK);
 
       if (!apiKey || !baseURL || !model) {
         this.lastError = 'missing-model-config';

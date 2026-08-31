@@ -21,7 +21,7 @@ import { createMediaBridge } from './domains/mediaBridge';
 import { createMcpBridge } from './domains/mcpBridge';
 import { createNotificationsBridge } from './domains/notificationsBridge';
 import { createPluginsBridge } from './domains/pluginsBridge';
-import { createRedClawBridge } from './domains/redclawBridge';
+import { createGardenFlowBridge } from './domains/gardenflowBridge';
 import { createRuntimeBridge } from './domains/runtimeBridge';
 import { createSettingsBridge } from './domains/settingsBridge';
 import { createSessionsBridge } from './domains/sessionsBridge';
@@ -71,7 +71,7 @@ const explicitCommandRoutes: Record<string, string> = {
   'knowledge:open-index-root': 'knowledge_open_index_root',
   'knowledge:get-file-index-dashboard': 'knowledge_get_file_index_dashboard',
   'knowledge:get-file-index-scope-status': 'knowledge_get_file_index_scope_status',
-  'redclaw:runner-status': 'redclaw_runner_status',
+  'gardenflow:runner-status': 'gardenflow_runner_status',
 };
 const explicitChannelByCommand = Object.fromEntries(
   Object.entries(explicitCommandRoutes).map(([channel, command]) => [command, channel]),
@@ -79,7 +79,7 @@ const explicitChannelByCommand = Object.fromEntries(
 
 function getElectronTransport(): ElectronIpcTransport | null {
   if (typeof window === 'undefined') return null;
-  const transport = (window as typeof window & { __RED_ELECTRON_IPC__?: Partial<ElectronIpcTransport> }).__RED_ELECTRON_IPC__;
+  const transport = (window as typeof window & { __GARDENFLOW_ELECTRON_IPC__?: Partial<ElectronIpcTransport> }).__GARDENFLOW_ELECTRON_IPC__;
   if (
     transport
     && typeof transport.invoke === 'function'
@@ -101,7 +101,7 @@ async function invokeChannel(channel: string, payload?: unknown): Promise<any> {
     }
     return await transport.invoke(channel, payload ?? null);
   } catch (error) {
-    console.warn(`[Bojin] invoke failed for ${channel}:`, error);
+    console.warn(`[GardenFlow] invoke failed for ${channel}:`, error);
     return buildFallbackResponse(channel, error);
   }
 }
@@ -109,7 +109,7 @@ async function invokeChannel(channel: string, payload?: unknown): Promise<any> {
 function sendChannel(channel: string, payload?: unknown): void {
   const transport = getElectronTransport();
   if (!transport) {
-    console.warn(`[Bojin] send skipped for ${channel}: Electron IPC transport is unavailable`);
+    console.warn(`[GardenFlow] send skipped for ${channel}: Electron IPC transport is unavailable`);
     return;
   }
   transport.send(channel, payload ?? null);
@@ -123,7 +123,7 @@ async function invokeCommand(command: string, args?: unknown): Promise<any> {
     }
     return await transport.invoke(explicitChannelByCommand[command] || command, args ?? null);
   } catch (error) {
-    console.warn(`[Bojin] command invoke failed for ${command}:`, error);
+    console.warn(`[GardenFlow] command invoke failed for ${command}:`, error);
     throw error;
   }
 }
@@ -150,14 +150,14 @@ async function invokeChannelGuarded<T = unknown>(
       ? await Promise.race<unknown>([
           invokeChannel(channel, payload),
           new Promise((resolve) => {
-            window.setTimeout(() => resolve(Symbol.for('__redbox_ipc_timeout__')), timeoutMs);
+            window.setTimeout(() => resolve(Symbol.for('__gardenflow_ipc_timeout__')), timeoutMs);
           }),
         ])
       : await invokeChannel(channel, payload);
 
-    if (value === Symbol.for('__redbox_ipc_timeout__')) {
+    if (value === Symbol.for('__gardenflow_ipc_timeout__')) {
       const timeoutError = new Error(`Timed out after ${timeoutMs}ms`);
-      console.warn(`[Bojin] invoke timed out for ${channel}:`, timeoutError.message);
+      console.warn(`[GardenFlow] invoke timed out for ${channel}:`, timeoutError.message);
       return resolveGuardFallback(channel, timeoutError, options?.fallback);
     }
 
@@ -165,14 +165,14 @@ async function invokeChannelGuarded<T = unknown>(
       try {
         return options.normalize(value);
       } catch (error) {
-        console.warn(`[Bojin] invoke normalization failed for ${channel}:`, error);
+        console.warn(`[GardenFlow] invoke normalization failed for ${channel}:`, error);
         return resolveGuardFallback(channel, error, options?.fallback);
       }
     }
 
     return value as T;
   } catch (error) {
-    console.warn(`[Bojin] guarded invoke failed for ${channel}:`, error);
+    console.warn(`[GardenFlow] guarded invoke failed for ${channel}:`, error);
     return resolveGuardFallback(channel, error, options?.fallback);
   }
 }
@@ -190,14 +190,14 @@ async function invokeCommandGuarded<T = unknown>(
       ? await Promise.race<unknown>([
           invokeCommand(command, args),
           new Promise((resolve) => {
-            window.setTimeout(() => resolve(Symbol.for('__redbox_ipc_timeout__')), timeoutMs);
+            window.setTimeout(() => resolve(Symbol.for('__gardenflow_ipc_timeout__')), timeoutMs);
           }),
         ])
       : await invokeCommand(command, args);
 
-    if (value === Symbol.for('__redbox_ipc_timeout__')) {
+    if (value === Symbol.for('__gardenflow_ipc_timeout__')) {
       const timeoutError = new Error(`Timed out after ${timeoutMs}ms`);
-      console.warn(`[Bojin] command invoke timed out for ${command}:`, timeoutError.message);
+      console.warn(`[GardenFlow] command invoke timed out for ${command}:`, timeoutError.message);
       return resolveGuardFallback(fallbackKey, timeoutError, options?.fallback);
     }
 
@@ -205,7 +205,7 @@ async function invokeCommandGuarded<T = unknown>(
       try {
         return options.normalize(value);
       } catch (error) {
-        console.warn(`[Bojin] command normalization failed for ${command}:`, error);
+        console.warn(`[GardenFlow] command normalization failed for ${command}:`, error);
         return resolveGuardFallback(fallbackKey, error, options?.fallback);
       }
     }
@@ -235,7 +235,7 @@ function buildFallbackResponse(channel: string, error: unknown): any {
       nextRefreshAtMs: null,
     };
   }
-  if (channel === 'redbox-auth:bootstrap') {
+  if (channel === 'gardenflow-auth:bootstrap') {
     return {
       success: false,
       loggedIn: false,
@@ -246,10 +246,10 @@ function buildFallbackResponse(channel: string, error: unknown): any {
     };
   }
   if (
-    channel === 'redbox-auth:refresh'
-    || channel === 'redbox-auth:me'
-    || channel === 'redbox-auth:points'
-    || channel === 'redbox-auth:call-records'
+    channel === 'gardenflow-auth:refresh'
+    || channel === 'gardenflow-auth:me'
+    || channel === 'gardenflow-auth:points'
+    || channel === 'gardenflow-auth:call-records'
     || channel === 'auth:refresh-now'
   ) {
     return {
@@ -261,7 +261,7 @@ function buildFallbackResponse(channel: string, error: unknown): any {
       reason: 'electron-archive-official-auth-unavailable',
     };
   }
-  if (channel === 'redbox-auth:get-config') {
+  if (channel === 'gardenflow-auth:get-config') {
     return {
       success: true,
       realm: 'cn',
@@ -270,7 +270,7 @@ function buildFallbackResponse(channel: string, error: unknown): any {
       unavailable: true,
     };
   }
-  if (channel === 'redbox-auth:products' || channel === 'redbox-auth:pricing' || channel === 'redbox-auth:pricing-refresh') {
+  if (channel === 'gardenflow-auth:products' || channel === 'gardenflow-auth:pricing' || channel === 'gardenflow-auth:pricing-refresh') {
     return {
       success: true,
       products: [],
@@ -278,7 +278,7 @@ function buildFallbackResponse(channel: string, error: unknown): any {
       unavailable: true,
     };
   }
-  if (channel === 'redbox-auth:product') {
+  if (channel === 'gardenflow-auth:product') {
     return {
       success: false,
       product: null,
@@ -286,16 +286,16 @@ function buildFallbackResponse(channel: string, error: unknown): any {
     };
   }
   if (
-    channel === 'redbox-auth:set-realm'
-    || channel === 'redbox-auth:wechat-status'
-    || channel === 'redbox-auth:wechat-url'
-    || channel === 'redbox-auth:send-sms-code'
-    || channel === 'redbox-auth:login-sms'
-    || channel === 'redbox-auth:register-sms'
-    || channel === 'redbox-auth:logout'
-    || channel === 'redbox-auth:create-page-pay-order'
-    || channel === 'redbox-auth:order-status'
-    || channel === 'redbox-auth:open-payment-form'
+    channel === 'gardenflow-auth:set-realm'
+    || channel === 'gardenflow-auth:wechat-status'
+    || channel === 'gardenflow-auth:wechat-url'
+    || channel === 'gardenflow-auth:send-sms-code'
+    || channel === 'gardenflow-auth:login-sms'
+    || channel === 'gardenflow-auth:register-sms'
+    || channel === 'gardenflow-auth:logout'
+    || channel === 'gardenflow-auth:create-page-pay-order'
+    || channel === 'gardenflow-auth:order-status'
+    || channel === 'gardenflow-auth:open-payment-form'
   ) {
     return {
       success: false,
@@ -354,7 +354,7 @@ function buildFallbackResponse(channel: string, error: unknown): any {
   if (channel === 'subjects:generate-character-card') {
     return {
       success: false,
-      error: `Bojin subject character card generation failed: ${message}`,
+      error: `GardenFlow subject character card generation failed: ${message}`,
     };
   }
   if (channel === 'media:list') {
@@ -438,7 +438,7 @@ function buildFallbackResponse(channel: string, error: unknown): any {
     || channel === 'background-tasks:retry'
     || channel === 'background-tasks:archive'
   ) {
-    return { success: false, error: `Bojin background task action failed for "${channel}": ${message}` };
+    return { success: false, error: `GardenFlow background task action failed for "${channel}": ${message}` };
   }
   if (channel === 'background-workers:get-pool-state') {
     return { json: [], runtime: [] };
@@ -466,7 +466,7 @@ function buildFallbackResponse(channel: string, error: unknown): any {
     };
   }
   if (channel.startsWith('review:dockets:')) {
-    return { success: false, error: `Bojin review docket action failed for "${channel}": ${message}` };
+    return { success: false, error: `GardenFlow review docket action failed for "${channel}": ${message}` };
   }
   if (channel === 'collab:sessions:get' || channel === 'team-runtime:get-session') {
     return {
@@ -478,10 +478,10 @@ function buildFallbackResponse(channel: string, error: unknown): any {
     };
   }
   if (channel.startsWith('collab:')) {
-    return { success: false, error: `Bojin collaboration action failed for "${channel}": ${message}` };
+    return { success: false, error: `GardenFlow collaboration action failed for "${channel}": ${message}` };
   }
   if (channel.startsWith('team-runtime:')) {
-    return { success: false, error: `Bojin team runtime action failed for "${channel}": ${message}` };
+    return { success: false, error: `GardenFlow team runtime action failed for "${channel}": ${message}` };
   }
   if (channel === 'chat:get-context-usage') {
     return {
@@ -498,19 +498,19 @@ function buildFallbackResponse(channel: string, error: unknown): any {
     return { success: true, canceled: true };
   }
   if (channel === 'chat:create-path-attachment') {
-    return { success: false, error: `Bojin path attachment failed: ${message}` };
+    return { success: false, error: `GardenFlow path attachment failed: ${message}` };
   }
   if (channel === 'chat:create-video-thumbnail') {
-    return { success: false, error: `Bojin video thumbnail failed: ${message}` };
+    return { success: false, error: `GardenFlow video thumbnail failed: ${message}` };
   }
   if (channel === 'chat:get-staged-attachments') {
     return { success: true, attachments: [] };
   }
   if (channel === 'chat:discard-attachments') {
-    return { success: false, error: `Bojin attachment cleanup failed: ${message}` };
+    return { success: false, error: `GardenFlow attachment cleanup failed: ${message}` };
   }
   if (channel === 'chat:transcribe-audio') {
-    return { success: false, error: `Bojin audio transcription failed: ${message}` };
+    return { success: false, error: `GardenFlow audio transcription failed: ${message}` };
   }
   if (channel === 'audio:get-capture-capability') {
     return {
@@ -518,7 +518,7 @@ function buildFallbackResponse(channel: string, error: unknown): any {
       available: false,
       activeRecording: false,
       reason: 'host_unavailable',
-      message: `Bojin audio capture unavailable: ${message}`,
+      message: `GardenFlow audio capture unavailable: ${message}`,
     };
   }
   if (
@@ -527,7 +527,7 @@ function buildFallbackResponse(channel: string, error: unknown): any {
     || channel === 'audio:cancel-recording'
     || channel === 'audio:open-microphone-settings'
   ) {
-    return { success: false, error: `Bojin audio action failed for "${channel}": ${message}` };
+    return { success: false, error: `GardenFlow audio action failed for "${channel}": ${message}` };
   }
   if (
     channel === 'capture:create-server-job'
@@ -580,7 +580,7 @@ function buildFallbackResponse(channel: string, error: unknown): any {
     || channel === 'mcp:call'
     || channel === 'mcp:import-local'
   ) {
-    return { success: false, servers: [], error: `Bojin MCP action failed for "${channel}": ${message}` };
+    return { success: false, servers: [], error: `GardenFlow MCP action failed for "${channel}": ${message}` };
   }
   if (channel === 'plugins:list') {
     return {
@@ -629,7 +629,7 @@ function buildFallbackResponse(channel: string, error: unknown): any {
     || channel === 'plugins:sync-capabilities'
     || channel === 'plugins:read-data'
   ) {
-    return { success: false, error: `Bojin plugin action failed for "${channel}": ${message}` };
+    return { success: false, error: `GardenFlow plugin action failed for "${channel}": ${message}` };
   }
   if (channel === 'plugins:home') {
     return { success: true, widgets: [], sidebarSections: [], quickActions: [] };
@@ -649,7 +649,7 @@ function buildFallbackResponse(channel: string, error: unknown): any {
         cursor: null,
         next_poll_after_seconds: 300,
       },
-      context: { appSlug: 'redbox', userId: 'anonymous' },
+      context: { appSlug: 'gardenflow', userId: 'anonymous' },
     };
   }
   if (channel === 'knowledge:batch-ingest') {
@@ -665,7 +665,7 @@ function buildFallbackResponse(channel: string, error: unknown): any {
       deleted: 0,
       failed: 0,
       results: [],
-      error: `Bojin knowledge batch delete failed: ${message}`,
+      error: `GardenFlow knowledge batch delete failed: ${message}`,
     };
   }
   if (
@@ -675,13 +675,13 @@ function buildFallbackResponse(channel: string, error: unknown): any {
     || channel === 'file:save-zip'
     || channel === 'file:preview-resolve'
   ) {
-    return { success: false, error: `Bojin file action failed for "${channel}": ${message}` };
+    return { success: false, error: `GardenFlow file action failed for "${channel}": ${message}` };
   }
   if (channel === 'youtube:check-ytdlp') {
-    return { success: false, installed: false, error: `Bojin yt-dlp check failed: ${message}` };
+    return { success: false, installed: false, error: `GardenFlow yt-dlp check failed: ${message}` };
   }
   if (channel === 'youtube:install' || channel === 'youtube:update') {
-    return { success: false, error: `Bojin yt-dlp action failed: ${message}` };
+    return { success: false, error: `GardenFlow yt-dlp action failed: ${message}` };
   }
   if (channel === 'plugin:browser-extension-status') {
     return {
@@ -722,7 +722,7 @@ function buildFallbackResponse(channel: string, error: unknown): any {
     || channel === 'cli-runtime:approve-escalation'
     || channel === 'cli-runtime:deny-escalation'
   ) {
-    return { success: false, error: `Bojin CLI runtime action failed for "${channel}": ${message}` };
+    return { success: false, error: `GardenFlow CLI runtime action failed for "${channel}": ${message}` };
   }
   if (channel === 'indexing:get-stats') {
     return { totalStats: { vectors: 0, documents: 0 }, queue: [] };
@@ -755,7 +755,7 @@ function buildFallbackResponse(channel: string, error: unknown): any {
     return { success: false, error: 'App updater unavailable in Electron archive' };
   }
   if (channel === 'app:open-external-url' || channel === 'clipboard:write-html') {
-    return { success: false, error: `Bojin system action failed for "${channel}": ${message}` };
+    return { success: false, error: `GardenFlow system action failed for "${channel}": ${message}` };
   }
   if (channel === 'debug:get-runtime-summary') {
     return {
@@ -802,7 +802,7 @@ function buildFallbackResponse(channel: string, error: unknown): any {
     || channel === 'logs:append-renderer'
     || channel === 'logs:create-auto-report'
   ) {
-    return { success: false, error: `Bojin diagnostics action failed for "${channel}": ${message}` };
+    return { success: false, error: `GardenFlow diagnostics action failed for "${channel}": ${message}` };
   }
   if (
     channel === 'assistant:daemon-acp-client-create'
@@ -835,14 +835,14 @@ function buildFallbackResponse(channel: string, error: unknown): any {
 
   return {
     success: false,
-    error: `Bojin host request failed for "${channel}": ${message}`
+    error: `GardenFlow host request failed for "${channel}": ${message}`
   };
 }
 
 function on(channel: string, listener: Listener): void {
   const transport = getElectronTransport();
   if (!transport) {
-    console.warn(`[Bojin] listener skipped for ${channel}: Electron IPC transport is unavailable`);
+    console.warn(`[GardenFlow] listener skipped for ${channel}: Electron IPC transport is unavailable`);
     return;
   }
   const entry: ListenerRecord = {};
@@ -943,7 +943,7 @@ function createIpcRenderer() {
     ...createVideoEditorBridge(bridgeCore),
     ...createSessionsBridge(bridgeCore),
     ...createManuscriptsBridge(bridgeCore),
-    ...createRedClawBridge(bridgeCore),
+    ...createGardenFlowBridge(bridgeCore),
     ...createTeamRuntimeBridge(bridgeCore),
     ...createSystemBridge(bridgeCore),
   };

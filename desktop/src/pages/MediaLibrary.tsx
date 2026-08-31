@@ -6,7 +6,7 @@ import { resolveAssetUrl } from '../utils/pathManager';
 import { formatTimestampDate, parseTimestampMs } from '../utils/time';
 import { appAlert, appConfirm } from '../utils/appDialogs';
 import { getLiquidGlassMenuItemClassName, LiquidGlassMenuPanel } from '@/components/ui/liquid-glass-menu';
-import { REDBOX_OFFICIAL_VIDEO_BASE_URL, getBojinOfficialVideoModel } from '../../shared/bojinVideo';
+import { GARDENFLOW_OFFICIAL_VIDEO_BASE_URL, getGardenFlowOfficialVideoModel } from '../../shared/gardenflowVideo';
 import { MediaAssetPreviewOverlay } from './media-library/MediaAssetPreviewOverlay';
 import { APP_BRAND } from '../config/brand';
 
@@ -951,9 +951,9 @@ export function MediaLibrary({
     const resolvedEndpoint = (settings.image_endpoint || settings.api_endpoint || '').trim();
     const resolvedApiKey = (settings.image_api_key || settings.api_key || '').trim();
     const hasImageConfig = Boolean(resolvedEndpoint) && Boolean(resolvedApiKey);
-    const resolvedVideoEndpoint = (settings.video_endpoint || REDBOX_OFFICIAL_VIDEO_BASE_URL).trim();
+    const resolvedVideoEndpoint = (settings.video_endpoint || GARDENFLOW_OFFICIAL_VIDEO_BASE_URL).trim();
     const resolvedVideoApiKey = (settings.video_api_key || settings.api_key || '').trim();
-    const effectiveVideoModel = (settings.video_model || getBojinOfficialVideoModel(videoGenerationMode)).trim();
+    const effectiveVideoModel = (settings.video_model || getGardenFlowOfficialVideoModel(videoGenerationMode)).trim();
     const hasVideoConfig = Boolean(resolvedVideoEndpoint) && Boolean(resolvedVideoApiKey);
 
     const handleGenerateVideo = useCallback(async () => {

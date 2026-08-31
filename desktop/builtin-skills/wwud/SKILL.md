@@ -1,21 +1,21 @@
 ---
 name: wwud
-description: 'What Would User Do for Bojin. Infer how the current app user would decide, approve, reject, scope, phrase, prioritize, or route work inside RedClaw, automation approvals, creative workflows, manuscript/media decisions, advisor/member discussions, and product operations. Use when the model reaches a decision point that normally needs user judgment, and use after explicit user corrections so the app can learn the user role logic.'
-allowedRuntimeModes: [redclaw, wander, chatroom, advisor-discussion, automation, long_running_task, default]
+description: 'What Would User Do for GardenFlow. Infer how the current app user would decide, approve, reject, scope, phrase, prioritize, or route work inside GardenFlow, automation approvals, creative workflows, manuscript/media decisions, advisor/member discussions, and product operations. Use when the model reaches a decision point that normally needs user judgment, and use after explicit user corrections so the app can learn the user role logic.'
+allowedRuntimeModes: [gardenflow, wander, chatroom, advisor-discussion, automation, long_running_task, default]
 allowedTools: [resource, workflow]
 hookMode: inline
 autoActivate: false
 activationScope: turn
-activationHint: '当任务涉及审批、自动化选择、RedClaw 调度取舍、是否继续执行、创作方向判断、稿件/标题/封面/视频方案选择、成员角色观点模拟、范围收缩、发布前取舍，或用户明确问“我会怎么选/按我的习惯/替我判断/WWUD”时，调用 `Operate(resource="skills", operation="invoke", input={ "name": "wwud" })`。不要把 WWUD 当作授权；高风险动作仍必须回问用户。'
-contextNote: 'WWUD 是当前 app 的用户判断模型技能。它应该优先读取当前空间的用户档案、创作者档案、advisor/member skill、知识库记忆、RedClaw 会话与自动化历史，从真实选择和纠正中推断用户的角色思路。它只负责辅助判断和记录学习，不替代用户授权。'
-promptPrefix: '你当前已加载 WWUD。遇到需要用户判断的节点时，先把选择归类为 routine、material 或 restricted；再读取当前空间档案和任务上下文，推断用户最可能的选择。可读取 `profiles://user`、`profiles://creator_profile`，或调用 `Operate(resource="redclaw.profile", operation="bundle", input={})` 获取档案包；如果涉及成员/顾问，优先读取该成员 skill 或 advisor 上下文。输出必须包含 decision、confidence、evidence、risk、fallback。'
+activationHint: '当任务涉及审批、自动化选择、GardenFlow 调度取舍、是否继续执行、创作方向判断、稿件/标题/封面/视频方案选择、成员角色观点模拟、范围收缩、发布前取舍，或用户明确问“我会怎么选/按我的习惯/替我判断/WWUD”时，调用 `Operate(resource="skills", operation="invoke", input={ "name": "wwud" })`。不要把 WWUD 当作授权；高风险动作仍必须回问用户。'
+contextNote: 'WWUD 是当前 app 的用户判断模型技能。它应该优先读取当前空间的用户档案、创作者档案、advisor/member skill、知识库记忆、GardenFlow 会话与自动化历史，从真实选择和纠正中推断用户的角色思路。它只负责辅助判断和记录学习，不替代用户授权。'
+promptPrefix: '你当前已加载 WWUD。遇到需要用户判断的节点时，先把选择归类为 routine、material 或 restricted；再读取当前空间档案和任务上下文，推断用户最可能的选择。可读取 `profiles://user`、`profiles://creator_profile`，或调用 `Operate(resource="gardenflow.profile", operation="bundle", input={})` 获取档案包；如果涉及成员/顾问，优先读取该成员 skill 或 advisor 上下文。输出必须包含 decision、confidence、evidence、risk、fallback。'
 promptSuffix: 'WWUD 不能把推断当作授权。涉及外部发布、资金、凭据、删除、不可逆变更、合规/法律、向第三方发消息、生产部署或低置信高影响动作时，必须回问用户。用户给出确认、纠正或选择后，把可泛化的判断规则整理成 learn 观察，供后续写入用户模型。'
 maxPromptChars: 9000
 ---
 
-# WWUD for Bojin
+# WWUD for GardenFlow
 
-WWUD means "What Would User Do". Use it to make Bojin's AI decisions closer to the current user's real judgment, role logic, taste, and operating habits.
+WWUD means "What Would User Do". Use it to make GardenFlow's AI decisions closer to the current user's real judgment, role logic, taste, and operating habits.
 
 WWUD has two jobs:
 
@@ -27,9 +27,9 @@ WWUD has two jobs:
 Use the most specific available source first:
 
 1. Current user message and task metadata.
-2. Current RedClaw / Wander / chat session context.
+2. Current GardenFlow / Wander / chat session context.
 3. `profiles://user` and `profiles://creator_profile`.
-4. `Operate(resource="redclaw.profile", operation="bundle", input={})`.
+4. `Operate(resource="gardenflow.profile", operation="bundle", input={})`.
 5. Active advisor/member skill when the task asks how a role would judge.
 6. Knowledge files, manuscript state, current media/project files, and approval queue details.
 7. Session transcripts, session bundles, automation history, and prior decision logs when available.
@@ -44,7 +44,7 @@ Do not use generic personality guessing when app-local evidence exists.
 
 Decide routine choices when confidence is medium or high. Decide material choices only when confidence is high and reversible. Escalate restricted choices.
 
-## Bojin Preference Model
+## GardenFlow Preference Model
 
 Prefer these defaults unless fresher user evidence says otherwise:
 
@@ -53,7 +53,7 @@ Prefer these defaults unless fresher user evidence says otherwise:
 - Inspect real evidence before diagnosing: code, logs, state stores, transcripts, bundles, generated files, app data, and UI behavior.
 - Keep UI additions small, intuitive, and low-text. Prefer existing surfaces over new pages.
 - Respect strong scope boundaries. If the user corrects the boundary, treat the correction as high-priority evidence.
-- Use existing app primitives: RedClaw orchestration, advisor/member skills, profiles, manuscripts, media tools, knowledge retrieval, automation queue, and `skills.invoke`.
+- Use existing app primitives: GardenFlow orchestration, advisor/member skills, profiles, manuscripts, media tools, knowledge retrieval, automation queue, and `skills.invoke`.
 - Avoid keyword-forced routing. Prefer typed task metadata, active skills, explicit user choice, and runtime contracts.
 - Keep changes atomic. Do not bundle unrelated fixes or generated side effects into one decision.
 
@@ -82,7 +82,7 @@ For UI-facing or chat-facing answers, keep the wording natural and concise, but 
 Record learning when the user:
 
 - approves or rejects an automation item
-- changes a RedClaw plan or route
+- changes a GardenFlow plan or route
 - corrects a product/architecture boundary
 - chooses one creative direction over another
 - says a UI is too much, too verbose, too hidden, too abstract, or off-brand
