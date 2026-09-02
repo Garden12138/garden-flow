@@ -41,6 +41,20 @@ import type {
     UserMemory,
 } from './shared';
 
+type XhsPublisherSettingsStatus = {
+    success?: boolean;
+    exported?: boolean;
+    boundExtensionInstanceId?: string;
+    instances?: Array<{
+        extensionInstanceId: string;
+        browser: string;
+        pageState?: string;
+        publishTabCount?: number;
+        detail?: string;
+    }>;
+    error?: string;
+};
+
 type SettingsFormData = {
     workspace_dir: string;
     debug_log_enabled: boolean;
@@ -648,6 +662,7 @@ function GeneralSettingsSectionInner({
     const [isDebugLogsExpanded, setIsDebugLogsExpanded] = useState(false);
     const [isNotificationExpanded, setIsNotificationExpanded] = useState(false);
     const [browserPluginStatus, setBrowserPluginStatus] = useState<BrowserPluginStatus | null>(null);
+    const [xhsPublisherStatus, setXhsPublisherStatus] = useState<XhsPublisherSettingsStatus | null>(null);
     const browserPluginSummary = describeBrowserPluginStatus(browserPluginStatus);
 
     const refreshBrowserPluginStatus = async () => {
@@ -655,10 +670,17 @@ function GeneralSettingsSectionInner({
         setBrowserPluginStatus(next);
     };
 
+    const refreshXhsPublisherStatus = async () => {
+        const next = await window.ipcRenderer.xhsPublisher.getStatus() as XhsPublisherSettingsStatus;
+        setXhsPublisherStatus(next);
+    };
+
     useEffect(() => {
         void refreshBrowserPluginStatus().catch(() => setBrowserPluginStatus(null));
+        void refreshXhsPublisherStatus().catch(() => setXhsPublisherStatus(null));
         const timer = window.setInterval(() => {
             void refreshBrowserPluginStatus().catch(() => {});
+            void refreshXhsPublisherStatus().catch(() => {});
         }, 5_000);
         return () => window.clearInterval(timer);
     }, []);
@@ -800,6 +822,82 @@ function GeneralSettingsSectionInner({
                     >
                         <Download className="h-3.5 w-3.5" />
                         {t('settings.general.installPlugin')}
+                    </button>
+                </div>
+            </div>
+
+            <div className="rounded-lg border border-border bg-surface-secondary/30 px-4 py-3">
+                <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1 border-l-2 border-emerald-500 pl-3">
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-text-primary">小红书发布插件</span>
+                            <span className={clsx(
+                                'h-2 w-2 rounded-full',
+                                xhsPublisherStatus?.instances?.some((item) => item.extensionInstanceId === xhsPublisherStatus.boundExtensionInstanceId)
+                                    ? 'bg-emerald-500'
+                                    : xhsPublisherStatus?.instances?.length
+                                        ? 'bg-amber-500'
+                                        : 'bg-text-tertiary/50',
+                            )} />
+                        </div>
+                        <div className="mt-1 text-xs font-medium text-text-secondary">
+                            {xhsPublisherStatus?.instances?.some((item) => item.extensionInstanceId === xhsPublisherStatus.boundExtensionInstanceId)
+                                ? '专用发布浏览器已绑定'
+                                : xhsPublisherStatus?.instances?.length
+                                    ? '发布插件已连接，请绑定实例'
+                                    : xhsPublisherStatus?.exported
+                                        ? '等待专用浏览器加载插件'
+                                        : '发布插件尚未准备'}
+                        </div>
+                        <div className="mt-0.5 text-[11px] text-text-tertiary">
+                            与采集插件隔离；发布前仍会在创作对话中逐版确认。
+                        </div>
+                        <div className="mt-1 text-[11px] leading-4 text-text-tertiary">
+                            加载方式：打开浏览器扩展管理页并开启开发者模式，选择“加载已解压的扩展程序”，再选择准备后打开的目录。
+                        </div>
+                        {Boolean(xhsPublisherStatus?.instances?.length) && (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                                {xhsPublisherStatus?.instances?.map((instance) => (
+                                    <button
+                                        key={instance.extensionInstanceId}
+                                        type="button"
+                                        onClick={() => {
+                                            void window.ipcRenderer.xhsPublisher.bindInstance({ extensionInstanceId: instance.extensionInstanceId })
+                                                .then((result) => {
+                                                    if (result?.success === false) throw new Error(String(result.error || '绑定失败'));
+                                                    return refreshXhsPublisherStatus();
+                                                })
+                                                .catch((error) => void appAlert(error instanceof Error ? error.message : String(error)));
+                                        }}
+                                        className={clsx(
+                                            'rounded-md border px-2 py-1 text-[11px] transition-colors',
+                                            instance.extensionInstanceId === xhsPublisherStatus?.boundExtensionInstanceId
+                                                ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-700'
+                                                : 'border-border text-text-secondary hover:bg-surface-secondary',
+                                        )}
+                                    >
+                                        {instance.browser || '浏览器'} · {instance.pageState || '未知'} · {instance.publishTabCount ?? 0} 个发布页
+                                        {instance.detail ? ` · ${instance.detail}` : ''}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            void window.ipcRenderer.xhsPublisher.prepare()
+                                .then((result) => {
+                                    if (result?.success === false) throw new Error(String(result.error || '准备发布插件失败'));
+                                    return window.ipcRenderer.xhsPublisher.openDir();
+                                })
+                                .then(() => refreshXhsPublisherStatus())
+                                .catch((error) => void appAlert(error instanceof Error ? error.message : String(error)));
+                        }}
+                        className="inline-flex shrink-0 items-center gap-2 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text-primary transition-colors hover:bg-surface-secondary"
+                    >
+                        <Download className="h-3.5 w-3.5" />
+                        准备发布插件
                     </button>
                 </div>
             </div>

@@ -34,6 +34,11 @@ import {
     appUpdatesEnabled,
     selectCompatibleGardenFlowReleaseAsset,
 } from '../electron/core/appUpdatePolicy.ts';
+import {
+    XHS_PUBLISHER_CAPABILITY,
+    XHS_PUBLISHER_EXTENSION_ID,
+    XHS_PUBLISHER_EXTENSION_ORIGIN,
+} from '../shared/xhsPublisher.ts';
 
 function nativeHostStatus(overrides: Partial<BrowserNativeHostStatus> = {}): BrowserNativeHostStatus {
     return {
@@ -310,12 +315,46 @@ test('Desktop Bridge authenticates token and origin, enforces registration and a
         assert.equal(secondAttempt.result?.ok, true);
         const replay = await client.request('knowledge.ingestEntry', { operationId: 'op-2', payload: {} });
         assert.equal(replay.result?.ok, true);
+        await assert.rejects(
+            service.invokeBrowserControl('publisher.publish', {}, { extensionInstanceId: 'test-extension-instance' }),
+            (error: unknown) => (error as { code?: string }).code === 'CAPABILITY_NOT_ALLOWED',
+        );
         assert.deepEqual(received, [
             'knowledge.ingestEntry',
             'knowledge.ingestEntry',
             'knowledge.ingestEntry',
         ]);
         client.close();
+
+        const publisherClient = await openBridgeClient(descriptor);
+        const publisherHello = await publisherClient.request('bridge.hello', {
+            role: 'native_host',
+            bridgeProtocolVersion: BROWSER_CAPTURE_BRIDGE_PROTOCOL_VERSION,
+            authToken: descriptor.hostAuthToken,
+            origin: XHS_PUBLISHER_EXTENSION_ORIGIN,
+            hostInstanceId: 'publisher-test-host',
+        });
+        assert.deepEqual(publisherHello.result?.acceptedCapabilities, [XHS_PUBLISHER_CAPABILITY, 'extension.register']);
+        const publisherRegistration = await publisherClient.request('extension.register', {
+            extensionId: XHS_PUBLISHER_EXTENSION_ID,
+            extensionInstanceId: 'publisher-test-instance',
+            extensionKind: 'xhs-publisher',
+            capabilities: [XHS_PUBLISHER_CAPABILITY],
+            version: '1.0.0',
+            browser: 'chrome',
+        });
+        assert.equal(publisherRegistration.result?.extensionKind, 'xhs-publisher');
+        const publisherIngest = await publisherClient.request('knowledge.ingestEntry', { operationId: 'publisher-op', payload: {} });
+        assert.equal(publisherIngest.error?.data?.code, 'CAPABILITY_NOT_ALLOWED');
+        await assert.rejects(
+            service.invokeBrowserControl('tools/call', {}, {
+                extensionInstanceId: 'publisher-test-instance',
+                extensionKind: 'xhs-publisher',
+                requiredCapability: XHS_PUBLISHER_CAPABILITY,
+            }),
+            (error: unknown) => (error as { code?: string }).code === 'CAPABILITY_NOT_ALLOWED',
+        );
+        publisherClient.close();
 
         const oversized = net.createConnection(descriptor.endpoint.kind === 'unix' ? descriptor.endpoint.path : descriptor.endpoint.name);
         await new Promise<void>((resolve, reject) => {

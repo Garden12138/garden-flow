@@ -7,8 +7,11 @@ const desktopDir = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(desktopDir, '..');
 const pluginDir = path.join(repoRoot, 'Plugin');
 const sourceDir = path.join(pluginDir, 'dist', 'extension');
+const publisherPluginDir = path.join(repoRoot, 'PublishPlugin');
+const publisherSourceDir = path.join(publisherPluginDir, 'dist', 'extension');
 const runtimeRoot = path.join(desktopDir, '.plugin-runtime');
 const targetDir = path.join(runtimeRoot, 'browser-extension');
+const publisherTargetDir = path.join(runtimeRoot, 'xhs-publisher-extension');
 
 function resolvePnpmInvocation() {
   const cliCandidates = [
@@ -36,11 +39,11 @@ function resolvePnpmInvocation() {
   };
 }
 
-function runPluginCommand(commandArgs, options = {}) {
+function runPluginCommand(commandArgs, options = {}, targetPluginDir = pluginDir) {
   const invocation = resolvePnpmInvocation();
   const result = spawnSync(
     invocation.command,
-    [...invocation.prefixArgs, '--dir', pluginDir, ...commandArgs],
+    [...invocation.prefixArgs, '--dir', targetPluginDir, ...commandArgs],
     {
       cwd: repoRoot,
       encoding: 'utf8',
@@ -85,6 +88,9 @@ function copyDirectory(source, target) {
 if (!fs.existsSync(pluginDir)) {
   throw new Error(`[prepare-plugin-runtime] Plugin source not found: ${pluginDir}`);
 }
+if (!fs.existsSync(publisherPluginDir)) {
+  throw new Error(`[prepare-plugin-runtime] Publisher plugin source not found: ${publisherPluginDir}`);
+}
 
 runPluginCommand(['install', '--frozen-lockfile'], { nonInteractive: true });
 runPluginCommand(['build']);
@@ -92,3 +98,22 @@ runPluginCommand(['verify']);
 assertBuiltExtension(sourceDir);
 copyDirectory(sourceDir, targetDir);
 console.log(`[prepare-plugin-runtime] synced browser extension -> ${targetDir}`);
+
+runPluginCommand(['install', '--frozen-lockfile'], { nonInteractive: true }, publisherPluginDir);
+runPluginCommand(['build'], {}, publisherPluginDir);
+runPluginCommand(['verify'], {}, publisherPluginDir);
+assertBuiltPublisherExtension(publisherSourceDir);
+copyDirectory(publisherSourceDir, publisherTargetDir);
+console.log(`[prepare-plugin-runtime] synced Xiaohongshu publisher extension -> ${publisherTargetDir}`);
+
+function assertBuiltPublisherExtension(dir) {
+  const requiredFiles = ['manifest.json', 'background.js', 'popup.html'];
+  const missing = requiredFiles.filter((file) => !fs.existsSync(path.join(dir, file)));
+  if (missing.length > 0) {
+    throw new Error(`Publisher extension build is incomplete: ${missing.join(', ')}`);
+  }
+  const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8'));
+  if (manifest?.manifest_version !== 3) {
+    throw new Error('Publisher extension manifest must use Manifest V3');
+  }
+}

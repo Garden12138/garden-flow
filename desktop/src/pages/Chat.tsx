@@ -5,6 +5,11 @@ import { clsx } from 'clsx';
 import { supportsAttachmentKindDirectInput } from '../../shared/modelCapabilities';
 import { attachmentParticipatesInChatRuntime } from '../../shared/chatAttachmentDelivery';
 import { parseChatRunMessageMetadata, type ChatSendReceipt } from '../../shared/chatRunState';
+import {
+  isXhsPublishJobStatus,
+  type XhsPublishConsentMetadata,
+  type XhsPublishJob,
+} from '../../shared/xhsPublisher';
 import { subscribeSettingsUpdated } from '../bridge/appEvents';
 import {
   CliEscalationDialog,
@@ -142,6 +147,33 @@ function memberActorFromMessageMetadata(metadata: unknown): ChatMessageMemberAct
     displayName,
     avatar: String(actor.avatar || '').trim() || undefined,
     memberSkillRef: String(actor.memberSkillRef || '').trim() || undefined,
+  };
+}
+
+function xhsPublishConsentFromMessageMetadata(metadata: unknown): XhsPublishConsentMetadata | undefined {
+  const object = chatMessageMetadataRecord(metadata);
+  const value = object.xhsPublishConsent;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const status = record.status;
+  const noteType = String(record.noteType || '');
+  const publishStatus = String(record.publishStatus || '');
+  const resetStatus = String(record.resetStatus || '');
+  if (!isXhsPublishJobStatus(status) || (noteType !== 'image' && noteType !== 'video')) return undefined;
+  if (!['not_submitted', 'submitted', 'published', 'unknown'].includes(publishStatus)) return undefined;
+  if (!['not_started', 'returning', 'ready', 'failed'].includes(resetStatus)) return undefined;
+  return {
+    kind: 'xhs-publish-consent',
+    jobId: String(record.jobId || ''),
+    status,
+    noteType,
+    title: String(record.title || ''),
+    revision: Number(record.revision) || 0,
+    mediaCount: Number(record.mediaCount) || 0,
+    browserLabel: String(record.browserLabel || '尚未绑定发布浏览器'),
+    publishStatus: publishStatus as XhsPublishConsentMetadata['publishStatus'],
+    resetStatus: resetStatus as XhsPublishConsentMetadata['resetStatus'],
+    errorMessage: record.errorMessage ? String(record.errorMessage) : undefined,
   };
 }
 
@@ -1828,6 +1860,53 @@ export function Chat({
   const suppressComposerFocusUntilRef = useRef(0);
   const [composerSuppressed, setComposerSuppressed] = useState(false);
 
+  useEffect(() => {
+    const listener = (_event: unknown, value: unknown) => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return;
+      const job = value as XhsPublishJob;
+      if (!currentSessionId || job.sessionId !== currentSessionId || !job.messageId) return;
+      const consent: XhsPublishConsentMetadata = {
+        kind: 'xhs-publish-consent',
+        jobId: job.id,
+        status: job.status,
+        noteType: job.noteType,
+        title: job.title,
+        revision: job.revision,
+        mediaCount: job.media.length,
+        browserLabel: job.extensionInstanceId
+          ? `发布浏览器 · ${job.extensionInstanceId.slice(-8)}`
+          : '尚未绑定发布浏览器',
+        publishStatus: job.publishStatus,
+        resetStatus: job.resetStatus,
+        errorMessage: job.errorMessage || undefined,
+      };
+      const content = `《${job.title}》已经制作完成。是否将当前第 ${job.revision} 版${job.noteType === 'video' ? '视频笔记' : '图片笔记'}发布到小红书？`;
+      localMessageMutationRef.current += 1;
+      setMessages((current) => {
+        const index = current.findIndex((message) => message.id === job.messageId);
+        const nextMessage: Message = index >= 0
+          ? { ...current[index], content, xhsPublishConsent: consent, isStreaming: false }
+          : {
+              id: job.messageId,
+              role: 'ai',
+              messageType: 'reply',
+              content,
+              xhsPublishConsent: consent,
+              tools: [],
+              timeline: [],
+              isStreaming: false,
+              createdAt: job.createdAt,
+            };
+        if (index < 0) return [...current, nextMessage];
+        const next = [...current];
+        next[index] = nextMessage;
+        return next;
+      });
+    };
+    window.ipcRenderer.xhsPublisher.onJobChanged(listener);
+    return () => window.ipcRenderer.xhsPublisher.offJobChanged(listener);
+  }, [currentSessionId]);
+
   useLayoutEffect(() => {
     currentSessionIdRef.current = currentSessionId;
   }, [currentSessionId]);
@@ -2811,6 +2890,7 @@ export function Chat({
           role, // Simplified mapping
           messageType: role === 'ai' ? 'reply' : undefined,
           content: msg.content,
+          xhsPublishConsent: xhsPublishConsentFromMessageMetadata(msg.metadata),
           displayContent: msg.displayContent || msg.display_content || undefined,
           attachment: attachment,
           attachments,

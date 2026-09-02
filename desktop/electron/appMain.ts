@@ -31,6 +31,7 @@ import {
   VIDEO_DRAFT_EXTENSION,
 } from '../shared/manuscriptFiles';
 import { renderXhsNoteMarkdown } from '../shared/xhsNote';
+import { XHS_PUBLISHER_EXTENSION_ID } from '../shared/xhsPublisher';
 import { buildChatRunMessageMetadata, type ChatSendReceipt } from '../shared/chatRunState';
 import { mergeContextSessionMetadata } from '../shared/contextSessionMetadata';
 import {
@@ -919,6 +920,8 @@ async function buildAdvisorDetail(advisorId: string): Promise<AdvisorDetailRecor
 let localAssetProtocolsRegistered = false;
 const BROWSER_PLUGIN_BUNDLE_RELATIVE_PATH = path.join('.plugin-runtime', 'browser-extension');
 const BROWSER_PLUGIN_EXPORT_RELATIVE_PATH = path.join('integrations', 'browser-extension', 'gardenflow-capture');
+const XHS_PUBLISHER_PLUGIN_BUNDLE_RELATIVE_PATH = path.join('.plugin-runtime', 'xhs-publisher-extension');
+const XHS_PUBLISHER_PLUGIN_EXPORT_RELATIVE_PATH = path.join('integrations', 'browser-extension', 'gardenflow-xhs-publisher');
 const LEGACY_BROWSER_PLUGIN_EXPORT_RELATIVE_PATHS = Array.isArray(
   compatibility.identity?.legacy?.browserExtensionExportPaths,
 )
@@ -1264,9 +1267,66 @@ const findBundledBrowserPluginDir = async (): Promise<string | null> => {
   return null;
 };
 
+const getBundledXhsPublisherPluginCandidateDirs = (): string[] => {
+  const appPath = app.getAppPath();
+  const resourcesPath = process.resourcesPath || path.resolve(appPath, '..');
+  return Array.from(new Set([
+    path.join(resourcesPath, 'app.asar.unpacked', XHS_PUBLISHER_PLUGIN_BUNDLE_RELATIVE_PATH),
+    path.join(resourcesPath, XHS_PUBLISHER_PLUGIN_BUNDLE_RELATIVE_PATH),
+    path.join(appPath, XHS_PUBLISHER_PLUGIN_BUNDLE_RELATIVE_PATH),
+    path.join(process.cwd(), XHS_PUBLISHER_PLUGIN_BUNDLE_RELATIVE_PATH),
+    path.join(process.cwd(), 'PublishPlugin', 'dist', 'extension'),
+    path.join(path.resolve(appPath, '..'), 'PublishPlugin', 'dist', 'extension'),
+  ].map((item) => path.resolve(item))));
+};
+
+const isUsableXhsPublisherPluginDir = async (candidate: string): Promise<boolean> => {
+  try {
+    const stats = await fs.stat(candidate);
+    if (!stats.isDirectory()) return false;
+    const manifest = JSON.parse(await fs.readFile(path.join(candidate, 'manifest.json'), 'utf8')) as {
+      manifest_version?: number;
+      key?: string;
+      permissions?: string[];
+      host_permissions?: string[];
+      background?: { service_worker?: string };
+      action?: { default_popup?: string };
+    };
+    const serviceWorker = String(manifest.background?.service_worker || '').trim();
+    const popup = String(manifest.action?.default_popup || '').trim();
+    const extensionId = createHash('sha256')
+      .update(Buffer.from(String(manifest.key || ''), 'base64'))
+      .digest('hex')
+      .slice(0, 32)
+      .replace(/[0-9a-f]/g, (digit) => String.fromCharCode(97 + Number.parseInt(digit, 16)));
+    if (manifest.manifest_version !== 3
+      || !serviceWorker
+      || !popup
+      || extensionId !== XHS_PUBLISHER_EXTENSION_ID
+      || manifest.host_permissions?.length !== 1
+      || manifest.host_permissions[0] !== 'https://creator.xiaohongshu.com/*'
+      || manifest.permissions?.includes('cookies')) return false;
+    await Promise.all([fs.access(path.join(candidate, serviceWorker)), fs.access(path.join(candidate, popup))]);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const findBundledXhsPublisherPluginDir = async (): Promise<string | null> => {
+  for (const candidate of getBundledXhsPublisherPluginCandidateDirs()) {
+    if (await isUsableXhsPublisherPluginDir(candidate)) return candidate;
+  }
+  return null;
+};
+
 const getExportedBrowserPluginDir = (): string => {
   return path.join(app.getPath('userData'), BROWSER_PLUGIN_EXPORT_RELATIVE_PATH);
 };
+
+const getExportedXhsPublisherPluginDir = (): string => (
+  path.join(app.getPath('userData'), XHS_PUBLISHER_PLUGIN_EXPORT_RELATIVE_PATH)
+);
 
 const pathExists = async (targetPath: string): Promise<boolean> => {
   try {
@@ -1345,9 +1405,29 @@ const ensureBrowserPluginPrepared = async (): Promise<{
   return { path: targetDir, alreadyPrepared, refreshedLegacyPaths };
 };
 
+const ensureXhsPublisherPluginPrepared = async (): Promise<{ path: string; alreadyPrepared: boolean }> => {
+  const sourceDir = await findBundledXhsPublisherPluginDir();
+  if (!sourceDir) {
+    throw new Error(`内置小红书发布插件资源不存在，已检查：${getBundledXhsPublisherPluginCandidateDirs().join(' | ')}`);
+  }
+  const targetDir = getExportedXhsPublisherPluginDir();
+  const bundleFingerprint = await computeBrowserExtensionFingerprint(sourceDir);
+  const alreadyPrepared = await pathExists(targetDir);
+  const exportedUsable = alreadyPrepared && await isUsableXhsPublisherPluginDir(targetDir);
+  await syncBrowserExtensionDirectory({
+    appVersion: app.getVersion(),
+    bundleFingerprint,
+    force: !exportedUsable,
+    sourceDir,
+    sourceLabel: path.basename(sourceDir),
+    targetDir,
+  });
+  return { path: targetDir, alreadyPrepared };
+};
+
 const warmupBrowserPluginPrepared = async (): Promise<void> => {
   try {
-    await ensureBrowserPluginPrepared();
+    await Promise.all([ensureBrowserPluginPrepared(), ensureXhsPublisherPluginPrepared()]);
     const nativeHost = await inspectBrowserNativeHost({
       appExecutable: process.execPath,
       appPath: app.getAppPath(),
@@ -4119,6 +4199,7 @@ async function buildBrowserPluginStatus() {
   const exportPath = getExportedBrowserPluginDir();
   const exported = await isUsableBrowserPluginDir(exportPath);
   const bridge = browserCaptureBridgeService.getStatus();
+  const captureInstances = bridge.instances.filter((instance) => instance.extensionKind === 'capture');
   const nativeHost = await inspectBrowserNativeHost({
     appExecutable: process.execPath,
     appPath: app.getAppPath(),
@@ -4173,7 +4254,7 @@ async function buildBrowserPluginStatus() {
       recovery: '关闭对应浏览器后再次执行准备；如仍失败，请检查当前用户目录权限',
     });
   }
-  for (const instance of bridge.instances) {
+  for (const instance of captureInstances) {
     if (!instance.accessProblem) continue;
     problems.push({
       code: instance.accessProblem.code,
@@ -4185,7 +4266,7 @@ async function buildBrowserPluginStatus() {
       recovery: instance.accessProblem.recovery || '回到浏览器处理后重新采集',
     });
   }
-  if (exported && nativeHost.installedTargets.length > 0 && bridge.instances.length === 0) {
+  if (exported && nativeHost.installedTargets.length > 0 && captureInstances.length === 0) {
     problems.push({
       code: 'WAITING_EXTENSION_LOAD',
       message: '等待浏览器加载插件并连接',
@@ -4207,8 +4288,8 @@ async function buildBrowserPluginStatus() {
       staleTargets: nativeHost.staleTargets,
     },
     extension: {
-      connected: bridge.instances.length > 0,
-      instances: bridge.instances,
+      connected: captureInstances.length > 0,
+      instances: captureInstances,
     },
     problems,
   };
@@ -4276,6 +4357,113 @@ ipcMain.handle('plugin:open-browser-extension-dir', async () => {
   } catch (error) {
     console.error('Failed to open browser extension dir:', error);
     return { success: false, path: '', error: String(error) };
+  }
+});
+
+async function buildXhsPublisherPluginStatus() {
+  const bundledDir = await findBundledXhsPublisherPluginDir();
+  const exportPath = getExportedXhsPublisherPluginDir();
+  const exported = await isUsableXhsPublisherPluginDir(exportPath);
+  const { getXhsPublisherService } = await import('./core/xhsPublisherService');
+  const publisher = await getXhsPublisherService().getStatus();
+  return {
+    success: true,
+    bundled: Boolean(bundledDir),
+    bundledPath: bundledDir || '',
+    exported,
+    exportPath,
+    ...publisher,
+  };
+}
+
+ipcMain.handle('plugin:xhs-publisher-status', async () => {
+  try {
+    return await buildXhsPublisherPluginStatus();
+  } catch (error) {
+    return { success: false, exported: false, exportPath: getExportedXhsPublisherPluginDir(), error: String(error) };
+  }
+});
+
+ipcMain.handle('plugin:prepare-xhs-publisher', async () => {
+  try {
+    const result = await ensureXhsPublisherPluginPrepared();
+    const nativeHost = await installBrowserNativeHost({
+      appExecutable: process.execPath,
+      appPath: app.getAppPath(),
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+    });
+    const status = await buildXhsPublisherPluginStatus();
+    if (nativeHost.installedTargets.length === 0) {
+      return {
+        ...status,
+        success: false,
+        path: result.path,
+        alreadyPrepared: result.alreadyPrepared,
+        code: 'NATIVE_HOST_INSTALL_FAILED',
+        error: nativeHost.failures.map((item) => item.error).filter(Boolean).join('；') || 'Native Host 安装失败',
+      };
+    }
+    return { ...status, success: true, path: result.path, alreadyPrepared: result.alreadyPrepared };
+  } catch (error) {
+    return { success: false, path: '', error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle('plugin:open-xhs-publisher-dir', async () => {
+  try {
+    const result = await ensureXhsPublisherPluginPrepared();
+    const openError = await shell.openPath(result.path);
+    return openError ? { success: false, path: result.path, error: openError } : { success: true, path: result.path };
+  } catch (error) {
+    return { success: false, path: '', error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle('xhs-publisher:bind-instance', async (_, payload: { extensionInstanceId?: string }) => {
+  try {
+    const { getXhsPublisherService } = await import('./core/xhsPublisherService');
+    const extensionInstanceId = getXhsPublisherService().bindInstance(String(payload?.extensionInstanceId || ''));
+    return { success: true, extensionInstanceId };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle('xhs-publisher:get-job', async (_, payload: { jobId?: string }) => {
+  try {
+    const { getXhsPublisherService } = await import('./core/xhsPublisherService');
+    const job = getXhsPublisherService().getJob(String(payload?.jobId || ''));
+    return job ? { success: true, job } : { success: false, error: '发布任务不存在' };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle('xhs-publisher:confirm', async (_, payload: { jobId?: string }) => {
+  try {
+    const { getXhsPublisherService } = await import('./core/xhsPublisherService');
+    return { success: true, job: await getXhsPublisherService().confirm(String(payload?.jobId || '')) };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle('xhs-publisher:cancel', async (_, payload: { jobId?: string }) => {
+  try {
+    const { getXhsPublisherService } = await import('./core/xhsPublisherService');
+    return { success: true, job: getXhsPublisherService().cancel(String(payload?.jobId || '')) };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle('xhs-publisher:retry', async (_, payload: { jobId?: string }) => {
+  try {
+    const { getXhsPublisherService } = await import('./core/xhsPublisherService');
+    return { success: true, job: await getXhsPublisherService().retry(String(payload?.jobId || '')) };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 });
 

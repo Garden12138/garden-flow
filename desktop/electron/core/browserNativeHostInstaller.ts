@@ -9,6 +9,7 @@ import {
     BROWSER_CAPTURE_NATIVE_HOST_NAME,
     browserCaptureStateRoot,
 } from './browserCaptureProtocol.ts';
+import { XHS_PUBLISHER_EXTENSION_ORIGIN } from '../../shared/xhsPublisher.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -194,7 +195,7 @@ function manifest(hostPath: string, hostName = BROWSER_CAPTURE_NATIVE_HOST_NAME)
         description: 'GardenFlow local content capture bridge',
         path: hostPath,
         type: 'stdio',
-        allowed_origins: [BROWSER_CAPTURE_EXTENSION_ORIGIN],
+        allowed_origins: [BROWSER_CAPTURE_EXTENSION_ORIGIN, XHS_PUBLISHER_EXTENSION_ORIGIN],
     };
 }
 
@@ -205,8 +206,9 @@ function manifestMatches(value: unknown, hostPath: string): boolean {
     return source.name === BROWSER_CAPTURE_NATIVE_HOST_NAME
         && path.resolve(String(source.path || '')) === path.resolve(hostPath)
         && Array.isArray(source.allowed_origins)
-        && source.allowed_origins.length === 1
-        && source.allowed_origins[0] === BROWSER_CAPTURE_EXTENSION_ORIGIN;
+        && source.allowed_origins.length === 2
+        && source.allowed_origins.includes(BROWSER_CAPTURE_EXTENSION_ORIGIN)
+        && source.allowed_origins.includes(XHS_PUBLISHER_EXTENSION_ORIGIN);
 }
 
 async function inspectTarget(target: BrowserTarget, hostPath: string): Promise<BrowserNativeHostTargetStatus> {

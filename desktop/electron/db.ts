@@ -4,6 +4,7 @@ import { app } from 'electron';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { resolveAssetSourceToPath } from './core/localAssetManager';
+import type { XhsPublishJob, XhsPublishJobStatus } from '../shared/xhsPublisher';
 
 const dbPath = path.join(app.getPath('userData'), 'gardenflow.db');
 const db = new Database(dbPath);
@@ -154,6 +155,47 @@ const initDb = () => {
       ON chat_messages(session_id);
     CREATE INDEX IF NOT EXISTS idx_chat_messages_timestamp
       ON chat_messages(timestamp);
+
+    CREATE TABLE IF NOT EXISTS xhs_publish_jobs (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      project_path TEXT NOT NULL,
+      revision INTEGER NOT NULL,
+      content_digest TEXT NOT NULL,
+      note_type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      hashtags_json TEXT NOT NULL,
+      media_json TEXT NOT NULL,
+      extension_instance_id TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL,
+      publish_status TEXT NOT NULL,
+      reset_status TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      error_code TEXT NOT NULL DEFAULT '',
+      error_message TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      confirmed_at INTEGER,
+      submitted_at INTEGER,
+      published_at INTEGER,
+      completed_at INTEGER,
+      UNIQUE(project_path, revision, content_digest)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_xhs_publish_jobs_session
+      ON xhs_publish_jobs(session_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_xhs_publish_jobs_status
+      ON xhs_publish_jobs(status, updated_at ASC);
+
+    CREATE TABLE IF NOT EXISTS xhs_publisher_config (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      bound_extension_instance_id TEXT NOT NULL DEFAULT '',
+      updated_at INTEGER NOT NULL
+    );
+
+    INSERT OR IGNORE INTO xhs_publisher_config (id, bound_extension_instance_id, updated_at)
+      VALUES (1, '', 0);
 
     CREATE TABLE IF NOT EXISTS session_transcript_records (
       id TEXT PRIMARY KEY,
@@ -2035,6 +2077,164 @@ export const updateChatMessage = (
 export const deleteChatMessage = (id: string): boolean => {
   const result = db.prepare('DELETE FROM chat_messages WHERE id = ?').run(id);
   return result.changes > 0;
+};
+
+type XhsPublishJobRow = {
+  id: string;
+  session_id: string;
+  project_path: string;
+  revision: number;
+  content_digest: string;
+  note_type: string;
+  title: string;
+  body: string;
+  hashtags_json: string;
+  media_json: string;
+  extension_instance_id: string;
+  status: string;
+  publish_status: string;
+  reset_status: string;
+  message_id: string;
+  error_code: string;
+  error_message: string;
+  created_at: number;
+  updated_at: number;
+  confirmed_at: number | null;
+  submitted_at: number | null;
+  published_at: number | null;
+  completed_at: number | null;
+};
+
+function parseXhsJsonArray(value: string): unknown[] {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function xhsPublishJobFromRow(row: XhsPublishJobRow): XhsPublishJob {
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    projectPath: row.project_path,
+    revision: row.revision,
+    contentDigest: row.content_digest,
+    noteType: row.note_type === 'video' ? 'video' : 'image',
+    title: row.title,
+    body: row.body,
+    hashtags: parseXhsJsonArray(row.hashtags_json).map((item) => String(item)),
+    media: parseXhsJsonArray(row.media_json).filter((item): item is XhsPublishJob['media'][number] => (
+      Boolean(item) && typeof item === 'object' && !Array.isArray(item)
+    )),
+    extensionInstanceId: row.extension_instance_id,
+    status: row.status as XhsPublishJobStatus,
+    publishStatus: row.publish_status as XhsPublishJob['publishStatus'],
+    resetStatus: row.reset_status as XhsPublishJob['resetStatus'],
+    messageId: row.message_id,
+    errorCode: row.error_code,
+    errorMessage: row.error_message,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    confirmedAt: row.confirmed_at ?? undefined,
+    submittedAt: row.submitted_at ?? undefined,
+    publishedAt: row.published_at ?? undefined,
+    completedAt: row.completed_at ?? undefined,
+  };
+}
+
+export const upsertXhsPublishJob = (job: XhsPublishJob): void => {
+  db.prepare(`
+    INSERT INTO xhs_publish_jobs (
+      id, session_id, project_path, revision, content_digest, note_type, title, body,
+      hashtags_json, media_json, extension_instance_id, status, publish_status, reset_status,
+      message_id, error_code, error_message, created_at, updated_at, confirmed_at,
+      submitted_at, published_at, completed_at
+    ) VALUES (
+      @id, @session_id, @project_path, @revision, @content_digest, @note_type, @title, @body,
+      @hashtags_json, @media_json, @extension_instance_id, @status, @publish_status, @reset_status,
+      @message_id, @error_code, @error_message, @created_at, @updated_at, @confirmed_at,
+      @submitted_at, @published_at, @completed_at
+    )
+    ON CONFLICT(id) DO UPDATE SET
+      extension_instance_id = excluded.extension_instance_id,
+      status = excluded.status,
+      publish_status = excluded.publish_status,
+      reset_status = excluded.reset_status,
+      error_code = excluded.error_code,
+      error_message = excluded.error_message,
+      updated_at = excluded.updated_at,
+      confirmed_at = excluded.confirmed_at,
+      submitted_at = excluded.submitted_at,
+      published_at = excluded.published_at,
+      completed_at = excluded.completed_at
+  `).run({
+    id: job.id,
+    session_id: job.sessionId,
+    project_path: job.projectPath,
+    revision: job.revision,
+    content_digest: job.contentDigest,
+    note_type: job.noteType,
+    title: job.title,
+    body: job.body,
+    hashtags_json: JSON.stringify(job.hashtags),
+    media_json: JSON.stringify(job.media),
+    extension_instance_id: job.extensionInstanceId,
+    status: job.status,
+    publish_status: job.publishStatus,
+    reset_status: job.resetStatus,
+    message_id: job.messageId,
+    error_code: job.errorCode,
+    error_message: job.errorMessage,
+    created_at: job.createdAt,
+    updated_at: job.updatedAt,
+    confirmed_at: job.confirmedAt ?? null,
+    submitted_at: job.submittedAt ?? null,
+    published_at: job.publishedAt ?? null,
+    completed_at: job.completedAt ?? null,
+  });
+};
+
+export const getXhsPublishJob = (jobId: string): XhsPublishJob | null => {
+  const row = db.prepare('SELECT * FROM xhs_publish_jobs WHERE id = ?').get(jobId) as XhsPublishJobRow | undefined;
+  return row ? xhsPublishJobFromRow(row) : null;
+};
+
+export const findXhsPublishJobByCandidate = (
+  projectPath: string,
+  revision: number,
+  contentDigest: string,
+): XhsPublishJob | null => {
+  const row = db.prepare(`
+    SELECT * FROM xhs_publish_jobs
+    WHERE project_path = ? AND revision = ? AND content_digest = ?
+    LIMIT 1
+  `).get(projectPath, revision, contentDigest) as XhsPublishJobRow | undefined;
+  return row ? xhsPublishJobFromRow(row) : null;
+};
+
+export const listXhsPublishJobs = (statuses?: XhsPublishJobStatus[]): XhsPublishJob[] => {
+  const rows = statuses?.length
+    ? db.prepare(`SELECT * FROM xhs_publish_jobs WHERE status IN (${statuses.map(() => '?').join(',')}) ORDER BY created_at ASC`).all(...statuses)
+    : db.prepare('SELECT * FROM xhs_publish_jobs ORDER BY created_at DESC').all();
+  return (rows as XhsPublishJobRow[]).map(xhsPublishJobFromRow);
+};
+
+export const getXhsPublisherBinding = (): string => {
+  const row = db.prepare('SELECT bound_extension_instance_id FROM xhs_publisher_config WHERE id = 1')
+    .get() as { bound_extension_instance_id?: string } | undefined;
+  return String(row?.bound_extension_instance_id || '');
+};
+
+export const setXhsPublisherBinding = (extensionInstanceId: string): void => {
+  db.prepare(`
+    INSERT INTO xhs_publisher_config (id, bound_extension_instance_id, updated_at)
+    VALUES (1, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      bound_extension_instance_id = excluded.bound_extension_instance_id,
+      updated_at = excluded.updated_at
+  `).run(String(extensionInstanceId || '').trim(), Date.now());
 };
 
 /**

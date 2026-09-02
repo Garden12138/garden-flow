@@ -32,6 +32,7 @@ import {
   listBuiltinAutomationDefinitions,
   normalizeBuiltinTaskSettings,
   resolveXhsAutoCaptureLaunch,
+  XHS_AUTO_PUBLISH_TASK_ID,
   type BuiltinAutomationDefinition,
   type BuiltinAutomationReadinessReport,
 } from './builtinAutomationTasks';
@@ -135,8 +136,9 @@ export interface GardenFlowBuiltinTaskProjection extends GardenFlowBuiltinTaskSt
   source: 'builtin';
   removable: false;
   supportedOnCurrentPlatform: boolean;
-  scheduleMode: 'daily';
-  scheduleTime: string;
+  triggerKind: 'schedule' | 'artifact-ready';
+  scheduleMode?: 'daily';
+  scheduleTime?: string;
   settingsSchema: BuiltinAutomationDefinition['settingsSchema'];
   documentationUrl?: string;
   running?: boolean;
@@ -638,7 +640,8 @@ function builtinTaskScheduleTime(
   definition: BuiltinAutomationDefinition,
   state: GardenFlowBuiltinTaskState,
 ): string {
-  return sanitizeTimeHHmm(state.schedule?.time) || definition.defaultSchedule.time;
+  if (definition.trigger.kind !== 'schedule') return '';
+  return sanitizeTimeHHmm(state.schedule?.time) || definition.trigger.schedule.time;
 }
 
 function computeNextRunForBuiltinTask(
@@ -646,6 +649,7 @@ function computeNextRunForBuiltinTask(
   state: GardenFlowBuiltinTaskState,
   referenceMs: number,
 ): string | null {
+  if (definition.trigger.kind !== 'schedule') return null;
   const time = parseTimeHHmm(builtinTaskScheduleTime(definition, state));
   if (!time) return null;
   const nextMs = nextCronRunMs(`${time.minute} ${time.hour} * * *`, referenceMs);
@@ -658,6 +662,10 @@ function ensureBuiltinTaskNextRun(
   nowMs: number,
 ): void {
   if (!state.enabled) {
+    state.nextRunAt = undefined;
+    return;
+  }
+  if (definition.trigger.kind !== 'schedule') {
     state.nextRunAt = undefined;
     return;
   }
@@ -1548,8 +1556,9 @@ export class GardenFlowBackgroundRunner extends EventEmitter {
       source: 'builtin',
       removable: false,
       supportedOnCurrentPlatform: isBuiltinAutomationSupportedOnCurrentPlatform(definition),
-      scheduleMode: 'daily',
-      scheduleTime: builtinTaskScheduleTime(definition, state),
+      triggerKind: definition.trigger.kind,
+      scheduleMode: definition.trigger.kind === 'schedule' ? 'daily' : undefined,
+      scheduleTime: definition.trigger.kind === 'schedule' ? builtinTaskScheduleTime(definition, state) : undefined,
       settingsSchema: definition.settingsSchema,
       documentationUrl: definition.documentationUrl,
       running: this.currentAutomationTaskId === definition.id,
@@ -1587,6 +1596,10 @@ export class GardenFlowBackgroundRunner extends EventEmitter {
       state.enabled = false;
       state.nextRunAt = undefined;
       state.updatedAt = nowIso();
+      if (definition.id === XHS_AUTO_PUBLISH_TASK_ID) {
+        const { getXhsPublisherService } = await import('./xhsPublisherService');
+        getXhsPublisherService().cancelPendingJobs();
+      }
       await this.persistConfig();
       this.emitStatus();
       return { task: this.projectBuiltinTask(definition, state), readiness: null };
@@ -1623,6 +1636,7 @@ export class GardenFlowBackgroundRunner extends EventEmitter {
       });
     }
     if (input.scheduleTime !== undefined) {
+      if (definition.trigger.kind !== 'schedule') throw new Error('事件自动化不支持执行时间');
       const time = sanitizeTimeHHmm(input.scheduleTime);
       if (!time) throw new Error('scheduleTime must be HH:mm');
       state.schedule = { mode: 'daily', time };
@@ -1640,6 +1654,9 @@ export class GardenFlowBackgroundRunner extends EventEmitter {
     await this.ensureLoaded();
     const definition = getBuiltinAutomationDefinition(taskId);
     if (!definition) throw new Error('Builtin automation task not found');
+    if (definition.trigger.kind !== 'schedule') {
+      throw new Error('事件自动化由内容完成事件触发，不能手动立即运行');
+    }
     if (this.currentAutomationTaskId) {
       throw new Error(
         this.currentAutomationTaskId === definition.id

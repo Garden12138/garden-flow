@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "GardenFlow 小红书发布",
+  "version": "1.0.0",
+  "description": "在用户明确确认后，将 GardenFlow 作品填写并发布到小红书创作服务平台。",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAoKfxzprlI14s9YG/2Xx5C7Wq9rGYJGwsh8n16oBrKCJ6QwhJK+/ayOIdg7tSGQ5xoQVssC3/wzfr4MfUjcZwrciPy1dAIHC7HXcz4bSfmFG3l/mv5obrUjhfoToyMcY/s2ETCmm48s+8YVgYLdPxnzNrDgRy4QwtLqs99K6yZpHr73ED0uW9/Xyn1j2HKn5C56a9WWtWw+et2p48oQ04rk7rKTLRccJsc7I/rAhdEIvV4MFTeJmvtcy6g/d0sQ4hiRtzZrQ27yrUKUte2jVzHR2JHWAchz/Y3duoxcGGNzJ8t+jurKGc6MubY740J2oA9R4Paq0rtEeXnXiRH5IQtQIDAQAB",
+  "permissions": [
+    "nativeMessaging",
+    "storage",
+    "tabs",
+    "scripting",
+    "debugger",
+    "alarms"
+  ],
+  "host_permissions": [
+    "https://creator.xiaohongshu.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "GardenFlow 小红书发布",
+    "default_popup": "popup.html"
+  }
+}

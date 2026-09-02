@@ -13,9 +13,13 @@ import {
   FolderOpen,
   Globe,
   Image as ImageIcon,
+  Loader2,
   Music,
   UserRound,
   Video,
+  RefreshCw,
+  Send,
+  XCircle,
 } from 'lucide-react';
 import { ProcessTimeline, ProcessItem } from './ProcessTimeline';
 import { AutomationTaskCard } from './AutomationTaskCard';
@@ -30,6 +34,7 @@ import { StreamingMarkdown } from './chat/StreamingMarkdown';
 import { formatProcessingElapsed, resolveProcessingEndAt } from '../utils/processingElapsed';
 import './chat-message.css';
 import type { XhsNoteDocument, XhsNoteType } from '../../shared/xhsNote';
+import type { XhsPublishConsentMetadata, XhsPublishJob } from '../../shared/xhsPublisher';
 
 const copyTextWithClipboard = async (text: string): Promise<boolean> => {
   try {
@@ -350,6 +355,7 @@ export interface Message {
   role: 'user' | 'ai';
   messageType?: 'reply' | 'thinking';
   content: string;
+  xhsPublishConsent?: XhsPublishConsentMetadata;
   displayContent?: string;
   attachment?: {
     type: 'youtube-video';
@@ -445,6 +451,169 @@ export interface Message {
   memberActor?: ChatMessageMemberActor;
   memberMention?: ChatMessageMemberActor;
   knowledgeReferences?: ChatKnowledgeReference[];
+}
+
+const XHS_PUBLISH_RUNNING_STATUSES = new Set([
+  'queued',
+  'preflighting',
+  'uploading',
+  'submitting',
+  'published',
+  'returning',
+]);
+
+function xhsPublishConsentFromJob(job: XhsPublishJob): XhsPublishConsentMetadata {
+  return {
+    kind: 'xhs-publish-consent',
+    jobId: job.id,
+    status: job.status,
+    noteType: job.noteType,
+    title: job.title,
+    revision: job.revision,
+    mediaCount: job.media.length,
+    browserLabel: job.extensionInstanceId
+      ? `发布浏览器 · ${job.extensionInstanceId.slice(-8)}`
+      : '尚未绑定发布浏览器',
+    publishStatus: job.publishStatus,
+    resetStatus: job.resetStatus,
+    errorMessage: job.errorMessage || undefined,
+  };
+}
+
+function XhsPublishConsentCard({ consent }: { consent: XhsPublishConsentMetadata }) {
+  const [busyAction, setBusyAction] = useState('');
+  const [error, setError] = useState('');
+  const [liveConsent, setLiveConsent] = useState(consent);
+  const [pollingJobId, setPollingJobId] = useState('');
+
+  useEffect(() => {
+    setLiveConsent(consent);
+  }, [consent]);
+
+  useEffect(() => {
+    if (!pollingJobId) return undefined;
+    let disposed = false;
+    let timer: number | undefined;
+    const refresh = async () => {
+      const result = await window.ipcRenderer.xhsPublisher.getJob({ jobId: pollingJobId });
+      if (disposed) return;
+      const job = result?.success !== false && result?.job
+        ? result.job as XhsPublishJob
+        : null;
+      if (!job) {
+        setPollingJobId('');
+        return;
+      }
+      setLiveConsent(xhsPublishConsentFromJob(job));
+      if (XHS_PUBLISH_RUNNING_STATUSES.has(job.status)) {
+        timer = window.setTimeout(refresh, 750);
+      } else {
+        setPollingJobId('');
+      }
+    };
+    timer = window.setTimeout(refresh, 250);
+    return () => {
+      disposed = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [pollingJobId]);
+
+  const terminal = ['completed', 'cancelled', 'superseded', 'submit_result_unknown'].includes(liveConsent.status);
+  const running = XHS_PUBLISH_RUNNING_STATUSES.has(liveConsent.status);
+  const statusText = liveConsent.status === 'completed'
+    ? '发布成功，已回到空白发布页'
+    : liveConsent.status === 'cancelled'
+      ? '已取消，本版本未发布'
+      : liveConsent.status === 'superseded'
+        ? '内容已更新，本次确认已失效'
+        : liveConsent.status === 'published_reset_failed'
+          ? '笔记已发布，但发布页尚未恢复'
+          : liveConsent.status === 'submit_result_unknown'
+            ? '已提交但结果未知，请人工检查笔记管理页'
+            : liveConsent.status === 'blocked'
+              ? '发布前检查未通过'
+              : running
+                ? '正在通过专用浏览器发布…'
+                : '等待你确认当前版本';
+
+  const act = async (action: 'confirm' | 'cancel' | 'retry') => {
+    setBusyAction(action);
+    setError('');
+    try {
+      const result = await window.ipcRenderer.xhsPublisher[action]({ jobId: liveConsent.jobId });
+      if (result?.success === false) throw new Error(String(result.error || '操作失败'));
+      if (result?.job) {
+        const job = result.job as XhsPublishJob;
+        setLiveConsent(xhsPublishConsentFromJob(job));
+        if (XHS_PUBLISH_RUNNING_STATUSES.has(job.status)) setPollingJobId(job.id);
+      }
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : String(actionError));
+    } finally {
+      setBusyAction('');
+    }
+  };
+
+  return (
+    <div className="mt-3 w-full max-w-3xl border-l-2 border-emerald-500 bg-surface-secondary/35 px-4 py-3">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="text-sm font-medium text-text-primary">小红书发布确认</div>
+          <div className="mt-1 truncate text-xs text-text-secondary">《{liveConsent.title}》· 第 {liveConsent.revision} 版</div>
+          <div className="mt-1 text-[11px] text-text-tertiary">
+            {liveConsent.noteType === 'video' ? '视频笔记' : '图片笔记'} · {liveConsent.mediaCount} 个媒体 · {liveConsent.browserLabel}
+          </div>
+        </div>
+        <span className={clsx(
+          'shrink-0 rounded-full border px-2 py-0.5 text-[11px]',
+          liveConsent.status === 'completed'
+            ? 'border-emerald-500/40 text-emerald-600'
+            : liveConsent.status === 'blocked' || liveConsent.status === 'published_reset_failed' || liveConsent.status === 'submit_result_unknown'
+              ? 'border-amber-500/40 text-amber-600'
+              : 'border-border text-text-tertiary',
+        )}>{statusText}</span>
+      </div>
+      {liveConsent.errorMessage && <div className="mt-2 text-xs text-amber-700">{liveConsent.errorMessage}</div>}
+      {error && <div className="mt-2 text-xs text-red-600">{error}</div>}
+      {!terminal && !running && (
+        <div className="mt-3 flex items-center gap-2">
+          {liveConsent.status === 'awaiting_confirmation' && (
+            <button
+              type="button"
+              onClick={() => void act('confirm')}
+              disabled={Boolean(busyAction)}
+              className="inline-flex items-center gap-1.5 rounded-md bg-accent-primary px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+            >
+              {busyAction === 'confirm' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+              确认发布
+            </button>
+          )}
+          {(liveConsent.status === 'blocked' || liveConsent.status === 'published_reset_failed') && (
+            <button
+              type="button"
+              onClick={() => void act('retry')}
+              disabled={Boolean(busyAction)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs text-text-primary disabled:opacity-50"
+            >
+              {busyAction === 'retry' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+              {liveConsent.status === 'published_reset_failed' ? '恢复发布页' : '安全重试'}
+            </button>
+          )}
+          {liveConsent.publishStatus === 'not_submitted' && (
+            <button
+              type="button"
+              onClick={() => void act('cancel')}
+              disabled={Boolean(busyAction)}
+              className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs text-text-secondary hover:bg-surface-secondary disabled:opacity-50"
+            >
+              <XCircle className="h-3.5 w-3.5" />
+              取消
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export type ChatMessageLinkKind =
@@ -1820,6 +1989,10 @@ export const MessageItem = memo(({
             <AutomationTaskCard key={hint.taskId} hint={hint} />
           ))}
         </div>
+      )}
+
+      {!isUser && msg.xhsPublishConsent && (
+        <XhsPublishConsentCard consent={msg.xhsPublishConsent} />
       )}
 
       {/* AI 工作流可视化 (底部渲染) */}

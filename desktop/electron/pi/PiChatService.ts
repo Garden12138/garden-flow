@@ -66,6 +66,7 @@ import { buildAgentToolResultContent } from '../core/toolImageAttachments';
 import { parseChatRunMessageMetadata } from '../../shared/chatRunState';
 import { resolveVideoProvider } from '../../shared/videoProvider';
 import { normalizeGeneratedMediaMarkup } from '../../shared/generatedMediaMarkup';
+import { getXhsPublisherService } from '../core/xhsPublisherService';
 
 interface SessionMetadata {
   associatedFilePath?: string;
@@ -1170,6 +1171,15 @@ export class PiChatService {
         streamedChunks: true,
       });
       this.sendToUI('chat:response-end', { content: fullResponse });
+      const completedXhsPath = String(metadata.activeXhsNotePath || '').trim();
+      const isXhsSession = metadata.artifactType === 'xiaohongshu-note'
+        || metadata.editorBindingKind === 'xiaohongshu-note'
+        || metadata.mode === 'xiaohongshu-note-editing';
+      if (isXhsSession && completedXhsPath) {
+        void getXhsPublisherService().considerCompletedArtifact(sessionId, completedXhsPath).catch((error) => {
+          console.warn('[PiChatService] Failed to create Xiaohongshu publish consent:', error);
+        });
+      }
     } catch (error: unknown) {
       if (this.chatRunEventSink) {
         if (signal.aborted) {
@@ -1256,6 +1266,18 @@ export class PiChatService {
       || routed?.modelName
       || resolveScopedModelName(settings, modelScope, (settings.openaiModel as string) || 'gpt-4o'),
     ).trim();
+
+    const pendingPublishReply = await getXhsPublisherService().handlePendingChatReply(sessionId, content, {
+      apiKey,
+      baseURL,
+      model: modelName,
+    });
+    if (pendingPublishReply.handled) {
+      return {
+        kind: 'handled',
+        localResponse: pendingPublishReply.response || '',
+      };
+    }
 
     const workspacePaths = this.workspacePathsOverride || getWorkspacePaths();
     const workspace = workspacePaths.base;

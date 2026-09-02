@@ -1,0 +1,43 @@
+:root {
+  color-scheme: light dark;
+  font-family: "IBM Plex Sans", "Noto Sans SC", sans-serif;
+}
+
+body {
+  width: 320px;
+  margin: 0;
+  padding: 18px;
+  background: Canvas;
+  color: CanvasText;
+}
+
+main {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.mark {
+  width: 5px;
+  height: 44px;
+  border-radius: 999px;
+  background: #10b981;
+}
+
+h1 {
+  margin: 0;
+  font-size: 15px;
+}
+
+p {
+  margin: 5px 0 0;
+  font-size: 12px;
+  line-height: 1.55;
+  opacity: .72;
+}
+
+.hint {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid color-mix(in srgb, CanvasText 16%, transparent);
+}

@@ -1,6 +1,8 @@
 import { getBrowserCaptureBridgeService } from './browserCaptureBridgeService';
+import { getXhsPublisherBinding } from '../db';
 import { XHS_AUTO_CAPTURE_TASK_ID } from './xhsAutoCaptureCompletion';
 import { buildXhsSearchUrl } from './xhsAutoCaptureChrome';
+import { XHS_PUBLISHER_CAPABILITY } from '../../shared/xhsPublisher';
 
 /**
  * 内置自动化任务：定义在代码，状态在配置。
@@ -48,7 +50,9 @@ export interface BuiltinAutomationDefinition {
     description: string;
     supportedPlatforms: NodeJS.Platform[];
     documentationUrl?: string;
-    defaultSchedule: { mode: 'daily'; time: string };
+    trigger:
+        | { kind: 'schedule'; schedule: { mode: 'daily'; time: string } }
+        | { kind: 'artifact-ready'; artifactType: 'xiaohongshu-note' };
     /** 执行前强制激活的技能 */
     requiredSkills: string[];
     settingsSchema: BuiltinAutomationSettingField[];
@@ -57,6 +61,7 @@ export interface BuiltinAutomationDefinition {
 }
 
 const XHS_AUTO_CAPTURE_ID = XHS_AUTO_CAPTURE_TASK_ID;
+export const XHS_AUTO_PUBLISH_TASK_ID = 'xhs-auto-publish';
 
 function nowIso(): string {
     return new Date().toISOString();
@@ -172,7 +177,8 @@ async function checkXhsAutoCaptureReadiness(
         hint: keywords.length > 0 ? undefined : '请在任务配置中至少填写 1 个采集关键词。',
     });
 
-    const bridgeInstances = getBrowserCaptureBridgeService()?.getStatus().instances || [];
+    const bridgeInstances = (getBrowserCaptureBridgeService()?.getStatus().instances || [])
+        .filter((instance) => instance.extensionKind === 'capture');
     const bridgeOk = bridgeInstances.length > 0;
     checks.push({
         id: 'plugin-bridge',
@@ -215,11 +221,76 @@ const BUILTIN_AUTOMATION_DEFINITIONS: BuiltinAutomationDefinition[] = [
         name: '小红书自动采集',
         description: '按关键词定时在已登录的浏览器里（通过 GardenFlow 插件）页内搜索小红书、逐条打开笔记做 DOM 级提取，并按 noteId 去重入库。默认关闭。',
         supportedPlatforms: ['darwin', 'win32', 'linux'],
-        defaultSchedule: { mode: 'daily', time: '10:00' },
+        trigger: { kind: 'schedule', schedule: { mode: 'daily', time: '10:00' } },
         requiredSkills: ['xhs-auto-capture'],
         settingsSchema: XHS_AUTO_CAPTURE_SETTINGS,
         buildPrompt: buildXhsAutoCapturePrompt,
         checkReadiness: checkXhsAutoCaptureReadiness,
+    },
+    {
+        id: XHS_AUTO_PUBLISH_TASK_ID,
+        name: '小红书自动发布',
+        description: '小红书图片或视频制作完成后在对话中询问；只有用户明确确认当前版本，才会交给专用发布浏览器。默认关闭。',
+        supportedPlatforms: ['darwin', 'win32', 'linux'],
+        trigger: { kind: 'artifact-ready', artifactType: 'xiaohongshu-note' },
+        requiredSkills: ['xhs-auto-publish'],
+        settingsSchema: [],
+        buildPrompt: () => '',
+        checkReadiness: async () => {
+            const bridge = getBrowserCaptureBridgeService();
+            const instances = (bridge?.getStatus().instances || [])
+                .filter((instance) => instance.extensionKind === 'xhs-publisher');
+            const binding = getXhsPublisherBinding();
+            const bound = instances.find((instance) => instance.extensionInstanceId === binding);
+            const checks: BuiltinAutomationReadinessCheck[] = [
+                {
+                    id: 'publisher-plugin',
+                    label: '独立发布插件',
+                    status: instances.length > 0 ? 'ok' : 'failed',
+                    detail: instances.length > 0 ? `已连接 ${instances.length} 个发布插件实例` : '未检测到发布插件',
+                    hint: instances.length > 0 ? undefined : '请在专用发布浏览器中加载“小红书发布插件”。',
+                },
+                {
+                    id: 'publisher-binding',
+                    label: '发布浏览器绑定',
+                    status: bound ? 'ok' : 'failed',
+                    detail: bound ? `${bound.browser || '浏览器'} · ${bound.extensionInstanceId}` : '尚未绑定已连接的发布浏览器',
+                    hint: bound ? undefined : '请先在设置页绑定一个专用发布插件实例。',
+                },
+            ];
+            if (bound) {
+                let pageReady = false;
+                let pageDetail = '无法读取发布页状态';
+                try {
+                    const raw = await bridge?.invokeBrowserControl('publisher.status', {}, {
+                        extensionInstanceId: bound.extensionInstanceId,
+                        extensionKind: 'xhs-publisher',
+                        requiredCapability: XHS_PUBLISHER_CAPABILITY,
+                        timeoutMs: 8_000,
+                    });
+                    const status = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+                    pageReady = Number(status.publishTabCount) === 1 && status.pageState === 'ready';
+                    pageDetail = String(status.detail || (pageReady ? '发布页空白且可用' : '发布页未就绪'));
+                } catch (error) {
+                    pageDetail = error instanceof Error ? error.message : String(error);
+                }
+                checks.push({
+                    id: 'publisher-page',
+                    label: '专用发布页',
+                    status: pageReady ? 'ok' : 'failed',
+                    detail: pageDetail,
+                    hint: pageReady ? undefined : '请仅保留一个已登录且内容为空的小红书官方发布页。',
+                });
+            }
+            const blocking = checks.find((check) => check.status === 'failed');
+            return {
+                taskId: XHS_AUTO_PUBLISH_TASK_ID,
+                ready: !blocking,
+                checkedAt: nowIso(),
+                blockingReason: blocking ? `${blocking.label}：${blocking.detail}` : '',
+                checks,
+            };
+        },
     },
 ];
 

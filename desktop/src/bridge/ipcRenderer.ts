@@ -36,6 +36,7 @@ import { createTopicCenterBridge } from './domains/topicCenterBridge';
 import { createWanderBridge } from './domains/wanderBridge';
 import { createVideoEditorBridge } from './domains/videoEditorBridge';
 import { createWindowControlsBridge } from './domains/windowControlsBridge';
+import { createXhsPublisherBridge } from './domains/xhsPublisherBridge';
 
 type Listener = (...args: any[]) => void;
 type ElectronIpcTransport = {
@@ -945,6 +946,7 @@ function createIpcRenderer() {
     ...createSessionsBridge(bridgeCore),
     ...createManuscriptsBridge(bridgeCore),
     ...createGardenFlowBridge(bridgeCore),
+    ...createXhsPublisherBridge(bridgeCore),
     ...createTeamRuntimeBridge(bridgeCore),
     ...createSystemBridge(bridgeCore),
   };

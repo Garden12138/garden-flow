@@ -7,19 +7,20 @@ import {
     BROWSER_CAPTURE_ALLOWED_METHODS,
     BROWSER_CAPTURE_BRIDGE_PROTOCOL_VERSION,
     BROWSER_CAPTURE_DESCRIPTOR_SCHEMA_VERSION,
-    BROWSER_CAPTURE_EXTENSION_ORIGIN,
     BROWSER_CAPTURE_MAX_FRAME_BYTES,
     BROWSER_CAPTURE_PROTOCOL_VERSION,
     BROWSER_CONTROL_FORWARD_ID_PREFIX,
     BROWSER_CONTROL_FORWARD_METHODS,
     BROWSER_CONTROL_PROTOCOL_VERSION,
+    browserExtensionIdentityForOrigin,
     browserCaptureDescriptorPath,
     browserCaptureStateRoot,
     isBrowserControlForwardId,
-    isOfficialBrowserCaptureOrigin,
+    isOfficialGardenFlowExtensionOrigin,
     type BrowserCaptureBridgeDescriptor,
     type BrowserCaptureBridgeEndpoint,
 } from './browserCaptureProtocol.ts';
+import type { BrowserExtensionKind } from '../../shared/xhsPublisher.ts';
 
 type JsonRpcRequest = {
     jsonrpc?: string;
@@ -39,6 +40,8 @@ type ConnectionState = {
     hostInstanceId: string;
     extensionInstanceId: string;
     nativeHostPid: number;
+    extensionKind: BrowserExtensionKind | '';
+    capabilities: string[];
 };
 
 export type BrowserCaptureExtensionInstance = {
@@ -50,6 +53,8 @@ export type BrowserCaptureExtensionInstance = {
     nativeHostPid?: number;
     connectedAtMs: number;
     lastSeenAtMs: number;
+    extensionKind: BrowserExtensionKind;
+    capabilities: string[];
     accessProblem?: {
         code: 'BROWSER_LOGIN_REQUIRED' | 'BROWSER_SECURITY_CHALLENGE' | 'CONTENT_NOT_ACCESSIBLE';
         platform: string;
@@ -72,6 +77,8 @@ export type BrowserCaptureBridgeRequestContext = {
     origin: string;
     hostInstanceId: string;
     extensionInstanceId: string;
+    extensionKind: BrowserExtensionKind;
+    capabilities: string[];
 };
 
 type BrowserCaptureBridgeOptions = {
@@ -275,6 +282,8 @@ export class BrowserCaptureBridgeService {
             hostInstanceId: '',
             extensionInstanceId: '',
             nativeHostPid: 0,
+            extensionKind: '',
+            capabilities: [],
         };
         let buffer = Buffer.alloc(0);
         socket.on('data', (chunk) => {
@@ -380,12 +389,17 @@ export class BrowserCaptureBridgeService {
                     code: 'EXTENSION_REGISTRATION_REQUIRED',
                 });
             }
+            if (state.extensionKind === 'xhs-publisher' && method.startsWith('knowledge.')) {
+                throw Object.assign(new Error('Publisher extension cannot ingest knowledge'), { code: 'CAPABILITY_NOT_ALLOWED' });
+            }
             const instance = state.extensionInstanceId ? this.instances.get(state.extensionInstanceId) : null;
             if (instance) instance.lastSeenAtMs = Date.now();
             respond(await this.options.handleRequest(method, params, {
                 origin: state.origin,
                 hostInstanceId: state.hostInstanceId,
                 extensionInstanceId: state.extensionInstanceId,
+                extensionKind: state.extensionKind || 'capture',
+                capabilities: [...state.capabilities],
             }));
         } catch (error) {
             reject(error);
@@ -410,13 +424,16 @@ export class BrowserCaptureBridgeService {
             throw Object.assign(new Error('Desktop Bridge authentication failed'), { code: 'BROWSER_AUTHENTICATION_FAILED' });
         }
         const origin = String(params.origin || '').trim();
-        if (role === 'native_host' && !isOfficialBrowserCaptureOrigin(origin)) {
+        if (role === 'native_host' && !isOfficialGardenFlowExtensionOrigin(origin)) {
             throw Object.assign(new Error('Native Host origin is not allowed'), { code: 'EXTENSION_ORIGIN_NOT_ALLOWED' });
         }
+        const identity = role === 'native_host' ? browserExtensionIdentityForOrigin(origin) : null;
         state.authenticated = true;
         state.role = role;
         state.origin = origin;
         state.hostInstanceId = String(params.hostInstanceId || '').trim().slice(0, 500) || randomUUID();
+        state.extensionKind = identity?.extensionKind || '';
+        state.capabilities = identity?.capabilities || [];
         const parsedPid = Number(params.nativeHostPid);
         state.nativeHostPid = Number.isInteger(parsedPid) && parsedPid > 0
             ? parsedPid
@@ -428,18 +445,28 @@ export class BrowserCaptureBridgeService {
             browserProtocolVersion: BROWSER_CONTROL_PROTOCOL_VERSION,
             appVersion: this.options.appVersion,
             appInstanceId: descriptor.appInstanceId,
-            acceptedCapabilities: role === 'native_host' ? ['knowledge.ingest', 'extension.register'] : ['control.listInstances'],
+            acceptedCapabilities: role === 'native_host' ? [...state.capabilities] : ['control.listInstances'],
         };
     }
 
     private registerExtension(state: ConnectionState, params: Record<string, unknown>, socket?: net.Socket) {
         const extensionId = String(params.extensionId || '').trim();
         const extensionInstanceId = String(params.extensionInstanceId || '').trim().slice(0, 500);
-        if (`chrome-extension://${extensionId}/` !== BROWSER_CAPTURE_EXTENSION_ORIGIN || !extensionInstanceId) {
+        const identity = browserExtensionIdentityForOrigin(state.origin);
+        if (!identity || extensionId !== identity.extensionId || !extensionInstanceId) {
             throw Object.assign(new Error('Extension registration identity is invalid'), { code: 'EXTENSION_IDENTITY_INVALID' });
+        }
+        const requestedKind = String(params.extensionKind || identity.extensionKind).trim();
+        if (requestedKind !== identity.extensionKind) {
+            throw Object.assign(new Error('Extension kind does not match its signed origin'), { code: 'EXTENSION_IDENTITY_INVALID' });
         }
         const now = Date.now();
         const existing = this.instances.get(extensionInstanceId);
+        if (existing && (existing.extensionId !== extensionId || existing.extensionKind !== identity.extensionKind)) {
+            throw Object.assign(new Error('Extension instance id is already bound to another capability kind'), {
+                code: 'EXTENSION_INSTANCE_COLLISION',
+            });
+        }
         const accessProblemInput = isObject(params.accessProblem) ? params.accessProblem : null;
         const accessCode = String(accessProblemInput?.code || '');
         const accessProblem = ['BROWSER_LOGIN_REQUIRED', 'BROWSER_SECURITY_CHALLENGE', 'CONTENT_NOT_ACCESSIBLE'].includes(accessCode)
@@ -459,9 +486,13 @@ export class BrowserCaptureBridgeService {
             nativeHostPid: state.nativeHostPid || existing?.nativeHostPid || undefined,
             connectedAtMs: existing?.connectedAtMs || now,
             lastSeenAtMs: now,
+            extensionKind: identity.extensionKind,
+            capabilities: [...identity.capabilities],
             accessProblem,
         };
         state.extensionInstanceId = extensionInstanceId;
+        state.extensionKind = identity.extensionKind;
+        state.capabilities = [...identity.capabilities];
         this.instances.set(extensionInstanceId, instance);
         if (socket) {
             this.hostSockets.set(extensionInstanceId, socket);
@@ -472,6 +503,8 @@ export class BrowserCaptureBridgeService {
             bridgeProtocolVersion: BROWSER_CAPTURE_BRIDGE_PROTOCOL_VERSION,
             captureProtocolVersion: BROWSER_CAPTURE_PROTOCOL_VERSION,
             appVersion: this.options.appVersion,
+            extensionKind: identity.extensionKind,
+            acceptedCapabilities: [...identity.capabilities],
         };
     }
 
@@ -482,7 +515,12 @@ export class BrowserCaptureBridgeService {
     async invokeBrowserControl(
         method: string,
         params: Record<string, unknown>,
-        options: { extensionInstanceId?: string; timeoutMs?: number } = {},
+        options: {
+            extensionInstanceId?: string;
+            extensionKind?: BrowserExtensionKind;
+            requiredCapability?: string;
+            timeoutMs?: number;
+        } = {},
     ): Promise<unknown> {
         if (!BROWSER_CONTROL_FORWARD_METHODS.has(method)) {
             throw Object.assign(new Error(`Browser control method is not forwardable: ${method}`), {
@@ -490,7 +528,10 @@ export class BrowserCaptureBridgeService {
             });
         }
         const requestedInstance = String(options.extensionInstanceId || '').trim();
-        const candidates = this.getStatus().instances;
+        const candidates = this.getStatus().instances.filter((item) => (
+            (!options.extensionKind || item.extensionKind === options.extensionKind)
+            && (!options.requiredCapability || item.capabilities.includes(options.requiredCapability))
+        ));
         const instance = requestedInstance
             ? candidates.find((item) => item.extensionInstanceId === requestedInstance)
             : candidates[0];
@@ -498,6 +539,13 @@ export class BrowserCaptureBridgeService {
             throw Object.assign(new Error('没有已连接的 GardenFlow 浏览器插件实例'), {
                 code: 'BROWSER_INSTANCE_UNAVAILABLE',
             });
+        }
+        const publisherMethod = method.startsWith('publisher.');
+        if (publisherMethod && instance.extensionKind !== 'xhs-publisher') {
+            throw Object.assign(new Error('采集插件不能执行发布操作'), { code: 'CAPABILITY_NOT_ALLOWED' });
+        }
+        if ((method === 'tools/list' || method === 'tools/call') && instance.extensionKind !== 'capture') {
+            throw Object.assign(new Error('发布插件不能执行采集或通用浏览器控制'), { code: 'CAPABILITY_NOT_ALLOWED' });
         }
         const socket = this.hostSockets.get(instance.extensionInstanceId);
         if (!socket || socket.destroyed) {
@@ -532,6 +580,8 @@ export class BrowserCaptureBridgeService {
             origin: 'gardenflow://desktop-internal',
             hostInstanceId: 'desktop-internal',
             extensionInstanceId: 'desktop-internal',
+            extensionKind: 'capture',
+            capabilities: ['knowledge.ingest'],
         });
     }
 }

@@ -1032,8 +1032,9 @@ declare global {
     removable: false;
     supportedOnCurrentPlatform: boolean;
     enabled: boolean;
-    scheduleMode: 'daily';
-    scheduleTime: string;
+    triggerKind: 'schedule' | 'artifact-ready';
+    scheduleMode?: 'daily';
+    scheduleTime?: string;
     settings: Record<string, unknown>;
     settingsSchema: GardenFlowBuiltinAutomationSettingField[];
     documentationUrl?: string;

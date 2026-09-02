@@ -1,5 +1,11 @@
 import os from 'node:os';
 import path from 'node:path';
+import {
+    XHS_PUBLISHER_CAPABILITY,
+    XHS_PUBLISHER_EXTENSION_ID,
+    XHS_PUBLISHER_EXTENSION_ORIGIN,
+    type BrowserExtensionKind,
+} from '../../shared/xhsPublisher.ts';
 
 export const BROWSER_CAPTURE_EXTENSION_ID = 'dhfphfekcjahljnefpdjoidehnhhoeie';
 export const BROWSER_CAPTURE_EXTENSION_ORIGIN = `chrome-extension://${BROWSER_CAPTURE_EXTENSION_ID}/`;
@@ -20,6 +26,9 @@ export const BROWSER_CAPTURE_ALLOWED_METHODS = new Set([
     'knowledge.ingestMediaAssets',
 ]);
 
+export const BROWSER_CAPTURE_CAPABILITIES = ['knowledge.ingest', 'extension.register'] as const;
+export const XHS_PUBLISHER_CAPABILITIES = [XHS_PUBLISHER_CAPABILITY, 'extension.register'] as const;
+
 /**
  * 桌面 → native host → 插件方向允许转发的方法。
  * 插件端由 nativeMethodRouter 处理（tools/call 会路由到 browser action，如 research.run）。
@@ -29,6 +38,9 @@ export const BROWSER_CONTROL_FORWARD_METHODS = new Set([
     'getInfo',
     'tools/list',
     'tools/call',
+    'publisher.status',
+    'publisher.publish',
+    'publisher.restore',
 ]);
 
 export const BROWSER_CONTROL_FORWARD_ID_PREFIX = 'desktop-fwd:';
@@ -84,11 +96,41 @@ export function isOfficialBrowserCaptureOrigin(value: unknown): boolean {
     return String(value || '').trim() === BROWSER_CAPTURE_EXTENSION_ORIGIN;
 }
 
+export function isOfficialBrowserPublisherOrigin(value: unknown): boolean {
+    return String(value || '').trim() === XHS_PUBLISHER_EXTENSION_ORIGIN;
+}
+
+export function isOfficialGardenFlowExtensionOrigin(value: unknown): boolean {
+    return isOfficialBrowserCaptureOrigin(value) || isOfficialBrowserPublisherOrigin(value);
+}
+
+export function browserExtensionIdentityForOrigin(value: unknown): {
+    extensionId: string;
+    extensionKind: BrowserExtensionKind;
+    capabilities: string[];
+} | null {
+    if (isOfficialBrowserCaptureOrigin(value)) {
+        return {
+            extensionId: BROWSER_CAPTURE_EXTENSION_ID,
+            extensionKind: 'capture',
+            capabilities: [...BROWSER_CAPTURE_CAPABILITIES],
+        };
+    }
+    if (isOfficialBrowserPublisherOrigin(value)) {
+        return {
+            extensionId: XHS_PUBLISHER_EXTENSION_ID,
+            extensionKind: 'xhs-publisher',
+            capabilities: [...XHS_PUBLISHER_CAPABILITIES],
+        };
+    }
+    return null;
+}
+
 export function findBrowserCaptureOrigin(argv = process.argv): string {
     return argv.map((item) => String(item || '').trim())
         .find((item) => item.startsWith('chrome-extension://')) || '';
 }
 
 export function isBrowserCaptureNativeHostInvocation(argv = process.argv): boolean {
-    return isOfficialBrowserCaptureOrigin(findBrowserCaptureOrigin(argv));
+    return isOfficialGardenFlowExtensionOrigin(findBrowserCaptureOrigin(argv));
 }

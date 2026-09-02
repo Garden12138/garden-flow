@@ -48,6 +48,7 @@ function formatRunTime(value?: string): string {
 }
 
 function lastResultLabel(task: BuiltinTask): string {
+    if (task.triggerKind === 'artifact-ready') return task.enabled ? '等待作品完成事件' : '当前已关闭';
     if (task.running) return '正在执行';
     if (!task.lastRunAt) return '尚未运行';
     if (task.lastResult === 'success') return `上次运行成功 · ${formatRunTime(task.lastRunAt)}`;
@@ -124,6 +125,26 @@ export function BuiltinAutomationSection({ isActive = true }: BuiltinAutomationS
 
     useEffect(() => {
         if (!isActive) return;
+        const eventTaskIds = tasks
+            .filter((task) => task.triggerKind === 'artifact-ready')
+            .map((task) => task.id);
+        const refreshEventReadiness = () => {
+            for (const taskId of eventTaskIds) {
+                void window.ipcRenderer.gardenflowRunner.builtinReadiness({ taskId })
+                    .then((result) => {
+                        if (result?.success === false || !result?.readiness) return;
+                        setReadiness((current) => ({ ...current, [taskId]: result.readiness as Readiness }));
+                    })
+                    .catch(() => undefined);
+            }
+        };
+        refreshEventReadiness();
+        const timer = window.setInterval(refreshEventReadiness, 5_000);
+        return () => window.clearInterval(timer);
+    }, [isActive, tasks]);
+
+    useEffect(() => {
+        if (!isActive) return;
         const listener = (_event: unknown, status: { currentAutomationTaskId?: string | null } | undefined) => {
             if (!status || typeof status !== 'object') return;
             const runningId = status.currentAutomationTaskId || null;
@@ -164,7 +185,7 @@ export function BuiltinAutomationSection({ isActive = true }: BuiltinAutomationS
 
     const saveConfig = useCallback(async () => {
         if (!configTask) return;
-        if (!TIME_PATTERN.test(draftTime)) {
+        if (configTask.triggerKind === 'schedule' && !TIME_PATTERN.test(draftTime)) {
             void appAlert('执行时间格式必须是 HH:mm，例如 10:00。');
             return;
         }
@@ -177,7 +198,7 @@ export function BuiltinAutomationSection({ isActive = true }: BuiltinAutomationS
             const result = await window.ipcRenderer.gardenflowRunner.setBuiltinSettings({
                 taskId: configTask.id,
                 settings,
-                scheduleTime: draftTime,
+                scheduleTime: configTask.triggerKind === 'schedule' ? draftTime : undefined,
             });
             const message = readError(result, '保存内置任务配置失败。');
             if (message) throw new Error(message);
@@ -267,8 +288,14 @@ export function BuiltinAutomationSection({ isActive = true }: BuiltinAutomationS
                                     </div>
                                     <p className="mt-1 text-xs leading-5 text-text-tertiary">{task.description}</p>
                                     <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-tertiary">
-                                        <span>每天 {task.scheduleTime}</span>
-                                        <span>下次运行 {formatRunTime(task.nextRunAt)}</span>
+                                        {task.triggerKind === 'schedule' ? (
+                                            <>
+                                                <span>每天 {task.scheduleTime}</span>
+                                                <span>下次运行 {formatRunTime(task.nextRunAt)}</span>
+                                            </>
+                                        ) : (
+                                            <span>触发方式：小红书作品制作完成</span>
+                                        )}
                                         <span>{lastResultLabel(task)}</span>
                                     </div>
                                 </div>
@@ -281,7 +308,15 @@ export function BuiltinAutomationSection({ isActive = true }: BuiltinAutomationS
                                         task.enabled ? 'border-transparent bg-green-500' : 'border-border/70 bg-surface-tertiary/60',
                                     )}
                                     aria-label={task.enabled ? '关闭内置任务' : '开启内置任务'}
-                                    title={task.enabled ? (executing ? '关闭（当前这轮仍会跑完，但不会再自动开下一轮）' : '关闭') : '开启'}
+                                    title={task.triggerKind === 'artifact-ready'
+                                        ? task.enabled
+                                            ? '关闭后不再产生发布询问；已进入提交阶段的任务仍会继续观察结果'
+                                            : '开启后，作品完成时会询问是否发布'
+                                        : task.enabled
+                                            ? executing
+                                                ? '关闭（当前这轮仍会跑完，但不会再自动开下一轮）'
+                                                : '关闭'
+                                            : '开启'}
                                 >
                                     <span
                                         className={clsx(
@@ -293,14 +328,16 @@ export function BuiltinAutomationSection({ isActive = true }: BuiltinAutomationS
                             </div>
 
                             <div className="mt-3 flex flex-wrap items-center gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => openConfig(task)}
-                                    className="flex items-center gap-1.5 rounded-md border border-border/70 px-2.5 py-1 text-xs text-text-secondary transition-colors hover:bg-surface-secondary hover:text-text-primary"
-                                >
-                                    <Settings2 className="h-3.5 w-3.5" />
-                                    <span>配置</span>
-                                </button>
+                                {(task.settingsSchema.length > 0 || task.triggerKind === 'schedule') && (
+                                    <button
+                                        type="button"
+                                        onClick={() => openConfig(task)}
+                                        className="flex items-center gap-1.5 rounded-md border border-border/70 px-2.5 py-1 text-xs text-text-secondary transition-colors hover:bg-surface-secondary hover:text-text-primary"
+                                    >
+                                        <Settings2 className="h-3.5 w-3.5" />
+                                        <span>配置</span>
+                                    </button>
+                                )}
                                 <button
                                     type="button"
                                     onClick={() => void refreshReadiness(task.id)}
@@ -312,17 +349,19 @@ export function BuiltinAutomationSection({ isActive = true }: BuiltinAutomationS
                                         : <RefreshCw className="h-3.5 w-3.5" />}
                                     <span>检查就绪状态</span>
                                 </button>
-                                <button
-                                    type="button"
-                                    onClick={() => void runNow(task)}
-                                    disabled={executing || platformBlocked}
-                                    className="flex items-center gap-1.5 rounded-md border border-border/70 px-2.5 py-1 text-xs text-text-secondary transition-colors hover:bg-surface-secondary hover:text-text-primary disabled:opacity-50"
-                                >
-                                    {executing
-                                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                        : <PlayCircle className="h-3.5 w-3.5" />}
-                                    <span>{executing ? '正在执行' : '立即运行'}</span>
-                                </button>
+                                {task.triggerKind === 'schedule' && (
+                                    <button
+                                        type="button"
+                                        onClick={() => void runNow(task)}
+                                        disabled={executing || platformBlocked}
+                                        className="flex items-center gap-1.5 rounded-md border border-border/70 px-2.5 py-1 text-xs text-text-secondary transition-colors hover:bg-surface-secondary hover:text-text-primary disabled:opacity-50"
+                                    >
+                                        {executing
+                                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                            : <PlayCircle className="h-3.5 w-3.5" />}
+                                        <span>{executing ? '正在执行' : '立即运行'}</span>
+                                    </button>
+                                )}
                                 {task.documentationUrl && (
                                     <a
                                         href={task.documentationUrl}
@@ -427,15 +466,17 @@ export function BuiltinAutomationSection({ isActive = true }: BuiltinAutomationS
                                 </label>
                             ))}
 
-                            <label className="flex flex-col gap-1">
-                                <span className="text-xs text-text-secondary">每天执行时间</span>
-                                <input
-                                    type="time"
-                                    value={draftTime}
-                                    onChange={(event) => setDraftTime(event.target.value)}
-                                    className="rounded-lg border border-border/70 bg-surface-primary px-2.5 py-1.5 text-sm text-text-primary"
-                                />
-                            </label>
+                            {configTask.triggerKind === 'schedule' && (
+                                <label className="flex flex-col gap-1">
+                                    <span className="text-xs text-text-secondary">每天执行时间</span>
+                                    <input
+                                        type="time"
+                                        value={draftTime}
+                                        onChange={(event) => setDraftTime(event.target.value)}
+                                        className="rounded-lg border border-border/70 bg-surface-primary px-2.5 py-1.5 text-sm text-text-primary"
+                                    />
+                                </label>
+                            )}
                         </div>
 
                         <div className="mt-5 flex items-center justify-end gap-2">

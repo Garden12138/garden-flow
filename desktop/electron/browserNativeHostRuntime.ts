@@ -10,10 +10,11 @@ import {
     BROWSER_CAPTURE_PROTOCOL_VERSION,
     BROWSER_CONTROL_FORWARD_METHODS,
     BROWSER_CONTROL_PROTOCOL_VERSION,
+    browserExtensionIdentityForOrigin,
     browserCaptureDescriptorPath,
     findBrowserCaptureOrigin,
     isBrowserControlForwardId,
-    isOfficialBrowserCaptureOrigin,
+    isOfficialGardenFlowExtensionOrigin,
     type BrowserCaptureBridgeDescriptor,
 } from './core/browserCaptureProtocol.ts';
 
@@ -184,6 +185,7 @@ export class DesktopBridgeHostClient {
             }));
         });
         try {
+            const identity = browserExtensionIdentityForOrigin(this.origin);
             const hello = await this.request('bridge.hello', {
                 role: 'native_host',
                 bridgeProtocolVersion: BROWSER_CAPTURE_BRIDGE_PROTOCOL_VERSION,
@@ -194,7 +196,7 @@ export class DesktopBridgeHostClient {
                 nativeHostPid: process.pid,
                 authToken: descriptor.hostAuthToken,
                 origin: this.origin,
-                capabilities: ['knowledge.ingest', 'extension.register'],
+                capabilities: identity?.capabilities || [],
             }, 3_000);
             if (this.registration) {
                 await this.request('extension.register', this.registration, 3_000);
@@ -346,14 +348,15 @@ export async function runBrowserNativeHost(options: BrowserNativeHostRuntimeOpti
         }
     };
     const origin = findBrowserCaptureOrigin();
+    const identity = browserExtensionIdentityForOrigin(origin);
     report('host_started', {
         pid: process.pid,
         platform: process.platform,
         arch: process.arch,
         appVersion: APP_VERSION,
-        originAccepted: isOfficialBrowserCaptureOrigin(origin),
+        originAccepted: isOfficialGardenFlowExtensionOrigin(origin),
     });
-    if (!isOfficialBrowserCaptureOrigin(origin)) {
+    if (!isOfficialGardenFlowExtensionOrigin(origin) || !identity) {
         report('host_rejected_origin');
         process.exitCode = 2;
         return;
@@ -442,7 +445,7 @@ export async function runBrowserNativeHost(options: BrowserNativeHostRuntimeOpti
                         captureProtocolVersion: Number(hello?.captureProtocolVersion || BROWSER_CAPTURE_PROTOCOL_VERSION),
                         capabilities: Array.isArray(hello?.acceptedCapabilities)
                             ? hello.acceptedCapabilities
-                            : ['knowledge.ingest', 'extension.register'],
+                            : [...identity.capabilities],
                     };
                 } catch (error) {
                     desktopBridge = desktopBridgeAvailability(error);
@@ -458,7 +461,7 @@ export async function runBrowserNativeHost(options: BrowserNativeHostRuntimeOpti
                         bridgeProtocolVersion: BROWSER_CAPTURE_BRIDGE_PROTOCOL_VERSION,
                         captureProtocolVersion: BROWSER_CAPTURE_PROTOCOL_VERSION,
                         browserProtocolVersion: BROWSER_CONTROL_PROTOCOL_VERSION,
-                        capabilities: ['knowledge.ingest', 'extension.register'],
+                        capabilities: [...identity.capabilities],
                         desktopBridge,
                     },
                 });
