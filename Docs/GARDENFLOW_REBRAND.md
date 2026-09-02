@@ -2,7 +2,7 @@
 
 ## 范围
 
-品牌来源配置为 `branding/identity.json`；`pnpm sync:brand` 同步桌面与扩展，`pnpm check:brand` 检查未批准的旧名称及生成配置漂移。GF 图标源文件为 `desktop/public/branding/gardenflow-mark.svg`，沿用原布局和红白配色。
+品牌身份配置为 `branding/identity.json`，视觉配置为 `branding/visual-theme.json`；`pnpm sync:brand` 同步桌面与扩展，`pnpm check:brand` 检查未批准的旧名称及生成配置漂移。图标以 `branding/gardenflow-iris-watercolor-source.png` 为母版，通过 `pnpm generate:brand-assets` 生成水墨鸢尾图标；界面采用宣纸白、鸢尾蓝紫、青绿和哑金配色。
 
 产品名 GardenFlow，桌面包 `gardenflow-desktop`，扩展包 `gardenflow-browser-extension`，应用 ID `com.gardenflow.app`，协议 `gardenflow-asset://`，Native Host `com.gardenflow.browser_control`。不使用原公司的签名身份、公证信息或更新源；安装包仅供本机无签名测试，不发布。
 

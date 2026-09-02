@@ -20,8 +20,9 @@ import { shouldRenderView, useViewNavigation } from './features/app-shell/useVie
 import type { GenerationAssetPickerRequest, GenerationIntent, ImmersiveMode } from './features/app-shell/types';
 import { ClipboardCapturePrompt } from './features/capture/ClipboardCapturePrompt';
 
-export type { GenerationIntent, ImmersiveMode, PendingChatMessage, TeamSection, ViewType } from './features/app-shell/types';
+export type { FlowHandoff, FlowStage, GenerationIntent, ImmersiveMode, PendingChatMessage, TeamSection, ViewType } from './features/app-shell/types';
 
+const HomePage = lazy(async () => ({ default: (await import('./pages/Home')).Home }));
 const SkillsPage = lazy(async () => ({ default: (await import('./pages/Skills')).Skills }));
 const KnowledgePage = lazy(async () => ({ default: (await import('./pages/Knowledge')).Knowledge }));
 const SettingsPage = lazy(async () => ({ default: (await import('./pages/Settings')).Settings }));
@@ -134,6 +135,7 @@ function AuthenticatedApp() {
     setGardenFlowNavigationAction,
     setApprovalTargetDocketId,
     setPendingGenerationIntent,
+    navigateToGardenFlow,
   });
 
   const {
@@ -203,6 +205,20 @@ function AuthenticatedApp() {
           </>
         )}
       >
+        {shouldRenderView(mountedViews, currentView, persistentViews, 'home') && (
+          <div className={currentView === 'home' ? 'h-full min-h-0 flex flex-col' : 'hidden'}>
+            <Suspense fallback={currentView === 'home' ? <ViewLoadingFallback /> : null}>
+              <HomePage
+                isActive={currentView === 'home'}
+                onNavigateToGenerationStudio={(mode) => navigateToGenerationStudio({
+                  mode,
+                  source: 'standalone',
+                })}
+                onOpenManuscript={navigateToManuscript}
+              />
+            </Suspense>
+          </div>
+        )}
         {isManuscriptEditorActive && activeManuscriptEditorFile && (
           <div className="h-full min-h-0 flex flex-col overflow-hidden">
             <Suspense fallback={<ViewLoadingFallback />}>

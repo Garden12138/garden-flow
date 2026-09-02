@@ -1,24 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ImmersiveMode, ViewType } from './types';
+import { normalizeRestoredWorkbenchView, WORKBENCH_LEGAL_VIEWS } from '../workbench/navigation';
 
 const LAST_VIEW_STORAGE_KEY = 'gardenflow:app-shell:last-view:v1';
-const DEFAULT_VIEW: ViewType = 'gardenflow';
+const DEFAULT_VIEW: ViewType = 'home';
 const MAX_CACHED_VIEWS = 0;
-const APP_VIEWS = [
-  'skills',
-  'knowledge',
-  'settings',
-  'archives',
-  'wander',
-  'gardenflow',
-  'media-library',
-  'cover-studio',
-  'generation-studio',
-  'subjects',
-  'automation',
-  'approval',
-] satisfies ViewType[];
-const RESTORABLE_VIEWS = new Set<ViewType>(APP_VIEWS);
+const APP_VIEWS = [...WORKBENCH_LEGAL_VIEWS] satisfies ViewType[];
 const NON_CACHEABLE_VIEWS = new Set<ViewType>(APP_VIEWS);
 
 function computeMountedViews(history: ViewType[]): Set<ViewType> {
@@ -47,16 +34,10 @@ export function shouldRenderView(
   return mountedViews.has(view);
 }
 
-function normalizeRestoredView(value: unknown): ViewType {
-  return typeof value === 'string' && RESTORABLE_VIEWS.has(value as ViewType)
-    ? value as ViewType
-    : DEFAULT_VIEW;
-}
-
 function readInitialView(): ViewType {
   if (typeof window === 'undefined') return DEFAULT_VIEW;
   try {
-    return normalizeRestoredView(window.localStorage.getItem(LAST_VIEW_STORAGE_KEY));
+    return normalizeRestoredWorkbenchView(window.localStorage.getItem(LAST_VIEW_STORAGE_KEY));
   } catch (error) {
     console.warn('Failed to restore app shell view:', error);
     return DEFAULT_VIEW;

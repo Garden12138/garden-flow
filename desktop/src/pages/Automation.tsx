@@ -22,6 +22,7 @@ interface AutomationProps {
 }
 
 type SchedulePanel = 'mode' | 'weekday' | 'time' | null;
+type AutomationView = 'today' | 'upcoming' | 'running' | 'exceptions';
 
 const TIME_OPTIONS = Array.from({ length: 24 * 4 }, (_, index) => {
   const totalMinutes = index * 15;
@@ -170,6 +171,7 @@ export function Automation({ isActive = true, onOpenGardenFlowSession }: Automat
   const [busyActionId, setBusyActionId] = useState('');
   const [menuOpenId, setMenuOpenId] = useState('');
   const [menuBusyId, setMenuBusyId] = useState('');
+  const [automationView, setAutomationView] = useState<AutomationView>('today');
   const loadRequestRef = useRef(0);
   const scheduleControlRef = useRef<HTMLDivElement | null>(null);
   const timeMenuRef = useRef<HTMLDivElement | null>(null);
@@ -179,6 +181,24 @@ export function Automation({ isActive = true, onOpenGardenFlowSession }: Automat
     () => sortGardenFlowAutomationItems(items.filter(gardenFlowAutomationIsTask)),
     [items],
   );
+  const automationViews = useMemo(() => {
+    const now = new Date();
+    const todayKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
+    const isDueToday = (item: GardenFlowTaskListItem) => {
+      const nextDueAt = String(item.nextDueAt || '').trim();
+      if (!nextDueAt) return item.enabled && (item.triggerKind === 'daily' || item.triggerKind === 'interval');
+      const due = new Date(nextDueAt);
+      if (Number.isNaN(due.getTime())) return false;
+      return `${due.getFullYear()}-${due.getMonth()}-${due.getDate()}` === todayKey;
+    };
+    const latestStatus = (item: GardenFlowTaskListItem) => String(latestExecutionRecord(item)?.status || '').trim();
+    const today = currentItems.filter(isDueToday);
+    const running = currentItems.filter((item) => ['running', 'queued'].includes(latestStatus(item)));
+    const exceptions = currentItems.filter((item) => item.requiresConfirmation || latestStatus(item) === 'failed');
+    const upcoming = currentItems.filter((item) => item.enabled && !isDueToday(item) && !running.includes(item));
+    return { today, upcoming, running, exceptions };
+  }, [currentItems]);
+  const visibleAutomationItems = automationViews[automationView];
 
   const load = useCallback(async () => {
     const requestId = loadRequestRef.current + 1;
@@ -525,6 +545,13 @@ export function Automation({ isActive = true, onOpenGardenFlowSession }: Automat
             </main>
 
             <aside className="automation-editor-sidebar">
+              <section className="automation-side-section automation-natural-summary">
+                <div className="automation-side-heading">执行摘要</div>
+                <p>
+                  GardenFlow 将在{scheduleButtonLabel(draft)}执行“{draft.name.trim() || '未命名自动化'}”，
+                  并按以下提示推进：{draft.prompt.trim() || '尚未填写执行提示'}。
+                </p>
+              </section>
               <section className="automation-side-section">
                 <div className="automation-side-heading">状态</div>
                 <div className="automation-side-row">
@@ -654,25 +681,50 @@ export function Automation({ isActive = true, onOpenGardenFlowSession }: Automat
   }
 
   return (
-    <div className="automation-page h-full min-h-0 overflow-auto">
+    <div className="workbench-schedule automation-page h-full min-h-0 overflow-auto">
       <button
         type="button"
         onClick={openDialog}
         className="automation-new-button"
       >
         <Plus className="h-[14px] w-[14px]" strokeWidth={1.7} />
-        <span>新建自动化功能</span>
+        <span>新建自动化</span>
       </button>
 
       <main className="automation-content">
-        <h1 className="automation-title">自动化</h1>
+        <div className="workbench-schedule__heading">
+          <span>05 · SCHEDULE</span>
+          <h1 className="automation-title">计划台</h1>
+          <p>查看今天、接下来与异常任务，保存前先读一遍自然语言执行摘要。</p>
+        </div>
 
-        <BuiltinAutomationSection isActive={isActive} />
+        <nav className="workbench-schedule__views" aria-label="自动化视图">
+          {([
+            ['today', '今天'],
+            ['upcoming', '接下来'],
+            ['running', '运行中'],
+            ['exceptions', '异常'],
+          ] as Array<[AutomationView, string]>).map(([view, label]) => (
+            <button
+              key={view}
+              type="button"
+              data-active={automationView === view ? 'true' : 'false'}
+              onClick={() => setAutomationView(view)}
+            >
+              <span>{label}</span>
+              <small>{automationViews[view].length}</small>
+            </button>
+          ))}
+        </nav>
+
+        {automationView === 'today' && <BuiltinAutomationSection isActive={isActive} />}
 
         <section className="automation-section" aria-label="当前自动化">
-          <div className="automation-section-title">当前</div>
+          <div className="automation-section-title">
+            {automationView === 'today' ? '今天' : automationView === 'upcoming' ? '接下来' : automationView === 'running' ? '运行中' : '需要处理'}
+          </div>
           <div className="automation-list">
-            {loading && currentItems.length === 0 && (
+            {loading && visibleAutomationItems.length === 0 && (
               <div className="automation-state">
                 <Loader2 className="h-4 w-4 animate-spin" />
               </div>
@@ -682,10 +734,10 @@ export function Automation({ isActive = true, onOpenGardenFlowSession }: Automat
                 {error}
               </button>
             )}
-            {!loading && !error && currentItems.length === 0 && (
-              <div className="automation-empty">暂无自动化</div>
+            {!loading && !error && visibleAutomationItems.length === 0 && (
+              <div className="automation-empty">当前视图没有任务</div>
             )}
-            {currentItems.map((item) => (
+            {visibleAutomationItems.map((item) => (
               <div
                 key={item.definitionId}
                 className={menuOpenId === item.definitionId ? 'automation-row automation-row--menu-open' : 'automation-row'}

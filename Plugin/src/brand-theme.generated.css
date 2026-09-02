@@ -1,0 +1,22 @@
+/* Generated from branding/visual-theme.json; run pnpm sync:brand. */
+:root {
+  --gf-paper: #F4F1E6;
+  --gf-surface: #FBF9F3;
+  --gf-surface-secondary: #F0EDE2;
+  --gf-surface-tertiary: #E2E4D8;
+  --gf-border: #CFCCBE;
+  --gf-divider: #DEDACD;
+  --gf-ink: #2E3142;
+  --gf-text-secondary: #555767;
+  --gf-text-tertiary: #777780;
+  --gf-iris: #4B3269;
+  --gf-iris-hover: #3B274F;
+  --gf-iris-muted: #ECE7F1;
+  --gf-leaf: #55746D;
+  --gf-leaf-muted: #E4ECE6;
+  --gf-gold: #B39655;
+  --gf-danger: #B91C1C;
+  --gf-danger-muted: #FEF2F2;
+  --gf-success: #166534;
+  --gf-success-muted: #F0FDF4;
+}

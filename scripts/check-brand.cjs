@@ -30,5 +30,10 @@ for (const directory of ['desktop/shared', 'Plugin']) {
     if (fs.readFileSync(path.join(root, directory, 'brandEnvironment.cjs'), 'utf8') !== environment) failures.push(`${directory}: environment aliases are stale`);
 }
 if (fs.readFileSync(path.join(root, 'desktop/shared/brandCompatibility.mjs'), 'utf8') !== rendererRuntime) failures.push('desktop/shared/brandCompatibility.mjs: run pnpm sync:brand');
+try {
+    execFileSync(process.execPath, ['scripts/check-visual-brand.cjs'], { cwd: root, stdio: 'inherit' });
+} catch {
+    failures.push('visual brand audit failed');
+}
 if (failures.length) { console.error('Unapproved legacy names or stale brand artifacts:', failures); process.exitCode = 1; }
 else console.log('GardenFlow brand audit passed (compatibility, tests and source/license records retained).');

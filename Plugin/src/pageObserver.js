@@ -1,4 +1,5 @@
 import './brandRuntime.js';
+import { GARDENFLOW_THEME } from './brandTheme.generated.js';
 let latestPageInfo = null;
 let latestUrl = location.href;
 let updateTimer = null;
@@ -1266,10 +1267,10 @@ function ensureXhsDomStyle() {
       }
       .gardenflow-xhs-btn,
       .gardenflow-xhs-card-btn {
-        border: 1px solid rgba(230, 0, 18, 0.28);
+        border: 1px solid color-mix(in srgb, ${GARDENFLOW_THEME.iris} 28%, transparent);
         border-radius: 8px;
         background: #ffffff;
-        color: #c2000f;
+        color: ${GARDENFLOW_THEME.iris};
         cursor: pointer;
         font: 650 12px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif;
       }
@@ -1278,14 +1279,14 @@ function ensureXhsDomStyle() {
         padding: 7px 10px;
       }
       .gardenflow-xhs-btn.primary {
-        background: #e60012;
-        border-color: #e60012;
+        background: ${GARDENFLOW_THEME.iris};
+        border-color: ${GARDENFLOW_THEME.iris};
         color: #ffffff;
       }
       .gardenflow-xhs-btn:hover,
       .gardenflow-xhs-card-btn:hover {
-        border-color: #000000;
-        box-shadow: 0 6px 18px rgba(230, 0, 18, 0.14);
+        border-color: ${GARDENFLOW_THEME.irisHover};
+        box-shadow: 0 6px 18px color-mix(in srgb, ${GARDENFLOW_THEME.iris} 14%, transparent);
       }
       .gardenflow-xhs-btn:disabled,
       .gardenflow-xhs-card-btn:disabled {
@@ -1294,16 +1295,16 @@ function ensureXhsDomStyle() {
       }
       .gardenflow-xhs-status {
         min-width: 88px;
-        color: #166534;
+        color: ${GARDENFLOW_THEME.success};
         font-size: 12px;
         line-height: 1.35;
         word-break: break-word;
       }
       .gardenflow-xhs-status[data-state="pending"] {
-        color: #c2000f;
+        color: ${GARDENFLOW_THEME.iris};
       }
       .gardenflow-xhs-status[data-state="error"] {
-        color: #b91c1c;
+        color: ${GARDENFLOW_THEME.danger};
       }
       .gardenflow-xhs-card-btn {
         position: absolute;
@@ -1324,7 +1325,7 @@ function ensureXhsDomStyle() {
         border: 1px solid rgba(15, 23, 42, 0.1);
         border-radius: 8px;
         background: rgba(255, 255, 255, 0.96);
-        color: #166534;
+        color: ${GARDENFLOW_THEME.success};
         box-shadow: 0 8px 20px rgba(15, 23, 42, 0.1);
         padding: 6px 8px;
         font-size: 12px;
@@ -1332,10 +1333,10 @@ function ensureXhsDomStyle() {
         word-break: break-word;
       }
       .gardenflow-xhs-card-status[data-state="pending"] {
-        color: #c2000f;
+        color: ${GARDENFLOW_THEME.iris};
       }
       .gardenflow-xhs-card-status[data-state="error"] {
-        color: #b91c1c;
+        color: ${GARDENFLOW_THEME.danger};
       }
     `;
     (document.head || document.documentElement).appendChild(style);
@@ -1503,35 +1504,35 @@ function createXhsDetailHost(injectionKey) {
       }
       button {
         min-height: 32px;
-        border: 1px solid #e60012;
+        border: 1px solid ${GARDENFLOW_THEME.iris};
         border-radius: 8px;
-        background: #e60012;
+        background: ${GARDENFLOW_THEME.iris};
         color: #ffffff;
         cursor: pointer;
         padding: 7px 14px;
         font: 700 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif;
         white-space: nowrap;
-        box-shadow: 0 6px 18px rgba(230, 0, 18, 0.14);
+        box-shadow: 0 6px 18px color-mix(in srgb, ${GARDENFLOW_THEME.iris} 14%, transparent);
       }
       button:hover {
-        background: #000000;
-        border-color: #000000;
+        background: ${GARDENFLOW_THEME.irisHover};
+        border-color: ${GARDENFLOW_THEME.irisHover};
       }
       button:disabled {
         cursor: not-allowed;
         opacity: 0.55;
       }
       .gardenflow-xhs-status {
-        color: #166534;
+        color: ${GARDENFLOW_THEME.success};
         font-size: 12px;
         line-height: 1.35;
         word-break: break-word;
       }
       .gardenflow-xhs-status[data-state="pending"] {
-        color: #c2000f;
+        color: ${GARDENFLOW_THEME.iris};
       }
       .gardenflow-xhs-status[data-state="error"] {
-        color: #b91c1c;
+        color: ${GARDENFLOW_THEME.danger};
       }
     `;
     const actions = document.createElement('div');

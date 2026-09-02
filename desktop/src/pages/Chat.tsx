@@ -410,6 +410,7 @@ interface ChatProps {
   showWelcomeHeader?: boolean;
   emptyStateComposerPlacement?: 'inline' | 'bottom';
   emptyStateVerticalAlign?: 'center' | 'lower';
+  emptyStateVariant?: 'default' | 'brief';
   showComposer?: boolean;
   showMessageAttachments?: boolean;
   collapseEmptyFixedSession?: boolean;
@@ -1590,6 +1591,7 @@ export function Chat({
   showWelcomeHeader = true,
   emptyStateComposerPlacement = 'inline',
   emptyStateVerticalAlign = 'center',
+  emptyStateVariant = 'default',
   showComposer = true,
   showMessageAttachments = true,
   collapseEmptyFixedSession = false,
@@ -5160,8 +5162,8 @@ export function Chat({
 
   const welcomeHeaderBlock = showWelcomeHeader ? (
     <>
-      <div className="flex flex-col items-center gap-4">
-        <div className="flex justify-center">
+      <div className="chat-welcome-identity flex flex-col items-center gap-4">
+        <div className="chat-welcome-icon flex justify-center">
           {welcomeIconSrc ? (
             welcomeIconVariant === 'avatar' ? (
               <div className={clsx(
@@ -5223,6 +5225,22 @@ export function Chat({
         >
           {shortcut.label}
         </button>
+      ))}
+    </div>
+  ) : null;
+
+  const creativeBriefBlock = emptyStateVariant === 'brief' ? (
+    <div className="chat-creative-brief" aria-label="创作简报要点">
+      {[
+        ['目标', '这次内容希望用户知道、相信或采取什么行动？'],
+        ['受众', '写给谁，他们现在最关心什么？'],
+        ['素材', '使用 # 引用资料，或直接添加附件。'],
+        ['交付', '选择文章、脚本、标题组或其他形式。'],
+      ].map(([label, hint]) => (
+        <div key={label}>
+          <span>{label}</span>
+          <p>{hint}</p>
+        </div>
       ))}
     </div>
   ) : null;
@@ -5347,15 +5365,17 @@ export function Chat({
             {isEmptySession && !dockedEmptyState ? (
               <div className={clsx(
                 'flex-1 flex flex-col items-center justify-center px-6 overflow-y-auto relative',
-                emptyStateVerticalAlign === 'lower' && 'pt-16'
+                emptyStateVerticalAlign === 'lower' && 'pt-16',
+                emptyStateVariant === 'brief' && 'chat-empty-state--brief'
               )}>
-                <div className={clsx('text-center space-y-6 w-full max-w-2xl mx-auto', emptySessionWidthClass)}>
+                <div className={clsx('chat-empty-state__content text-center space-y-6 w-full max-w-2xl mx-auto', emptySessionWidthClass)}>
                   {/* Logo/Icon */}
                   {showWelcomeHeader ? (
                     <>
                       {welcomeHeaderBlock}
                     </>
                   ) : null}
+                  {creativeBriefBlock}
                   {showWelcomeShortcuts && welcomeShortcuts.length > 0 && (
                     <div className="flex flex-wrap justify-center gap-2 text-xs">
                       {welcomeShortcuts.map((shortcut) => (

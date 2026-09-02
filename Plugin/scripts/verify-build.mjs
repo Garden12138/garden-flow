@@ -180,7 +180,7 @@ for (const htmlFile of ['popup.html', 'settings.html', 'sidepanel.html']) {
   }
 }
 
-for (const cssFile of ['popup.css', 'settings.css', 'sidepanel.css']) {
+for (const cssFile of ['brand-theme.generated.css', 'popup.css', 'settings.css', 'sidepanel.css']) {
   const sourceCss = await readText(path.join(sourceDir, cssFile));
   const outputCss = await readText(path.join(outputDir, cssFile));
   assert.equal(outputCss, sourceCss, `${cssFile} should be copied without rewriting`);

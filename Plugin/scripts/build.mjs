@@ -23,6 +23,7 @@ const scriptEntries = [
 const copiedFiles = [
   'manifest.json',
   'THIRD_PARTY_NOTICES.txt',
+  'brand-theme.generated.css',
   'popup.css',
   'popup.html',
   'settings.css',

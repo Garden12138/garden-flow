@@ -98,19 +98,21 @@ flowchart TB
 - renderer 业务代码应通过 `window.ipcRenderer.<domain>` 调用宿主，不在页面中散落裸 `invoke` / `listen`。
 - `src/runtime/runtimeEventStream.ts` 负责把统一 runtime 事件和历史 chat 事件按 session/task/runtime 维度归一化，防止并行会话串流。
 
-当前侧边栏直接暴露：
+桌面壳按“素材 → 灵感 → 创作 → 生成 → 计划”组织，工作台是新用户默认入口。一级流程轨道直接暴露：
 
 | 入口 | 主要页面 | 作用 |
 | --- | --- | --- |
-| 新对话 | `pages/GardenFlow.tsx` | AI 会话、创作、任务和稿件入口 |
-| 知识库 | `pages/Knowledge.tsx` | 素材、文档、视频、检索和转录 |
-| 资产库 | `pages/Subjects.tsx` | 品牌、角色、物品、场景和复用参考资产 |
-| 自动化 | `pages/Automation.tsx` | 定时 GardenFlow 任务和执行状态 |
-| 自由创作 | `pages/GenerationStudio.tsx` | 图片、视频、音频、封面和数字人生成 |
-| 选题中心 | `pages/Wander.tsx` | 素材漫步、发散和选题转创作 |
+| 工作台 | `pages/Home.tsx` | 最近工作、流程地图、快速任务、统计与待审批 |
+| 素材 | `pages/Knowledge.tsx` | 素材、文档、视频、检索和转录 |
+| 灵感 | `pages/Wander.tsx` | 素材托盘、候选方向、评价约束和创作交接 |
+| 创作 | `pages/GardenFlow.tsx` | 创作简报、AI 会话、任务和稿件入口 |
+| 生成 | `pages/GenerationStudio.tsx` | 结果流、生成配方、图片、视频、音频、封面和数字人 |
+| 资产 | `pages/Subjects.tsx` | 品牌、角色、物品、场景和复用参考资产 |
+| 媒体 | `pages/MediaLibrary.tsx` | 生成结果、导入媒体、预览和复用 |
+| 计划 | `pages/Automation.tsx` | 定时 GardenFlow 任务、运行状态和异常处理 |
 | 设置 | `pages/Settings.tsx` | AI 源、工作空间和运行配置 |
 
-`Skills`、`Archives`、`MediaLibrary`、`CoverStudio`、`Approval` 和稿件编辑器仍是可挂载页面或辅助表面，但不一定作为一级导航长期显示。
+`Skills`、`Archives`、`CoverStudio`、`Approval` 和稿件编辑器仍是可挂载页面或辅助表面。跨阶段导航通过 `FlowStage`、`FlowHandoff` 和 `flow.open` 表达，引用复用现有 `PendingChatMessage` / `GenerationIntent`，不做消息关键词判断。
 
 ### 4.2 Preload 与 bridge
 

@@ -1,3 +1,5 @@
+import { GARDENFLOW_THEME } from '../brandTheme.generated.js';
+
 const TARGET_OVERLAY_ROOT_ID = 'codex-agent-overlay-root';
 const TARGET_OVERLAY_ROOT_DATASET = 'codexAgentOverlayRoot';
 const CONTROL_BADGE_ID = 'gardenflow-browser-data-ai-control-badge';
@@ -93,9 +95,9 @@ function ensureControlBadgeStyle() {
       padding: 6px 9px;
       border-radius: 7px;
       border: 1px solid rgba(255, 255, 255, .72);
-      background: rgba(7, 17, 20, .88);
+      background: color-mix(in srgb, ${GARDENFLOW_THEME.ink} 90%, transparent);
       color: #FFFFFF;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, .22), 0 0 0 1px rgba(78, 225, 193, .22);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, .22), 0 0 0 1px color-mix(in srgb, ${GARDENFLOW_THEME.leaf} 42%, transparent);
       font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       font-size: 12px;
       font-weight: 650;
@@ -116,8 +118,8 @@ function ensureControlBadgeStyle() {
       height: 7px;
       flex: 0 0 auto;
       border-radius: 999px;
-      background: #FF2A3A;
-      box-shadow: 0 0 0 3px rgba(78, 225, 193, .18), 0 0 12px rgba(78, 225, 193, .72);
+      background: ${GARDENFLOW_THEME.iris};
+      box-shadow: 0 0 0 3px color-mix(in srgb, ${GARDENFLOW_THEME.leaf} 22%, transparent), 0 0 12px color-mix(in srgb, ${GARDENFLOW_THEME.iris} 58%, transparent);
     }
   `;
   document.documentElement.appendChild(style);

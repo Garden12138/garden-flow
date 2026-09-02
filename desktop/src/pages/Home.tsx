@@ -1,21 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, Archive, ArrowRight, Bell, Clapperboard, FileText, Folder, Image, ImagePlus, Lightbulb, Loader2, MessageSquareText, Mic2, PenLine, RefreshCw, Send, Sparkles, X } from 'lucide-react';
+import { Archive, ArrowRight, Bell, Clapperboard, FileText, Folder, Image, ImagePlus, Lightbulb, Loader2, MessageSquareText, Mic2, PenLine, RefreshCw, Send, Sparkles, X } from 'lucide-react';
 import { ApprovalPanel } from './Approval';
 import { subscribeDataChanged } from '../bridge/appEvents';
 import { formatTimestampDate, parseTimestampMs } from '../utils/time';
-import type { ThrivePluginHomeAction, ThrivePluginHomeResponse, ThrivePluginHomeWidget } from '../types';
+import type { ThrivePluginHomeAction, ThrivePluginHomeWidget } from '../types';
+import { dispatchAppIntent } from '../features/app-shell/appIntent';
+import type { FlowStage } from '../features/app-shell/types';
+import { WorkbenchStatePanel } from '../features/workbench/WorkbenchPrimitives';
 
 interface HomeProps {
     isActive?: boolean;
     onNavigateToCoverStudio?: () => void;
     onNavigateToGenerationStudio?: (mode: 'image' | 'video' | 'audio' | 'cover') => void;
     onOpenManuscript?: (filePath: string) => void;
-    onNavigateToGardenFlow?: (message: {
-        content: string;
-        displayContent?: string;
-        sessionRouting?: 'current' | 'new';
-        deliveryMode?: 'send' | 'draft';
-    }) => void;
 }
 
 interface KnowledgeCountResponse {
@@ -191,16 +188,16 @@ function QuickAppButton({
         <button
             type="button"
             onClick={onClick}
-            className="group flex min-h-[132px] min-w-0 flex-col justify-between rounded-xl border border-border bg-surface-primary p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent-primary/30 hover:shadow-md"
+            className="workbench-home__quick-app group flex min-h-[96px] min-w-0 items-center gap-3 border-y border-border bg-surface-primary px-3 py-3 text-left transition-colors hover:bg-surface-secondary"
         >
-            <span className={`inline-flex h-10 w-10 items-center justify-center rounded-xl ${tintClassName}`}>
+            <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${tintClassName}`}>
                 <Icon className="h-5 w-5" strokeWidth={1.8} />
             </span>
-            <span className="block">
+            <span className="min-w-0 flex-1">
                 <span className="block text-[15px] font-semibold text-text-primary">{label}</span>
                 <span className="mt-1 block text-[12px] leading-5 text-text-tertiary">{description}</span>
             </span>
-            <ArrowRight className="ml-auto h-4 w-4 text-text-tertiary transition-transform group-hover:translate-x-0.5 group-hover:text-text-secondary" strokeWidth={1.8} />
+            <ArrowRight className="h-4 w-4 shrink-0 text-text-tertiary transition-transform group-hover:translate-x-0.5 group-hover:text-text-secondary" strokeWidth={1.8} />
         </button>
     );
 }
@@ -220,11 +217,11 @@ function RecentManuscriptCard({
         <button
             type="button"
             onClick={() => onOpen?.(manuscript.path)}
-            className="group overflow-hidden rounded-xl border border-border bg-surface-primary text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent-primary/30 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary/35"
+            className="workbench-home__manuscript group overflow-hidden border border-border bg-surface-primary text-left transition-colors hover:border-accent-secondary/50 hover:bg-surface-secondary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary/35"
             title={manuscript.title}
         >
             <div className="relative aspect-[16/7] overflow-hidden bg-surface-secondary">
-                <div className="flex h-full w-full items-center justify-center bg-[linear-gradient(135deg,rgb(var(--color-accent-muted))_0%,rgb(var(--color-surface-secondary))_48%,rgb(var(--color-surface-primary))_100%)]">
+                <div className="flex h-full w-full items-center justify-center bg-surface-secondary">
                     <Icon className="h-8 w-8 text-accent-primary/65 transition-transform group-hover:scale-105" strokeWidth={1.6} />
                 </div>
                 <span className="absolute left-3 top-3 rounded-full border border-white/50 bg-white/80 px-2 py-0.5 text-[11px] font-medium text-text-secondary shadow-sm backdrop-blur">
@@ -325,7 +322,7 @@ function PluginHomeWidgetCard({
     );
 }
 
-export function Home({ isActive = true, onNavigateToCoverStudio, onNavigateToGenerationStudio, onOpenManuscript, onNavigateToGardenFlow }: HomeProps) {
+export function Home({ isActive = true, onNavigateToCoverStudio, onNavigateToGenerationStudio, onOpenManuscript }: HomeProps) {
     const [stats, setStats] = useState<HomeStats>(EMPTY_STATS);
     const [recentManuscripts, setRecentManuscripts] = useState<RecentManuscript[]>([]);
     const [pluginHomeWidgets, setPluginHomeWidgets] = useState<ThrivePluginHomeWidget[]>([]);
@@ -333,23 +330,19 @@ export function Home({ isActive = true, onNavigateToCoverStudio, onNavigateToGen
     const [pluginQuickActions, setPluginQuickActions] = useState<ThrivePluginHomeAction[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
-    const [pluginHomeError, setPluginHomeError] = useState('');
     const [approvalOpen, setApprovalOpen] = useState(false);
+    const [inspectorOpen, setInspectorOpen] = useState(false);
+    const [quickTask, setQuickTask] = useState('');
     const requestIdRef = useRef(0);
     const hasSnapshotRef = useRef(false);
 
-    const loadPluginHome = useCallback(async () => {
-        try {
-            const result = await window.ipcRenderer.plugins.home() as ThrivePluginHomeResponse;
-            if (result?.success === false) throw new Error(result.error || '插件主页加载失败');
-            setPluginHomeWidgets(Array.isArray(result.widgets) ? result.widgets : []);
-            setPluginSidebarSections(Array.isArray(result.sidebarSections) ? result.sidebarSections : []);
-            setPluginQuickActions(Array.isArray(result.quickActions) ? result.quickActions : []);
-            setPluginHomeError('');
-        } catch (loadError) {
-            console.error('Failed to load plugin home:', loadError);
-            setPluginHomeError(loadError instanceof Error ? loadError.message : '插件主页加载失败');
-        }
+    const loadPluginHome = useCallback(() => {
+        // Plugin home contributions are optional and the public Electron runtime does not
+        // register their IPC handlers. Keep startup quiet and let plugin management remain
+        // available from Settings until a runtime explicitly wires these contributions in.
+        setPluginHomeWidgets([]);
+        setPluginSidebarSections([]);
+        setPluginQuickActions([]);
     }, []);
 
     const loadStats = useCallback(async () => {
@@ -395,6 +388,15 @@ export function Home({ isActive = true, onNavigateToCoverStudio, onNavigateToGen
         void loadStats();
         void loadPluginHome();
     }, [isActive, loadPluginHome, loadStats]);
+
+    useEffect(() => {
+        if (!inspectorOpen) return undefined;
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') setInspectorOpen(false);
+        };
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+    }, [inspectorOpen]);
 
     useEffect(() => {
         if (!isActive) return;
@@ -451,13 +453,31 @@ export function Home({ isActive = true, onNavigateToCoverStudio, onNavigateToGen
     ], [recentManuscripts]);
 
     const sendAiSuggestion = useCallback((prompt: string, label?: string) => {
-        onNavigateToGardenFlow?.({
-            content: prompt,
-            displayContent: label || prompt,
-            sessionRouting: 'current',
-            deliveryMode: 'draft',
+        dispatchAppIntent({
+            type: 'flow.open',
+            stage: 'compose',
+            handoff: {
+                kind: 'chat-draft',
+                message: {
+                    content: prompt,
+                    displayContent: label || prompt,
+                    sessionRouting: 'current',
+                    deliveryMode: 'draft',
+                },
+            },
         });
-    }, [onNavigateToGardenFlow]);
+    }, []);
+
+    const submitQuickTask = useCallback(() => {
+        const prompt = quickTask.trim();
+        if (!prompt) return;
+        sendAiSuggestion(prompt);
+        setQuickTask('');
+    }, [quickTask, sendAiSuggestion]);
+
+    const openFlowStage = useCallback((stage: FlowStage) => {
+        dispatchAppIntent({ type: 'flow.open', stage });
+    }, []);
 
     const runPluginHomeCommand = useCallback((command: PluginHomeCommand) => {
         const prompt = typeof command.prompt === 'string' ? command.prompt.trim() : '';
@@ -478,13 +498,14 @@ export function Home({ isActive = true, onNavigateToCoverStudio, onNavigateToGen
     }, [onNavigateToCoverStudio, onNavigateToGenerationStudio, sendAiSuggestion]);
 
     return (
-        <main className="h-full min-h-0 overflow-y-auto px-6 py-5" aria-label="主页">
-            <div className="mx-auto grid min-h-full w-full max-w-7xl gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
-                <div className="flex min-w-0 flex-col gap-5">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
+        <main className="workbench-home h-full min-h-0 overflow-y-auto px-7 py-6" aria-label="工作台">
+            <div className="grid min-h-full w-full gap-7 xl:grid-cols-[minmax(0,1fr)_360px]">
+                <div className="flex min-w-0 flex-col gap-7">
+                    <div className="workbench-home__heading flex flex-wrap items-start justify-between gap-4">
                         <div>
-                            <h1 className="text-[28px] font-semibold tracking-[-0.03em] text-text-primary">早上好</h1>
-                            <p className="mt-1 text-[13px] text-text-tertiary">你的内容工作台已就绪。</p>
+                            <div className="workbench-home__eyebrow">NATURAL NEWSROOM · TODAY</div>
+                            <h1 className="mt-2 text-[32px] font-semibold tracking-[-0.03em] text-text-primary">今天，把一件作品向前推进</h1>
+                            <p className="mt-2 text-[13px] text-text-tertiary">从素材、灵感和最近稿件继续，所有上下文会跟着流程走。</p>
                         </div>
                         <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2 pt-1">
                             {tiles.map((tile) => (
@@ -505,6 +526,15 @@ export function Home({ isActive = true, onNavigateToCoverStudio, onNavigateToGen
                             </button>
                             <button
                                 type="button"
+                                onClick={() => setInspectorOpen(true)}
+                                className="workbench-home__inspector-toggle relative inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-surface-primary px-3 text-[13px] font-medium text-text-secondary transition-colors hover:bg-surface-secondary hover:text-text-primary"
+                                aria-expanded={inspectorOpen}
+                            >
+                                <Sparkles className="h-4 w-4" strokeWidth={1.75} />
+                                今日批注
+                            </button>
+                            <button
+                                type="button"
                                 onClick={() => void loadStats()}
                                 className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-surface-secondary hover:text-text-primary"
                                 title="刷新"
@@ -515,20 +545,67 @@ export function Home({ isActive = true, onNavigateToCoverStudio, onNavigateToGen
                         </div>
                     </div>
 
-                    {error && (
-                        <div className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-700">
-                            <AlertCircle className="h-4 w-4" />
-                            {error}
-                        </div>
-                    )}
-                    {pluginHomeError && (
-                        <div className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-800">
-                            <AlertCircle className="h-4 w-4" />
-                            {pluginHomeError}
-                        </div>
-                    )}
+                    <section className="workbench-home__flow-map" aria-label="创作流程">
+                        {([
+                            { stage: 'collect', index: '01', label: '素材', meta: `${stats.knowledge} 条资料` },
+                            { stage: 'ideate', index: '02', label: '灵感', meta: '形成方向' },
+                            { stage: 'compose', index: '03', label: '创作', meta: `${stats.manuscripts} 篇稿件` },
+                            { stage: 'produce', index: '04', label: '生成', meta: `${stats.media} 项媒体` },
+                            { stage: 'schedule', index: '05', label: '计划', meta: stats.pendingApprovals > 0 ? `${stats.pendingApprovals} 项待审批` : '安排发布' },
+                        ] as Array<{ stage: FlowStage; index: string; label: string; meta: string }>).map((item) => (
+                            <button
+                                key={item.stage}
+                                type="button"
+                                className="workbench-home__flow-step"
+                                onClick={() => openFlowStage(item.stage)}
+                            >
+                                <span>{item.index}</span>
+                                <strong>{item.label}</strong>
+                                <small>{item.meta}</small>
+                                <ArrowRight className="h-4 w-4" strokeWidth={1.7} />
+                            </button>
+                        ))}
+                    </section>
 
-                    <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                    {error && (
+                        <WorkbenchStatePanel state="error" title="工作台数据暂时不可用" description={error} onRetry={() => void loadStats()} />
+                    )}
+                    <section className="workbench-home__quick-task" aria-label="快速任务">
+                        <div>
+                            <span>QUICK TASK</span>
+                            <h2>告诉编辑台，这次要推进什么</h2>
+                        </div>
+                        <div className="workbench-home__quick-task-input">
+                            <input
+                                value={quickTask}
+                                onChange={(event) => setQuickTask(event.target.value)}
+                                onKeyDown={(event) => {
+                                    if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+                                        event.preventDefault();
+                                        submitQuickTask();
+                                    }
+                                }}
+                                placeholder="例如：根据刚收集的素材，整理一份短视频创作简报"
+                                aria-label="快速任务内容"
+                            />
+                            <button
+                                type="button"
+                                onClick={submitQuickTask}
+                                disabled={!quickTask.trim()}
+                                aria-label="转到创作"
+                            >
+                                <span>转到创作</span>
+                                <ArrowRight className="h-4 w-4" strokeWidth={1.8} />
+                            </button>
+                        </div>
+                    </section>
+
+                    <section>
+                        <div className="workbench-home__section-title">
+                            <span>PRODUCTION DESK</span>
+                            <h2>快速生产</h2>
+                        </div>
+                        <div className="grid gap-x-4 sm:grid-cols-2 xl:grid-cols-4">
                         <QuickAppButton
                             label="制作封面"
                             description="生成适合发布的视觉封面"
@@ -557,6 +634,7 @@ export function Home({ isActive = true, onNavigateToCoverStudio, onNavigateToGen
                             tintClassName="bg-amber-500/10 text-amber-700"
                             onClick={() => onNavigateToGenerationStudio?.('audio')}
                         />
+                        </div>
                     </section>
 
                     {pluginHomeWidgets.length > 0 && (
@@ -573,7 +651,10 @@ export function Home({ isActive = true, onNavigateToCoverStudio, onNavigateToGen
 
                     <section className="flex min-h-[310px] flex-col gap-3">
                         <div className="flex items-center justify-between gap-3">
-                            <h2 className="text-[15px] font-semibold text-text-primary">最近稿件</h2>
+                            <div className="workbench-home__section-title">
+                                <span>RECENT WORK</span>
+                                <h2>最近稿件</h2>
+                            </div>
                         </div>
                         {recentManuscripts.length > 0 ? (
                             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -586,31 +667,48 @@ export function Home({ isActive = true, onNavigateToCoverStudio, onNavigateToGen
                                 ))}
                             </div>
                         ) : (
-                            <div className="flex min-h-[220px] items-center justify-center rounded-xl border border-dashed border-border bg-surface-primary px-4 text-center text-[13px] text-text-tertiary">
-                                暂无稿件
-                            </div>
+                            <WorkbenchStatePanel state="empty" title="还没有稿件" description="从快速任务创建一份创作简报，或从灵感桌交接一个方向。" />
                         )}
                     </section>
 
                 </div>
 
-                <aside className="min-h-[520px] rounded-2xl border border-border bg-surface-primary p-5 shadow-sm xl:sticky xl:top-5 xl:self-start" aria-label="AI 建议">
+                {inspectorOpen && (
+                    <button
+                        type="button"
+                        className="workbench-home__inspector-backdrop"
+                        onClick={() => setInspectorOpen(false)}
+                        aria-label="关闭编辑建议"
+                    />
+                )}
+                <aside className={`workbench-home__inspector min-h-[520px] border-l border-border bg-surface-primary px-6 py-5 ${inspectorOpen ? 'is-open' : ''}`} aria-label="编辑建议">
                     <div className="flex items-center justify-between gap-3">
                         <div className="inline-flex items-center gap-2 text-[13px] font-semibold text-text-primary">
                             <Sparkles className="h-4 w-4 text-emerald-600" strokeWidth={1.8} />
-                            AI 建议
+                            今日批注
                         </div>
-                        <button
-                            type="button"
-                            onClick={() => sendAiSuggestion('看一下我当前的内容工作台，建议今天最值得推进的 3 件事。', '今天做什么')}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-surface-secondary hover:text-text-primary"
-                            title="询问 AI"
-                            aria-label="询问 AI"
-                        >
-                            <Send className="h-4 w-4" strokeWidth={1.8} />
-                        </button>
+                        <div className="flex items-center gap-1">
+                            <button
+                                type="button"
+                                onClick={() => sendAiSuggestion('看一下我当前的内容工作台，建议今天最值得推进的 3 件事。', '今天做什么')}
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-surface-secondary hover:text-text-primary"
+                                title="询问 AI"
+                                aria-label="询问 AI"
+                            >
+                                <Send className="h-4 w-4" strokeWidth={1.8} />
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setInspectorOpen(false)}
+                                className="workbench-home__inspector-close inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-surface-secondary hover:text-text-primary"
+                                title="关闭编辑建议"
+                                aria-label="关闭编辑建议"
+                            >
+                                <X className="h-4 w-4" strokeWidth={1.8} />
+                            </button>
+                        </div>
                     </div>
-                    <div className="mt-7 rounded-2xl bg-[linear-gradient(135deg,rgb(var(--color-accent-muted))_0%,rgb(var(--color-surface-secondary))_100%)] p-5">
+                    <div className="workbench-home__editorial-note mt-7 p-5">
                         <h2 className="text-[17px] font-semibold leading-6 tracking-[-0.02em] text-text-primary">今天先推进哪件事？</h2>
                         <p className="mt-3 text-[13px] leading-6 text-text-secondary">从最近稿件开始，整理结构、改写脚本或生成封面方向。</p>
                     </div>
@@ -659,7 +757,7 @@ export function Home({ isActive = true, onNavigateToCoverStudio, onNavigateToGen
                         onClick={() => sendAiSuggestion('我想继续推进内容创作，请先问我 3 个必要问题，然后给出下一步。', 'Ask anything')}
                         className="mt-5 flex h-11 w-full items-center justify-between rounded-xl bg-surface-secondary px-4 text-left text-[13px] font-medium text-text-tertiary transition-colors hover:bg-surface-tertiary hover:text-text-primary"
                     >
-                        <span>Ask anything...</span>
+                        <span>继续询问编辑台...</span>
                         <MessageSquareText className="h-4 w-4" strokeWidth={1.8} />
                     </button>
                 </aside>

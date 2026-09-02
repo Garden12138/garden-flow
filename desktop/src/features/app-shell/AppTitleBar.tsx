@@ -4,7 +4,7 @@ import {
   type ReactNode,
   type SetStateAction,
 } from 'react';
-import { Bell, Minus, Moon, PanelLeft, Search, Square, Sun, X } from 'lucide-react';
+import { Bell, ChevronDown, Clock3, Minus, Moon, PanelLeft, Plus, Search, Square, Sun, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { APP_BRAND } from '../../config/brand';
 import type { ThemeMode } from '../../config/theme';
@@ -27,9 +27,15 @@ type AppTitleBarProps = {
   enabled: boolean;
   platform: AppTitleBarPlatform;
   content: ReactNode;
+  stageIndex: string;
+  stageTitle: string;
+  activeSpaceName: string;
   isSidebarCollapsed: boolean;
   toggleSidebarCollapsed: () => void;
   openGlobalSearch: () => void;
+  openRunningTasks: () => void;
+  createMenuOpen: boolean;
+  toggleCreateMenu: () => void;
   notificationDrawerOpen: boolean;
   unreadNotificationCount: number;
   toggleNotificationDrawer: () => void;
@@ -43,9 +49,15 @@ export function AppTitleBar({
   enabled,
   platform,
   content,
+  stageIndex,
+  stageTitle,
+  activeSpaceName,
   isSidebarCollapsed,
   toggleSidebarCollapsed,
   openGlobalSearch,
+  openRunningTasks,
+  createMenuOpen,
+  toggleCreateMenu,
   notificationDrawerOpen,
   unreadNotificationCount,
   toggleNotificationDrawer,
@@ -103,22 +115,37 @@ export function AppTitleBar({
         >
           <PanelLeft className="w-[15px] h-[15px]" strokeWidth={1.7} />
         </button>
-        <button
-          type="button"
-          onClick={openGlobalSearch}
-          className="app-titlebar-sidebar-toggle"
-          title="搜索"
-          aria-label="搜索"
-          data-no-window-drag
-        >
-          <Search className="w-[15px] h-[15px]" strokeWidth={1.7} />
-        </button>
       </div>
       <div data-tauri-drag-region className="app-titlebar-title">
-        {content}
+        <span className="app-titlebar-stage-index">{stageIndex}</span>
+        <span className="app-titlebar-space-name">{activeSpaceName}</span>
+        <span className="app-titlebar-separator" aria-hidden="true">/</span>
+        <span className="app-titlebar-stage-title">{stageTitle}</span>
+        {content && <span className="app-titlebar-context-title">{content}</span>}
       </div>
       <div className="app-titlebar-actions">
         {extraActions}
+        <button
+          type="button"
+          onClick={openGlobalSearch}
+          className="app-titlebar-search"
+          title={t('workbench.search')}
+          aria-label={`${t('workbench.search')}，Command K`}
+          data-no-window-drag
+        >
+          <Search className="h-[14px] w-[14px]" strokeWidth={1.75} />
+          <span>{t('workbench.search')}</span>
+          <kbd>⌘K</kbd>
+        </button>
+        <button
+          type="button"
+          onClick={openRunningTasks}
+          className="app-titlebar-button"
+          title={t('workbench.runningTasks')}
+          aria-label={t('workbench.runningTasks')}
+        >
+          <Clock3 className="h-[14px] w-[14px]" strokeWidth={1.75} />
+        </button>
         <button
           type="button"
           onClick={toggleNotificationDrawer}
@@ -132,6 +159,18 @@ export function AppTitleBar({
               {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
             </span>
           )}
+        </button>
+        <button
+          type="button"
+          onClick={toggleCreateMenu}
+          className="app-titlebar-create-button"
+          aria-haspopup="menu"
+          aria-expanded={createMenuOpen}
+          data-no-window-drag
+        >
+          <Plus className="h-[14px] w-[14px]" strokeWidth={1.9} />
+          <span>{t('workbench.create')}</span>
+          <ChevronDown className={clsx('h-3 w-3 transition-transform', createMenuOpen && 'rotate-180')} strokeWidth={1.8} />
         </button>
         <button
           type="button"

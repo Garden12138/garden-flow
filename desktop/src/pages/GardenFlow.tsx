@@ -352,8 +352,8 @@ function GardenFlowImageGenerationPlaceholder({
             ? overallProgress
             : 0;
     const barTone = isMediaJobTerminal(job.status) && !isMediaJobSuccessful(job.status)
-        ? 'bg-brand-red'
-        : 'bg-[linear-gradient(90deg,rgb(var(--color-brand-red)/1)_0%,rgb(var(--color-accent-primary)/1)_100%)]';
+        ? 'bg-status-error'
+        : 'bg-[linear-gradient(90deg,rgb(var(--color-brand-iris)/1)_0%,rgb(var(--color-brand-leaf)/1)_100%)]';
 
     return (
         <div className="relative aspect-square min-w-0 overflow-hidden rounded-[12px] border border-border bg-surface-secondary">
@@ -378,7 +378,7 @@ function GardenFlowImageGenerationPlaceholder({
                     />
                     <div
                         className="absolute -left-[18%] top-[-20%] h-[58%] w-[64%] rounded-full blur-[22px] animate-[pulse_2.1s_ease-in-out_infinite]"
-                        style={{ background: 'radial-gradient(circle, rgb(var(--color-brand-red) / 0.28) 0%, rgb(var(--color-brand-red) / 0.12) 34%, rgb(var(--color-brand-red) / 0) 74%)' }}
+                        style={{ background: 'radial-gradient(circle, rgb(var(--color-brand-iris) / 0.28) 0%, rgb(var(--color-brand-iris) / 0.12) 34%, rgb(var(--color-brand-iris) / 0) 74%)' }}
                     />
                     <div
                         className="absolute right-[-18%] top-[12%] h-[50%] w-[54%] rounded-full blur-[20px] animate-[pulse_1.7s_ease-in-out_infinite]"
@@ -386,12 +386,12 @@ function GardenFlowImageGenerationPlaceholder({
                     />
                     <div
                         className="absolute bottom-[-18%] left-[16%] h-[48%] w-[54%] rounded-full blur-[22px] animate-[pulse_2.4s_ease-in-out_infinite]"
-                        style={{ background: 'radial-gradient(circle, rgb(var(--color-brand-red) / 0.18) 0%, rgb(var(--color-brand-red) / 0.08) 34%, rgb(var(--color-brand-red) / 0) 76%)' }}
+                        style={{ background: 'radial-gradient(circle, rgb(var(--color-brand-leaf) / 0.2) 0%, rgb(var(--color-brand-leaf) / 0.08) 34%, rgb(var(--color-brand-leaf) / 0) 76%)' }}
                     />
                     <div
                         className="absolute inset-0 opacity-90 animate-[pulse_1.35s_linear_infinite]"
                         style={{
-                            backgroundImage: 'radial-gradient(circle, rgb(var(--color-brand-red) / 0.30) 1px, transparent 1.5px)',
+                            backgroundImage: 'radial-gradient(circle, rgb(var(--color-brand-gold) / 0.30) 1px, transparent 1.5px)',
                             backgroundSize: '16px 16px',
                             maskImage: 'linear-gradient(180deg, transparent 2%, rgba(0,0,0,0.86) 24%, rgba(0,0,0,0.94) 62%, transparent 98%)',
                             WebkitMaskImage: 'linear-gradient(180deg, transparent 2%, rgba(0,0,0,0.86) 24%, rgba(0,0,0,0.94) 62%, transparent 98%)',
@@ -400,7 +400,7 @@ function GardenFlowImageGenerationPlaceholder({
                     <div
                         className="absolute inset-0 opacity-70 animate-[pulse_0.9s_ease-in-out_infinite]"
                         style={{
-                            background: 'linear-gradient(110deg, transparent 12%, rgb(var(--color-surface-primary) / 0.24) 34%, rgb(var(--color-brand-red) / 0.16) 50%, rgb(var(--color-surface-primary) / 0.18) 63%, transparent 82%)',
+                            background: 'linear-gradient(110deg, transparent 12%, rgb(var(--color-surface-primary) / 0.24) 34%, rgb(var(--color-brand-iris) / 0.16) 50%, rgb(var(--color-surface-primary) / 0.18) 63%, transparent 82%)',
                             mixBlendMode: 'screen',
                         }}
                     />
@@ -438,7 +438,7 @@ function GardenFlowImageGenerationProgressPanel({
                                     {failed ? '生成失败' : `已生成 ${completed}/${expected} 张 · ${progress}%`}
                                 </div>
                             </div>
-                            <div className={clsx('shrink-0 text-[11px] font-medium', failed ? 'text-brand-red' : 'text-text-tertiary')}>
+                            <div className={clsx('shrink-0 text-[11px] font-medium', failed ? 'text-status-error' : 'text-text-tertiary')}>
                                 {failed ? '失败' : '生成中'}
                             </div>
                         </div>
@@ -1074,7 +1074,7 @@ export function GardenFlow({
         ? selectedAdvisor.name
         : activeAiSurface === 'room' && selectedRoom
             ? selectedRoom.name || '未命名团队'
-            : `${GARDENFLOW_DISPLAY_NAME} 自媒体AI工作台`;
+            : '从一份创作简报开始';
     const activeWelcomeIconSrc = activeAiSurface === 'advisor' && selectedAdvisor && isRenderableAdvisorAvatar(selectedAdvisor)
         ? resolveAssetUrl(selectedAdvisor.avatar)
         : GARDENFLOW_WELCOME_ICON_SRC;
@@ -2497,7 +2497,7 @@ export function GardenFlow({
     const previewPaneVisible = Boolean(previewTarget && (!previewSidebarCollapsed || isPreviewSidebarClosing));
 
     return (
-        <div className="h-full min-h-0 flex overflow-hidden">
+        <div className="workbench-compose h-full min-h-0 flex overflow-hidden">
             <div className={clsx(
                 'relative min-w-0 overflow-hidden transition-[flex-basis,max-width] duration-[280ms] ease-[cubic-bezier(0.22,1,0.36,1)]',
                 previewPaneVisible ? 'basis-[46%] max-w-[780px] shrink-0 border-r border-border/70' : 'flex-1'
@@ -2547,7 +2547,10 @@ export function GardenFlow({
                                         welcomeShortcuts={welcomeShortcuts}
                                         embeddedTheme="auto"
                                         welcomeTitle={activeWelcomeTitle}
-                                        welcomeSubtitle=""
+                                        welcomeSubtitle={activeAiSurface === 'gardenflow'
+                                            ? '把目标、受众、素材和交付形式放在一起，再开始创作。'
+                                            : ''}
+                                        emptyStateVariant={activeAiSurface === 'gardenflow' ? 'brief' : 'default'}
                                         welcomeIconSrc={activeWelcomeAvatarText ? undefined : activeWelcomeIconSrc}
                                         welcomeAvatarText={activeWelcomeAvatarText}
                                         welcomeIconVariant={activeWelcomeIconVariant}

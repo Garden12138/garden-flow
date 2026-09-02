@@ -992,7 +992,7 @@ export function GardenFlowHistorySidebarSection({
                         }}
                         aria-pressed={activeTab === tab.id}
                         className={clsx(
-                            'relative -mb-px h-8 px-3 text-[12px] font-bold transition-[background-color,border-color,color,box-shadow,transform]',
+                            'relative -mb-px h-8 whitespace-nowrap px-2 text-[12px] font-bold transition-[background-color,border-color,color,box-shadow,transform]',
                             activeTab === tab.id
                                 ? 'rounded-t-lg border border-border/70 border-b-surface-primary bg-surface-primary text-text-primary shadow-[0_-1px_0_rgba(255,255,255,0.7),0_2px_8px_rgba(15,23,42,0.04)]'
                                 : 'rounded-t-lg border border-transparent text-text-tertiary hover:bg-surface-secondary/60 hover:text-text-secondary'

@@ -1,3 +1,4 @@
+import { GARDENFLOW_ICON_32_DATA_URL } from '../brandTheme.generated.js';
 import { sendContentMessage } from './dynamicContentInjection.js';
 import { getStoredMap, setStoredMap } from './storage.js';
 import { getOwningSessionId, mightHaveActiveTabLease, subscribeActiveTabLeaseChanges } from './tabLeaseManager.js';
@@ -314,8 +315,7 @@ function isBadgeFaviconUrl(value) {
 }
 
 function defaultFaviconDataUrl() {
-  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#000000"/><text x="16" y="21" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#e60012">X</text></svg>';
-  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+  return GARDENFLOW_ICON_32_DATA_URL;
 }
 
 function clamp(value, min, max) {

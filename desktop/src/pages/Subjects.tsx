@@ -3930,7 +3930,7 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
     }
 
     return (
-        <div className="flex h-full min-h-0 flex-col bg-white">
+        <div className="workbench-resources workbench-resources--assets flex h-full min-h-0 flex-col bg-white">
             <div className={clsx(isModalVariant ? 'px-5 pt-4 pb-3' : 'px-8 pt-6 pb-4')}>
                 <div className="flex items-center gap-3">
                     {!isModalVariant && onReturnHome && (

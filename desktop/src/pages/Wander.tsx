@@ -2137,8 +2137,30 @@ export function Wander({ isActive = true, onExecutionStateChange, onTitleBarCont
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-surface-primary">
+    <div className="workbench-ideation flex h-full min-h-0 flex-col overflow-hidden bg-surface-primary">
       <div className="flex min-h-0 flex-1">
+        <aside className="workbench-ideation__tray">
+          <div className="workbench-ideation__tray-heading">
+            <span>02 · IDEATE</span>
+            <h2>素材托盘</h2>
+            <p>把人物、品牌与评论线索放在这里，候选方向会保留来源。</p>
+          </div>
+          <div className="workbench-ideation__tray-content">
+            {selectedDetailSubjectRefs.length > 0 ? (
+              selectedDetailSubjectRefs.map((item, index) => (
+                <div key={`${item.id || item.name}:${index}`} className="workbench-ideation__tray-item">
+                  <span>{String(index + 1).padStart(2, '0')}</span>
+                  <strong>{item.name || '未命名资产'}</strong>
+                </div>
+              ))
+            ) : (
+              <div className="workbench-ideation__tray-empty">
+                <Sparkles className="h-5 w-5" strokeWidth={1.7} />
+                <p>还没有固定素材。生成方向时可选择资产，或从评论线索开始。</p>
+              </div>
+            )}
+          </div>
+        </aside>
         {renderTopicList()}
         {renderTopicDetail()}
       </div>

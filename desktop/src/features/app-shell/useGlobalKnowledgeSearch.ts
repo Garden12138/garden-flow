@@ -115,7 +115,7 @@ export function useGlobalKnowledgeSearch(onNavigate: (view: ViewType) => void) {
   useEffect(() => {
     const handleGlobalSearchShortcut = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
-      if (!(event.metaKey || event.ctrlKey) || event.altKey || key !== 'f') return;
+      if (!(event.metaKey || event.ctrlKey) || event.altKey || key !== 'k') return;
 
       event.preventDefault();
       event.stopPropagation();

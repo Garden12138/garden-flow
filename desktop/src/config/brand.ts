@@ -47,8 +47,12 @@ export type AppBrandThemeModeTokens = Partial<{
   info: string;
   infoBg: string;
   infoText: string;
-  brandRed: string;
-  brandRedText: string;
+  brandIris: string;
+  brandLeaf: string;
+  brandGold: string;
+  accentSecondary: string;
+  accentSecondaryMuted: string;
+  accentGold: string;
   appShellBackground: string;
   sidebarBackground: string;
   sidebarItemColor: string;
@@ -93,7 +97,7 @@ export const APP_BRAND = {
   windowTitle: String(config.windowTitle || config.displayName || 'GardenFlow'),
   htmlTitle: String(config.htmlTitle || config.windowTitle || config.displayName || 'GardenFlow'),
   aiDisplayName: String(config.aiDisplayName || config.displayName || 'GardenFlow'),
-  logoSrc: resolveRuntimeAssetUrl(String(config.logoSrc || 'branding/gardenflow-mark.svg')),
+  logoSrc: resolveRuntimeAssetUrl(String(config.logoSrc || 'branding/app-icon.png')),
   tagline: String(config.tagline || ''),
   visibleSettingsTabs: Array.isArray(config.visibleSettingsTabs)
     ? config.visibleSettingsTabs.map((tab) => String(tab || '').trim()).filter(Boolean)

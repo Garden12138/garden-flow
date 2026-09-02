@@ -17,6 +17,7 @@
     "test": "pnpm --dir desktop test",
     "build": "pnpm --dir desktop build:nosign",
     "build:plugin": "pnpm --dir Plugin build",
+    "generate:brand-assets": "python3 scripts/generate-brand-assets.py",
     "migrate:data": "node desktop/scripts/gardenflow-data-migration.cjs",
     "sync:brand": "node scripts/sync-brand.cjs",
     "check:brand": "node scripts/check-brand.cjs"

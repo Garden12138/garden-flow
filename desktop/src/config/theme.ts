@@ -46,8 +46,12 @@ const TOKEN_TO_CSS_VAR: Record<keyof AppBrandThemeModeTokens, string> = {
   info: '--color-info',
   infoBg: '--color-info-bg',
   infoText: '--color-info-text',
-  brandRed: '--color-brand-red',
-  brandRedText: '--color-brand-red-text',
+  brandIris: '--color-brand-iris',
+  brandLeaf: '--color-brand-leaf',
+  brandGold: '--color-brand-gold',
+  accentSecondary: '--color-accent-secondary',
+  accentSecondaryMuted: '--color-accent-secondary-muted',
+  accentGold: '--color-accent-gold',
   appShellBackground: '--app-shell-background',
   sidebarBackground: '--app-sidebar-background',
   sidebarItemColor: '--app-sidebar-item-color',
@@ -196,20 +200,31 @@ function customTokensForMode(mode: ThemeMode, preference: CustomThemePreference)
   const accent = parseHexColor(preference.accentHex);
   if (!accent) return null;
   if (mode === 'dark') {
+    const raisedAccent = mixRgb(accent, [255, 255, 255], 0.22);
+    const hoverAccent = mixRgb(accent, [255, 255, 255], 0.36);
     return {
-      accentPrimary: rgbToToken(mixRgb(accent, [255, 255, 255], 0.22)),
-      accentHover: rgbToToken(mixRgb(accent, [255, 255, 255], 0.36)),
+      accentPrimary: rgbToToken(raisedAccent),
+      accentHover: rgbToToken(hoverAccent),
       accentMuted: rgbToToken(mixRgb(accent, [0, 0, 0], 0.62)),
-      brandRed: rgbToToken(mixRgb(accent, [255, 255, 255], 0.22)),
-      brandRedText: rgbToToken(mixRgb(accent, [255, 255, 255], 0.58)),
+      accentBorder: rgbToToken(raisedAccent),
+      focusRing: rgbToToken(raisedAccent),
+      primary: rgbToToken(accent),
+      primaryHover: rgbToToken(hoverAccent),
+      primaryPressed: rgbToToken(mixRgb(accent, [0, 0, 0], 0.18)),
+      brandIris: rgbToToken(raisedAccent),
     };
   }
+  const hoverAccent = mixRgb(accent, [0, 0, 0], 0.18);
   return {
     accentPrimary: rgbToToken(accent),
-    accentHover: rgbToToken(mixRgb(accent, [0, 0, 0], 0.18)),
+    accentHover: rgbToToken(hoverAccent),
     accentMuted: rgbToToken(mixRgb(accent, [255, 255, 255], 0.84)),
-    brandRed: rgbToToken(accent),
-    brandRedText: rgbToToken(mixRgb(accent, [0, 0, 0], 0.22)),
+    accentBorder: rgbToToken(accent),
+    focusRing: rgbToToken(accent),
+    primary: rgbToToken(accent),
+    primaryHover: rgbToToken(hoverAccent),
+    primaryPressed: rgbToToken(mixRgb(accent, [0, 0, 0], 0.34)),
+    brandIris: rgbToToken(accent),
   };
 }
 

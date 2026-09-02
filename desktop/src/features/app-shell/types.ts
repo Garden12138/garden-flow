@@ -1,8 +1,9 @@
 import type { AuthoringTaskHints } from '../../utils/gardenflowAuthoring';
 
-export type ViewType = 'skills' | 'knowledge' | 'settings' | 'archives' | 'wander' | 'gardenflow' | 'media-library' | 'cover-studio' | 'generation-studio' | 'subjects' | 'automation' | 'approval';
+export type ViewType = 'home' | 'skills' | 'knowledge' | 'settings' | 'archives' | 'wander' | 'gardenflow' | 'media-library' | 'cover-studio' | 'generation-studio' | 'subjects' | 'automation' | 'approval';
 export type ImmersiveMode = false | 'theme' | 'dark';
 export type TeamSection = 'team-workbench' | 'members';
+export type FlowStage = 'home' | 'collect' | 'ideate' | 'compose' | 'produce' | 'library' | 'schedule';
 
 export type SettingsNavigationTarget = {
   tab?: 'general' | 'ai' | 'platforms' | 'tools' | 'profile' | 'remote' | 'experimental';
@@ -17,6 +18,11 @@ export type GardenFlowNavigationAction = {
 };
 
 export type AppIntent =
+  | {
+      type: 'flow.open';
+      stage: FlowStage;
+      handoff?: FlowHandoff;
+    }
   | {
       type: 'settings.open';
       tab?: SettingsNavigationTarget['tab'];
@@ -168,6 +174,16 @@ export interface GenerationAssetReference {
   absolutePath?: string;
   previewUrl?: string;
 }
+
+export type FlowHandoff =
+  | {
+      kind: 'chat-draft';
+      message: PendingChatMessage;
+    }
+  | {
+      kind: 'generation';
+      intent: GenerationIntent;
+    };
 
 export interface GenerationAssetPickerRequest {
   mediaKind: 'image' | 'audio';

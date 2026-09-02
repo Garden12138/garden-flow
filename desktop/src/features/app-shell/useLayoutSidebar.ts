@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPoi
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'gardenflow:layout-sidebar-collapsed:v1';
 const SIDEBAR_WIDTH_STORAGE_KEY = 'gardenflow:layout-sidebar-width:v1';
-const SIDEBAR_DEFAULT_WIDTH = 320;
+export const SIDEBAR_DEFAULT_WIDTH = 300;
 const SIDEBAR_MIN_WIDTH = 240;
 const SIDEBAR_MAX_WIDTH = 460;
 const SIDEBAR_CONTENT_ANIMATION_MS = 280;
@@ -12,7 +12,7 @@ function readInitialSidebarCollapsed(): boolean {
   return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === 'true';
 }
 
-function clampSidebarWidth(width: number): number {
+export function clampSidebarWidth(width: number): number {
   return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, Math.round(width)));
 }
 

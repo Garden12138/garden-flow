@@ -5,8 +5,11 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: #F7F7F7;
-  color: #171717;
+  background:
+    radial-gradient(circle at 88% -8%, rgb(75 50 105 / 0.11), transparent 38%),
+    radial-gradient(circle at 8% 108%, rgb(85 116 109 / 0.11), transparent 42%),
+    var(--gf-paper);
+  color: var(--gf-ink);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 
@@ -19,9 +22,10 @@ body {
 .page-header,
 .panel,
 .status-panel {
-  border: 1px solid #DADADA;
+  border: 1px solid var(--gf-border);
   border-radius: 8px;
-  background: #fff;
+  background: color-mix(in srgb, var(--gf-surface) 96%, transparent);
+  box-shadow: 0 12px 32px rgb(46 49 66 / 0.06);
 }
 
 .page-header {
@@ -63,7 +67,7 @@ h2 {
 
 p {
   margin-top: 4px;
-  color: #737373;
+  color: var(--gf-text-tertiary);
   font-size: 13px;
 }
 
@@ -92,7 +96,7 @@ p {
 
 .field span,
 .switch-row {
-  color: #404040;
+  color: var(--gf-text-secondary);
   font-size: 12px;
   font-weight: 700;
 }
@@ -102,18 +106,18 @@ input[type="url"],
 input[type="number"] {
   width: 100%;
   min-height: 38px;
-  border: 1px solid #d4d4d4;
+  border: 1px solid var(--gf-border);
   border-radius: 7px;
-  background: #fbfbfb;
-  color: #171717;
+  background: var(--gf-surface);
+  color: var(--gf-ink);
   padding: 8px 10px;
   font: inherit;
   font-size: 13px;
 }
 
 input:focus {
-  border-color: #E60012;
-  outline: 2px solid rgba(15, 118, 110, 0.14);
+  border-color: var(--gf-iris);
+  outline: 2px solid rgb(75 50 105 / 0.14);
 }
 
 .switch-row {
@@ -125,7 +129,7 @@ input:focus {
 .switch-row input {
   width: 16px;
   height: 16px;
-  accent-color: #E60012;
+  accent-color: var(--gf-iris);
 }
 
 .actions {
@@ -136,10 +140,10 @@ input:focus {
 
 .btn {
   min-height: 36px;
-  border: 1px solid #d4d4d4;
+  border: 1px solid var(--gf-border);
   border-radius: 7px;
-  background: #fff;
-  color: #171717;
+  background: var(--gf-surface);
+  color: var(--gf-ink);
   padding: 8px 13px;
   font: inherit;
   font-size: 13px;
@@ -148,19 +152,19 @@ input:focus {
 }
 
 .btn:hover:not(:disabled) {
-  border-color: #E60012;
-  color: #C2000F;
+  border-color: var(--gf-iris);
+  color: var(--gf-iris);
 }
 
 .btn.primary {
-  border-color: #E60012;
-  background: #E60012;
+  border-color: var(--gf-iris);
+  background: var(--gf-iris);
   color: #FFFFFF;
 }
 
 .btn.ghost {
-  background: #fafafa;
-  color: #525252;
+  background: var(--gf-surface-secondary);
+  color: var(--gf-text-secondary);
 }
 
 .btn:disabled {
@@ -170,7 +174,7 @@ input:focus {
 
 .status-panel {
   padding: 12px 14px;
-  color: #525252;
+  color: var(--gf-text-secondary);
   font-size: 13px;
   line-height: 1.45;
 }
@@ -178,13 +182,13 @@ input:focus {
 .status-panel.ok {
   border-color: #bbf7d0;
   background: #f0fdf4;
-  color: #047857;
+  color: var(--gf-success);
 }
 
 .status-panel.error {
   border-color: #fecaca;
   background: #fef2f2;
-  color: #b91c1c;
+  color: var(--gf-danger);
 }
 
 .hidden {

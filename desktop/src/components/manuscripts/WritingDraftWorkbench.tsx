@@ -1,5 +1,5 @@
-import { lazy, Suspense, useEffect, useMemo } from 'react';
-import { AlertTriangle, Check, Loader2, X } from 'lucide-react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, Check, Link2, ListTree, Loader2, Sparkles, X } from 'lucide-react';
 import { CodeMirrorEditor } from './CodeMirrorEditor';
 
 const ChatWorkspace = lazy(async () => ({
@@ -86,6 +86,7 @@ export function WritingDraftWorkbench({
   onRejectWriteProposal,
   onAiWorkspaceModeChange,
 }: WritingDraftWorkbenchProps) {
+  const [inspectorTab, setInspectorTab] = useState<'ai' | 'outline' | 'references' | 'results'>('ai');
   const aiWorkspaceMode = useMemo<AiWorkspaceMode>(() => (
     { id: 'manuscript-editing', label: '稿件编辑' }
   ), []);
@@ -106,9 +107,24 @@ export function WritingDraftWorkbench({
     mode: aiWorkspaceMode.id,
     initialContext: editorChatMessageContext,
   }), [aiWorkspaceMode.id, editorChatMessageContext, editorSessionMetadata]);
+  const outlineItems = useMemo(() => editorBody
+    .split('\n')
+    .map((line, index) => {
+      const match = /^(#{1,4})\s+(.+)$/.exec(line.trim());
+      return match ? { line: index + 1, level: match[1].length, title: match[2].trim() } : null;
+    })
+    .filter((item): item is { line: number; level: number; title: string } => Boolean(item)), [editorBody]);
+  const referenceItems = useMemo(() => {
+    const matches = Array.from(editorBody.matchAll(/\[([^\]]+)\]\(([^)]+)\)/g));
+    return matches.map((match, index) => ({
+      id: `${index}:${match.index || 0}`,
+      label: String(match[1] || '引用').trim(),
+      href: String(match[2] || '').trim(),
+    }));
+  }, [editorBody]);
 
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_420px] bg-surface-primary text-text-primary">
+    <div className="workbench-manuscript grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_420px] bg-surface-primary text-text-primary">
       <section className="relative min-h-0 border-r border-border bg-surface-primary">
         <div className="flex h-full min-h-0 flex-col">
           {(editorBodyDirty || isSavingEditorBody || writeProposal) ? (
@@ -162,10 +178,28 @@ export function WritingDraftWorkbench({
         </div>
       </section>
 
-      <aside className="min-h-0 bg-surface-secondary/55">
+      <aside className="workbench-manuscript__inspector min-h-0 bg-surface-secondary/55">
         <div className="flex h-full min-h-0 flex-col">
+          <nav className="workbench-manuscript__tabs" aria-label="稿件检查器">
+            {([
+              ['ai', Sparkles, 'AI'],
+              ['outline', ListTree, '大纲'],
+              ['references', Link2, '引用'],
+              ['results', Check, '结果'],
+            ] as const).map(([tab, Icon, label]) => (
+              <button
+                key={tab}
+                type="button"
+                data-active={inspectorTab === tab ? 'true' : 'false'}
+                onClick={() => setInspectorTab(tab)}
+              >
+                <Icon className="h-3.5 w-3.5" strokeWidth={1.7} />
+                {label}
+              </button>
+            ))}
+          </nav>
           <div className="min-h-0 flex-1 overflow-hidden">
-            {editorChatSessionId && editorChatReady ? (
+            {inspectorTab === 'ai' && editorChatSessionId && editorChatReady ? (
               <Suspense fallback={<div className="flex h-full items-center justify-center text-text-tertiary">AI 会话加载中...</div>}>
                 <ChatWorkspace
                   isActive={isActive}
@@ -183,7 +217,7 @@ export function WritingDraftWorkbench({
                   fixedSessionTaskHints={editorChatTaskHints}
                 />
               </Suspense>
-            ) : (
+            ) : inspectorTab === 'ai' ? (
               <div className="flex h-full items-center justify-center px-6 text-center">
                 <div>
                   <Loader2 className="mx-auto h-5 w-5 animate-spin text-accent-primary/70" />
@@ -191,6 +225,34 @@ export function WritingDraftWorkbench({
                     {editorChatSessionId ? '正在同步稿件上下文...' : '正在初始化 AI 会话...'}
                   </div>
                 </div>
+              </div>
+            ) : inspectorTab === 'outline' ? (
+              <div className="workbench-manuscript__list">
+                <h2>稿件大纲</h2>
+                {outlineItems.length > 0 ? outlineItems.map((item) => (
+                  <div key={`${item.line}:${item.title}`} style={{ paddingLeft: `${(item.level - 1) * 12}px` }}>
+                    <span>{String(item.line).padStart(2, '0')}</span>
+                    <strong>{item.title}</strong>
+                  </div>
+                )) : <p>添加 Markdown 标题后，大纲会在这里实时出现。</p>}
+              </div>
+            ) : inspectorTab === 'references' ? (
+              <div className="workbench-manuscript__list">
+                <h2>正文引用</h2>
+                {referenceItems.length > 0 ? referenceItems.map((item) => (
+                  <div key={item.id}>
+                    <Link2 className="h-3.5 w-3.5" strokeWidth={1.7} />
+                    <span className="min-w-0">
+                      <strong>{item.label}</strong>
+                      <small>{item.href}</small>
+                    </span>
+                  </div>
+                )) : <p>正文中的 Markdown 链接会汇总到这里。</p>}
+              </div>
+            ) : (
+              <div className="workbench-manuscript__list">
+                <h2>生成结果</h2>
+                <p>在 AI 页签请求标题、段落或封面方向；待审修改会固定显示在编辑区右上角。</p>
               </div>
             )}
           </div>

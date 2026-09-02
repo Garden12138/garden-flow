@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { GARDENFLOW_NAVIGATE_EVENT } from '../../notifications/types';
-import type { AppIntent, AppNavigateEventDetail, GenerationIntent, GardenFlowNavigationAction, SettingsNavigationTarget, ViewType } from './types';
+import type { AppIntent, AppNavigateEventDetail, GenerationIntent, GardenFlowNavigationAction, PendingChatMessage, SettingsNavigationTarget, ViewType } from './types';
+import { resolveFlowOpen } from '../workbench/navigation';
 
 function recordFromUnknown(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -71,6 +72,7 @@ type UseGlobalIntentRouterParams = {
   setGardenFlowNavigationAction: (value: GardenFlowNavigationAction | null) => void;
   setApprovalTargetDocketId: (value: string) => void;
   setPendingGenerationIntent: (value: GenerationIntent | null) => void;
+  navigateToGardenFlow: (message: PendingChatMessage) => void;
 };
 
 export function useGlobalIntentRouter({
@@ -81,11 +83,27 @@ export function useGlobalIntentRouter({
   setGardenFlowNavigationAction,
   setApprovalTargetDocketId,
   setPendingGenerationIntent,
+  navigateToGardenFlow,
 }: UseGlobalIntentRouterParams) {
   useEffect(() => {
     const handleNavigate = (event: Event) => {
       const intent = normalizeNavigateIntent((event as CustomEvent<AppNavigateEventDetail>).detail);
       if (!intent) return;
+
+      if (intent.type === 'flow.open') {
+        const resolved = resolveFlowOpen(intent.stage, intent.handoff);
+        if (resolved.chatMessage) {
+          navigateToGardenFlow(resolved.chatMessage);
+          return;
+        }
+        if (resolved.generationIntent) {
+          setPendingGenerationIntent(resolved.generationIntent);
+          navigateToView(resolved.view);
+          return;
+        }
+        navigateToView(resolved.view);
+        return;
+      }
 
       if (intent.type === 'settings.open') {
         setSettingsNavigationTarget({
@@ -165,6 +183,7 @@ export function useGlobalIntentRouter({
     };
   }, [
     navigateToView,
+    navigateToGardenFlow,
     setActiveManuscriptEditorFile,
     setApprovalTargetDocketId,
     setPendingGenerationIntent,

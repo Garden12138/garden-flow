@@ -2384,7 +2384,7 @@ export function Knowledge({ onNavigateToGardenFlow, isEmbedded = false, isActive
     }
 
     return (
-        <div className="flex h-full flex-col">
+        <div className="workbench-resources workbench-resources--knowledge flex h-full flex-col">
             <div
                 className={clsx(
                     'z-30',

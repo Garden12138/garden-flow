@@ -1,9 +1,8 @@
 import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
-import { MessageSquare, Settings as SettingsIcon, Folder, Dices, Pencil, ChevronDown, Sun, Moon, AlertCircle, Bell, Clock3, Edit, BookOpenText, Trash2, Crown, BadgeCheck, X, Loader2, ExternalLink, RefreshCw, Gift, Monitor, Box, ShieldCheck, Coins, Headphones, Sparkles } from 'lucide-react';
+import { Settings as SettingsIcon, Folder, Dices, Pencil, ChevronDown, Sun, Moon, AlertCircle, Bell, Clock3, Edit, BookOpenText, Trash2, Crown, BadgeCheck, X, Loader2, ExternalLink, RefreshCw, Gift, Monitor, Box, ShieldCheck, Coins, Headphones, Sparkles, Plus } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { ImmersiveMode, ViewType } from '../features/app-shell/types';
 import { NotificationCenterDrawer } from './NotificationCenterDrawer';
-import { APP_BRAND } from '../config/brand';
 import { useI18n, type I18nKey } from '../i18n';
 import { selectNotificationUnreadCount, useNotificationStore } from '../notifications/store';
 import { AppGlobalSearchOverlay } from '../features/app-shell/AppGlobalSearchOverlay';
@@ -20,6 +19,7 @@ import { useLayoutTheme } from '../features/app-shell/useLayoutTheme';
 import { ENTITLEMENTS } from '../features/membership/entitlementKeys';
 import { useMembership } from '../features/membership/useMembership';
 import { asRecord, resolveFounderSponsorState, valueContainsFounder } from '../utils/membership';
+import { flowStageForView, WORKBENCH_NAVIGATION, type WorkbenchNavigationItem } from '../features/workbench/navigation';
 
 interface LayoutProps {
   children: ReactNode;
@@ -34,26 +34,51 @@ interface LayoutProps {
   renderTitleBarActions?: (context: { currentView: ViewType }) => ReactNode;
 }
 
-type SidebarNavItem = {
-  key: string;
-  view: ViewType;
+type SidebarNavItem = WorkbenchNavigationItem & {
   labelKey: I18nKey;
-  icon: typeof MessageSquare;
-  gardenflowAction?: 'new';
-  settingsTab?: 'general' | 'ai' | 'platforms' | 'tools' | 'profile' | 'remote' | 'experimental';
-  primary?: boolean;
+  icon: typeof Sparkles;
 };
 
-const NAV_ITEMS: SidebarNavItem[] = [
-  { key: 'new-chat', view: 'gardenflow', labelKey: 'nav.newChat', icon: Edit, gardenflowAction: 'new', primary: true },
-  { key: 'search', view: 'knowledge', labelKey: 'nav.search', icon: BookOpenText, primary: true },
-  { key: 'assets', view: 'subjects', labelKey: 'nav.assets', icon: Folder, primary: true },
-  { key: 'automation', view: 'automation', labelKey: 'nav.automation', icon: Clock3, primary: true },
-  { key: 'free-creation', view: 'generation-studio', labelKey: 'nav.home', icon: Pencil },
-  { key: 'wander', view: 'wander', labelKey: 'nav.wander', icon: Dices },
-  // { id: 'archives', label: '档案', icon: Archive },
-  // { id: 'skills', label: '技能库', icon: Lightbulb },
-];
+const NAV_ICONS: Record<WorkbenchNavigationItem['key'], typeof Sparkles> = {
+  workbench: Sparkles,
+  collect: BookOpenText,
+  ideate: Dices,
+  compose: Edit,
+  produce: Pencil,
+  assets: Folder,
+  media: Box,
+  schedule: Clock3,
+};
+
+const NAV_ITEMS: SidebarNavItem[] = WORKBENCH_NAVIGATION.map((item) => ({
+  ...item,
+  labelKey: item.labelKey,
+  icon: NAV_ICONS[item.key],
+}));
+
+const STAGE_INDEX: Partial<Record<ViewType, string>> = {
+  home: 'TODAY',
+  knowledge: '01 · COLLECT',
+  wander: '02 · IDEATE',
+  gardenflow: '03 · COMPOSE',
+  'generation-studio': '04 · PRODUCE',
+  subjects: 'LIBRARY',
+  'media-library': 'LIBRARY',
+  automation: '05 · SCHEDULE',
+  settings: 'SYSTEM',
+  approval: 'REVIEW',
+};
+
+const STAGE_SUMMARY_KEYS: Partial<Record<ViewType, I18nKey>> = {
+  home: 'workbench.stage.home.summary',
+  knowledge: 'workbench.stage.collect.summary',
+  wander: 'workbench.stage.ideate.summary',
+  gardenflow: 'workbench.stage.compose.summary',
+  'generation-studio': 'workbench.stage.produce.summary',
+  subjects: 'workbench.stage.assets.summary',
+  'media-library': 'workbench.stage.media.summary',
+  automation: 'workbench.stage.schedule.summary',
+};
 
 const FOUNDER_SPONSOR_PRODUCT_ID = '827c5de5-c7b2-44df-b5c5-2b8b53eeb6ab';
 const FOUNDER_SPONSOR_POLL_INTERVAL_MS = 3000;
@@ -264,6 +289,7 @@ export function Layout({ children, currentView, onNavigate, immersiveMode = fals
   const { t } = useI18n();
   const { snapshot: officialAuthSnapshot, can: canUseMembershipEntitlement } = useMembership();
   const [founderSponsorOpen, setFounderSponsorOpen] = useState(false);
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const notificationDrawerOpen = useNotificationStore((state) => state.drawerOpen);
   const toggleNotificationDrawer = useNotificationStore((state) => state.toggleDrawer);
   const unreadNotificationCount = useNotificationStore(selectNotificationUnreadCount);
@@ -338,21 +364,82 @@ export function Layout({ children, currentView, onNavigate, immersiveMode = fals
     submitGlobalSearch,
     navigateToGlobalSearch,
   } = useGlobalKnowledgeSearch(onNavigate);
-  const handleSidebarNavigate = useCallback((item: SidebarNavItem) => {
-    if (item.settingsTab || item.gardenflowAction) {
-      if (item.settingsTab) {
-        dispatchAppIntent({
-          type: 'settings.open',
-          tab: item.settingsTab,
-        });
+  const visibleView = activeModalView || currentView;
+  const activeNavigationItem = NAV_ITEMS.find((item) => item.view === visibleView) || null;
+  const activeNavigationIndex = activeNavigationItem ? NAV_ITEMS.indexOf(activeNavigationItem) : -1;
+  const nextNavigationItem = activeNavigationIndex >= 0 && activeNavigationIndex < NAV_ITEMS.length - 1
+    ? NAV_ITEMS[activeNavigationIndex + 1]
+    : null;
+  const activeStageTitle = activeNavigationItem
+    ? t(activeNavigationItem.labelKey)
+    : visibleView === 'settings'
+      ? t('nav.settings')
+      : visibleView === 'approval'
+        ? '审批'
+        : 'GardenFlow';
+  const activeStageIndex = STAGE_INDEX[visibleView] || 'WORKSPACE';
+  const activeStageSummaryKey = STAGE_SUMMARY_KEYS[visibleView];
+  const activeStageSummary = activeStageSummaryKey ? t(activeStageSummaryKey) : '';
+
+  useEffect(() => {
+    const handleWorkbenchShortcut = (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase();
+      const hasCommandModifier = (event.metaKey || event.ctrlKey) && !event.altKey;
+      if (hasCommandModifier && key === 'k') {
+        event.preventDefault();
+        openGlobalSearch();
         return;
       }
+      if (hasCommandModifier && key === 'n') {
+        event.preventDefault();
+        setCreateMenuOpen((open) => !open);
+        return;
+      }
+      if (event.key === 'Escape') {
+        setCreateMenuOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleWorkbenchShortcut, true);
+    return () => window.removeEventListener('keydown', handleWorkbenchShortcut, true);
+  }, [openGlobalSearch]);
+
+  const handleCreateAction = useCallback((action: 'chat' | 'material' | 'manuscript' | 'media' | 'automation') => {
+    setCreateMenuOpen(false);
+    if (action === 'chat') {
+      dispatchAppIntent({ type: 'gardenflow.open', action: 'new' });
+      return;
+    }
+    if (action === 'material') {
+      dispatchAppIntent({ type: 'flow.open', stage: 'collect' });
+      return;
+    }
+    if (action === 'manuscript') {
       dispatchAppIntent({
-        type: 'gardenflow.open',
-        action: item.gardenflowAction,
+        type: 'flow.open',
+        stage: 'compose',
+        handoff: {
+          kind: 'chat-draft',
+          message: {
+            content: '从一份新的创作简报开始。',
+            displayContent: '从一份新的创作简报开始。',
+            sessionRouting: 'new',
+            deliveryMode: 'draft',
+          },
+        },
       });
       return;
     }
+    if (action === 'media') {
+      dispatchAppIntent({
+        type: 'generation.open',
+        intent: { mode: 'image', source: 'standalone' },
+      });
+      return;
+    }
+    dispatchAppIntent({ type: 'flow.open', stage: 'schedule' });
+  }, []);
+
+  const handleSidebarNavigate = useCallback((item: SidebarNavItem) => {
     onNavigate(item.view);
   }, [onNavigate]);
   const openFounderSponsorBilling = useCallback(() => {
@@ -365,50 +452,27 @@ export function Layout({ children, currentView, onNavigate, immersiveMode = fals
   }, []);
 
   const renderSidebarNavItem = (item: SidebarNavItem) => {
-    const { key, view, labelKey, icon: Icon, primary } = item;
+    const { key, view, stage, labelKey, icon: Icon } = item;
     const label = t(labelKey);
-    const isActive = !item.gardenflowAction && (currentView === view || activeModalView === view) && !item.settingsTab;
+    const isActive = currentView === view || activeModalView === view;
     return (
       <button
         key={key}
         type="button"
         data-guide-id={`nav-${key}`}
+        data-flow-stage={stage}
+        data-active={isActive ? 'true' : 'false'}
         onClick={() => handleSidebarNavigate(item)}
         title={label}
         aria-label={label}
         className={clsx(
           'app-sidebar-nav-item relative w-full rounded-xl transition-all font-normal inline-flex items-center',
-          sidebarVisualCollapsed ? 'app-sidebar-nav-item--collapsed justify-center' : 'app-sidebar-nav-item--expanded',
-          primary && 'app-sidebar-nav-item--primary',
-          view === 'subjects'
-            ? (
-              isActive
-                ? 'app-sidebar-nav-item--active-special shadow-none'
-                : 'app-sidebar-nav-item--plain'
-            )
-            : (
-              isActive
-                ? 'app-sidebar-nav-item--active shadow-sm'
-                : 'app-sidebar-nav-item--plain'
-            )
+          'app-sidebar-nav-item--collapsed justify-center',
+          isActive ? 'app-sidebar-nav-item--active shadow-none' : 'app-sidebar-nav-item--plain'
         )}
       >
-        {key === 'new-chat' ? (
-          <img
-            src={APP_BRAND.logoSrc}
-            alt=""
-            className="app-sidebar-nav-icon shrink-0 object-contain"
-            aria-hidden="true"
-          />
-        ) : (
-          <Icon className="app-sidebar-nav-icon shrink-0" strokeWidth={primary ? 1.6 : 1.65} />
-        )}
-        <span className={clsx(
-          'app-sidebar-nav-label truncate whitespace-nowrap',
-          sidebarVisualCollapsed
-            ? 'app-sidebar-nav-label--collapsed'
-            : 'app-sidebar-nav-label--expanded'
-        )}>
+        <Icon className="app-sidebar-nav-icon shrink-0" strokeWidth={1.65} />
+        <span className="app-sidebar-nav-label app-sidebar-nav-label--collapsed">
           {label}
         </span>
       </button>
@@ -417,6 +481,8 @@ export function Layout({ children, currentView, onNavigate, immersiveMode = fals
 
   return (
     <div
+      data-current-view={visibleView}
+      data-flow-stage={flowStageForView(visibleView) || undefined}
       className={clsx(
         'app-layout-shell relative flex h-screen w-full overflow-hidden text-text-primary',
         hasGlobalSidebar && 'app-layout-shell--layered',
@@ -428,9 +494,15 @@ export function Layout({ children, currentView, onNavigate, immersiveMode = fals
         enabled={usesAppTitleBar}
         platform={titleBarPlatform}
         content={titleBarContent}
+        stageIndex={activeStageIndex}
+        stageTitle={activeStageTitle}
+        activeSpaceName={activeSpaceName}
         isSidebarCollapsed={isSidebarCollapsed}
         toggleSidebarCollapsed={toggleSidebarCollapsed}
         openGlobalSearch={openGlobalSearch}
+        openRunningTasks={() => onNavigate('generation-studio')}
+        createMenuOpen={createMenuOpen}
+        toggleCreateMenu={() => setCreateMenuOpen((open) => !open)}
         notificationDrawerOpen={notificationDrawerOpen}
         unreadNotificationCount={unreadNotificationCount}
         toggleNotificationDrawer={toggleNotificationDrawer}
@@ -438,6 +510,48 @@ export function Layout({ children, currentView, onNavigate, immersiveMode = fals
         setManualThemeMode={setManualThemeMode}
         extraActions={titleBarActions}
       />
+
+      {createMenuOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-[68]"
+            aria-hidden="true"
+            onMouseDown={() => setCreateMenuOpen(false)}
+          />
+          <div
+            className={clsx(
+              'workbench-create-menu fixed right-4 z-[69] w-[252px] overflow-hidden',
+              usesAppTitleBar ? 'top-[calc(var(--app-titlebar-height)+0.5rem)]' : 'top-3'
+            )}
+            role="menu"
+            aria-label={t('workbench.create')}
+            data-no-window-drag
+          >
+            <div className="workbench-create-menu__header">
+              <span>{t('workbench.create')}</span>
+              <kbd>⌘N</kbd>
+            </div>
+            {([
+              ['chat', Edit, 'workbench.create.newChat'],
+              ['material', BookOpenText, 'workbench.create.importMaterial'],
+              ['manuscript', Pencil, 'workbench.create.newManuscript'],
+              ['media', Box, 'workbench.create.mediaGeneration'],
+              ['automation', Clock3, 'workbench.create.automation'],
+            ] as const).map(([action, Icon, labelKey]) => (
+              <button
+                key={action}
+                type="button"
+                role="menuitem"
+                onClick={() => handleCreateAction(action)}
+                className="workbench-create-menu__item"
+              >
+                <Icon className="h-4 w-4" strokeWidth={1.7} />
+                <span>{t(labelKey)}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
 
       {globalNotice && (
         <div
@@ -457,26 +571,74 @@ export function Layout({ children, currentView, onNavigate, immersiveMode = fals
       {hasGlobalSidebar && (
         <aside
           className={clsx(
-            'app-sidebar-shell bg-surface-secondary/85 border-r border-border flex flex-col shrink-0 overflow-hidden',
+            'app-sidebar-shell bg-surface-secondary/85 border-r border-border flex shrink-0 overflow-hidden',
             usesAppTitleBar && 'pt-[var(--app-titlebar-height)]',
             isSidebarAnimating && 'app-sidebar-shell--animating',
             sidebarVisualCollapsed ? 'app-sidebar-shell--collapsed' : 'app-sidebar-shell--expanded'
           )}
           style={!sidebarVisualCollapsed ? { '--app-sidebar-expanded-width': `${sidebarWidth}px` } as React.CSSProperties : undefined}
         >
-          {/* Navigation */}
-          <nav className={clsx('app-sidebar-nav', visibleGlobalSidebarContent ? 'shrink-0' : 'flex-1', sidebarVisualCollapsed ? 'app-sidebar-nav--collapsed' : 'app-sidebar-nav--expanded')}>
-            {NAV_ITEMS.map(renderSidebarNavItem)}
+          <nav className="app-sidebar-nav workbench-flow-rail">
+            <div className="workbench-flow-rail__brand" aria-label="GardenFlow">GF</div>
+            <div className="workbench-flow-rail__stages">
+              {NAV_ITEMS.map(renderSidebarNavItem)}
+            </div>
+            <div className="workbench-flow-rail__tools">
+              <button
+                type="button"
+                onClick={() => setCreateMenuOpen(true)}
+                className="workbench-flow-rail__tool"
+                title={t('workbench.create')}
+                aria-label={t('workbench.create')}
+              >
+                <Plus className="h-[17px] w-[17px]" strokeWidth={1.8} />
+              </button>
+              <button
+                type="button"
+                onClick={() => onNavigate('settings')}
+                className={clsx('workbench-flow-rail__tool', visibleView === 'settings' && 'is-active')}
+                title={t('nav.settings')}
+                aria-label={t('nav.settings')}
+              >
+                <SettingsIcon className="h-[17px] w-[17px]" strokeWidth={1.75} />
+              </button>
+            </div>
           </nav>
 
-          {visibleGlobalSidebarContent && (
-            <div className="min-h-0 flex-1 overflow-hidden px-2 pb-3 flex flex-col">
-              {visibleGlobalSidebarContent}
-            </div>
-          )}
+          {!sidebarVisualCollapsed && (
+            <div className="workbench-context-shelf min-w-0 flex-1 flex flex-col overflow-hidden">
+              <div className="workbench-context-shelf__heading">
+                <div className="workbench-context-shelf__eyebrow">{activeStageIndex}</div>
+                <h2>{activeStageTitle}</h2>
+                {activeStageSummary && <p>{activeStageSummary}</p>}
+              </div>
 
-          {/* Footer */}
-          <div className={clsx('border-t border-border', sidebarVisualCollapsed ? 'px-2 py-2 flex flex-col items-center gap-2' : 'px-4 py-2 space-y-2')}>
+              {visibleGlobalSidebarContent ? (
+                <div className="workbench-context-shelf__content min-h-0 flex-1 overflow-hidden flex flex-col">
+                  {visibleGlobalSidebarContent}
+                </div>
+              ) : (
+                <div className="workbench-context-shelf__guide min-h-0 flex-1 overflow-auto">
+                  <div className="workbench-context-shelf__note">
+                    <span>EDITORIAL NOTE</span>
+                    <p>{activeStageSummary || '在一个空间里组织素材、创作与发布计划。'}</p>
+                  </div>
+                  {nextNavigationItem && (
+                    <button
+                      type="button"
+                      className="workbench-context-shelf__next"
+                      onClick={() => onNavigate(nextNavigationItem.view)}
+                    >
+                      <span>下一阶段</span>
+                      <strong>{t(nextNavigationItem.labelKey)}</strong>
+                      <ChevronDown className="h-4 w-4 -rotate-90" strokeWidth={1.7} />
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Footer */}
+              <div className="workbench-context-shelf__footer border-t border-border px-4 py-2 space-y-2">
             {RUNTIME_FEATURES.officialAccountAuth && (
               <button
                 type="button"
@@ -654,8 +816,10 @@ export function Layout({ children, currentView, onNavigate, immersiveMode = fals
                   </div>
                 )}
               </div>
+              </div>
             </div>
-          </div>
+            </div>
+          )}
 
           {!sidebarVisualCollapsed && (
             <div

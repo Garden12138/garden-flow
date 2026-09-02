@@ -1,3 +1,5 @@
+import { GARDENFLOW_THEME } from '../brandTheme.generated.js';
+
 const GARDENFLOW_CURSOR_ARRIVED = 'gardenflow-data-ai:cursor-arrived';
 const TARGET_CURSOR_ARRIVED = 'AGENT_CURSOR_ARRIVED';
 const CURSOR_ASSET_PATH = 'images/cursor-chat.png';
@@ -151,7 +153,7 @@ function ensureAgentCursorStyle() {
       height: 24px;
       transform: translate(12px, -2.5px) rotate(44deg);
       transform-origin: 0 0;
-      filter: drop-shadow(0 0 6px rgba(51, 156, 255, .9)) drop-shadow(0 0 15px rgba(51, 156, 255, .48));
+      filter: drop-shadow(0 0 6px color-mix(in srgb, ${GARDENFLOW_THEME.iris} 90%, transparent)) drop-shadow(0 0 15px color-mix(in srgb, ${GARDENFLOW_THEME.leaf} 48%, transparent));
       user-select: none;
       -webkit-user-drag: none;
     }
@@ -160,7 +162,7 @@ function ensureAgentCursorStyle() {
       height: 14px;
       border: 2px solid #000000;
       border-radius: 50%;
-      background: #FF2A3A;
+      background: ${GARDENFLOW_THEME.iris};
       box-shadow: 0 2px 10px rgba(0, 0, 0, .28);
       transform: translate(-7px, -7px);
       opacity: 0;

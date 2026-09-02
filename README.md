@@ -4,6 +4,16 @@ GardenFlow — Grow content with AI.
 
 本地优先 AI 内容工作台，包含 Electron 桌面端与 Chrome 浏览器扩展，支持内容创作、知识库、媒体管理和自动化采集。
 
+桌面端采用「自然编辑部」工作台：沿着“素材 → 灵感 → 创作 → 生成 → 计划”推进内容生产，并以流程轨道、上下文书架、主画布和检查器保持素材与任务状态。设计与交互约定见 [界面规范](./Docs/NATURAL_NEWSROOM_UI.md)。
+
+## 界面预览
+
+![GardenFlow 自然编辑部浅色工作台](./images/workbench-light.jpg)
+
+深色模式延续纸张层次与编辑批注结构，并保留相同的信息密度与键盘操作：
+
+![GardenFlow 自然编辑部深色工作台](./images/workbench-dark.jpg)
+
 ## 快速开始
 
 需要 Node.js 22（建议与本次验收环境一致使用 22.23.2）、pnpm 10.28.2，以及原生模块构建工具。macOS 可通过 `xcode-select --install` 安装 Command Line Tools。

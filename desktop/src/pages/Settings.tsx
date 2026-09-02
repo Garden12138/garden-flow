@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode, type SetStateAction } from 'react';
-import { Save, RefreshCw, AlertCircle, FolderOpen, Wrench, Download, LayoutGrid, Cpu, Trash2, Eye, EyeOff, Info, Plus, Star, ChevronDown, Check, FileText, FlaskConical, Users, GripVertical, Settings as SettingsIcon, ArrowLeft, Server, Store, X, MessageSquareText } from 'lucide-react';
+import { Save, RefreshCw, AlertCircle, FolderOpen, Wrench, Download, LayoutGrid, Cpu, Trash2, Eye, EyeOff, Info, Plus, Star, ChevronDown, Check, FileText, FlaskConical, Users, GripVertical, Settings as SettingsIcon, ArrowLeft, Server, Store, X, MessageSquareText, Search } from 'lucide-react';
 import clsx from 'clsx';
 import {
   AI_SOURCE_PRESETS,
@@ -1117,6 +1117,8 @@ export function Settings({
 }) {
   const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<SettingsTab>('ai');
+  const [settingsSearch, setSettingsSearch] = useState('');
+  const [advancedSettingsOpen, setAdvancedSettingsOpen] = useState(false);
   const [teamAdvisors, setTeamAdvisors] = useState<Advisor[]>([]);
   const [isTeamAdvisorsLoading, setIsTeamAdvisorsLoading] = useState(false);
   const [teamAdvisorBusyId, setTeamAdvisorBusyId] = useState<string | null>(null);
@@ -7172,7 +7174,7 @@ export function Settings({
               type="button"
               onClick={() => void handleUninstallSettingsSkill(skill)}
               disabled={isBusy}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-text-tertiary transition-colors hover:border-brand-red/30 hover:bg-brand-red/10 hover:text-brand-red disabled:opacity-50"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-text-tertiary transition-colors hover:border-status-error/30 hover:bg-status-error/10 hover:text-status-error disabled:opacity-50"
               aria-label={`删除技能 ${skill.name}`}
               title="删除技能"
             >
@@ -7204,19 +7206,31 @@ export function Settings({
     return filteredTabs.length > 0 ? filteredTabs : allTabs;
   }, [allTabs]);
 
+  const settingsTabGroups = useMemo(() => {
+    const query = settingsSearch.trim().toLowerCase();
+    const matches = (tab: typeof tabs[number]) => !query || t(tab.labelKey).toLowerCase().includes(query);
+    const pick = (ids: SettingsTab[]) => tabs.filter((tab) => ids.includes(tab.id) && matches(tab));
+    return [
+      { id: 'priority', label: '常用', tabs: pick(['general', 'ai']) },
+      { id: 'workspace', label: '协作与能力', tabs: pick(['team', 'platforms', 'skills']) },
+      { id: 'connections', label: '连接', tabs: pick(['mcp', 'remote', 'profile']) },
+      { id: 'advanced', label: '高级', tabs: pick(['tools', 'experimental']) },
+    ].filter((group) => group.tabs.length > 0);
+  }, [settingsSearch, t, tabs]);
+
   useEffect(() => {
     if (tabs.some((tab) => tab.id === activeTab)) return;
     setActiveTab(tabs[0]?.id || 'general');
   }, [activeTab, tabs]);
 
   return (
-    <div className="flex h-full min-w-0 text-text-primary">
+    <div className="workbench-settings flex h-full min-w-0 text-text-primary">
       {settingsSubView === 'ai-pricing' ? (
         renderAiPricingPage()
       ) : (
         <>
       {/* Sidebar */}
-      <div className="w-48 border-r border-border pt-6 pb-4 flex flex-col gap-1 px-3 bg-surface-secondary/20">
+      <div className="workbench-settings__sidebar w-56 border-r border-border pt-6 pb-4 flex flex-col gap-1 px-3 bg-surface-secondary/20">
         {onReturn && (
           <button
             type="button"
@@ -7227,23 +7241,51 @@ export function Settings({
             返回应用
           </button>
         )}
-        <h1 className="px-3 mb-4 text-xs font-bold text-text-tertiary uppercase tracking-wider">{t('settings.title')}</h1>
-        <div className="flex flex-1 flex-col gap-1 min-h-0">
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => {
-                setActiveTab(tab.id);
-              }}
-              className={clsx(
-                "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-                activeTab === tab.id ? "bg-surface-secondary text-text-primary" : "text-text-secondary hover:bg-surface-secondary/50 hover:text-text-primary"
-              )}
-            >
-              <tab.icon className="w-4 h-4" />
-              {t(tab.labelKey)}
-            </button>
-          ))}
+        <h1 className="px-3 mb-3 text-xs font-bold text-text-tertiary uppercase tracking-wider">{t('settings.title')}</h1>
+        <label className="workbench-settings__search">
+          <Search className="h-4 w-4" strokeWidth={1.7} />
+          <input
+            type="search"
+            value={settingsSearch}
+            onChange={(event) => setSettingsSearch(event.target.value)}
+            placeholder="搜索设置"
+          />
+        </label>
+        <div className="flex flex-1 flex-col gap-3 min-h-0 overflow-y-auto pt-3">
+          {settingsTabGroups.map((group) => {
+            const advanced = group.id === 'advanced';
+            const expanded = !advanced || advancedSettingsOpen || Boolean(settingsSearch.trim());
+            return (
+              <section key={group.id} className="workbench-settings__group">
+                {advanced ? (
+                  <button
+                    type="button"
+                    className="workbench-settings__group-label workbench-settings__group-toggle"
+                    onClick={() => setAdvancedSettingsOpen((open) => !open)}
+                    aria-expanded={expanded}
+                  >
+                    <span>{group.label}</span>
+                    <ChevronDown className={clsx('h-3.5 w-3.5 transition-transform', expanded && 'rotate-180')} strokeWidth={1.7} />
+                  </button>
+                ) : (
+                  <div className="workbench-settings__group-label">{group.label}</div>
+                )}
+                {expanded && group.tabs.map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={clsx(
+                      'workbench-settings__tab flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors',
+                      activeTab === tab.id ? 'is-active text-text-primary' : 'text-text-secondary hover:text-text-primary'
+                    )}
+                  >
+                    <tab.icon className="w-4 h-4" />
+                    {t(tab.labelKey)}
+                  </button>
+                ))}
+              </section>
+            );
+          })}
         </div>
       </div>
 
@@ -7251,7 +7293,7 @@ export function Settings({
       <div className="min-w-0 flex-1 overflow-auto">
         <div
           className={clsx(
-            'mx-auto px-8 py-8 pb-32',
+            'px-8 py-8 pb-32',
             activeTab === 'ai' ? 'max-w-5xl' : activeTab === 'platforms' ? 'max-w-3xl' : 'max-w-2xl'
           )}
         >

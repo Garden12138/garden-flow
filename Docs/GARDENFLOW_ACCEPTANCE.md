@@ -1,6 +1,6 @@
 # GardenFlow 本机验收报告
 
-迁移日期：2026-08-28。最终构建与复核日期：2026-08-31。平台：macOS arm64。Node.js 22.23.2，pnpm 10.28.2。
+迁移日期：2026-08-28。最终构建与复核日期：2026-09-01。平台：macOS arm64。Node.js 22.23.2，pnpm 10.28.2。
 
 ## 已完成
 
@@ -22,6 +22,7 @@
 - 新 Native Host 与旧兼容入口均已注册，来源白名单仅含原扩展 ID。macOS Native Host 改为包内独立 CJS 运行时和用户目录启动器；旧 manifest 指向主程序的升级场景会自动转交并退出，然后将新旧 manifest 都改写到独立启动器，不再占用桌面应用身份。
 - 实机确认 Chrome 原先仍从旧用户目录加载解压扩展。现已在保持原公钥、扩展 ID `dhfphfekcjahljnefpdjoidehnhhoeie` 和 Chrome 存储的前提下完成原目录备份及原子刷新；扩展详情、侧边栏标题、采集模块、图标和标签组均显示 GardenFlow。重载后连接状态显示“可保存 · AI控制可用”；验收未点击保存按钮，未新增用户数据。
 - 应用启动会按扩展全目录指纹刷新新导出目录，并同步已存在且公钥匹配的旧加载目录；同一应用版本下插件资源变化不再被旧版本号缓存遗漏。公钥不匹配的目录会拒绝覆盖。
+- 2026-09-01 以用户提供的水墨鸢尾原图作为唯一视觉母版，按固定裁剪、圆角、透明边距和小尺寸光学放大规则生成全部桌面与扩展图标；原图 SHA-256、生成参数、输出尺寸和透明边界均纳入 `pnpm check:brand`。桌面浅色与深色模式实机启动通过，分别显示宣纸暖白与墨蓝主题，未出现白屏；测试期间保持自动任务暂停，未触发付费模型调用。
 
 | 数据表 | 迁移前 | 迁移后 |
 | --- | ---: | ---: |
@@ -56,8 +57,8 @@
 
 | 产物 | SHA-256 |
 | --- | --- |
-| `GardenFlow-2.5.0-arm64.dmg` | `76fe7e56c9549c315032d55c88f2b8787ee88f7c1758596af8b0a2745fa816c5` |
-| `GardenFlow-2.5.0-arm64.zip` | `c86fca0c9c59de803052e55c3b7d8f535dee46c7a93e83608dba0b4db254b5bc` |
+| `GardenFlow-2.5.0-arm64.dmg` | `f9acb4129db941fd618cefec0a30383ad3eeb07052ab23c55f263a1b3779d971` |
+| `GardenFlow-2.5.0-arm64.zip` | `dfaf2a57c7def635e3665fbaca552a1b888e7c039402f48109169d57c3e1161b` |
 
 新增覆盖：目录冲突、WAL、重复迁移、中断回滚、会话上下文、历史日志保护、向量与密钥保护、存储键、旧资源协议和路径、符号链接越界、旧 CLI/扩展消息权限、11 个模型的新 ID 请求及网关拒绝错误、可选 IPC 超时、首次渲染显示、单实例保护、macOS Native Host 身份隔离、扩展资源指纹、原目录原子刷新/一次性备份、公钥不匹配拒绝、旧标签组名称迁移及禁用更新策略。网络模型请求用模拟响应，不调用实际付费接口。
 
@@ -72,7 +73,7 @@
 - 安装包：`desktop/release/GardenFlow-2.5.0-arm64.dmg`、同名 ZIP。
 - 可直接启动的应用：`desktop/release/mac-arm64/GardenFlow.app`。
 - 扩展：`Plugin/dist/extension`，沿用原公钥和扩展 ID。
-- 品牌主图：`branding/gardenflow-iris-master.png`；桌面、网页标记、模型标记及扩展多尺寸图标均由同一鸢尾主题同步更新。
+- 品牌母版：`branding/gardenflow-iris-watercolor-source.png`；裁剪后的 `branding/gardenflow-iris-master.png` 同步用于桌面、网页标记、模型标记及扩展多尺寸图标。
 - 工具：`desktop/scripts/gardenflow-data-migration.cjs`，含预览、备份迁移、回滚和调度恢复命令。
 - 品牌与兼容清单：`branding/identity.json`；模型对照与操作步骤见[迁移说明](GARDENFLOW_REBRAND.md)。
 

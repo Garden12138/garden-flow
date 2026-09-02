@@ -1783,6 +1783,8 @@ function createWindow() {
     },
     width: 1200,
     height: 800,
+    minWidth: 960,
+    minHeight: 680,
     backgroundColor: '#FFFFFF',
     show: false,
   })

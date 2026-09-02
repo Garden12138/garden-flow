@@ -28,6 +28,9 @@ export default {
           primary: semanticColor('--color-accent-primary'),
           hover: semanticColor('--color-accent-hover'),
           muted: semanticColor('--color-accent-muted'),
+          secondary: semanticColor('--color-accent-secondary'),
+          'secondary-muted': semanticColor('--color-accent-secondary-muted'),
+          gold: semanticColor('--color-accent-gold'),
         },
         status: {
           success: semanticColor('--color-status-success'),
@@ -35,8 +38,9 @@ export default {
           error: semanticColor('--color-status-error'),
         },
         brand: {
-          red: semanticColor('--color-brand-red'),
-          'red-text': semanticColor('--color-brand-red-text'),
+          iris: semanticColor('--color-brand-iris'),
+          leaf: semanticColor('--color-brand-leaf'),
+          gold: semanticColor('--color-brand-gold'),
         },
       },
       fontFamily: {

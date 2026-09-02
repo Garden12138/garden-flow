@@ -150,6 +150,7 @@ import { resolveAssetUrl } from '../utils/pathManager';
 import { appAlert, appConfirm } from '../utils/appDialogs';
 import { parseAiPricingCatalog, type AiPricingCatalog } from '../features/settings/settingsModel';
 import { collectNestedFiles, isInternalPackageFile, type FileNode } from '../features/manuscripts/editorModel';
+import { WorkbenchStatePanel } from '../features/workbench/WorkbenchPrimitives';
 
 type GenerationSubmitButtonProps = {
     onClick: () => void;
@@ -181,7 +182,7 @@ function GenerationSubmitButton({
             onClick={cancellable ? onCancel : onClick}
             disabled={cancellable ? false : disabled}
             className={clsx(
-                'ml-auto inline-flex h-11 items-center justify-center rounded-full bg-brand-red text-white shadow-[var(--ui-shadow-1)] transition-colors hover:bg-brand-red/90 disabled:opacity-45',
+                'ml-auto inline-flex h-11 items-center justify-center rounded-full bg-accent-primary text-white shadow-[var(--ui-shadow-1)] transition-colors hover:bg-accent-hover disabled:opacity-45',
                 showEstimate ? 'min-w-[82px] gap-1.5 px-3' : 'w-11',
             )}
             title={cancellable ? '停止当前任务' : showEstimate ? estimate?.title : title}
@@ -777,7 +778,7 @@ function PopoverSelect({
                 disabled={disabled || options.length === 0}
                 className={clsx(
                     'inline-flex h-9 min-w-[104px] items-center gap-2 rounded-full border border-border bg-surface-primary px-3 shadow-[var(--ui-shadow-1)] transition-colors hover:border-border/70',
-                    open && 'border-brand-red/50 ring-1 ring-brand-red/20',
+                    open && 'border-accent-primary/50 ring-1 ring-accent-primary/20',
                     (disabled || options.length === 0) && 'cursor-not-allowed opacity-55 hover:border-border',
                     className,
                 )}
@@ -820,22 +821,22 @@ function PopoverSelect({
                                         layout === 'column' ? 'w-full' : 'min-w-[92px] flex-1',
                                         optionAlign === 'center' ? 'text-center' : 'text-left',
                                         disabledOption
-                                            ? 'cursor-not-allowed border-brand-red/25 bg-brand-red/10 text-brand-red hover:bg-brand-red/15'
+                                            ? 'cursor-not-allowed border-status-error/25 bg-status-error/10 text-status-error hover:bg-status-error/15'
                                         : selected
-                                            ? 'border-brand-red/50 bg-brand-red text-white'
+                                            ? 'border-accent-primary/50 bg-accent-primary text-white'
                                             : 'border-transparent bg-surface-tertiary text-text-secondary hover:bg-accent-muted',
                                     )}
                                 >
                                     <div className="flex min-w-0 items-center gap-2">
                                         {option.tone === 'danger' && (
-                                            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand-red" />
+                                            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-status-error" />
                                         )}
                                         <span className="truncate">{option.label}</span>
                                     </div>
                                     {option.description && (
                                         <div className={clsx(
                                             'mt-1 truncate text-[11px] font-normal',
-                                            disabledOption ? 'text-brand-red/75' : selected ? 'text-white/75' : 'text-text-tertiary',
+                                            disabledOption ? 'text-status-error/75' : selected ? 'text-white/75' : 'text-text-tertiary',
                                         )}>
                                             {option.description}
                                         </div>
@@ -886,7 +887,7 @@ function ImageAspectRatioPicker({
                 onClick={() => setOpen((prev) => !prev)}
                 className={clsx(
                     'inline-flex h-9 min-w-[84px] items-center gap-2 rounded-full border border-border bg-surface-primary px-3 shadow-[var(--ui-shadow-1)] transition-colors hover:border-border/70',
-                    open && 'border-brand-red/50 ring-1 ring-brand-red/20',
+                    open && 'border-accent-primary/50 ring-1 ring-accent-primary/20',
                 )}
             >
                 <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent-muted text-text-secondary">
@@ -913,7 +914,7 @@ function ImageAspectRatioPicker({
                                     className={clsx(
                                         'flex h-[84px] flex-col items-center justify-center rounded-[16px] border text-center transition-colors',
                                         selected
-                                            ? 'border-brand-red/50 bg-brand-red text-white'
+                                            ? 'border-accent-primary/50 bg-accent-primary text-white'
                                             : 'border-transparent bg-surface-tertiary text-text-secondary hover:bg-accent-muted',
                                     )}
                                 >
@@ -990,7 +991,7 @@ function UploadPreviewCard({
             <label className={clsx(
                 'relative flex h-[88px] w-[88px] cursor-pointer flex-col items-center justify-center overflow-hidden rounded-[18px] border transition-colors',
                 isDragActive
-                    ? 'border-brand-red/55 bg-brand-red/10 text-brand-red'
+                    ? 'border-accent-primary/55 bg-accent-muted text-accent-primary'
                     : hasItems
                     ? 'border-border bg-surface-tertiary hover:border-border/70'
                     : 'border-border bg-surface-secondary text-text-secondary hover:bg-surface-tertiary',
@@ -1326,7 +1327,7 @@ function MetaRow({ request }: { request: GenerationRequest }) {
     const summary = buildRequestSummary(request);
     return (
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-            <span className="inline-flex h-7 items-center rounded-[9px] bg-accent-muted px-2.5 text-[12px] font-semibold text-brand-red">
+            <span className="inline-flex h-7 items-center rounded-[9px] bg-accent-muted px-2.5 text-[12px] font-semibold text-accent-primary">
                 {requestModeLabel(request)}
             </span>
             <div className="inline-flex min-w-0 flex-wrap items-center gap-2.5 rounded-[9px] bg-surface-secondary px-3 py-1.5 text-[12px] text-text-secondary">
@@ -1369,6 +1370,7 @@ function FeedEntryMessage({
     onRegenerate,
     onEdit,
     onDelete,
+    onCancel,
     onPreviewAsset,
     onOpenAssetMenu,
 }: {
@@ -1378,12 +1380,26 @@ function FeedEntryMessage({
     onRegenerate: (entry: GenerationFeedEntry) => void;
     onEdit: (entry: GenerationFeedEntry) => void;
     onDelete: (entryId: string) => void;
+    onCancel: (entry: GenerationFeedEntry) => void;
     onPreviewAsset: (asset: GeneratedAsset) => void;
     onOpenAssetMenu: (event: React.MouseEvent<HTMLElement>, asset: GeneratedAsset, entryId?: string) => void;
 }) {
     const [now, setNow] = useState(() => Date.now());
     const hasMediaJob = Boolean(entry.jobId);
     const isRunning = entry.status === 'running';
+    const isQueued = entry.jobStatus === 'queued';
+    const isCancelling = entry.jobStatus === 'cancel_requested';
+    const statusLabel = isQueued
+        ? '排队'
+        : isCancelling
+            ? '取消中'
+            : entry.status === 'running'
+                ? '运行中'
+                : entry.status === 'success'
+                    ? '已完成'
+                    : entry.jobStatus === 'cancelled'
+                        ? '已取消'
+                        : '失败';
     const showMediaProgress = isRunning && hasMediaJob;
     const progress = estimateGenerationProgress(entry.request, now - entry.createdAt);
     const placeholderCount = placeholderCountForRequest(entry.request);
@@ -1400,7 +1416,11 @@ function FeedEntryMessage({
     }, [entry.createdAt, isActive, showMediaProgress]);
 
     return (
-        <article className={clsx('space-y-3', inlineWithAgent && '-mt-4 space-y-2')}>
+        <article className={clsx('generation-task-card space-y-3', inlineWithAgent && '-mt-4 space-y-2')} data-status={entry.jobStatus || entry.status}>
+            <div className="generation-task-card__status">
+                <span>{statusLabel}</span>
+                {entry.jobId && <small>{entry.jobId.slice(-8)}</small>}
+            </div>
             {inlineWithAgent ? (
                 <div className="flex max-w-[620px] items-center gap-2">
                     <div className="min-w-0 flex-1">
@@ -1409,7 +1429,7 @@ function FeedEntryMessage({
                     <button
                         type="button"
                         onClick={() => onDelete(entry.id)}
-                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-text-tertiary transition-colors hover:bg-brand-red/10 hover:text-brand-red"
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-text-tertiary transition-colors hover:bg-status-error/10 hover:text-status-error"
                         aria-label="删除创作记录"
                         title="删除创作记录"
                     >
@@ -1444,7 +1464,7 @@ function FeedEntryMessage({
                             <button
                                 type="button"
                                 onClick={() => onDelete(entry.id)}
-                                className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-text-tertiary transition-colors hover:bg-brand-red/10 hover:text-brand-red"
+                                className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-text-tertiary transition-colors hover:bg-status-error/10 hover:text-status-error"
                                 aria-label="删除创作记录"
                                 title="删除创作记录"
                             >
@@ -1469,7 +1489,7 @@ function FeedEntryMessage({
                     </div>
                     <div className="h-1.5 overflow-hidden rounded-full bg-surface-tertiary">
                         <div
-                            className="h-full rounded-full bg-[linear-gradient(90deg,rgb(var(--color-brand-red)/1)_0%,rgb(var(--color-accent-primary)/1)_100%)] transition-[width] duration-700 ease-out"
+                            className="h-full rounded-full bg-accent-secondary transition-[width] duration-700 ease-out"
                             style={{ width: `${progress}%` }}
                         />
                     </div>
@@ -1477,7 +1497,7 @@ function FeedEntryMessage({
             )}
 
             {entry.status === 'error' && (
-                <div className="max-w-[620px] rounded-[14px] bg-brand-red/10 px-4 py-3 text-sm text-brand-red">
+                <div className="max-w-[620px] rounded-[14px] bg-status-error/10 px-4 py-3 text-sm text-status-error">
                     {entry.error || '生成失败'}
                 </div>
             )}
@@ -1498,20 +1518,20 @@ function FeedEntryMessage({
                             />
                             <div
                                 className="absolute -left-[12%] top-[-16%] h-[52%] w-[58%] rounded-full blur-[28px] animate-[pulse_2.1s_ease-in-out_infinite]"
-                                style={{ background: 'radial-gradient(circle, rgb(var(--color-brand-red) / 0.3) 0%, rgb(var(--color-brand-red) / 0.14) 30%, rgb(var(--color-brand-red) / 0) 72%)' }}
+                                style={{ background: 'radial-gradient(circle, rgb(var(--color-brand-gold) / 0.26) 0%, rgb(var(--color-brand-gold) / 0.12) 30%, rgb(var(--color-brand-gold) / 0) 72%)' }}
                             />
                             <div
                                 className="absolute right-[-10%] top-[8%] h-[42%] w-[46%] rounded-full blur-[24px] animate-[pulse_1.7s_ease-in-out_infinite]"
-                                style={{ background: 'radial-gradient(circle, rgb(var(--color-accent-primary) / 0.24) 0%, rgb(var(--color-accent-primary) / 0.1) 36%, rgb(var(--color-accent-primary) / 0) 74%)' }}
+                                style={{ background: 'radial-gradient(circle, rgb(var(--color-brand-leaf) / 0.24) 0%, rgb(var(--color-brand-leaf) / 0.1) 36%, rgb(var(--color-brand-leaf) / 0) 74%)' }}
                             />
                             <div
                                 className="absolute bottom-[-12%] left-[18%] h-[44%] w-[50%] rounded-full blur-[26px] animate-[pulse_2.4s_ease-in-out_infinite]"
-                                style={{ background: 'radial-gradient(circle, rgb(var(--color-brand-red) / 0.2) 0%, rgb(var(--color-brand-red) / 0.08) 34%, rgb(var(--color-brand-red) / 0) 76%)' }}
+                                style={{ background: 'radial-gradient(circle, rgb(var(--color-brand-leaf) / 0.22) 0%, rgb(var(--color-brand-leaf) / 0.08) 34%, rgb(var(--color-brand-leaf) / 0) 76%)' }}
                             />
                             <div
                                 className="absolute inset-0 opacity-90 animate-[pulse_1.35s_linear_infinite]"
                                 style={{
-                                    backgroundImage: 'radial-gradient(circle, rgb(var(--color-brand-red) / 0.32) 1.15px, transparent 1.55px)',
+                                    backgroundImage: 'radial-gradient(circle, rgb(var(--color-brand-gold) / 0.32) 1.15px, transparent 1.55px)',
                                     backgroundSize: '20px 20px',
                                     backgroundPosition: '0 0',
                                     maskImage: 'linear-gradient(180deg, transparent 2%, rgba(0,0,0,0.86) 24%, rgba(0,0,0,0.94) 62%, transparent 98%)',
@@ -1521,7 +1541,7 @@ function FeedEntryMessage({
                             <div
                                 className="absolute inset-0 opacity-85 animate-[pulse_1.1s_ease-in-out_infinite]"
                                 style={{
-                                    backgroundImage: 'radial-gradient(circle, rgb(var(--color-accent-primary) / 0.42) 1.2px, transparent 1.7px)',
+                                    backgroundImage: 'radial-gradient(circle, rgb(var(--color-brand-leaf) / 0.42) 1.2px, transparent 1.7px)',
                                     backgroundSize: '18px 18px',
                                     backgroundPosition: '9px 6px',
                                     maskImage: 'radial-gradient(circle at 80% 22%, rgba(0,0,0,0.98) 0%, rgba(0,0,0,0.88) 15%, rgba(0,0,0,0.6) 29%, transparent 54%)',
@@ -1531,7 +1551,7 @@ function FeedEntryMessage({
                             <div
                                 className="absolute inset-0 opacity-85 animate-[pulse_0.95s_ease-in-out_infinite]"
                                 style={{
-                                    backgroundImage: 'radial-gradient(circle, rgb(var(--color-brand-red) / 0.36) 1.1px, transparent 1.6px)',
+                                    backgroundImage: 'radial-gradient(circle, rgb(var(--color-brand-gold) / 0.32) 1.1px, transparent 1.6px)',
                                     backgroundSize: '17px 17px',
                                     backgroundPosition: '4px 10px',
                                     maskImage: 'radial-gradient(circle at 18% 80%, rgba(0,0,0,0.98) 0%, rgba(0,0,0,0.88) 16%, rgba(0,0,0,0.58) 31%, transparent 56%)',
@@ -1541,7 +1561,7 @@ function FeedEntryMessage({
                             <div
                                 className="absolute inset-0 opacity-65 animate-[pulse_1.45s_ease-in-out_infinite]"
                                 style={{
-                                    backgroundImage: 'radial-gradient(circle, rgb(var(--color-brand-red) / 0.22) 0.95px, transparent 1.45px)',
+                                    backgroundImage: 'radial-gradient(circle, rgb(var(--color-brand-leaf) / 0.24) 0.95px, transparent 1.45px)',
                                     backgroundSize: '14px 14px',
                                     backgroundPosition: '2px 3px',
                                     maskImage: 'linear-gradient(135deg, transparent 0%, rgba(0,0,0,0.94) 18%, rgba(0,0,0,0.94) 46%, transparent 68%)',
@@ -1551,7 +1571,7 @@ function FeedEntryMessage({
                             <div
                                 className="absolute inset-0 opacity-55 animate-[pulse_0.8s_linear_infinite]"
                                 style={{
-                                    background: 'linear-gradient(110deg, transparent 12%, rgb(var(--color-surface-primary) / 0.24) 34%, rgb(var(--color-brand-red) / 0.18) 50%, rgb(var(--color-surface-primary) / 0.18) 63%, transparent 82%)',
+                                    background: 'linear-gradient(110deg, transparent 12%, rgb(var(--color-surface-primary) / 0.24) 34%, rgb(var(--color-brand-leaf) / 0.16) 50%, rgb(var(--color-surface-primary) / 0.18) 63%, transparent 82%)',
                                     transform: 'translateX(-18%)',
                                     mixBlendMode: 'screen',
                                 }}
@@ -1628,6 +1648,20 @@ function FeedEntryMessage({
                 </div>
             )}
 
+            {isRunning && entry.jobId && (
+                <div className="flex flex-wrap items-center gap-2.5">
+                    <button
+                        type="button"
+                        onClick={() => onCancel(entry)}
+                        disabled={isCancelling}
+                        className="inline-flex h-9 items-center gap-1.5 rounded-[10px] border border-border bg-surface-secondary px-3 text-[12px] font-medium text-text-secondary transition-colors hover:border-status-error/30 hover:text-status-error disabled:cursor-wait disabled:opacity-50"
+                    >
+                        <X className="h-3.5 w-3.5" />
+                        {isCancelling ? '正在取消' : '取消任务'}
+                    </button>
+                </div>
+            )}
+
             {!isRunning && (
                 <div className="flex flex-wrap items-center gap-2.5">
                     <button
@@ -1636,7 +1670,7 @@ function FeedEntryMessage({
                         className="inline-flex h-9 items-center gap-1.5 rounded-[10px] border border-border bg-surface-secondary px-3 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-tertiary"
                     >
                         <RotateCcw className="h-3.5 w-3.5" />
-                        再次生成
+                        {entry.status === 'error' ? '重试' : '再次生成'}
                     </button>
                     <button
                         type="button"
@@ -3019,6 +3053,32 @@ export function GenerationStudio({
         runVideoRequest(entry.request);
     }, [replayQueuedMediaRequest, runAudioRequest, runCoverRequest, runDigitalHumanRequest, runImageRequest, runVideoRequest]);
 
+    const handleCancelEntry = useCallback((entry: GenerationFeedEntry) => {
+        if (!entry.jobId || entry.status !== 'running') return;
+        const jobId = entry.jobId;
+        updateFeedEntries((prev) => prev.map((item) => (
+            isGenerationFeedEntry(item) && item.id === entry.id
+                ? { ...item, jobStatus: 'cancel_requested' }
+                : item
+        )));
+        void window.ipcRenderer.generation.cancelJob(jobId).then((result) => {
+            if (result?.success) return;
+            const message = result?.error || '取消任务失败';
+            updateFeedEntries((prev) => prev.map((item) => (
+                isGenerationFeedEntry(item) && item.id === entry.id
+                    ? { ...item, status: 'error', jobStatus: 'cancel_failed', error: message }
+                    : item
+            )));
+        }).catch((error) => {
+            const message = error instanceof Error ? error.message : '取消任务失败';
+            updateFeedEntries((prev) => prev.map((item) => (
+                isGenerationFeedEntry(item) && item.id === entry.id
+                    ? { ...item, status: 'error', jobStatus: 'cancel_failed', error: message }
+                    : item
+            )));
+        });
+    }, [updateFeedEntries]);
+
     const handleEditEntry = useCallback((entry: GenerationFeedEntry) => {
         setStudioMode(entry.request.type);
         if (entry.request.type === 'cover') {
@@ -3939,7 +3999,7 @@ export function GenerationStudio({
                 className={clsx(
                     'inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full border px-4 py-1.5 text-[14px] font-medium',
                     studioMode === 'image'
-                        ? 'border-brand-red/50 bg-brand-red text-white'
+                        ? 'border-accent-primary/50 bg-accent-primary text-white'
                         : 'border-border bg-surface-primary text-text-secondary',
                 )}
             >
@@ -3952,7 +4012,7 @@ export function GenerationStudio({
                 className={clsx(
                     'inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full border px-4 py-1.5 text-[14px] font-medium',
                     studioMode === 'cover'
-                        ? 'border-brand-red/50 bg-brand-red text-white'
+                        ? 'border-accent-primary/50 bg-accent-primary text-white'
                         : 'border-border bg-surface-primary text-text-secondary',
                 )}
             >
@@ -3965,7 +4025,7 @@ export function GenerationStudio({
                 className={clsx(
                     'inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full border px-4 py-1.5 text-[14px] font-medium',
                     studioMode === 'video'
-                        ? 'border-brand-red/50 bg-brand-red text-white'
+                        ? 'border-accent-primary/50 bg-accent-primary text-white'
                         : 'border-border bg-surface-primary text-text-secondary',
                 )}
             >
@@ -3978,7 +4038,7 @@ export function GenerationStudio({
                 className={clsx(
                     'inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full border px-4 py-1.5 text-[14px] font-medium',
                     studioMode === 'audio'
-                        ? 'border-brand-red/50 bg-brand-red text-white'
+                        ? 'border-accent-primary/50 bg-accent-primary text-white'
                         : 'border-border bg-surface-primary text-text-secondary',
                 )}
             >
@@ -3989,7 +4049,7 @@ export function GenerationStudio({
                 <button
                     type="button"
                     onClick={() => void handleClearGenerationRecords()}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface-primary text-text-tertiary transition-colors hover:border-brand-red/30 hover:bg-brand-red/10 hover:text-brand-red disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface-primary text-text-tertiary transition-colors hover:border-status-error/30 hover:bg-status-error/10 hover:text-status-error disabled:cursor-not-allowed disabled:opacity-50"
                     aria-label="清空生成记录"
                     title="清空生成记录"
                 >
@@ -4000,8 +4060,8 @@ export function GenerationStudio({
     );
 
     return (
-        <div className="h-full min-h-0 text-text-primary">
-            <div className="mx-auto flex h-full min-h-0 max-w-[1180px] flex-col px-6">
+        <div className="workbench-production h-full min-h-0 text-text-primary">
+            <div className="flex h-full min-h-0 flex-col px-6">
                 {onReturnHome && (
                     <div className="flex h-12 shrink-0 items-center">
                         <button
@@ -4016,8 +4076,23 @@ export function GenerationStudio({
                     </div>
                 )}
                 <main ref={feedScrollRef} className={clsx('flex-1 min-h-0 overflow-y-auto', onReturnHome ? 'pt-0' : 'pt-6')}>
+                    <header className="workbench-production__feed-header">
+                        <div>
+                            <span>04 · PRODUCE</span>
+                            <h1>结果流</h1>
+                            <p>生成任务按时间排列；参考素材、状态与下一步操作始终可见。</p>
+                        </div>
+                        <div className="workbench-production__status-summary">
+                            <span>{feedEntries.filter((entry) => isGenerationFeedEntry(entry) && entry.status === 'running').length} 运行中</span>
+                            <span>{feedEntries.filter((entry) => isGenerationFeedEntry(entry) && entry.status === 'error').length} 异常</span>
+                        </div>
+                    </header>
                     {visibleFeedItems.length === 0 ? (
-                        <div className="min-h-[280px]" />
+                        <WorkbenchStatePanel
+                            state="empty"
+                            title="结果流还是空的"
+                            description="在右侧填写生成配方；任务提交后会在这里显示排队、运行和结果。"
+                        />
                     ) : (
                         <div className="mx-auto max-w-[860px] space-y-7 pb-10">
                             {visibleFeedItems.map(({ entry, index }) => (
@@ -4030,6 +4105,7 @@ export function GenerationStudio({
                                         onRegenerate={handleRegenerate}
                                         onEdit={handleEditEntry}
                                         onDelete={handleDeleteEntry}
+                                        onCancel={handleCancelEntry}
                                         onPreviewAsset={setPreviewAsset}
                                         onOpenAssetMenu={handleOpenAssetMenu}
                                     />
@@ -4042,7 +4118,7 @@ export function GenerationStudio({
                                             <button
                                                 type="button"
                                                 onClick={() => handleDeleteEntry(entry.id)}
-                                                className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-text-tertiary transition-colors hover:bg-brand-red/10 hover:text-brand-red"
+                                                className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-text-tertiary transition-colors hover:bg-status-error/10 hover:text-status-error"
                                                 aria-label="删除创作记录"
                                                 title="删除创作记录"
                                             >
@@ -4095,6 +4171,11 @@ export function GenerationStudio({
                 </main>
 
                 <footer className="bg-background pb-5 pt-4">
+                    <div className="workbench-production__recipe-header">
+                        <span>GENERATION RECIPE</span>
+                        <h2>生成配方</h2>
+                        <p>提示词、参考素材与主要参数保持常显。</p>
+                    </div>
                     <div className={composerWidthClass}>
                         <div className="rounded-[24px] border border-border bg-surface-secondary px-5 py-3 shadow-[var(--ui-shadow-1)]">
                             {studioToolbar}
@@ -4199,13 +4280,13 @@ export function GenerationStudio({
                                                             className={clsx(
                                                                 'flex h-7 max-w-[260px] items-center gap-1.5 rounded-full border px-2.5 text-left transition-colors',
                                                                 selectedCoverManuscript
-                                                                    ? 'border-brand-red/35 bg-brand-red/10'
-                                                                    : 'border-border bg-surface-secondary hover:border-brand-red/30',
+                                                                    ? 'border-accent-primary/35 bg-accent-muted'
+                                                                    : 'border-border bg-surface-secondary hover:border-accent-primary/30',
                                                             )}
                                                         >
                                                             <FileText className={clsx(
                                                                 'h-3.5 w-3.5 shrink-0',
-                                                                selectedCoverManuscript ? 'text-brand-red' : 'text-text-tertiary',
+                                                                selectedCoverManuscript ? 'text-accent-primary' : 'text-text-tertiary',
                                                             )} />
                                                             <span className="min-w-0 truncate text-[12px] font-medium text-text-primary">
                                                                 {selectedCoverManuscript?.title || (isLoadingCoverManuscripts ? '加载稿件' : '选择稿件')}
@@ -4346,7 +4427,7 @@ export function GenerationStudio({
                                                                         className={clsx(
                                                                             'inline-flex h-9 items-center rounded-full border px-3 text-[12px] font-medium transition-colors',
                                                                             active
-                                                                                ? 'border-brand-red/40 bg-brand-red/10 text-brand-red'
+                                                                                ? 'border-accent-primary/40 bg-accent-muted text-accent-primary'
                                                                                 : 'border-border bg-surface-primary text-text-secondary',
                                                                         )}
                                                                     >
@@ -4630,42 +4711,42 @@ export function GenerationStudio({
                                                 {videoReferenceAudios.length > 0 && <span>已添加 {videoReferenceAudios.length} 段参考音频</span>}
                                                 {videoDrivingAudio && <span>已附带驱动音频</span>}
                                                 {isReadingVideoRefs && <span>正在读取素材...</span>}
-                                                {currentVideoParameterError && <span className="text-brand-red">{currentVideoParameterError}</span>}
+                                                {currentVideoParameterError && <span className="text-status-error">{currentVideoParameterError}</span>}
                                             </div>
                                         )}
 
                                         {studioMode === 'digital-human' && selectedDigitalHumanRole && !selectedDigitalHumanReadiness.ok && (
-                                            <div className="flex flex-wrap items-center gap-3 text-[12px] text-brand-red">
+                                            <div className="flex flex-wrap items-center gap-3 text-[12px] text-status-error">
                                                 <span>{selectedDigitalHumanReadiness.issue}</span>
                                             </div>
                                         )}
 
                                         {visibleError && (
-                                            <div className="rounded-[14px] bg-brand-red/10 px-4 py-3 text-sm text-brand-red">
+                                            <div className="rounded-[14px] bg-status-error/10 px-4 py-3 text-sm text-status-error">
                                                 {visibleError}
                                             </div>
                                         )}
 
                                         {studioMode === 'image' && !isAgentMode && !hasImageConfig && (
-                                            <div className="rounded-[14px] bg-brand-red/10 px-4 py-3 text-sm text-brand-red">
+                                            <div className="rounded-[14px] bg-status-error/10 px-4 py-3 text-sm text-status-error">
                                                 未检测到生图配置。请先到“设置 → AI 模型”填写图片生成的 Endpoint、API Key 和模型。
                                             </div>
                                         )}
 
                                         {studioMode === 'cover' && !isAgentMode && !hasImageConfig && (
-                                            <div className="rounded-[14px] bg-brand-red/10 px-4 py-3 text-sm text-brand-red">
+                                            <div className="rounded-[14px] bg-status-error/10 px-4 py-3 text-sm text-status-error">
                                                 未检测到生图配置。请先到“设置 → AI 模型”填写图片生成的 Endpoint、API Key 和模型。
                                             </div>
                                         )}
 
                                         {studioMode === 'video' && !isAgentMode && !hasVideoConfig && (
-                                            <div className="rounded-[14px] bg-brand-red/10 px-4 py-3 text-sm text-brand-red">
+                                            <div className="rounded-[14px] bg-status-error/10 px-4 py-3 text-sm text-status-error">
                                                 未检测到生视频配置。请先完成官方视频登录或填写视频生成所需的 API Key。
                                             </div>
                                         )}
 
                                         {studioMode === 'audio' && !isAgentMode && !hasVoiceConfig && (
-                                            <div className="rounded-[14px] bg-brand-red/10 px-4 py-3 text-sm text-brand-red">
+                                            <div className="rounded-[14px] bg-status-error/10 px-4 py-3 text-sm text-status-error">
                                                 未检测到声音合成配置。请先到“设置 → AI 模型”填写 TTS 配置。
                                             </div>
                                         )}
@@ -4689,7 +4770,7 @@ export function GenerationStudio({
                         onMouseDown={(event) => event.stopPropagation()}
                     >
                         <div className="flex items-center gap-3 border-b border-border px-5 py-4">
-                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-muted text-brand-red">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-muted text-accent-primary">
                                 <FileText className="h-4.5 w-4.5" />
                             </div>
                             <div className="min-w-0 flex-1">
@@ -4741,7 +4822,7 @@ export function GenerationStudio({
                                 className={clsx(
                                     'mb-2 flex w-full items-center gap-3 rounded-[14px] border px-3 py-3 text-left transition-colors',
                                     !coverManuscriptPath
-                                        ? 'border-brand-red/45 bg-brand-red/10'
+                                        ? 'border-accent-primary/45 bg-accent-muted'
                                         : 'border-transparent hover:bg-surface-secondary',
                                 )}
                             >
@@ -4778,13 +4859,13 @@ export function GenerationStudio({
                                                 className={clsx(
                                                     'flex w-full items-center gap-3 rounded-[14px] border px-3 py-3 text-left transition-colors',
                                                     selected
-                                                        ? 'border-brand-red/45 bg-brand-red/10'
+                                                        ? 'border-accent-primary/45 bg-accent-muted'
                                                         : 'border-transparent hover:bg-surface-secondary',
                                                 )}
                                             >
                                                 <div className={clsx(
                                                     'flex h-9 w-9 shrink-0 items-center justify-center rounded-full',
-                                                    selected ? 'bg-brand-red text-white' : 'bg-surface-secondary text-text-tertiary',
+                                                    selected ? 'bg-accent-primary text-white' : 'bg-surface-secondary text-text-tertiary',
                                                 )}>
                                                     <FileText className="h-4 w-4" />
                                                 </div>
@@ -4829,7 +4910,7 @@ export function GenerationStudio({
                         ) : isAudioAsset(previewAsset) ? (
                             <div className="w-[min(560px,92vw)] rounded-2xl border border-white/10 bg-surface-primary p-5 shadow-2xl">
                                 <div className="mb-4 flex items-center gap-3 text-text-primary">
-                                    <Music2 className="h-5 w-5 text-brand-red" />
+                                    <Music2 className="h-5 w-5 text-accent-primary" />
                                     <div className="min-w-0 flex-1 truncate text-sm font-semibold">{previewAsset.title || '生成音频'}</div>
                                 </div>
                                 <audio
