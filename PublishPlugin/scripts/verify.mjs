@@ -27,8 +27,23 @@ if (!background.includes("payload?.phase === 'prepare'") || !background.includes
   throw new Error('Publisher execution must keep prepare and submit as distinct phases');
 }
 const persistPublishedIndex = background.indexOf('saveResult(jobId, published)');
-const restorePageIndex = background.indexOf('restorePublishPage(ownership.tabId, jobId)');
+const restorePageIndex = background.indexOf('restorePublishPage(ownership.tabId, jobId, request.noteType)');
 if (persistPublishedIndex < 0 || restorePageIndex < 0 || persistPublishedIndex > restorePageIndex) {
   throw new Error('Published state must be persisted before attempting to restore the publish page');
+}
+if (!background.includes('buildPublishModeUrl(noteType')
+  || !background.includes('restorePublishPage(tabs[0].id, jobId, noteType)')) {
+  throw new Error('Publisher mode switching and typed restore must stay enabled');
+}
+if (background.includes('expectedInputExists')) {
+  throw new Error('Hidden file inputs must not be used as publish-mode readiness evidence');
+}
+if (!background.includes("'DOM.getFlattenedDocument'")
+  || !background.includes('backendNodeId: candidate.backendDOMNodeId')
+  || background.includes("'DOM.resolveNode', { nodeId }")) {
+  throw new Error('Media assignment must use stable backend node ids without post-assignment stale-node reads');
+}
+if (!background.includes('canResumeOwnedPreparingDraft(snapshot, ownership.status)')) {
+  throw new Error('A same-task draft interrupted after media assignment must resume without uploading again');
 }
 console.log('Publisher extension verification passed');

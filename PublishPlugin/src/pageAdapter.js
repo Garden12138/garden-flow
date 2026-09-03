@@ -1,5 +1,28 @@
 export const PUBLISH_URL = 'https://creator.xiaohongshu.com/publish/publish?source=official&from=tab_switch';
 
+export function publishTargetForNoteType(noteType) {
+  return noteType === 'image' || noteType === 'video' ? noteType : '';
+}
+
+export function buildPublishModeUrl(noteType, currentHref = PUBLISH_URL, options = {}) {
+  const target = publishTargetForNoteType(noteType);
+  if (!target) throw new TypeError('Unsupported Xiaohongshu note type');
+  let current;
+  try {
+    current = new URL(currentHref);
+  } catch {
+    current = new URL(PUBLISH_URL);
+  }
+  const url = new URL('/publish/publish', new URL(PUBLISH_URL).origin);
+  url.searchParams.set('source', 'official');
+  if (options.published === true || (options.published !== false && current.searchParams.get('published') === 'true')) {
+    url.searchParams.set('published', 'true');
+  }
+  url.searchParams.set('from', 'tab_switch');
+  url.searchParams.set('target', target);
+  return url.toString();
+}
+
 export function normalizeHashtags(values) {
   if (!Array.isArray(values)) return [];
   const seen = new Set();
@@ -43,6 +66,38 @@ export function verifyPreparedEditorSnapshot(snapshot, payload) {
     titleMatches,
     bodyMatches,
   };
+}
+
+export function canResumeOwnedPreparingDraft(snapshot, ownershipStatus) {
+  return ownershipStatus === 'preparing'
+    && String(snapshot?.titleValue || '').trim() === ''
+    && normalizeEditorText(snapshot?.bodyValue) === '';
+}
+
+function nodeAttributes(node) {
+  const values = Array.from(node?.attributes || []);
+  const attributes = {};
+  for (let index = 0; index + 1 < values.length; index += 2) {
+    attributes[String(values[index] || '').toLowerCase()] = String(values[index + 1] || '');
+  }
+  return attributes;
+}
+
+export function findFileInputsInFlattenedDom(nodes, kind) {
+  if (kind !== 'image' && kind !== 'video') return [];
+  return flattenPiercedDomNodes(nodes).flatMap((node) => {
+    if (String(node?.nodeName || '').toUpperCase() !== 'INPUT') return [];
+    const attributes = nodeAttributes(node);
+    if (String(attributes.type || '').toLowerCase() !== 'file') return [];
+    const accept = String(attributes.accept || '').toLowerCase();
+    const matches = kind === 'video'
+      ? accept.includes('video') || /\.(mp4|mov|m4v|webm)/.test(accept)
+      : accept.includes('image') || /\.(png|jpe?g|webp)/.test(accept);
+    const backendDOMNodeId = Number(node.backendNodeId);
+    return matches && Number.isInteger(backendDOMNodeId)
+      ? [{ backendDOMNodeId, accept }]
+      : [];
+  });
 }
 
 export function choosePublishTargetCandidate(candidates) {
@@ -252,6 +307,18 @@ export function isUploadLandingReady(evidence) {
   }
   return Boolean(evidence.uploadModeControl
     && (evidence.genericUploadPrompt || evidence.fileInputCount > 0));
+}
+
+export function isPublishModeReady(evidence, noteType) {
+  const target = publishTargetForNoteType(noteType);
+  return Boolean(target
+    && evidence?.publishTarget === target
+    && isUploadLandingReady(evidence));
+}
+
+export function publishModeMatches(evidence, noteType) {
+  const target = publishTargetForNoteType(noteType);
+  return Boolean(target && evidence?.publishTarget === target);
 }
 
 export function classifyPageProbe(probe) {

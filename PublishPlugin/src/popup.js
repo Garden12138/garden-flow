@@ -7,7 +7,7 @@ chrome.runtime.sendMessage({ type: 'publisher.status' }).then((result) => {
     element.textContent = `已连接；当前检测到 ${result.publishTabCount || 0} 个发布页。`;
   } else {
     element.textContent = result.pageState === 'ready'
-      ? '已就绪，可以等待发布任务。'
+      ? `${String(result.detail || '发布页空白且可用')}，可以等待发布任务。`
       : String(result.detail || `页面状态：${result.pageState || '未知'}`);
   }
 }).catch(() => {

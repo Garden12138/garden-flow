@@ -49,6 +49,7 @@ type XhsPublisherSettingsStatus = {
         extensionInstanceId: string;
         browser: string;
         pageState?: string;
+        publishTarget?: 'image' | 'video';
         publishTabCount?: number;
         detail?: string;
     }>;

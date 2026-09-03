@@ -1,15 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildPublishModeUrl,
   buildBody,
+  canResumeOwnedPreparingDraft,
   choosePublishTargetCandidate,
   classifyPageProbe,
+  findFileInputsInFlattenedDom,
   findPublishButtonsInFlattenedDom,
   isUploadLandingReady,
+  isPublishModeReady,
   normalizeEditorText,
   normalizeHashtags,
   publishCandidatesFromAxTree,
   publishCandidatesFromFlattenedDom,
+  publishModeMatches,
   validatePublishRequest,
   verifyPreparedEditorSnapshot,
 } from '../src/pageAdapter.js';
@@ -33,6 +38,25 @@ function request(overrides = {}) {
 
 test('normalizes and deduplicates hashtags', () => {
   assert.deepEqual(normalizeHashtags(['#布偶猫', ' 布偶猫 ', '猫粮']), ['布偶猫', '猫粮']);
+});
+
+test('builds image and video publish URLs without carrying unrelated parameters', () => {
+  assert.equal(
+    buildPublishModeUrl('image', 'https://creator.xiaohongshu.com/publish/publish?source=other&published=true&target=video&draft=1'),
+    'https://creator.xiaohongshu.com/publish/publish?source=official&published=true&from=tab_switch&target=image',
+  );
+  assert.equal(
+    buildPublishModeUrl('video', 'https://creator.xiaohongshu.com/publish/publish?source=official&target=image'),
+    'https://creator.xiaohongshu.com/publish/publish?source=official&from=tab_switch&target=video',
+  );
+  assert.equal(
+    buildPublishModeUrl('video', undefined, { published: true }),
+    'https://creator.xiaohongshu.com/publish/publish?source=official&published=true&from=tab_switch&target=video',
+  );
+});
+
+test('rejects unsupported note types when building a publish URL', () => {
+  assert.throws(() => buildPublishModeUrl('article'), /Unsupported Xiaohongshu note type/);
 });
 
 test('does not append hashtags already present in the body', () => {
@@ -93,6 +117,36 @@ test('does not require Xiaohongshu publish-button markup during prepared-content
     media: [{}],
   });
   assert.equal(verified.ok, true);
+});
+
+test('finds stable backend ids for image and video file inputs across pierced DOM', () => {
+  const nodes = [{
+    nodeId: 1,
+    backendNodeId: 100,
+    nodeType: 1,
+    nodeName: 'DIV',
+    shadowRoots: [{
+      nodeId: 2,
+      backendNodeId: 101,
+      nodeType: 11,
+      nodeName: '#document-fragment',
+      children: [
+        { nodeId: 3, backendNodeId: 102, nodeType: 1, nodeName: 'INPUT', attributes: ['type', 'file', 'accept', 'video/mp4,.mov'] },
+        { nodeId: 4, backendNodeId: 103, nodeType: 1, nodeName: 'INPUT', attributes: ['accept', 'image/jpeg,image/png', 'type', 'file'] },
+        { nodeId: 5, backendNodeId: 104, nodeType: 1, nodeName: 'INPUT', attributes: ['type', 'text'] },
+      ],
+    }],
+  }];
+  assert.deepEqual(findFileInputsInFlattenedDom(nodes, 'video'), [{ backendDOMNodeId: 102, accept: 'video/mp4,.mov' }]);
+  assert.deepEqual(findFileInputsInFlattenedDom(nodes, 'image'), [{ backendDOMNodeId: 103, accept: 'image/jpeg,image/png' }]);
+  assert.deepEqual(findFileInputsInFlattenedDom(nodes, 'article'), []);
+});
+
+test('only resumes an owned preparing draft when both editor fields are still empty', () => {
+  assert.equal(canResumeOwnedPreparingDraft({ titleValue: '', bodyValue: '\u200b' }, 'preparing'), true);
+  assert.equal(canResumeOwnedPreparingDraft({ titleValue: '用户标题', bodyValue: '' }, 'preparing'), false);
+  assert.equal(canResumeOwnedPreparingDraft({ titleValue: '', bodyValue: '用户正文' }, 'preparing'), false);
+  assert.equal(canResumeOwnedPreparingDraft({ titleValue: '', bodyValue: '' }, 'prepared'), false);
 });
 
 test('selects one enabled native publish control over wrapper candidates', () => {
@@ -256,7 +310,7 @@ test('treats the empty media-upload landing page as a ready publish page', () =>
 });
 
 test('recognizes the current image upload landing page from structural evidence', () => {
-  assert.equal(isUploadLandingReady({
+  const evidence = {
     publishPath: '/publish/publish',
     publishTarget: 'image',
     hasTitleInput: false,
@@ -268,7 +322,30 @@ test('recognizes the current image upload landing page from structural evidence'
     imageUploadPrompt: true,
     videoUploadAction: false,
     videoUploadPrompt: false,
-  }), true);
+  };
+  assert.equal(isUploadLandingReady(evidence), true);
+  assert.equal(isPublishModeReady(evidence, 'image'), true);
+  assert.equal(isPublishModeReady(evidence, 'video'), false);
+  assert.equal(publishModeMatches(evidence, 'image'), true);
+});
+
+test('does not accept hidden inputs or a generic landing page as the requested mode', () => {
+  const evidence = {
+    publishPath: '/publish/publish',
+    publishTarget: 'video',
+    hasTitleInput: false,
+    editableCount: 0,
+    fileInputCount: 3,
+    uploadModeControl: true,
+    genericUploadPrompt: true,
+    imageUploadAction: false,
+    imageUploadPrompt: false,
+    videoUploadAction: true,
+    videoUploadPrompt: true,
+  };
+  assert.equal(isUploadLandingReady(evidence), true);
+  assert.equal(isPublishModeReady(evidence, 'image'), false);
+  assert.equal(publishModeMatches(evidence, 'image'), false);
 });
 
 test('does not trust the image target parameter without matching empty-page controls', () => {

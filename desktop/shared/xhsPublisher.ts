@@ -80,6 +80,7 @@ export interface XhsPublisherBrowserStatus {
     browser: string;
     publishTabCount?: number;
     pageState?: 'ready' | 'draft' | 'login_required' | 'security_challenge' | 'success' | 'unsupported';
+    publishTarget?: 'image' | 'video';
     detail?: string;
 }
 

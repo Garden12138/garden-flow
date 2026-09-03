@@ -1,12 +1,17 @@
 import {
   PUBLISH_URL,
+  buildPublishModeUrl,
   buildBody,
+  canResumeOwnedPreparingDraft,
   choosePublishTargetCandidate,
   classifyPageProbe,
+  findFileInputsInFlattenedDom,
   findPublishButtonsInFlattenedDom,
   isUploadLandingReady,
+  isPublishModeReady,
   publishCandidatesFromAxTree,
   publishCandidatesFromFlattenedDom,
+  publishModeMatches,
   validatePublishRequest,
   verifyPreparedEditorSnapshot,
 } from './pageAdapter.js';
@@ -200,12 +205,68 @@ async function inspectTab(tabId) {
   return { probe: normalizedProbe, pageState: classifyPageProbe(normalizedProbe) };
 }
 
+function publishTargetFromState(state) {
+  const target = state?.probe?.uploadLandingEvidence?.publishTarget;
+  return target === 'image' || target === 'video' ? target : undefined;
+}
+
+function publishModeReady(state, noteType) {
+  return state?.pageState === 'ready'
+    && isPublishModeReady(state?.probe?.uploadLandingEvidence, noteType);
+}
+
+function publishModeFailure(state, fallbackCode = 'PUBLISH_MODE_NOT_READY') {
+  if (state?.pageState === 'login_required') {
+    return { ok: false, code: 'LOGIN_REQUIRED', message: '请先在专用浏览器登录小红书' };
+  }
+  if (state?.pageState === 'security_challenge') {
+    return { ok: false, code: 'SECURITY_CHALLENGE', message: '请先在专用浏览器完成安全验证' };
+  }
+  if (state?.pageState === 'draft') {
+    return { ok: false, code: 'PUBLISH_MODE_NOT_EMPTY', message: '目标发布模式不是空白上传页，未继续操作' };
+  }
+  return { ok: false, code: fallbackCode, message: '目标图文/视频发布页未在限定时间内就绪' };
+}
+
+async function waitForPublishMode(tabId, noteType, timeoutMs = 15_000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastState = null;
+  while (Date.now() < deadline) {
+    try {
+      lastState = await inspectTab(tabId);
+      if (publishModeReady(lastState, noteType)) return { ok: true, state: lastState };
+      if (lastState.pageState === 'login_required' || lastState.pageState === 'security_challenge') {
+        return publishModeFailure(lastState);
+      }
+      if (lastState.pageState === 'draft'
+        && publishModeMatches(lastState.probe?.uploadLandingEvidence, noteType)) {
+        return publishModeFailure(lastState);
+      }
+    } catch {}
+    await sleep(500);
+  }
+  return publishModeFailure(lastState);
+}
+
+async function ensurePublishMode(tabId, noteType, currentState, options = {}) {
+  if (publishModeReady(currentState, noteType)) return { ok: true, state: currentState };
+  if (currentState?.pageState === 'draft'
+    || currentState?.pageState === 'login_required'
+    || currentState?.pageState === 'security_challenge') {
+    return publishModeFailure(currentState);
+  }
+  const nextUrl = buildPublishModeUrl(noteType, currentState?.probe?.href || PUBLISH_URL, options);
+  await chrome.tabs.update(tabId, { url: nextUrl });
+  return await waitForPublishMode(tabId, noteType);
+}
+
 async function currentStatus() {
   const tabs = await publishTabs();
   if (tabs.length !== 1 || !tabs[0]?.id) {
     return { nativeConnected, publishTabCount: tabs.length, pageState: 'unsupported', detail: tabs.length === 0 ? '请打开一个小红书官方发布页' : '请只保留一个小红书官方发布页' };
   }
   const state = await inspectTab(tabs[0].id);
+  const publishTarget = publishTargetFromState(state);
   const ownership = await preparedOwnership();
   let publishControl = null;
   if (state.pageState === 'draft') {
@@ -219,7 +280,11 @@ async function currentStatus() {
     }
   }
   const details = {
-    ready: '发布页空白且可用',
+    ready: publishTarget === 'image'
+      ? '空白图文发布页可用'
+      : publishTarget === 'video'
+        ? '空白视频发布页可用'
+        : '发布页空白且可用',
     draft: ownership ? '发布页包含由发布插件准备的内容或其他草稿' : '发布页已有草稿，不会覆盖',
     login_required: '请先在专用浏览器登录小红书',
     security_challenge: '请先在专用浏览器完成安全验证',
@@ -230,6 +295,7 @@ async function currentStatus() {
     nativeConnected,
     publishTabCount: 1,
     pageState: state.pageState,
+    publishTarget,
     detail: state.pageState === 'draft'
       ? `${details.draft}；${publishControl?.ok ? '已识别唯一可用的发布按钮' : publishControl?.message || '未检查发布按钮'}`
       : details[state.pageState] || details.unsupported,
@@ -239,59 +305,24 @@ async function currentStatus() {
   };
 }
 
-function prepareMode(noteType) {
-  const visible = (element) => {
-    const rect = element.getBoundingClientRect();
-    const style = getComputedStyle(element);
-    return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
-  };
-  const expectedInputExists = Array.from(document.querySelectorAll('input[type="file"]')).some((item) => {
-    const accept = String(item.getAttribute('accept') || '').toLowerCase();
-    return noteType === 'video'
-      ? accept.includes('video') || /\.(mp4|mov|m4v|webm)/.test(accept)
-      : accept.includes('image') || /\.(png|jpe?g|webp)/.test(accept);
-  });
-  if (expectedInputExists) return { ok: true, changed: false };
-  const publishTarget = new URL(location.href).searchParams.get('target');
-  if ((noteType === 'image' && publishTarget === 'image')
-    || (noteType === 'video' && publishTarget === 'video')) {
-    return { ok: true, changed: false };
-  }
-  const targetTexts = noteType === 'video' ? ['上传视频', '视频'] : ['上传图文', '图文', '图片'];
-  const controls = Array.from(document.querySelectorAll('button,[role="button"],[role="tab"],a,div,span'))
-    .filter((item) => visible(item) && targetTexts.includes(item.textContent?.trim() || ''))
-    .filter((item) => !Array.from(item.children).some((child) => targetTexts.includes(child.textContent?.trim() || '')));
-  const target = controls.length === 1 ? controls[0] : null;
-  if (!(target instanceof HTMLElement)) {
-    return { ok: false, code: 'PUBLISH_MODE_NOT_FOUND', message: '无法唯一定位图文/视频发布模式，未继续操作' };
-  }
-  target.click();
-  return { ok: true, changed: true };
-}
-
 async function setFiles(tabId, files, kind) {
   await chrome.debugger.attach({ tabId }, '1.3');
   try {
     await chrome.debugger.sendCommand({ tabId }, 'DOM.enable');
-    const root = await chrome.debugger.sendCommand({ tabId }, 'DOM.getDocument', { depth: -1, pierce: true });
-    const nodes = await chrome.debugger.sendCommand({ tabId }, 'DOM.querySelectorAll', { nodeId: root.root.nodeId, selector: 'input[type="file"]' });
-    for (const nodeId of nodes.nodeIds || []) {
-      const attrsResult = await chrome.debugger.sendCommand({ tabId }, 'DOM.getAttributes', { nodeId });
-      const attrs = attrsResult.attributes || [];
-      const attributes = Object.fromEntries(Array.from({ length: Math.floor(attrs.length / 2) }, (_, index) => [attrs[index * 2], attrs[index * 2 + 1]]));
-      const accept = String(attributes.accept || '').toLowerCase();
-      const matches = kind === 'video'
-        ? accept.includes('video') || /\.(mp4|mov|m4v|webm)/.test(accept)
-        : accept.includes('image') || /\.(png|jpe?g|webp)/.test(accept);
-      if (!matches) continue;
-      await chrome.debugger.sendCommand({ tabId }, 'DOM.setFileInputFiles', { nodeId, files });
-      const resolved = await chrome.debugger.sendCommand({ tabId }, 'DOM.resolveNode', { nodeId });
-      const counted = await chrome.debugger.sendCommand({ tabId }, 'Runtime.callFunctionOn', {
-        objectId: resolved.object.objectId,
-        functionDeclaration: 'function () { return this.files ? this.files.length : 0; }',
-        returnByValue: true,
+    const flattened = await chrome.debugger.sendCommand(
+      { tabId },
+      'DOM.getFlattenedDocument',
+      { depth: -1, pierce: true },
+    );
+    for (const candidate of findFileInputsInFlattenedDom(flattened?.nodes, kind)) {
+      await chrome.debugger.sendCommand({ tabId }, 'DOM.setFileInputFiles', {
+        backendNodeId: candidate.backendDOMNodeId,
+        files,
       });
-      return Number(counted?.result?.value || 0);
+      // Xiaohongshu replaces the file input as soon as an upload starts. A successful
+      // CDP assignment is therefore the last safe operation on this node; the editor
+      // readiness loop below verifies the resulting upload and fields separately.
+      return files.length;
     }
     return 0;
   } finally {
@@ -480,14 +511,36 @@ async function waitFor(tabId, predicate, timeoutMs, intervalMs = 500) {
   return null;
 }
 
-async function restorePublishPage(tabId, jobId) {
-  const ready = (state) => state.pageState === 'ready';
-  if (await waitFor(tabId, ready, 8000)) return result(jobId, true, 'published', 'ready');
-  await execute(tabId, clickImmediateReturn).catch(() => false);
-  if (await waitFor(tabId, ready, 8000)) return result(jobId, true, 'published', 'ready');
-  await chrome.tabs.update(tabId, { url: PUBLISH_URL });
-  if (await waitFor(tabId, ready, 15000)) return result(jobId, true, 'published', 'ready');
-  return result(jobId, false, 'published', 'failed', 'PUBLISH_PAGE_RESET_FAILED', '笔记已发布，但无法恢复为空白发布页');
+async function restorePublishPage(tabId, jobId, noteType) {
+  if (noteType !== 'image' && noteType !== 'video') {
+    return result(jobId, false, 'published', 'failed', 'INVALID_REQUEST', '笔记已发布，但恢复发布页时缺少有效的笔记类型');
+  }
+  const anyReady = (state) => state.pageState === 'ready';
+  let returned = await waitFor(tabId, anyReady, 8000);
+  if (returned && publishModeReady(returned, noteType)) {
+    return result(jobId, true, 'published', 'ready');
+  }
+  if (!returned) {
+    await execute(tabId, clickImmediateReturn).catch(() => false);
+    returned = await waitFor(tabId, anyReady, 8000);
+    if (returned && publishModeReady(returned, noteType)) {
+      return result(jobId, true, 'published', 'ready');
+    }
+  }
+  let current = returned;
+  if (!current) {
+    current = await inspectTab(tabId).catch(() => null);
+  }
+  const restored = await ensurePublishMode(tabId, noteType, current, { published: true });
+  if (restored?.ok) return result(jobId, true, 'published', 'ready');
+  return result(
+    jobId,
+    false,
+    'published',
+    'failed',
+    restored?.code || 'PUBLISH_PAGE_RESET_FAILED',
+    `笔记已发布，但${restored?.message || '无法恢复到对应类型的空白发布页'}`,
+  );
 }
 
 function result(jobId, ok, publishStatus, resetStatus, code, message) {
@@ -554,13 +607,28 @@ async function preparePublish(payload) {
     const tabId = tabs[0].id;
     const initial = await inspectTab(tabId);
     const ownership = await preparedOwnership();
-    if (initial.pageState === 'draft'
+    const ownedDraft = initial.pageState === 'draft'
       && (ownership?.status === 'prepared' || ownership?.status === 'preparing')
       && ownership.jobId === payload.jobId
       && ownership.contentDigest === payload.contentDigest
-      && ownership.tabId === tabId) {
+      && ownership.tabId === tabId;
+    if (ownedDraft) {
+      if ((ownership.noteType && ownership.noteType !== payload.noteType)
+        || !publishModeMatches(initial.probe?.uploadLandingEvidence, payload.noteType)) {
+        return result(payload.jobId, false, 'not_submitted', 'not_started', 'PUBLISH_MODE_CHANGED', '当前任务所在页面的图文/视频模式已变化，未继续操作');
+      }
       const verificationPayload = editorVerificationPayload(payload);
-      const snapshot = await execute(tabId, readPreparedEditorSnapshot);
+      let snapshot = await execute(tabId, readPreparedEditorSnapshot);
+      if (canResumeOwnedPreparingDraft(snapshot, ownership.status)) {
+        const filled = await execute(tabId, fillEditor, [{
+          title: payload.title,
+          body: verificationPayload.expectedBody,
+        }]);
+        if (!filled?.ok) {
+          return result(payload.jobId, false, 'not_submitted', 'not_started', filled?.code || 'EDITOR_VERIFICATION_FAILED', filled?.message || '标题或正文填写失败');
+        }
+        snapshot = await execute(tabId, readPreparedEditorSnapshot);
+      }
       let verified = verifyPreparedEditorSnapshot(snapshot, verificationPayload);
       if (!verified?.ok && verified?.titleMatches && verified?.bodyMatches && verified?.mediaBusy) {
         const prepared = await waitForPreparedEditor(
@@ -576,7 +644,7 @@ async function preparePublish(payload) {
         }
       }
       if (verified?.ok) {
-        await savePreparedOwnership({ ...ownership, status: 'prepared', preparedAt: ownership.preparedAt || Date.now() });
+        await savePreparedOwnership({ ...ownership, noteType: payload.noteType, status: 'prepared', preparedAt: ownership.preparedAt || Date.now() });
         return preparedResult(payload.jobId);
       }
       const failure = preparedEditorFailure(verified);
@@ -586,16 +654,18 @@ async function preparePublish(payload) {
       const code = initial.pageState === 'draft' ? 'EXISTING_DRAFT' : initial.pageState === 'login_required' ? 'LOGIN_REQUIRED' : initial.pageState === 'security_challenge' ? 'SECURITY_CHALLENGE' : 'UNSUPPORTED_PAGE';
       return result(payload.jobId, false, 'not_submitted', 'not_started', code, initial.pageState === 'draft' ? '发布页已有内容，且未通过当前任务归属校验，不会覆盖' : '发布页未就绪，请完成登录或安全验证');
     }
+    const mode = await ensurePublishMode(tabId, payload.noteType, initial);
+    if (!mode?.ok) {
+      return result(payload.jobId, false, 'not_submitted', 'not_started', mode?.code || 'PUBLISH_MODE_NOT_READY', mode?.message || '目标图文/视频发布页未就绪');
+    }
     await savePreparedOwnership({
       jobId: payload.jobId,
       contentDigest: payload.contentDigest,
       tabId,
+      noteType: payload.noteType,
       status: 'preparing',
       preparedAt: 0,
     });
-    const mode = await execute(tabId, prepareMode, [payload.noteType]);
-    if (!mode?.ok) return result(payload.jobId, false, 'not_submitted', 'not_started', mode?.code || 'PUBLISH_MODE_NOT_FOUND', mode?.message || '未找到发布模式切换控件');
-    await sleep(500);
     const images = payload.media.filter((item) => item.role !== 'video').sort((a, b) => a.order - b.order).map((item) => item.path);
     const videos = payload.media.filter((item) => item.role === 'video').sort((a, b) => a.order - b.order).map((item) => item.path);
     if (payload.noteType === 'video') {
@@ -621,6 +691,7 @@ async function preparePublish(payload) {
       jobId: payload.jobId,
       contentDigest: payload.contentDigest,
       tabId,
+      noteType: payload.noteType,
       status: 'prepared',
       preparedAt: Date.now(),
     });
@@ -657,6 +728,13 @@ async function submitPrepared(payload) {
     if (!validation.ok || request.jobId !== jobId || request.contentDigest !== contentDigest) {
       return result(jobId, false, 'not_submitted', 'not_started', validation.code || 'INVALID_REQUEST', validation.message || '提交内容与已准备任务不一致');
     }
+    if (ownership.noteType !== request.noteType) {
+      return result(jobId, false, 'not_submitted', 'not_started', 'PUBLISH_MODE_CHANGED', '准备任务的图文/视频类型与提交请求不一致');
+    }
+    const submitState = await inspectTab(ownership.tabId);
+    if (!publishModeMatches(submitState.probe?.uploadLandingEvidence, request.noteType)) {
+      return result(jobId, false, 'not_submitted', 'not_started', 'PUBLISH_MODE_CHANGED', '发布页的图文/视频模式在提交前发生变化，未点击发布');
+    }
     const snapshot = await execute(ownership.tabId, readPreparedEditorSnapshot);
     const verified = verifyPreparedEditorSnapshot(snapshot, editorVerificationPayload(request));
     if (!verified?.ok) return result(jobId, false, 'not_submitted', 'not_started', 'PREPARED_EDITOR_CHANGED', '发布页内容在提交前发生变化，未点击发布');
@@ -676,7 +754,7 @@ async function submitPrepared(payload) {
     const published = result(jobId, true, 'published', 'returning');
     await saveResult(jobId, published);
     await clearPreparedOwnership(jobId);
-    const restored = await restorePublishPage(ownership.tabId, jobId);
+    const restored = await restorePublishPage(ownership.tabId, jobId, request.noteType);
     await saveResult(jobId, restored);
     return restored;
   } catch (error) {
@@ -700,8 +778,15 @@ async function discardPrepared(payload) {
   if (tabs.length !== 1 || !tabs[0]?.id || tabs[0].id !== ownership.tabId) {
     return { ok: false, jobId, discarded: false, code: 'PUBLISH_TAB_CHANGED', message: '发布页已变化，未自动清理页面' };
   }
-  await chrome.tabs.update(ownership.tabId, { url: PUBLISH_URL });
-  const ready = await waitFor(ownership.tabId, (state) => state.pageState === 'ready', 15_000);
+  const noteType = payload?.noteType || ownership.noteType;
+  if (noteType !== 'image' && noteType !== 'video') {
+    return { ok: false, jobId, discarded: false, code: 'INVALID_REQUEST', message: '缺少用于恢复发布页的笔记类型' };
+  }
+  const current = await inspectTab(ownership.tabId).catch(() => null);
+  await chrome.tabs.update(ownership.tabId, {
+    url: buildPublishModeUrl(noteType, current?.probe?.href || PUBLISH_URL),
+  });
+  const ready = await waitFor(ownership.tabId, (state) => publishModeReady(state, noteType), 15_000);
   if (!ready) return { ok: false, jobId, discarded: false, code: 'PUBLISH_PAGE_RESET_FAILED', message: '当前任务已过期，但发布页未能恢复为空白状态' };
   await clearPreparedOwnership(jobId);
   return { ok: true, jobId, discarded: true };
@@ -716,9 +801,13 @@ async function publish(payload) {
 
 async function restore(payload) {
   const jobId = String(payload?.jobId || '');
+  const noteType = payload?.noteType;
+  if (noteType !== 'image' && noteType !== 'video') {
+    return result(jobId, false, 'published', 'failed', 'INVALID_REQUEST', '恢复请求缺少有效的笔记类型');
+  }
   const tabs = await publishTabs();
   if (tabs.length !== 1 || !tabs[0]?.id) return result(jobId, false, 'published', 'failed', 'PUBLISH_TAB_NOT_FOUND', '无法定位唯一发布页');
-  const restored = await restorePublishPage(tabs[0].id, jobId);
+  const restored = await restorePublishPage(tabs[0].id, jobId, noteType);
   if (restored.resetStatus === 'ready') await clearPreparedOwnership(jobId);
   return restored;
 }

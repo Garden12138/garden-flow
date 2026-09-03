@@ -350,6 +350,9 @@ export class XhsPublisherService extends EventEmitter {
                 pageState: ['ready', 'draft', 'login_required', 'security_challenge', 'success', 'unsupported'].includes(String(detail.pageState))
                     ? detail.pageState as XhsPublisherBrowserStatus['pageState']
                     : undefined,
+                publishTarget: ['image', 'video'].includes(String(detail.publishTarget))
+                    ? detail.publishTarget as XhsPublisherBrowserStatus['publishTarget']
+                    : undefined,
                 detail: detail.detail ? String(detail.detail) : undefined,
             });
         }
@@ -560,6 +563,7 @@ export class XhsPublisherService extends EventEmitter {
             phase: 'discard',
             jobId: job.id,
             contentDigest: job.contentDigest,
+            noteType: job.noteType,
         }, {
             extensionInstanceId: job.extensionInstanceId,
             extensionKind: 'xhs-publisher',
@@ -572,7 +576,10 @@ export class XhsPublisherService extends EventEmitter {
         const job = getXhsPublishJob(jobId);
         if (!job || job.publishStatus !== 'published') return;
         try {
-            const raw = await getBrowserCaptureBridgeService()?.invokeBrowserControl('publisher.restore', { jobId }, {
+            const raw = await getBrowserCaptureBridgeService()?.invokeBrowserControl('publisher.restore', {
+                jobId,
+                noteType: job.noteType,
+            }, {
                 extensionInstanceId: job.extensionInstanceId,
                 extensionKind: 'xhs-publisher',
                 requiredCapability: XHS_PUBLISHER_CAPABILITY,
