@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { parseHTML } from 'linkedom';
 import {
-  captureDocumentToLegacyPayload,
+  captureDocumentToPagePayload,
   normalizeCaptureDocument,
 } from '../src/capture/captureDocument.js';
 import { applyCaptureQuality, assessCaptureQuality } from '../src/capture/captureQuality.js';
@@ -44,7 +44,7 @@ const mappingHelpers = {
   }),
 };
 
-test('legacy page payload retains the existing Knowledge-entry contract', () => {
+test('page payload follows the stable Knowledge-entry contract', () => {
   const payload = {
     type: 'link-article',
     captureKind: 'link-article',
@@ -105,7 +105,7 @@ test('capture documents normalize unsafe resource URLs and preserve the source U
   assert.equal(buildKnowledgeEntryFromCaptureDocument(document, mappingHelpers).source.externalId, 'page-fixed-hash');
 });
 
-test('quality gates challenge pages and sparse pages before the legacy fallback', () => {
+test('quality gates challenge pages and sparse pages before page extraction', () => {
   const blocked = normalizeCaptureDocument({
     source: { url: 'https://example.com/login' },
     content: { title: '请完成安全验证', text: '请完成安全验证后继续访问。' },
@@ -143,7 +143,7 @@ test('Defuddle extractor works on a detached document and strips active HTML', a
   assert.doesNotMatch(capture.content.safeHtml, /<script|window\.bad/i);
 });
 
-test('coordinator caches qualified captures and bypasses WeChat to legacy extraction', async () => {
+test('coordinator caches qualified captures and sends WeChat to its page extractor', async () => {
   let executeCount = 0;
   let messageCount = 0;
   const capture = normalizeCaptureDocument({
@@ -162,13 +162,13 @@ test('coordinator caches qualified captures and bypasses WeChat to legacy extrac
   });
   assert.equal((await coordinator.extract(1)).reason, 'defuddle');
   assert.equal((await coordinator.extract(1)).reason, 'cache-hit');
-  assert.equal((await coordinator.extract(2)).reason, 'legacy-required');
+  assert.equal((await coordinator.extract(2)).reason, 'page-extractor-required');
   assert.equal(executeCount, 1);
   assert.equal(messageCount, 1);
 });
 
-test('capture document conversion stays compatible with the old generic payload fields', () => {
-  const payload = captureDocumentToLegacyPayload(normalizeCaptureDocument({
+test('capture document conversion produces the page payload fields', () => {
+  const payload = captureDocumentToPagePayload(normalizeCaptureDocument({
     engine: 'defuddle',
     captureKind: 'link-article',
     source: { url: 'https://example.com/a' },

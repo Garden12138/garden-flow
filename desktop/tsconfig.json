@@ -19,10 +19,8 @@
     "baseUrl": ".",
     "paths": {
       "@gardenflow/*": ["src/*"],
-      "@/*": ["src/vendor/freecut/*"],
-      "@tauri-apps/api/core": ["src/compat/tauri-core.ts"],
-      "@tauri-apps/api/event": ["src/compat/tauri-event.ts"]
+      "@/*": ["src/vendor/freecut/*"]
     }
   },
-  "include": ["electron", "shared", "private"]
+  "include": ["electron", "shared"]
 }

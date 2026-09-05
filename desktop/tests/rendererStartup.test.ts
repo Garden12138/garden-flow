@@ -16,16 +16,14 @@ test('guarded IPC leaves timeout disabled unless a positive timeout is configure
     assert.equal(normalizeOptionalTimeoutMs(2500), 2500);
 });
 
-test('desktop window stays hidden until the renderer commits and forces an initial repaint', async () => {
-    const [appMain, rendererMain, bridgeCore, ipcRenderer, nativeHostMain, storageBootstrap, localAsset, rendererCompatibility] = await Promise.all([
+test('desktop window stays hidden until the renderer commits and uses only current brand contracts', async () => {
+    const [appMain, rendererMain, bridgeCore, ipcRenderer, nativeHostMain, localAsset] = await Promise.all([
         fs.readFile(path.join(repositoryRoot, 'desktop/electron/appMain.ts'), 'utf8'),
         fs.readFile(path.join(repositoryRoot, 'desktop/src/main.tsx'), 'utf8'),
         fs.readFile(path.join(repositoryRoot, 'desktop/src/bridge/core.ts'), 'utf8'),
         fs.readFile(path.join(repositoryRoot, 'desktop/src/bridge/ipcRenderer.ts'), 'utf8'),
         fs.readFile(path.join(repositoryRoot, 'desktop/electron/main.ts'), 'utf8'),
-        fs.readFile(path.join(repositoryRoot, 'desktop/src/compat/storageBootstrap.ts'), 'utf8'),
         fs.readFile(path.join(repositoryRoot, 'desktop/shared/localAsset.ts'), 'utf8'),
-        fs.readFile(path.join(repositoryRoot, 'desktop/shared/brandCompatibility.mjs'), 'utf8'),
     ]);
 
     assert.match(appMain, /show:\s*false/);
@@ -39,10 +37,7 @@ test('desktop window stays hidden until the renderer commits and forces an initi
     assert.doesNotMatch(bridgeCore, /Math\.max\(1, Number\(options\?\.timeoutMs \|\| 0\)\)/);
     assert.doesNotMatch(ipcRenderer, /Math\.max\(1, Number\(options\?\.timeoutMs \|\| 0\)\)/);
     assert.match(nativeHostMain, /handoffBrowserNativeHostToNodeRuntime/);
-    assert.match(storageBootstrap, /brandCompatibility\.mjs/);
-    assert.doesNotMatch(storageBootstrap, /brandCompatibility\.cjs/);
-    assert.match(localAsset, /brandCompatibility\.mjs/);
-    assert.doesNotMatch(localAsset, /brandCompatibility\.cjs/);
-    assert.match(rendererCompatibility, /export default compatibility/);
-    assert.doesNotMatch(rendererCompatibility, /module\.exports|require\(/);
+    assert.doesNotMatch(rendererMain, /storageBootstrap|brandCompatibility/);
+    assert.doesNotMatch(localAsset, /brandCompatibility|canonicalValue|canonicalKey/);
+    assert.doesNotMatch(ipcRenderer, new RegExp(['official', 'Auth'].join('')));
 });

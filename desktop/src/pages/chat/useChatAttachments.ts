@@ -1,4 +1,3 @@
-import { getCurrentWindow, type DragDropEvent } from '@tauri-apps/api/window';
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 
 import type { ChatComposerHandle, UploadedFileAttachment } from '../../components/ChatComposer';
@@ -34,12 +33,6 @@ function dragEventHasFiles(event: React.DragEvent<HTMLElement>): boolean {
 function droppedFiles(fileList: FileList | null | undefined): File[] {
   if (!fileList || fileList.length === 0) return [];
   return Array.from(fileList).filter((file) => file && file.name);
-}
-
-function droppedPaths(paths: string[] | null | undefined): string[] {
-  return Array.from(new Set((paths || [])
-    .map((path) => String(path || '').trim())
-    .filter(Boolean)));
 }
 
 function pickFilesFromBrowserInput(): Promise<File[]> {
@@ -90,15 +83,6 @@ function pickFilesFromBrowserInput(): Promise<File[]> {
       fail(error);
     }
   });
-}
-
-function isTauriRuntime(): boolean {
-  if (typeof window === 'undefined') return false;
-  const tauriWindow = window as unknown as {
-    __TAURI__?: unknown;
-    __TAURI_INTERNALS__?: unknown;
-  };
-  return Boolean(tauriWindow.__TAURI_INTERNALS__ || tauriWindow.__TAURI__);
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -220,7 +204,6 @@ function createVideoThumbnailDataUrl(source: string): Promise<string | null> {
 async function withVideoThumbnail(
   attachment: UploadedFileAttachment,
   preferredSource?: string,
-  sessionId?: string | null,
 ): Promise<UploadedFileAttachment> {
   if (!isVideoAttachment(attachment)) {
     return attachment;
@@ -252,16 +235,9 @@ async function withVideoThumbnail(
     });
     return attachment;
   }
-  const backendSource = String(
-    attachment.absolutePath
-    || attachment.localUrl
-    || attachment.originalAbsolutePath
-    || '',
-  ).trim();
   logVideoThumbnailDebug('attachment.thumbnail.start', {
     name: attachment.name,
     source,
-    backendSource,
     preferredSource,
     localUrl: attachment.localUrl,
     absolutePath: attachment.absolutePath,
@@ -270,30 +246,6 @@ async function withVideoThumbnail(
     mimeType: attachment.mimeType,
     ext: attachment.ext,
   });
-  if (backendSource && window.ipcRenderer?.chat?.createVideoThumbnail) {
-    try {
-      const result = await window.ipcRenderer.chat.createVideoThumbnail({
-        source: backendSource,
-        sessionId: sessionId || undefined,
-      });
-      logVideoThumbnailDebug('attachment.thumbnail.backend-result', {
-        name: attachment.name,
-        backendSource,
-        result,
-      });
-      const thumbnailUrl = String(result?.thumbnailUrl || result?.thumbnailDataUrl || '').trim();
-      if (result?.success && thumbnailUrl) {
-        return { ...attachment, thumbnailDataUrl: thumbnailUrl, thumbnailUrl };
-      }
-    } catch (error) {
-      logVideoThumbnailDebug('attachment.thumbnail.backend-error', {
-        name: attachment.name,
-        backendSource,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      // Browser-based extraction below is only a preview fallback.
-    }
-  }
   const thumbnailDataUrl = await createVideoThumbnailDataUrl(source.startsWith('blob:') || source.startsWith('data:') ? source : resolveAssetUrl(source));
   logVideoThumbnailDebug('attachment.thumbnail.browser-result', {
     name: attachment.name,
@@ -438,7 +390,7 @@ export function useChatAttachments({
       absolutePath: missing.absolutePath,
       originalAbsolutePath: missing.originalAbsolutePath,
     });
-    void withVideoThumbnail(missing, undefined, currentSessionId).then((repaired) => {
+    void withVideoThumbnail(missing).then((repaired) => {
       if (!repaired.thumbnailDataUrl && !repaired.thumbnailUrl) return;
       setPendingAttachments((current) => {
         const next = current.map((item) => (
@@ -492,7 +444,7 @@ export function useChatAttachments({
         previewUrl = URL.createObjectURL(file);
       }
       try {
-        const attachmentWithThumbnail = await withVideoThumbnail(result.attachment, previewUrl, currentSessionId);
+        const attachmentWithThumbnail = await withVideoThumbnail(result.attachment, previewUrl);
         logVideoThumbnailDebug('attachment.inline.append', {
           name: attachmentWithThumbnail.name,
           hasThumbnailDataUrl: Boolean(attachmentWithThumbnail.thumbnailDataUrl),
@@ -518,95 +470,11 @@ export function useChatAttachments({
     }
   }, [allowFileUpload, attachFile, isProcessing]);
 
-  const attachFilePath = useCallback(async (path: string) => {
-    if (!allowFileUpload || isProcessing) return;
-    const normalizedPath = String(path || '').trim();
-    if (!normalizedPath) return;
-    setIsAttachmentUploading(true);
-    setErrorNotice(null);
-    try {
-      const result = await window.ipcRenderer.chat.createPathAttachment({
-        path: normalizedPath,
-        sessionId: currentSessionId || undefined,
-      }) as { success?: boolean; error?: string; attachment?: UploadedFileAttachment };
-      logVideoThumbnailDebug('attachment.path.result', {
-        path: normalizedPath,
-        success: result?.success,
-        error: result?.error,
-        attachment: result?.attachment,
-      });
-      if (!result?.success || !result.attachment) {
-        throw new Error(result?.error || '上传文件失败');
-      }
-      const attachmentWithThumbnail = await withVideoThumbnail(result.attachment, undefined, currentSessionId);
-      logVideoThumbnailDebug('attachment.path.append', {
-        name: attachmentWithThumbnail.name,
-        hasThumbnailDataUrl: Boolean(attachmentWithThumbnail.thumbnailDataUrl),
-        thumbnailDataUrl: attachmentWithThumbnail.thumbnailDataUrl,
-        thumbnailUrl: attachmentWithThumbnail.thumbnailUrl,
-      });
-      appendPendingAttachment(attachmentWithThumbnail);
-      focusComposer();
-    } catch (error) {
-      setErrorNotice(error instanceof Error ? error.message : String(error || '上传文件失败'));
-    } finally {
-      setIsAttachmentUploading(false);
-    }
-  }, [allowFileUpload, appendPendingAttachment, currentSessionId, focusComposer, isProcessing, setErrorNotice]);
-
   const handleDroppedFiles = useCallback((files: FileList | null | undefined) => {
     const items = droppedFiles(files);
     if (!items.length) return;
     void attachFiles(items);
   }, [attachFiles]);
-
-  const handleDroppedPaths = useCallback((paths: string[] | null | undefined) => {
-    const items = droppedPaths(paths);
-    if (!items.length) return;
-    void (async () => {
-      for (const path of items) {
-        await attachFilePath(path);
-      }
-    })();
-  }, [attachFilePath]);
-
-  useEffect(() => {
-    if (!allowFileUpload || !isActive) return;
-    let disposed = false;
-    let unlisten: (() => void) | null = null;
-
-    getCurrentWindow().onDragDropEvent((event) => {
-      if (disposed || isProcessing) return;
-      const payload = event.payload as DragDropEvent;
-      if (payload.type === 'enter' || payload.type === 'over') {
-        setIsFileDragActive(true);
-        return;
-      }
-      if (payload.type === 'drop') {
-        fileDragDepthRef.current = 0;
-        setIsFileDragActive(false);
-        handleDroppedPaths(payload.paths);
-        return;
-      }
-      if (payload.type === 'leave') {
-        fileDragDepthRef.current = 0;
-        setIsFileDragActive(false);
-      }
-    }).then((dispose) => {
-      if (disposed) {
-        dispose();
-      } else {
-        unlisten = dispose;
-      }
-    }).catch(() => {
-      // Browser preview builds keep the HTML5 drag handlers below.
-    });
-
-    return () => {
-      disposed = true;
-      unlisten?.();
-    };
-  }, [allowFileUpload, handleDroppedPaths, isActive, isProcessing]);
 
   const handleFileDragEnter = useCallback((event: React.DragEvent<HTMLDivElement>) => {
     if (!allowFileUpload || isProcessing || !dragEventHasFiles(event)) return;
@@ -640,16 +508,13 @@ export function useChatAttachments({
     event.stopPropagation();
     fileDragDepthRef.current = 0;
     setIsFileDragActive(false);
-    if (isTauriRuntime()) {
-      return;
-    }
     handleDroppedFiles(event.dataTransfer.files);
   }, [allowFileUpload, handleDroppedFiles, isProcessing]);
 
   const pickAttachment = useCallback(async () => {
     if (isProcessing) return;
     if (!allowFileUpload) return;
-    if (!isTauriRuntime() && window.ipcRenderer?.chat?.pickAttachment) {
+    if (window.ipcRenderer?.chat?.pickAttachment) {
       setIsAttachmentUploading(true);
       setErrorNotice(null);
       try {
@@ -665,7 +530,7 @@ export function useChatAttachments({
           setErrorNotice('文件已选择，但桌面端没有返回可用附件，请重试。');
           return;
         }
-        appendPendingAttachment(await withVideoThumbnail(result.attachment, undefined, currentSessionId));
+        appendPendingAttachment(await withVideoThumbnail(result.attachment));
         focusComposer();
       } catch (error) {
         setErrorNotice(error instanceof Error ? error.message : String(error || '上传文件失败'));

@@ -69,7 +69,7 @@ type StatusLine = {
   forceDanger?: boolean;
   action?: {
     label: string;
-    target: 'settings-login';
+    target: 'settings-ai';
   };
 };
 
@@ -273,28 +273,26 @@ const stringifyCliCommand = (argv?: string[], fallback?: string): string => {
   return String(fallback || '').trim();
 };
 
-const shouldShowLoginSettingsAction = (title: string): boolean => {
+const shouldShowAiSettingsAction = (title: string): boolean => {
   const normalized = title.replace(/\s+/g, '');
   return normalized.includes('余额不足')
-    || normalized.includes('积分不足')
     || normalized.toLowerCase().includes('insufficientbalance')
     || normalized.toLowerCase().includes('insufficientquota')
-    || normalized.includes('登陆失效')
-    || normalized.includes('登录失效');
+    || normalized.toLowerCase().includes('unauthorized')
+    || normalized.toLowerCase().includes('invalidapikey');
 };
 
-const getLoginSettingsActionLabel = (title: string): string => {
+const getAiSettingsActionLabel = (title: string): string => {
   const normalized = title.replace(/\s+/g, '');
-  return normalized.includes('余额不足') || normalized.includes('积分不足') || normalized.toLowerCase().includes('insufficient')
-    ? '去充值'
-    : '查看账号';
+  return normalized.includes('余额不足') || normalized.toLowerCase().includes('insufficient')
+    ? '检查供应商'
+    : '检查配置';
 };
 
 const shouldUseDangerForError = (title: string, detail: string): boolean => {
   const normalized = `${title} ${detail}`.replace(/\s+/g, '').toLowerCase();
   if (
     normalized.includes('余额不足')
-    || normalized.includes('积分不足')
     || normalized.includes('insufficientbalance')
     || normalized.includes('insufficientquota')
     || normalized.includes('登录失效')
@@ -330,8 +328,8 @@ const buildStatusLine = (item: ProcessItem): StatusLine | null => {
       detail,
       preserveDetail: true,
       forceDanger: shouldUseDangerForError(title, detail),
-      action: shouldShowLoginSettingsAction(title)
-        ? { label: getLoginSettingsActionLabel(title), target: 'settings-login' }
+      action: shouldShowAiSettingsAction(title)
+        ? { label: getAiSettingsActionLabel(title), target: 'settings-ai' }
         : undefined,
     };
   }
@@ -435,11 +433,10 @@ export function ProcessTimeline({ items, isStreaming, variant = 'default', failu
     }
   }, [expanded, hiddenCount]);
 
-  const openSettingsLogin = () => {
+  const openAiSettings = () => {
     dispatchAppIntent({
       type: 'settings.open',
       tab: 'ai',
-      aiModelSubTab: 'login',
     });
   };
 
@@ -478,11 +475,11 @@ export function ProcessTimeline({ items, isStreaming, variant = 'default', failu
           >
             <span>{item.text}</span>
             {item.detail ? <span className="ml-1">{item.detail}</span> : null}
-            {item.action?.target === 'settings-login' ? (
+            {item.action?.target === 'settings-ai' ? (
               <button
                 type="button"
                 className="ml-2 inline-flex items-center rounded-md border border-red-500/30 px-2 py-0.5 text-[11px] font-medium text-red-600 transition-colors hover:bg-red-500/10 dark:text-red-200"
-                onClick={openSettingsLogin}
+                onClick={openAiSettings}
               >
                 {item.action.label}
               </button>

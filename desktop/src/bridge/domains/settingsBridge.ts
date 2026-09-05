@@ -9,5 +9,6 @@ export function createSettingsBridge(core: BridgeCore) {
     onDataChanged: (listener: Listener) => core.on('data:changed', listener),
     offDataChanged: (listener: Listener) => core.off('data:changed', listener),
     pickWorkspaceDir: () => core.invokeChannel('settings:pick-workspace-dir'),
+    openWorkspaceDir: () => core.invokeChannel('settings:open-workspace-dir'),
   };
 }

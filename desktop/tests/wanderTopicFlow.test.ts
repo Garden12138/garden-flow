@@ -242,7 +242,7 @@ test('multi-choice inspiration validates every candidate instead of only the sel
     assert.ok(validateWanderStructuredResult(result, true).some((issue) => issue.path === 'options.1.evaluation'));
 });
 
-test('new and legacy history records preserve source labels and subject snapshots', () => {
+test('history records preserve source labels and subject snapshots', () => {
     assert.equal(resolveWanderHistorySourceMode({ sourceMode: 'comment_insight', items: [] }), 'comment_insight');
     assert.equal(resolveWanderHistorySourceMode({
         items: [{ meta: { sourceType: 'xhs-comments' } }],

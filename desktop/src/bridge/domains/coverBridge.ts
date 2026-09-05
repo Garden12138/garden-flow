@@ -14,7 +14,6 @@ export function createCoverBridge(core: BridgeCore) {
         list: () => core.invokeChannel('cover:templates:list'),
         save: (payload: { template: Record<string, unknown> }) => core.invokeChannel('cover:templates:save', payload),
         delete: (payload: { templateId: string }) => core.invokeChannel('cover:templates:delete', payload),
-        importLegacy: (payload: { templates: Record<string, unknown>[] }) => core.invokeChannel('cover:templates:import-legacy', payload),
       },
     },
   };

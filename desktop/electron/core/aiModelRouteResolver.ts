@@ -1,7 +1,6 @@
 import { parseAiModelRoutesValue } from '../../src/features/settings/modelRouteValue.ts';
 import { resolveModelScopeFromContextType, resolveScopedModelName } from './modelScopeSettings.ts';
 import { normalizeApiBaseUrl } from './urlUtils.ts';
-import compatibility from '../../shared/brandCompatibility.cjs';
 
 export type AiRouteScope = 'chat' | 'wander' | 'knowledge' | 'gardenflow';
 
@@ -14,24 +13,12 @@ export interface ResolvedSettingsLlm {
   mode: string;
 }
 
-const OFFICIAL_SOURCE_IDS = new Set([
-  'gardenflow_official_auto',
-]);
-
 function text(value: unknown): string {
   return String(value || '').trim();
 }
 
 function canonicalizeSourceId(sourceId: string): string {
-  const normalized = text(sourceId);
-  if (OFFICIAL_SOURCE_IDS.has(normalized.toLowerCase())) {
-    return 'gardenflow_official_auto';
-  }
-  return normalized;
-}
-
-function isOfficialSourceId(sourceId: string): boolean {
-  return canonicalizeSourceId(sourceId) === 'gardenflow_official_auto';
+  return text(sourceId);
 }
 
 function parseAiSources(settings: Record<string, unknown>): Array<Record<string, unknown>> {
@@ -79,9 +66,9 @@ function scopeFromContext(contextType: string, preferChat: boolean): AiRouteScop
 }
 
 /**
- * Resolve the persisted AI-source route (endpoint + key + model), not just the
- * leftover global `api_endpoint`. Chat and background automation should share
- * this so switching chat to 百炼 actually moves unattended tasks off the official gateway.
+ * Resolve the persisted AI-source route (endpoint + key + model). Chat and
+ * background automation share this resolver so every task follows the
+ * provider selected in settings.
  */
 export function resolveSettingsLlm(
   settings: Record<string, unknown>,
@@ -90,8 +77,7 @@ export function resolveSettingsLlm(
     contextType?: string;
   },
 ): ResolvedSettingsLlm | null {
-  settings = compatibility.migrateStructured(settings);
-  const scope = scopeFromContext(compatibility.canonicalKey(String(options?.contextType || '')), Boolean(options?.preferChat));
+  const scope = scopeFromContext(String(options?.contextType || ''), Boolean(options?.preferChat));
   const route = routeRecord(settings, scope);
   const sources = parseAiSources(settings);
   const sourceId = canonicalizeSourceId(
@@ -108,11 +94,8 @@ export function resolveSettingsLlm(
     '',
   );
   const sourceKey = text(source.apiKey || source.key);
-  const official = isOfficialSourceId(sourceId);
-  const apiKey = sourceKey || (official ? text(settings.api_key || settings.openaiApiKey) : '');
-  const baseURL = sourceBaseURL || (official
-    ? normalizeApiBaseUrl(text(settings.api_endpoint || settings.openaiApiBase), '')
-    : '');
+  const apiKey = sourceKey;
+  const baseURL = sourceBaseURL;
   const modelName = text(route.model || route.modelName || route.model_name)
     || text(source.model || source.modelName)
     || resolveScopedModelName(
@@ -120,15 +103,24 @@ export function resolveSettingsLlm(
       scope === 'chat' ? 'default' : scope,
       text(settings.model_name || settings.openaiModel) || 'gpt-4o',
     );
-  if (!modelName || !baseURL || !apiKey) {
+  let resolvedApiKey = apiKey;
+  try {
+    const hostname = new URL(baseURL).hostname.toLowerCase();
+    if (!resolvedApiKey && ['localhost', '127.0.0.1', '::1', '0.0.0.0'].includes(hostname)) {
+      resolvedApiKey = 'local';
+    }
+  } catch {
+    // URL validation is handled by the caller.
+  }
+  if (!modelName || !baseURL || !resolvedApiKey) {
     return null;
   }
   return {
     modelName,
     baseURL,
-    apiKey,
+    apiKey: resolvedApiKey,
     sourceId,
     scope,
-    mode: text(route.mode) || (official ? 'official' : 'custom'),
+    mode: 'custom',
   };
 }

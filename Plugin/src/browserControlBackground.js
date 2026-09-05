@@ -1,4 +1,3 @@
-import './brandRuntime.js';
 import { assertBrowserActionAllowed, BROWSER_ACTION_LEVELS, browserPolicyError, buildBrowserPolicyMetadata, classifyBrowserAction, DANGEROUS_ACTION_TEXT, DANGEROUS_CDP_METHODS, resolveBrowserPolicyPageUrl } from './background/browserPolicy.js';
 import { createActiveTabObserver } from './background/activeTabObserver.js';
 import { buildBrowserCapabilityMetadata, buildPluginRegistrationPayload } from './background/browserCapabilities.js';
@@ -19,7 +18,7 @@ import { acceptFileChooser, configureFileChooserTelemetry, getFileChooserSnapsho
 import { listPageFrames } from './background/frameRuntime.js';
 import { CLIENT_HEARTBEAT_ALARM, TARGET_CLIENT_HEARTBEAT_ALARM, configureLifecycleGuard, ensureLifecycleInstallState, getBrowserClientHeartbeatState, getLifecycleStatus, handleLifecycleAlarm, maybeReloadForPendingUpdate, recordBrowserClientHeartbeat, recordLifecycleCleanupResult, registerLifecycleUpdateListener, restorePendingUpdate, startClientHeartbeat } from './background/lifecycleGuard.js';
 import { NATIVE_HOST_DEFAULT, NATIVE_RECONNECT_ALARM, configureNativeTransport, connectNativeTransport as connectNativeTransportRaw, disconnectNativeTransport, getNativeStatus, postNativeMessage, refreshNativeStatus, requestNativeHost as requestNativeHostRaw, restoreNativeStatus, sendNativeNotification, shouldReportNativeConnectionFailure } from './background/nativeTransport.js';
-import { PLUGIN_DIAGNOSTICS_RETRY_ALARM, drainPluginDiagnostics, reportPluginError } from './background/diagnostics.js';
+import { reportPluginError } from './background/diagnostics.js';
 import { CONTENT_PAGE_ASSETS_TYPE, bundlePageAssets, readPageAssetInventory } from './background/pageAssetRuntime.js';
 import { exportPage } from './background/pageExportRuntime.js';
 import { evaluatePageScript } from './background/pageScriptRuntime.js';
@@ -155,7 +154,7 @@ const BROWSER_CONTROL_MCP_TOOLS = [
   },
   {
     name: 'research.run',
-    description: 'Execute one typed read-only site-research action. Desktop owns multi-step navigation, scrolling, item open/restore, retry, and cleanup orchestration. Xiaohongshu/Douyin items use originating-page UI clicks with no direct-URL fallback; macro mode remains for backward compatibility.',
+    description: 'Execute one typed read-only site-research action. Desktop owns multi-step navigation, scrolling, item open/restore, retry, and cleanup orchestration. Xiaohongshu/Douyin items use originating-page UI clicks with no direct-URL fallback; macro mode runs the complete research sequence.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -643,9 +642,6 @@ registerLifecycleUpdateListener();
 registerSidePanelStatus();
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm?.name === PLUGIN_DIAGNOSTICS_RETRY_ALARM) {
-    void drainPluginDiagnostics().catch(() => {});
-  }
   if (alarm?.name === NATIVE_RECONNECT_ALARM) {
     void connectNativeTransport({ silent: true }).catch(() => {});
   }

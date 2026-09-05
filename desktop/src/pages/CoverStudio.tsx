@@ -46,7 +46,6 @@ interface CoverTemplate {
     quality: string;
     count: number;
     updatedAt: string;
-    // Backward compatibility fields
     prompt?: string;
     referenceImages?: string[];
 }
@@ -94,7 +93,6 @@ interface CoverTemplateListResponse {
     error?: string;
     templates?: unknown[];
     template?: unknown;
-    imported?: number;
 }
 
 interface CoverStudioProps {
@@ -120,9 +118,6 @@ const DEFAULT_PROMPT_SWITCHES: CoverPromptSwitches = {
     beautifyFace: false,
     replaceBackground: false,
 };
-
-const TEMPLATE_STORAGE_PREFIX = 'gardenflow:cover-templates:v1';
-const getTemplateStorageKey = (spaceId: string) => `${TEMPLATE_STORAGE_PREFIX}:${spaceId || 'default'}`;
 
 const IMAGE_PROVIDER_TEMPLATE_VALUES: Set<string> = new Set([
     'openai-images',
@@ -289,7 +284,6 @@ export function CoverStudio({ isActive = false, onExecutionStateChange, onReturn
     const [generationJobs, setGenerationJobs] = useState<CoverGenerationJob[]>([]);
     const [recentAssets, setRecentAssets] = useState<CoverAsset[]>([]);
 
-    const storageKey = useMemo(() => getTemplateStorageKey(spaceId), [spaceId]);
     const activeSpaceName = useMemo(
         () => spaces.find((space) => space.id === spaceId)?.name || spaceId,
         [spaceId, spaces]
@@ -377,10 +371,6 @@ export function CoverStudio({ isActive = false, onExecutionStateChange, onReturn
     }, []);
 
     const loadTemplates = useCallback(() => {
-        if (!storageKey) {
-            setTemplates([]);
-            return Promise.resolve();
-        }
         return (async () => {
             try {
                 const result = await window.ipcRenderer.cover.templates.list() as CoverTemplateListResponse;
@@ -393,41 +383,7 @@ export function CoverStudio({ isActive = false, onExecutionStateChange, onReturn
                 console.error('Failed to load cover templates:', error);
             }
         })();
-    }, [normalizeTemplateList, storageKey]);
-
-    const migrateLegacyTemplates = useCallback(async () => {
-        if (!storageKey) return false;
-        let legacyTemplates: CoverTemplate[] = [];
-        try {
-            const raw = window.localStorage.getItem(storageKey);
-            if (!raw) return false;
-            const parsed = JSON.parse(raw);
-            legacyTemplates = Array.isArray(parsed)
-                ? parsed.map(normalizeTemplate).filter((item): item is CoverTemplate => Boolean(item))
-                : [];
-        } catch (error) {
-            console.error('Failed to parse legacy cover templates:', error);
-            return false;
-        }
-        if (legacyTemplates.length === 0) {
-            return false;
-        }
-        try {
-            const result = await window.ipcRenderer.cover.templates.importLegacy({
-                templates: legacyTemplates as unknown as Record<string, unknown>[],
-            }) as CoverTemplateListResponse;
-            if (!result?.success) {
-                console.error('Failed to migrate legacy cover templates:', result?.error || 'unknown error');
-                return false;
-            }
-            window.localStorage.removeItem(storageKey);
-            setTemplates(normalizeTemplateList(result.templates));
-            return (result.imported || 0) > 0;
-        } catch (error) {
-            console.error('Failed to migrate legacy cover templates:', error);
-            return false;
-        }
-    }, [normalizeTemplateList, storageKey]);
+    }, [normalizeTemplateList]);
 
     useEffect(() => {
         if (!isActive) return;
@@ -449,19 +405,8 @@ export function CoverStudio({ isActive = false, onExecutionStateChange, onReturn
 
     useEffect(() => {
         if (!isActive) return;
-        let cancelled = false;
-        void (async () => {
-            await loadTemplates();
-            if (cancelled) return;
-            const migrated = await migrateLegacyTemplates();
-            if (!cancelled && migrated) {
-                await loadTemplates();
-            }
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, [isActive, loadTemplates, migrateLegacyTemplates]);
+        void loadTemplates();
+    }, [isActive, loadTemplates]);
 
     useEffect(() => {
         const handleTemplatesUpdated = (event: Event) => {

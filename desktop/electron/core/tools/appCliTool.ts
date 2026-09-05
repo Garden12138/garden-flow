@@ -1,4 +1,3 @@
-import compatibility from '../../../shared/brandCompatibility.cjs';
 import { z } from 'zod';
 import path from 'node:path';
 import { constants as fsConstants } from 'node:fs';
@@ -324,7 +323,7 @@ function parseCommand(command: string): ParsedCommand {
         return { namespace: 'help', action: 'show', flags: {}, args: [] };
     }
 
-    while (tokens.length > 0 && ['app-cli', 'app_cli', 'gardenflow-cli', ...compatibility.identity.legacy.cliExecutables].includes(tokens[0].toLowerCase())) {
+    while (tokens.length > 0 && ['app-cli', 'app_cli', 'gardenflow-cli'].includes(tokens[0].toLowerCase())) {
         tokens.shift();
     }
 
@@ -332,8 +331,8 @@ function parseCommand(command: string): ParsedCommand {
         return { namespace: 'help', action: 'show', flags: {}, args: [] };
     }
 
-    const namespace = compatibility.canonicalKey((tokens.shift() || 'help').toLowerCase());
-    const actionCandidate = tokens[0] && !tokens[0].startsWith('--') ? compatibility.canonicalKey(tokens.shift()!.toLowerCase()) : undefined;
+    const namespace = (tokens.shift() || 'help').toLowerCase();
+    const actionCandidate = tokens[0] && !tokens[0].startsWith('--') ? tokens.shift()!.toLowerCase() : undefined;
     const action = (actionCandidate || 'list').toLowerCase();
 
     const flags: Record<string, FlagValue> = {};

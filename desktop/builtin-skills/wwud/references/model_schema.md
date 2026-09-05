@@ -41,6 +41,6 @@ Always ask the user before:
 - production deployment or public release
 - paid spend or subscription changes
 - credential, secret, account, permission, or region/account-realm changes
-- irreversible deletion or destructive migration
+- irreversible deletion or destructive data transformation
 - legal, compliance, medical, tax, or privacy-sensitive decisions
 - decisions where a wrong action is hard to undo

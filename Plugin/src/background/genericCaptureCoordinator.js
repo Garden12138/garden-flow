@@ -80,10 +80,9 @@ export function createGenericCaptureCoordinator(deps = {}) {
       const { tabs } = runtime();
       const tab = await tabs.get(tabId);
       const sourceUrl = String(tab?.url || '');
-      // WeChat has an established MAIN-world rich-HTML and image-localization
-      // path. Leaving it there guarantees byte-for-byte compatibility.
+      // WeChat uses the MAIN-world extractor for its rich HTML and localized images.
       if (!sourceUrl || isWechatUrl(sourceUrl)) {
-        return { capture: null, reason: 'legacy-required' };
+        return { capture: null, reason: 'page-extractor-required' };
       }
       const cached = captureCache.get(Number(tabId));
       if (cached && cached.url === sourceUrl && now() - cached.at <= CACHE_TTL_MS) {
@@ -99,7 +98,7 @@ export function createGenericCaptureCoordinator(deps = {}) {
         }
         return {
           capture: null,
-          reason: 'legacy-required',
+          reason: 'page-extractor-required',
           error: error instanceof Error ? error.message : String(error),
         };
       }

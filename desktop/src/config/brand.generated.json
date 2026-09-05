@@ -76,8 +76,6 @@
       "moduleRepurposeIcon": "#55746D",
       "moduleScheduleBg": "#F1EAD8",
       "moduleScheduleIcon": "#8C733B",
-      "moduleAnalyticsBg": "#E5DDEA",
-      "moduleAnalyticsIcon": "#65467C",
       "moduleBrandBg": "#DFE8E1",
       "moduleBrandIcon": "#48675F"
     },
@@ -146,8 +144,6 @@
       "moduleRepurposeIcon": "#A9C5BB",
       "moduleScheduleBg": "rgba(203, 181, 116, 0.15)",
       "moduleScheduleIcon": "#D7C58D",
-      "moduleAnalyticsBg": "rgba(169, 154, 197, 0.22)",
-      "moduleAnalyticsIcon": "#D4C8E5",
       "moduleBrandBg": "rgba(134, 164, 154, 0.18)",
       "moduleBrandIcon": "#B5CDC5"
     }

@@ -26,7 +26,7 @@ function normalizeMediaElements(content: string): string {
 }
 
 /**
- * Converts legacy model-authored media HTML into the Markdown media contract
+ * Converts model-authored media HTML into the Markdown media contract
  * understood by the chat renderer. Fenced examples remain literal code.
  */
 export function normalizeGeneratedMediaMarkup(content: string): string {

@@ -80,8 +80,6 @@ export type AppBrandThemeModeTokens = Partial<{
   moduleRepurposeIcon: string;
   moduleScheduleBg: string;
   moduleScheduleIcon: string;
-  moduleAnalyticsBg: string;
-  moduleAnalyticsIcon: string;
   moduleBrandBg: string;
   moduleBrandIcon: string;
 }>;

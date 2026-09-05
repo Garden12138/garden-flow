@@ -1,7 +1,6 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import { app } from 'electron';
-import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { resolveAssetSourceToPath } from './core/localAssetManager';
 import type { XhsPublishJob, XhsPublishJobStatus } from '../shared/xhsPublisher';
@@ -394,7 +393,7 @@ const initDb = () => {
     CREATE INDEX IF NOT EXISTS idx_memories_created_at ON user_memories(created_at);
   `);
 
-  // Migration: add workspace_dir column if missing
+  // Idempotent schema evolution: settings columns
   try {
     db.exec(`ALTER TABLE settings ADD COLUMN workspace_dir TEXT;`);
   } catch {
@@ -404,7 +403,7 @@ const initDb = () => {
     db.exec(`ALTER TABLE settings ADD COLUMN active_space_id TEXT;`);
   } catch { /* Column already exists */ }
 
-  // Migration: add embedding columns if missing
+  // AI and embedding settings
   try {
     db.exec(`ALTER TABLE settings ADD COLUMN embedding_endpoint TEXT;`);
   } catch { /* Column already exists */ }
@@ -537,7 +536,7 @@ const initDb = () => {
     db.exec(`ALTER TABLE archive_samples ADD COLUMN images TEXT;`);
   } catch { /* Column already exists */ }
 
-  // Migration: add display_content and attachment columns for chat_messages
+  // Chat message schema evolution
   try {
     db.exec(`ALTER TABLE chat_messages ADD COLUMN display_content TEXT;`);
   } catch { /* Column already exists */ }
@@ -548,12 +547,12 @@ const initDb = () => {
 	    db.exec(`ALTER TABLE chat_messages ADD COLUMN metadata TEXT;`);
 	  } catch { /* Column already exists */ }
 
-  // Migration: add content_hash column for knowledge_vectors
+  // Knowledge vector schema evolution
   try {
     db.exec(`ALTER TABLE knowledge_vectors ADD COLUMN content_hash TEXT;`);
   } catch { /* Column already exists */ }
 
-  // Migration: add space_id for user memories
+  // User memory space ownership
   try {
     db.exec(`ALTER TABLE user_memories ADD COLUMN space_id TEXT;`);
   } catch { /* Column already exists */ }
@@ -569,7 +568,7 @@ const initDb = () => {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_memories_space_created_at ON user_memories(space_id, created_at);`);
   }
 
-  // Migration: file index tracking tables
+  // File index tracking tables
   db.exec(`
     CREATE TABLE IF NOT EXISTS file_index_lanes (
       id TEXT PRIMARY KEY,
@@ -601,7 +600,7 @@ const initDb = () => {
       ON file_index_events(event_type);
   `);
 
-  // Idempotent migration: populate file_index_lanes from existing knowledge_vectors
+  // Idempotently derive lane summaries from indexed vectors
   db.exec(`
     INSERT OR IGNORE INTO file_index_lanes (id, scope_id, lane, status, done, total)
     SELECT
@@ -700,12 +699,7 @@ const SETTINGS_EXTRA_KEYS = [
   'memberToolPolicy',
   'memberSkillAutoRefresh',
   'cli_runtime_execution_mode',
-  'diagnostics_upload_consent',
   'diagnostics_include_advanced_context',
-  'diagnostics_auto_send_same_crash',
-  'diagnostics_last_prompted_at',
-  'analytics_consent',
-  'analytics_last_prompted_at',
   'release_log_retention_days',
   'release_log_max_file_mb',
   'notifications_json',
@@ -1120,22 +1114,9 @@ export const getSettings = () => {
 };
 
 // Helper to get current workspace paths
-const hasLegacyWorkspaceContent = (baseDir: string): boolean => {
-  const legacyDirs = ['knowledge', 'manuscripts', 'advisors', 'archives', 'chatrooms', 'skills'];
-  return legacyDirs.some((dirName) => fs.existsSync(path.join(baseDir, dirName)));
-};
-
 const resolveSpaceBaseDir = (workspaceRoot: string, spaceId: string): string => {
   const normalizedSpaceId = spaceId || DEFAULT_SPACE_ID;
-  const spaceDir = path.join(workspaceRoot, 'spaces', normalizedSpaceId);
-  if (
-    normalizedSpaceId === DEFAULT_SPACE_ID &&
-    !fs.existsSync(spaceDir) &&
-    hasLegacyWorkspaceContent(workspaceRoot)
-  ) {
-    return workspaceRoot;
-  }
-  return spaceDir;
+  return path.join(workspaceRoot, 'spaces', normalizedSpaceId);
 };
 
 export const getWorkspacePathsForSpace = (spaceId: string) => {
@@ -2533,7 +2514,7 @@ export const listRuntimeEventSessionIds = (sessionId: string, includeChildSessio
           changed = true;
         }
       } catch {
-        // Ignore malformed historical session metadata.
+        // Ignore malformed stored session metadata.
       }
     }
   }

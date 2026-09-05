@@ -240,7 +240,7 @@ export const CAPABILITY_CONTRACTS = {
     outputSchemaVersion: 1,
     bindings: ['sessionId', 'tabId', 'scroll_x', 'scroll_y', 'timeout_ms'],
     targetFields: ['scroll_x', 'scroll_y', 'node_id'],
-    summary: 'Scroll the controlled page document with target-style scroll_x/scroll_y deltas while preserving legacy auto-scroll options.',
+    summary: 'Scroll the controlled page document with target-style scroll_x/scroll_y deltas and document-level automatic scrolling.',
   }),
   'browser.pageClick': capabilityContract('browser.pageClick', {
     actions: ['page.click', 'page.doubleClick'],

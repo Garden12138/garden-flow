@@ -14,7 +14,7 @@ export { AudioGenerateTool, ImageGenerateTool, VideoGenerateTool } from './media
 export { WorkspaceTool } from './workspaceTool';
 // 辅助工具
 export { CalculatorTool } from './calculatorTool';
-export { ListDirTool } from './listDirTool'; // Legacy list
+export { ListDirTool } from './listDirTool';
 export { ExploreWorkspaceTool } from './exploreWorkspaceTool';
 export { SaveMemoryTool } from './memoryTool';
 export { GardenFlowUpdateProfileDocTool, GardenFlowUpdateCreatorProfileTool } from './creatorProfileTool';
@@ -28,16 +28,16 @@ export {
 export { LspTool } from './lspTool';
 export { TodoWriteTool, TodoReadTool } from './todoTool';
 export { PlanModeEnterTool, PlanModeExitTool } from './planTool';
-export { SkillTool, SkillManageTool, SkillInstallTool } from './skillTool';
+export { SkillTool } from './skillTool';
 
 // 导入工具类型
 import { type ToolDefinition, type ToolResult, ToolKind } from '../toolRegistry';
 
-// Legacy / Other tools imports
+// Other tools imports
 import { CalculatorTool } from './calculatorTool';
 import { LspTool } from './lspTool';
 import { PlanModeEnterTool, PlanModeExitTool } from './planTool';
-import { SkillTool, SkillManageTool, SkillInstallTool } from './skillTool';
+import { SkillTool } from './skillTool';
 import { BashTool } from './bashTool';
 import { AppCliTool } from './appCliTool';
 import { AudioGenerateTool, ImageGenerateTool, VideoGenerateTool } from './mediaGenerationTools';
@@ -203,26 +203,6 @@ const ensureBuiltinToolDescriptorsRegistered = (): void => {
         requiresContext: null,
         create: () => new PlanModeExitTool(),
     });
-    register({
-        name: 'skill_manage',
-        displayName: 'Skill Manage',
-        description: 'Manage installed skills and their lifecycle.',
-        kind: ToolKind.Other,
-        contexts: developerOnlyContexts,
-        visibility: 'developer',
-        requiresContext: 'chatService',
-        create: ({ chatService }) => (chatService ? new SkillManageTool(chatService) : null),
-    });
-    register({
-        name: 'skill_install',
-        displayName: 'Skill Install',
-        description: 'Install a skill into the current environment.',
-        kind: ToolKind.Other,
-        contexts: developerOnlyContexts,
-        visibility: 'developer',
-        requiresContext: 'chatService',
-        create: ({ chatService }) => (chatService ? new SkillInstallTool(chatService) : null),
-    });
 };
 
 /**
@@ -257,8 +237,6 @@ export const BUILTIN_TOOL_NAMES = [
     'lsp',
     'plan_mode_enter',
     'plan_mode_exit',
-    'skill_manage',
-    'skill_install',
 ] as const;
 
 export type BuiltinToolName = typeof BUILTIN_TOOL_NAMES[number];

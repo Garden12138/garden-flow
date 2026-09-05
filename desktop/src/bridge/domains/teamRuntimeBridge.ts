@@ -79,9 +79,7 @@ function createTeamRuntimeApi(core: BridgeCore) {
 }
 
 export function createTeamRuntimeBridge(core: BridgeCore) {
-  const teamRuntime = createTeamRuntimeApi(core);
   return {
-    teamRuntime,
-    collab: teamRuntime,
+    teamRuntime: createTeamRuntimeApi(core),
   };
 }

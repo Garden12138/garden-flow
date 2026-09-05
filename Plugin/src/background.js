@@ -1,9 +1,6 @@
-import './brandRuntime.js';
-import './brandStorage.js';
-import compatibility from '../brandCompatibility.cjs';
 import { configurePluginCapture } from './browserControlBackground.js';
 import { getNativeStatus, reportNativeCaptureAccessState, requestNativeHost, shouldReportNativeConnectionFailure } from './background/nativeTransport.js';
-import { reportPluginError } from './background/diagnostics.js';
+import { exportPluginDiagnostics, reportPluginError } from './background/diagnostics.js';
 import { genericCaptureCoordinator, clearGenericCaptureCache } from './background/genericCaptureCoordinator.js';
 import { createBridgeOperationId } from './background/operationId.js';
 import {
@@ -14,7 +11,6 @@ import {
 const NATIVE_KNOWLEDGE_ENDPOINT = Object.freeze({
   baseUrl: 'native://gardenflow',
   endpointPath: '/knowledge',
-  legacyBaseUrls: Object.keys(compatibility.identity.legacy.values).filter(key => compatibility.identity.legacy.values[key] === 'native://gardenflow'),
 });
 const pageStateCache = new Map();
 const PAGE_STATE_NEGATIVE_TTL_MS = 350;
@@ -444,6 +440,8 @@ async function handleMessage(message, sender) {
       };
     case 'settings:reset':
       return { success: true, settings: await writePluginSettings(DEFAULT_PLUGIN_SETTINGS) };
+    case 'diagnostics:export':
+      return await exportPluginDiagnostics();
     case 'settings:test-connection':
       clearCachedKnowledgeApi();
       return await checkDesktopServer(true);
@@ -4306,14 +4304,13 @@ async function saveCurrentPageLinkFromTab(tabId) {
       reason: genericResult.reason,
     });
   } else {
-    // This remains the established path for WeChat and every generic page that
-    // cannot safely produce enough readable content with Defuddle.
+    // WeChat and pages without enough readable Defuddle output use the page extractor.
     const payload = await runExtraction(tabId, extractCurrentPageLinkPayload, { world: 'MAIN' });
     if (!payload || typeof payload !== 'object') {
       throw new Error('当前页面内容提取失败，请刷新页面后重试');
     }
     entry = buildPageLinkEntry(payload);
-    pluginLog('generic-capture-fallback', {
+    pluginLog('generic-capture-page-extractor', {
       tabId,
       reason: genericResult.reason,
       error: genericResult.error || '',

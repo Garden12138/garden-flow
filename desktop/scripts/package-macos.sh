@@ -4,7 +4,6 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 DESKTOP_DIR="$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)"
-source "$DESKTOP_DIR/shared/brandEnvironment.sh"
 TOOLS_DIR="$DESKTOP_DIR/.packaging-tools"
 NODE_VERSION="${GARDENFLOW_NODE_VERSION:-22.23.2}"
 PNPM_VERSION="${GARDENFLOW_PNPM_VERSION:-10.28.2}"
@@ -100,8 +99,6 @@ if [[ ! -x "$NODE_BIN" ]]; then
 fi
 
 export PATH="$NODE_HOME/bin:$PATH"
-# Standard distributable builds do not include the retired official login gate.
-export VITE_OFFICIAL_ACCOUNT_AUTH=false
 
 PNPM_HOME="$TOOLS_DIR/pnpm-$PNPM_VERSION"
 PNPM_CLI="$PNPM_HOME/node_modules/pnpm/bin/pnpm.cjs"
@@ -131,7 +128,6 @@ log 'Checking TypeScript...'
 run_pnpm run check:types
 
 log "Building macOS $TARGET_ARCH package ($BUILD_MODE)..."
-run_pnpm run prepare:private-runtime
 run_pnpm run prepare:plugin-runtime
 run_pnpm run prepare:ffmpeg
 run_pnpm run clean

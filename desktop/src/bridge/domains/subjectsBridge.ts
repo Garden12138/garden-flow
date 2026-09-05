@@ -1,10 +1,5 @@
 import type { BridgeCore } from '../types';
 
-const brandWorkspaceUnavailable = {
-  success: false,
-  error: '品牌工作区后端尚未迁移到 Electron 开源版',
-};
-
 export function createSubjectsBridge(core: BridgeCore) {
   return {
     subjects: {
@@ -21,15 +16,6 @@ export function createSubjectsBridge(core: BridgeCore) {
         update: (payload: { id: string; name: string }) => core.invokeChannel('subjects:categories:update', payload),
         delete: (payload: { id: string }) => core.invokeChannel('subjects:categories:delete', payload),
       },
-    },
-    brandWorkspace: {
-      list: async () => ({ success: true, brands: [] }),
-      get: async () => ({ ...brandWorkspaceUnavailable, brand: null }),
-      upsertBrand: async () => brandWorkspaceUnavailable,
-      upsertProduct: async () => brandWorkspaceUnavailable,
-      upsertSku: async () => brandWorkspaceUnavailable,
-      upsertProductDetailPage: async () => brandWorkspaceUnavailable,
-      rebuildAiIndex: async () => brandWorkspaceUnavailable,
     },
   };
 }

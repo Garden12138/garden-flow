@@ -280,14 +280,6 @@ function CharacterAssetPreview({ image }: { image: { src: string; alt: string } 
   );
 }
 
-function onboardingStepKind(content: OnboardingStepContent) {
-  if (content.acquisitionSurvey) return 'acquisition_survey';
-  if (content.video) return 'video';
-  if (content.image) return 'image';
-  if (content.cards) return 'cards';
-  return 'content';
-}
-
 function AcquisitionSurvey({
   selected,
   onSelect,
@@ -383,12 +375,8 @@ export function AppOnboarding({ open, onClose }: AppOnboardingProps) {
   const [step, setStep] = useState(0);
   const [acquisitionSource, setAcquisitionSource] = useState('');
   const [acquisitionInvalid, setAcquisitionInvalid] = useState(false);
-  const acquisitionShownRef = useRef(false);
   const acquisitionInvalidTimerRef = useRef<number | null>(null);
   const acquisitionInvalidFrameRef = useRef<number | null>(null);
-  const onboardingStartedAtRef = useRef<number>(0);
-  const stepStartedAtRef = useRef<number>(0);
-  const trackedStepRef = useRef<number | null>(null);
   const content = useMemo(() => STEP_CONTENT[step] ?? STEP_CONTENT[0], [step]);
 
   useEffect(() => {
@@ -396,36 +384,8 @@ export function AppOnboarding({ open, onClose }: AppOnboardingProps) {
       setStep(0);
       setAcquisitionSource('');
       setAcquisitionInvalid(false);
-      acquisitionShownRef.current = false;
-      onboardingStartedAtRef.current = Date.now();
-      stepStartedAtRef.current = Date.now();
-      trackedStepRef.current = null;
     }
   }, [open]);
-
-  useEffect(() => {
-    if (!open || trackedStepRef.current === step) return;
-    trackedStepRef.current = step;
-    stepStartedAtRef.current = Date.now();
-    void window.ipcRenderer.analytics.track('onboarding_step_viewed', {
-      surface: 'app-onboarding',
-      origin: 'renderer',
-      properties: {
-        stepIndex: step,
-        step: STEPS[step] || `step_${step + 1}`,
-        stepKind: onboardingStepKind(content),
-      },
-    });
-  }, [content, open, step]);
-
-  useEffect(() => {
-    if (!open || !content.acquisitionSurvey || acquisitionShownRef.current) return;
-    acquisitionShownRef.current = true;
-    void window.ipcRenderer.analytics.track('acquisition_survey_shown', {
-      surface: 'app-onboarding',
-      origin: 'renderer',
-    });
-  }, [content.acquisitionSurvey, open]);
 
   useEffect(() => {
     return () => {
@@ -449,34 +409,6 @@ export function AppOnboarding({ open, onClose }: AppOnboardingProps) {
     onClose();
   };
 
-  const trackStepCompleted = (action: 'next' | 'skip' | 'finish') => {
-    const now = Date.now();
-    const durationMs = stepStartedAtRef.current > 0 ? now - stepStartedAtRef.current : 0;
-    void window.ipcRenderer.analytics.track('onboarding_step_completed', {
-      surface: 'app-onboarding',
-      origin: 'renderer',
-      properties: {
-        stepIndex: step,
-        step: STEPS[step] || `step_${step + 1}`,
-        stepKind: onboardingStepKind(content),
-        action,
-        durationMs,
-      },
-    });
-    if (action === 'finish') {
-      const totalDurationMs =
-        onboardingStartedAtRef.current > 0 ? now - onboardingStartedAtRef.current : durationMs;
-      void window.ipcRenderer.analytics.track('onboarding_completed', {
-        surface: 'app-onboarding',
-        origin: 'renderer',
-        properties: {
-          totalSteps: STEPS.length,
-          totalDurationMs,
-        },
-      });
-    }
-  };
-
   const triggerAcquisitionRequiredPrompt = () => {
     if (acquisitionInvalidTimerRef.current !== null) {
       window.clearTimeout(acquisitionInvalidTimerRef.current);
@@ -498,7 +430,6 @@ export function AppOnboarding({ open, onClose }: AppOnboardingProps) {
       triggerAcquisitionRequiredPrompt();
       return;
     }
-    trackStepCompleted(isLast ? 'finish' : options?.suppressAcquisitionSkip ? 'skip' : 'next');
     if (isLast) {
       handleClose();
       return;
@@ -514,23 +445,9 @@ export function AppOnboarding({ open, onClose }: AppOnboardingProps) {
     setAcquisitionInvalid(false);
     setAcquisitionSource(source);
     setAppAcquisitionSource(source);
-    void window.ipcRenderer.analytics.track('acquisition_survey_answered', {
-      surface: 'app-onboarding',
-      origin: 'renderer',
-      properties: {
-        source,
-      },
-    });
   };
 
   const handleAcquisitionSkip = () => {
-    void window.ipcRenderer.analytics.track('acquisition_survey_skipped', {
-      surface: 'app-onboarding',
-      origin: 'renderer',
-      properties: {
-        action: 'skip_button',
-      },
-    });
     handleNext({ suppressAcquisitionSkip: true });
   };
 

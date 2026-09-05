@@ -1,4 +1,3 @@
-import './brandStorage.js';
 const serverStatusEl = document.getElementById('server-status');
 const pageMetaEl = document.getElementById('page-meta');
 const resultEl = document.getElementById('result');

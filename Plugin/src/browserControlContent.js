@@ -1,4 +1,3 @@
-import './brandRuntime.js';
 import './siteAdapters.js';
 import { applyControlledTabBadge } from './content/controlBadge.js';
 import { applyAgentCursorState, hideAgentCursor, moveAgentCursor } from './content/cursorOverlay.js';

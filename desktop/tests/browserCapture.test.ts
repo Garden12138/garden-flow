@@ -124,8 +124,8 @@ test('Windows packaging prepares and bundles the dedicated Native Host', async (
 
 test('app updater accepts only GardenFlow installers for the current platform and architecture', () => {
     const assets = [
-        { name: 'Bojin-9.9.9-x64.exe', downloadUrl: 'https://example.com/legacy.exe', size: 1, digest: '' },
-        { name: 'RedBox-9.9.9-x64.exe', downloadUrl: 'https://example.com/legacy.exe', size: 1, digest: '' },
+        { name: 'AnotherApp-9.9.9-x64.exe', downloadUrl: 'https://example.com/unrelated.exe', size: 1, digest: '' },
+        { name: 'GardenFlow-2.5.1-arm64.dmg', downloadUrl: 'https://example.com/wrong-platform.dmg', size: 1, digest: '' },
         { name: 'GardenFlow-2.5.1-arm64.exe', downloadUrl: 'https://example.com/gardenflow-arm64.exe', size: 1, digest: '' },
         { name: 'GardenFlow-2.5.1-x64.exe.blockmap', downloadUrl: 'https://example.com/gardenflow.blockmap', size: 1, digest: '' },
         { name: 'GardenFlow-2.5.1-x64.exe', downloadUrl: 'https://example.com/gardenflow.exe', size: 1, digest: '' },
@@ -240,7 +240,6 @@ test('renderer uses the top-level browser plugin bridge exposed by createSystemB
     const rendererFiles = [
         'desktop/src/pages/Knowledge.tsx',
         'desktop/src/pages/Settings.tsx',
-        'desktop/src/pages/settings/SettingsSections.tsx',
     ];
     for (const relativePath of rendererFiles) {
         const source = await fs.readFile(path.join(repositoryRoot, relativePath), 'utf8');

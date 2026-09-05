@@ -15,7 +15,6 @@ import {
 
 const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'gardenflow-browser-faults-'));
 const endpointsDirectory = path.join(tempRoot, 'endpoints');
-const endpointStatePath = path.join(tempRoot, 'legacy-endpoint.json');
 const servers = [];
 
 try {
@@ -136,7 +135,7 @@ async function testStaleDescriptorCleanup() {
     tcpAddress: '127.0.0.1:9',
     lastSeenAtMs: Date.now() - 300_000,
   })}\n`, 'utf8');
-  const transport = new BrowserControlTransport({ endpointStatePath, endpointsDirectory });
+  const transport = new BrowserControlTransport({ endpointsDirectory });
   const endpoints = await transport.listEndpoints();
   assert(!endpoints.some((endpoint) => endpoint.instanceId === 'stale-instance'));
   await assert.rejects(fs.stat(stalePath), (error) => error?.code === 'ENOENT');

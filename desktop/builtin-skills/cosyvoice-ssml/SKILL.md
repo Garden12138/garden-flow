@@ -1,12 +1,15 @@
 ---
 name: cosyvoice-ssml
-description: 内部技能，仅用于数字人 / VideoRetalk / 资产库角色口播视频链路中的 CosyVoice TTS 子步骤。普通 AI 聊天、普通音频、普通短视频、产品视频或广告视频请求不得直接调用本技能；这些视频请求必须先走 video-director。只有 video-director 已确认这是数字人口播，且需要把已批准的台词合成为角色驱动音频时，才可激活本技能。
+description: >-
+  内部技能，仅用于数字人 / VideoRetalk / 资产库角色口播视频链路中的 CosyVoice TTS 子步骤。普通 AI 聊天、普通音频、普通短视频、产品视频或广告视频请求不得直接调用本技能；这些视频请求必须先走 video-director。只有 video-director 已确认这是数字人口播，且需要把已批准的台词合成为角色驱动音频时，才可激活本技能。
 allowedRuntimeModes: [chatroom, gardenflow, image-generation]
 allowedTools: [workflow]
 activationScope: turn
 autoActivate: false
-activationHint: 内部技能。仅当当前轮已经由 `video-director` 判定为资产库角色数字人 / VideoRetalk / talking-head 口播视频，并且已确认台词、角色 voiceId 与参考视频，且 TTS 模型是 CosyVoice 系列时，才可调用 `Operate(resource="skills", operation="invoke", input={ "name": "cosyvoice-ssml" })`。如果用户在普通 AI 聊天里要求“做口播视频 / 生成视频 / 产品视频 / 广告片 / 短视频”，不要调用本技能，必须先调用 `video-director`。如果只是普通音频或旁白，不要把本技能当成入口。
-contextNote: 这是数字人口播视频链路里的 CosyVoice SSML 子技能，不是通用短视频口播导演。技能激活不是文本转换工具，不会返回加工结果；只能在 video-director 的数字人 / VideoRetalk 子流程中，把已批准的角色台词拆成可表演的 CosyVoice TTS 片段。每个片段用 CosyVoice 支持的 SSML 标签表达语气、节奏和读法，并作为 voice.speech.segments 的一个 item。只能使用 `<speak>`、`<break/>`、`<sub>`、`<phoneme>`、`<soundEvent/>`、`<say-as>`；不要使用 `<prosody>`、MiniMax `<#0.6#>` 或 emotion 字段。
+activationHint: >-
+  内部技能。仅当当前轮已经由 `video-director` 判定为资产库角色数字人 / VideoRetalk / talking-head 口播视频，并且已确认台词、角色 voiceId 与参考视频，且 TTS 模型是 CosyVoice 系列时，才可调用 `Operate(resource="skills", operation="invoke", input={ "name": "cosyvoice-ssml" })`。如果用户在普通 AI 聊天里要求“做口播视频 / 生成视频 / 产品视频 / 广告片 / 短视频”，不要调用本技能，必须先调用 `video-director`。如果只是普通音频或旁白，不要把本技能当成入口。
+contextNote: >-
+  这是数字人口播视频链路里的 CosyVoice SSML 子技能，不是通用短视频口播导演。技能激活不是文本转换工具，不会返回加工结果；只能在 video-director 的数字人 / VideoRetalk 子流程中，把已批准的角色台词拆成可表演的 CosyVoice TTS 片段。每个片段用 CosyVoice 支持的 SSML 标签表达语气、节奏和读法，并作为 voice.speech.segments 的一个 item。只能使用 `<speak>`、`<break/>`、`<sub>`、`<phoneme>`、`<soundEvent/>`、`<say-as>`；不要使用 `<prosody>`、MiniMax `<#0.6#>` 或 emotion 字段。
 maxPromptChars: 32000
 hookMode: inline
 hidden: true

@@ -1,10 +1,6 @@
 import { GARDENFLOW_NAVIGATE_EVENT } from '../../notifications/types';
-import type { AppIntent, AppNavigateEventDetail } from './types';
-
-export function dispatchAppNavigateDetail(detail: AppNavigateEventDetail | Record<string, unknown>): void {
-  window.dispatchEvent(new CustomEvent(GARDENFLOW_NAVIGATE_EVENT, { detail }));
-}
+import type { AppIntent } from './types';
 
 export function dispatchAppIntent(intent: AppIntent): void {
-  dispatchAppNavigateDetail(intent);
+  window.dispatchEvent(new CustomEvent(GARDENFLOW_NAVIGATE_EVENT, { detail: intent }));
 }

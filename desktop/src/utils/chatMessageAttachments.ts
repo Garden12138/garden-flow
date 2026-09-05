@@ -60,7 +60,7 @@ function mergeUploadedAttachments(...sources: unknown[][]): UnknownRecord[] {
 /**
  * Restores the complete attachment list for a persisted chat message.
  * `metadata.uploadedAttachments` is canonical for multi-file messages; the
- * legacy `attachment` column is retained as a single-file compatibility copy.
+ * `attachment` column carries the primary attachment used by message cards.
  */
 export function uploadedAttachmentsFromPersistedMessage(message: {
     attachments?: unknown;
@@ -73,12 +73,12 @@ export function uploadedAttachmentsFromPersistedMessage(message: {
         ? metadata.uploadedAttachments
         : [];
     const parsedAttachment = parseChatMessageJson(message.attachment);
-    const legacy = Array.isArray(parsedAttachment)
+    const primaryColumnItems = Array.isArray(parsedAttachment)
         ? parsedAttachment
         : parsedAttachment
             ? [parsedAttachment]
             : [];
-    return mergeUploadedAttachments(explicit, fromMetadata, legacy);
+    return mergeUploadedAttachments(explicit, fromMetadata, primaryColumnItems);
 }
 
 export function primaryAttachmentFromPersistedMessage(message: {

@@ -1,4 +1,6 @@
 ---
+name: image-prompt-optimizer
+description: 将图片需求整理为可直接发送给图像模型的最终提示词，并保留主体、构图与参考图约束。
 allowedRuntimeModes: [chatroom, gardenflow, image-generation]
 hookMode: inline
 autoActivate: false

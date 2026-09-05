@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import '../brandEnvironment.cjs';
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -286,8 +285,8 @@ function checkManifest(target, extensionId) {
   if (!exists(manifest.path || '')) check.issues.push('host_path_missing');
   if (manifest.path) {
     const resolvedPath = path.resolve(manifest.path);
-    const legacyHostScript = path.resolve(hostScript);
-    if (resolvedPath === legacyHostScript) check.issues.push('host_path_uses_env_node_script');
+    const sourceHostScript = path.resolve(hostScript);
+    if (resolvedPath === sourceHostScript) check.issues.push('host_path_uses_env_node_script');
   }
   const origin = expectedOrigin(extensionId);
   if (origin && !check.manifest.allowedOrigins.includes(origin)) check.issues.push('extension_origin_missing');

@@ -1,6 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import { getWorkspacePaths, getUserMemories as getDbUserMemories } from '../db';
+import { getWorkspacePaths } from '../db';
 
 export type MemoryType = 'general' | 'preference' | 'fact';
 export type MemoryStatus = 'active' | 'archived';
@@ -413,7 +413,7 @@ const buildCuratedMemoryMarkdown = (memories: FileUserMemory[]): string => {
     '',
     ...renderSection('其他 General', general),
     '',
-    '> 说明：本文件只展示当前有效记忆。若同一主题发生更新或冲突，系统会保留旧版本到 MEMORY_ARCHIVE.md，并以最新明确指令为准。',
+    '> 说明：本文件只展示当前有效记忆。若同一主题发生更新或冲突，系统会把被替换的版本保留到 MEMORY_ARCHIVE.md，并以最新明确指令为准。',
   ].join('\n');
 };
 
@@ -424,7 +424,7 @@ const buildArchiveMemoryMarkdown = (memories: FileUserMemory[], history: MemoryH
   return [
     '# MEMORY_ARCHIVE.md',
     '',
-    '这个文件记录已归档的旧版本记忆、冲突覆盖与去重轨迹。',
+    '这个文件记录已归档的记忆版本、冲突覆盖与去重轨迹。',
     '自动生成时间：' + new Date().toISOString(),
     '',
     '## Archived Memories',
@@ -483,40 +483,14 @@ const writeData = async (data: MemoryFileData): Promise<void> => {
   await syncCuratedMemoryMarkdown(payload.memories, payload.history);
 };
 
-const migrateFromDbIfNeeded = async (): Promise<void> => {
+const ensureMemoryStoreInitialized = async (): Promise<void> => {
   const filePath = memoryFilePath();
   try {
     await fs.access(filePath);
     return;
   } catch {
-    // continue migration
-  }
-
-  const dbMemories = getDbUserMemories();
-  if (!dbMemories.length) {
     await writeData(defaultData());
-    return;
   }
-
-  const migrated: FileUserMemory[] = dbMemories.map((m) => ({
-    id: m.id,
-    content: m.content,
-    type: normalizeType(m.type),
-    tags: uniqueTags(m.tags),
-    created_at: m.created_at,
-    updated_at: m.updated_at,
-    last_accessed: m.last_accessed,
-    status: 'active',
-    origin_id: m.id,
-    canonical_key: extractMemoryKey(m.content),
-    revision: 1,
-  }));
-  await writeData({
-    version: 2,
-    updatedAt: now(),
-    memories: migrated,
-    history: [],
-  });
 };
 
 const looksSensitiveMemory = (content: string): boolean => {
@@ -549,21 +523,21 @@ const findActiveMemoryById = (data: MemoryFileData, id: string): FileUserMemory 
 };
 
 export async function listUserMemoriesFromFile(): Promise<FileUserMemory[]> {
-  await migrateFromDbIfNeeded();
+  await ensureMemoryStoreInitialized();
   const data = await readData();
   await syncCuratedMemoryMarkdown(data.memories, data.history);
   return sortMemories(activeMemoriesOf(data.memories));
 }
 
 export async function listArchivedMemoriesFromFile(): Promise<FileUserMemory[]> {
-  await migrateFromDbIfNeeded();
+  await ensureMemoryStoreInitialized();
   const data = await readData();
   await syncCuratedMemoryMarkdown(data.memories, data.history);
   return sortMemories(archivedMemoriesOf(data.memories));
 }
 
 export async function listMemoryHistoryFromFile(originId?: string): Promise<MemoryHistoryEntry[]> {
-  await migrateFromDbIfNeeded();
+  await ensureMemoryStoreInitialized();
   const data = await readData();
   const history = [...data.history].sort((a, b) => b.timestamp - a.timestamp);
   if (!originId) return history;
@@ -574,7 +548,7 @@ export async function searchUserMemoriesInFile(query: string, options?: {
   includeArchived?: boolean;
   limit?: number;
 }): Promise<MemorySearchResult[]> {
-  await migrateFromDbIfNeeded();
+  await ensureMemoryStoreInitialized();
   const normalizedQuery = String(query || '').trim().toLowerCase();
   if (!normalizedQuery) return [];
 
@@ -640,7 +614,7 @@ export async function addUserMemoryToFile(
   tags: string[] = [],
   options?: { source?: MemoryMutationSource; reason?: string }
 ): Promise<FileUserMemory> {
-  await migrateFromDbIfNeeded();
+  await ensureMemoryStoreInitialized();
   const data = await readData();
   const timestamp = now();
   const normalizedContent = String(content || '').trim();
@@ -767,7 +741,7 @@ export async function deleteUserMemoryFromFile(
   id: string,
   options?: { source?: MemoryMutationSource; reason?: string }
 ): Promise<void> {
-  await migrateFromDbIfNeeded();
+  await ensureMemoryStoreInitialized();
   const data = await readData();
   const existing = data.memories.find((item) => item.id === id);
   if (!existing) return;
@@ -795,7 +769,7 @@ export async function updateUserMemoryInFile(
   updates: Partial<Pick<FileUserMemory, 'content' | 'type' | 'tags'>>,
   options?: { source?: MemoryMutationSource; reason?: string }
 ): Promise<void> {
-  await migrateFromDbIfNeeded();
+  await ensureMemoryStoreInitialized();
   const data = await readData();
   const current = findActiveMemoryById(data, id);
   if (!current) return;
@@ -862,7 +836,7 @@ export async function archiveUserMemoryInFile(
   reason = 'manual-archive',
   options?: { source?: MemoryMutationSource }
 ): Promise<void> {
-  await migrateFromDbIfNeeded();
+  await ensureMemoryStoreInitialized();
   const data = await readData();
   const current = findActiveMemoryById(data, id);
   if (!current) return;
@@ -890,7 +864,7 @@ export async function archiveUserMemoryInFile(
 }
 
 export async function markMemoryAccessed(id: string): Promise<void> {
-  await migrateFromDbIfNeeded();
+  await ensureMemoryStoreInitialized();
   const data = await readData();
   const item = findActiveMemoryById(data, id);
   if (!item) return;
@@ -960,7 +934,7 @@ export async function getLongTermMemoryPrompt(maxItems = 30, workspaceBase?: str
     '</memory_index>',
     '',
     '<memory_policy>',
-    '同一主题若出现冲突，以最新明确指令为准；旧版本会进入归档与历史，不应再当作当前事实使用。',
+    '同一主题若出现冲突，以最新明确指令为准；被替换的版本会进入归档与历史，不应再当作当前事实使用。',
     '</memory_policy>',
   ].join('\n');
 }

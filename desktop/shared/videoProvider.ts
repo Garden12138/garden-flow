@@ -1,6 +1,5 @@
-import { isPrivateGatewayEndpoint } from './privateGateway.ts';
-
-export type VideoProviderKind = 'gardenflow' | 'aliyun-bailian' | 'minimax' | 'new-api' | 'openai-compatible';
+export type VideoProviderPreset = 'aliyun-bailian' | 'minimax' | 'new-api-aliyun' | 'new-api-minimax' | 'custom';
+export type VideoProviderKind = 'aliyun-bailian' | 'minimax' | 'new-api-aliyun' | 'new-api-minimax' | 'openai-compatible';
 
 export const ALIYUN_BAILIAN_VIDEO_SYNTHESIS_PATH = '/api/v1/services/aigc/video-generation/video-synthesis';
 export const ALIYUN_BAILIAN_BEIJING_PUBLIC_ENDPOINT = `https://dashscope.aliyuncs.com${ALIYUN_BAILIAN_VIDEO_SYNTHESIS_PATH}`;
@@ -13,28 +12,21 @@ export function isHappyHorseReferenceVideoModel(model: string): boolean {
     return /^happyhorse-[\w.-]*-r2v$/i.test(String(model || '').trim());
 }
 
-export function resolveVideoProvider(endpoint: string, model = ''): VideoProviderKind {
+export function resolveVideoProvider(endpoint: string, _model = '', preset?: string): VideoProviderKind {
     const normalizedEndpoint = String(endpoint || '').trim().toLowerCase();
-    const normalizedModel = String(model || '').trim().toLowerCase();
-    if (normalizedEndpoint.includes('api.ziz.hk') && normalizedEndpoint.includes('/v1')) {
-        return 'gardenflow';
-    }
-    // 私有网关按 endpoint 结构化判定，必须排在下面两个「含模型名判定」的分支之前，
-    // 以免网关对外别名与上游原名撞车时路由到直连协议。
-    if (isPrivateGatewayEndpoint(normalizedEndpoint)) {
-        return 'new-api';
-    }
+    if (preset === 'new-api-aliyun' || preset === 'new-api-minimax') return preset;
+    if (preset === 'aliyun-bailian') return 'aliyun-bailian';
+    if (preset === 'minimax') return 'minimax';
+    if (preset === 'custom') return 'openai-compatible';
     if (
         normalizedEndpoint.includes('.maas.aliyuncs.com')
         || normalizedEndpoint.includes('dashscope.aliyuncs.com')
         || normalizedEndpoint.includes('/services/aigc/video-generation/video-synthesis')
-        || normalizedModel.startsWith('happyhorse-')
     ) {
         return 'aliyun-bailian';
     }
     if (
         normalizedEndpoint.includes('api.minimaxi.com')
-        || normalizedModel === MINIMAX_VIDEO_MODEL.toLowerCase()
     ) {
         return 'minimax';
     }

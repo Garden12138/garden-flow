@@ -76,6 +76,14 @@
 
 ![灵感桌三栏](../images/ideation-desk.jpg)
 
+素材库、媒体库和计划台延续同一套资源浏览与运行状态语言：
+
+![素材库](../images/material-library.jpg)
+
+![媒体库](../images/media-library.jpg)
+
+![自动化计划](../images/automation-desk.jpg)
+
 ## 维护规则
 
 新页面优先复用 `features/workbench/WorkbenchPrimitives.tsx` 中的页面标题、筛选栏、批量操作栏、检查器、状态面板和资源浏览器。不要新增文本关键词路由，不要在 renderer 中绕过现有 bridge，也不要用新的业务表或 IPC 通道承载纯界面状态。

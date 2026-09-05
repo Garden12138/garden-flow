@@ -1,7 +1,4 @@
 #!/usr/bin/env node
-import compatibility from './brandCompatibility.cjs';
-compatibility.applyEnvironmentAliases(process.env);
-
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -22,14 +19,7 @@ const extensionSourceRoots = [
   path.join(pluginRoot, 'src'),
 ].map((item) => path.resolve(item));
 const extensionDisplayNamePattern = new RegExp(
-  [
-    compatibility.identity.productName,
-    ...(compatibility.identity.legacy?.userDataNames || []),
-    compatibility.identity.legacy?.projectDirectory,
-  ]
-    .filter(Boolean)
-    .map((value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-    .join('|'),
+  'GardenFlow',
   'i',
 );
 const browserTargets = buildBrowserTargets();
@@ -343,18 +333,6 @@ function main() {
   if (!args.dryRun) fs.chmodSync(hostScript, 0o755);
   const manifest = buildManifest(extensionId.value, launcher.path);
   const installations = targets.map((target) => installManifest(target, manifest, args.dryRun));
-  if (!args.target) {
-    const legacyName = compatibility.identity.legacy.nativeHost;
-    const legacyManifest = JSON.stringify({ ...JSON.parse(manifest), name: legacyName }, null, 2) + '\n';
-    for (const target of targets) {
-      installations.push(installManifest({
-        ...target,
-        label: `${target.label} (compatibility)`,
-        manifestPath: target.manifestPath.replace(hostName, legacyName),
-        registryKey: target.registryKey?.replace(hostName, legacyName),
-      }, legacyManifest, args.dryRun));
-    }
-  }
   const result = {
     ok: true,
     dryRun: args.dryRun,

@@ -166,15 +166,6 @@ async function renderRemotionComposition(input: {
         status: 'running',
       });
     },
-    webpackOverride: (config: any) => {
-      config.resolve = config.resolve || {};
-      config.resolve.alias = {
-        ...(config.resolve.alias || {}),
-        '@tauri-apps/api/core': path.join(desktopRoot, 'src', 'compat', 'tauri-core.ts'),
-        '@tauri-apps/api/event': path.join(desktopRoot, 'src', 'compat', 'tauri-event.ts'),
-      };
-      return config;
-    },
   });
 
   input.onProgress?.({

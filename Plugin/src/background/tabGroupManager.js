@@ -1,13 +1,7 @@
 import { getStoredMap, setStoredMap } from './storage.js';
-import compatibility from '../../brandCompatibility.cjs';
 
 export const TAB_GROUPS_KEY = 'gardenflowBrowserDataAiTabGroups';
 const DEFAULT_SESSION_GROUP_TITLE = 'GardenFlow';
-const LEGACY_SESSION_GROUP_TITLES = new Set(
-  (compatibility.identity?.legacy?.displayNames || [])
-    .map((title) => String(title || '').trim())
-    .filter(Boolean),
-);
 const TAB_GROUP_COLORS = ['grey', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange'];
 
 let initialized = false;
@@ -27,7 +21,6 @@ export async function initializeManagedTabGroups() {
   if (!initializing) {
     registerManagedGroupListeners();
     initializing = loadManagedTabGroups()
-      .then(adoptLegacyManagedGroups)
       .then(refreshManagedGroupsFromChrome)
       .then(() => {
         initialized = true;
@@ -201,34 +194,6 @@ async function loadManagedTabGroups() {
   }
 }
 
-async function adoptLegacyManagedGroups() {
-  let changed = false;
-  for (const legacyTitle of LEGACY_SESSION_GROUP_TITLES) {
-    const observed = await chrome.tabGroups.query({ title: legacyTitle }).catch(() => []);
-    for (const chromeGroup of observed) {
-      const groupId = Number(chromeGroup?.id);
-      if (!Number.isInteger(groupId)) continue;
-      const tabs = await chrome.tabs.query({ groupId }).catch(() => []);
-      if (tabs.length === 0) continue;
-      const group = groupMetadata.get(groupId) || {
-        chromeGroupId: groupId,
-        presentationColor: normalizeColor(chromeGroup.color),
-        title: DEFAULT_SESSION_GROUP_TITLE,
-      };
-      group.title = DEFAULT_SESSION_GROUP_TITLE;
-      groupMetadata.set(groupId, group);
-      await chrome.tabGroups.update(groupId, {
-        title: DEFAULT_SESSION_GROUP_TITLE,
-        color: ensurePresentationColor(group),
-        collapsed: false,
-      }).catch(() => {});
-      changed = true;
-    }
-  }
-  if (changed) await saveManagedTabGroups();
-  return changed;
-}
-
 async function saveManagedTabGroups() {
   await setStoredMap(TAB_GROUPS_KEY, {
     groups: [...groupMetadata.values()],
@@ -397,8 +362,7 @@ function normalizeTitle(value) {
 }
 
 function normalizeManagedTitle(value) {
-  const title = normalizeTitle(value);
-  return title && LEGACY_SESSION_GROUP_TITLES.has(title) ? DEFAULT_SESSION_GROUP_TITLE : title;
+  return normalizeTitle(value);
 }
 
 function normalizeColor(value) {

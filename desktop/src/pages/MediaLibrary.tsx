@@ -6,7 +6,6 @@ import { resolveAssetUrl } from '../utils/pathManager';
 import { formatTimestampDate, parseTimestampMs } from '../utils/time';
 import { appAlert, appConfirm } from '../utils/appDialogs';
 import { getLiquidGlassMenuItemClassName, LiquidGlassMenuPanel } from '@/components/ui/liquid-glass-menu';
-import { GARDENFLOW_OFFICIAL_VIDEO_BASE_URL, getGardenFlowOfficialVideoModel } from '../../shared/gardenflowVideo';
 import { MediaAssetPreviewOverlay } from './media-library/MediaAssetPreviewOverlay';
 import { APP_BRAND } from '../config/brand';
 
@@ -34,7 +33,6 @@ interface MediaAsset {
     absolutePath?: string;
     previewUrl?: string;
     thumbnailUrl?: string;
-    thumbnail_url?: string;
     exists?: boolean;
 }
 
@@ -66,7 +64,6 @@ interface GeneratedAsset {
     prompt?: string;
     previewUrl?: string;
     thumbnailUrl?: string;
-    thumbnail_url?: string;
     mimeType?: string;
     exists?: boolean;
     projectId?: string;
@@ -171,20 +168,14 @@ function normalizeMediaAssetSource(source: unknown): MediaAssetSource {
 }
 
 function normalizeMediaAsset(asset: MediaAsset): MediaAsset {
-    const legacyAsset = asset as MediaAsset & {
-        mime_type?: string;
-        relative_path?: string;
-        absolute_path?: string;
-        preview_url?: string;
-    };
     const normalized = {
         ...asset,
         source: normalizeMediaAssetSource(asset.source),
-        mimeType: asset.mimeType || legacyAsset.mime_type,
-        relativePath: asset.relativePath || legacyAsset.relative_path,
-        absolutePath: asset.absolutePath || legacyAsset.absolute_path,
-        previewUrl: asset.previewUrl || legacyAsset.preview_url,
-        thumbnailUrl: asset.thumbnailUrl || asset.thumbnail_url,
+        mimeType: asset.mimeType,
+        relativePath: asset.relativePath,
+        absolutePath: asset.absolutePath,
+        previewUrl: asset.previewUrl,
+        thumbnailUrl: asset.thumbnailUrl,
     };
     if (isVideoAsset(normalized)) {
         console.info('[video-thumbnail] media.normalize', {
@@ -202,17 +193,12 @@ function normalizeMediaAsset(asset: MediaAsset): MediaAsset {
 }
 
 function normalizeGeneratedAsset(asset: GeneratedAsset): GeneratedAsset {
-    const legacyAsset = asset as GeneratedAsset & {
-        mime_type?: string;
-        relative_path?: string;
-        preview_url?: string;
-    };
     return {
         ...asset,
-        mimeType: asset.mimeType || legacyAsset.mime_type,
-        relativePath: asset.relativePath || legacyAsset.relative_path,
-        previewUrl: asset.previewUrl || legacyAsset.preview_url,
-        thumbnailUrl: asset.thumbnailUrl || asset.thumbnail_url,
+        mimeType: asset.mimeType,
+        relativePath: asset.relativePath,
+        previewUrl: asset.previewUrl,
+        thumbnailUrl: asset.thumbnailUrl,
     };
 }
 
@@ -951,10 +937,10 @@ export function MediaLibrary({
     const resolvedEndpoint = (settings.image_endpoint || settings.api_endpoint || '').trim();
     const resolvedApiKey = (settings.image_api_key || settings.api_key || '').trim();
     const hasImageConfig = Boolean(resolvedEndpoint) && Boolean(resolvedApiKey);
-    const resolvedVideoEndpoint = (settings.video_endpoint || GARDENFLOW_OFFICIAL_VIDEO_BASE_URL).trim();
-    const resolvedVideoApiKey = (settings.video_api_key || settings.api_key || '').trim();
-    const effectiveVideoModel = (settings.video_model || getGardenFlowOfficialVideoModel(videoGenerationMode)).trim();
-    const hasVideoConfig = Boolean(resolvedVideoEndpoint) && Boolean(resolvedVideoApiKey);
+    const resolvedVideoEndpoint = (settings.video_endpoint || '').trim();
+    const resolvedVideoApiKey = (settings.video_api_key || '').trim();
+    const effectiveVideoModel = (settings.video_model || '').trim();
+    const hasVideoConfig = Boolean(resolvedVideoEndpoint) && Boolean(resolvedVideoApiKey) && Boolean(effectiveVideoModel);
 
     const handleGenerateVideo = useCallback(async () => {
         const effectiveVideoReferenceImages = videoGenerationMode === 'reference-guided'

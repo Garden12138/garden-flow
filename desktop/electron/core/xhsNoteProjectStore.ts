@@ -256,7 +256,7 @@ async function readStoredDocument(project: ResolvedProjectPath): Promise<XhsNote
         raw = JSON.parse(await fs.readFile(notePath, 'utf-8'));
     } catch (error: any) {
         if (error?.code === 'ENOENT') {
-            throw new Error('该工程是旧版稿件，尚未包含 note.json；不会自动迁移或改写');
+            throw new Error('该目录不是有效的 GardenFlow 小红书工程：缺少 note.json');
         }
         throw new Error(`读取 note.json 失败：${error instanceof Error ? error.message : String(error)}`);
     }

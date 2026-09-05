@@ -94,8 +94,6 @@ if (-not (Test-Path -LiteralPath $NodeExe -PathType Leaf)) {
 }
 
 $env:Path = "$NodeHome;$env:Path"
-# Standard distributable builds do not include the retired official login gate.
-$env:VITE_OFFICIAL_ACCOUNT_AUTH = 'false'
 
 # Binary dependencies are hosted on GitHub by default, which is frequently
 # unreachable on mainland China networks. Keep every value overridable so a
@@ -184,7 +182,6 @@ try {
     }
 
     Write-PackageLog "Building Windows x64 package ($Mode)..."
-    Invoke-Pnpm run prepare:private-runtime
     Invoke-Pnpm run prepare:plugin-runtime
     Invoke-Pnpm run prepare:windows-native-host
     Invoke-Pnpm run prepare:ffmpeg

@@ -138,7 +138,6 @@ export function Knowledge({ onNavigateToGardenFlow, isEmbedded = false, isActive
         lastIndexedAt: null,
         isBuilding: false,
         lastError: null,
-        migrationStatus: null,
         pendingRebuildReason: null,
     });
     const wasActiveRef = useRef<boolean>(isActive);
@@ -969,7 +968,6 @@ export function Knowledge({ onNavigateToGardenFlow, isEmbedded = false, isActive
     const isIndexingInProgress = indexStatus.isBuilding
         || indexStatus.pendingCount > 0
         || (typeof indexStatus.rebuildProgress === 'number' && indexStatus.rebuildProgress < 1)
-        || Boolean(indexStatus.migrationStatus)
         || Boolean(indexStatus.pendingRebuildReason);
 
     useEffect(() => {
@@ -2564,9 +2562,6 @@ export function Knowledge({ onNavigateToGardenFlow, isEmbedded = false, isActive
                             {indexStatus.pendingCount > 0 && <span>待处理 {indexStatus.pendingCount}</span>}
                             {typeof indexStatus.rebuildProgress === 'number' && indexStatus.rebuildProgress < 1 && (
                                 <span>重建进度 {Math.round(indexStatus.rebuildProgress * 100)}%</span>
-                            )}
-                            {indexStatus.migrationStatus && (
-                                <span>迁移状态 {indexStatus.migrationStatus}</span>
                             )}
                             {indexStatus.pendingRebuildReason && (
                                 <span>重建原因 {indexStatus.pendingRebuildReason}</span>

@@ -1,10 +1,5 @@
 import type { BridgeCore, Listener } from '../types';
 
-const unavailable = (feature: string) => ({
-  success: false,
-  error: `${feature} is not available in the Electron archive build.`,
-});
-
 export function createAdvisorsBridge(core: BridgeCore) {
   return {
     advisors: {
@@ -31,28 +26,10 @@ export function createAdvisorsBridge(core: BridgeCore) {
       delete: (advisorId: string) => core.invokeChannel('advisors:delete', advisorId),
       pickKnowledgeFiles: <T = Record<string, unknown>>() =>
         core.invokeChannel('advisors:pick-knowledge-files') as Promise<T>,
-      pickKnowledgeFolder: <T = Record<string, unknown>>() =>
-        core.invokeChannelGuarded<T>('advisors:pick-knowledge-folder', undefined, {
-          timeoutMs: 3200,
-          fallback: unavailable('Advisor knowledge folder picking') as T,
-        }),
       uploadKnowledge: (payload: string | { advisorId: string; filePaths?: string[] }) =>
         core.invokeChannel('advisors:upload-knowledge', payload),
       deleteKnowledge: (payload: { advisorId: string; fileName: string }) =>
         core.invokeChannel('advisors:delete-knowledge', payload),
-      inspectMemberSkill: (payload: { advisorId: string }) =>
-        core.invokeChannelGuarded('advisors:inspect-member-skill', payload, {
-          timeoutMs: 3200,
-          fallback: unavailable('Advisor member skill inspection'),
-        }),
-      distillMemberSkill: (payload: { advisorId: string }) =>
-        core.invokeChannel('advisors:distill-member-skill', payload),
-      promoteMemberSkillCandidate: (payload: { advisorId: string; candidateVersion?: string }) =>
-        core.invokeChannel('advisors:promote-member-skill-candidate', payload),
-      discardMemberSkillCandidate: (payload: { advisorId: string }) =>
-        core.invokeChannel('advisors:discard-member-skill-candidate', payload),
-      rollbackMemberSkillVersion: (payload: { advisorId: string; version: string }) =>
-        core.invokeChannel('advisors:rollback-member-skill-version', payload),
       optimizePrompt: (payload: Record<string, unknown>) => core.invokeChannel('advisors:optimize-prompt', payload),
       optimizePromptDeep: (payload: Record<string, unknown>) => core.invokeChannel('advisors:optimize-prompt-deep', payload),
       generatePersona: (payload: Record<string, unknown>) => core.invokeChannel('advisors:generate-persona', payload),

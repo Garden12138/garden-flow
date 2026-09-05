@@ -17,7 +17,7 @@ import {
 
 type UnknownRecord = Record<string, unknown>;
 
-interface NormalizedLegacyEvent {
+interface NormalizedRuntimeEvent {
     eventType: string;
     phase: ChatRunPhase;
     payload: UnknownRecord;
@@ -29,7 +29,7 @@ function toRecord(value: unknown): UnknownRecord {
         : {};
 }
 
-function normalizeLegacyEvent(channel: string, data: unknown): NormalizedLegacyEvent | null {
+function normalizeRuntimeEvent(channel: string, data: unknown): NormalizedRuntimeEvent | null {
     const payload = toRecord(data);
     switch (channel) {
         case 'chat:phase-start':
@@ -156,9 +156,9 @@ export class ChatRunLifecycle {
         this.persistNow();
     }
 
-    publishLegacy(channel: string, data: unknown): ChatRunEvent | null {
+    publishChannelEvent(channel: string, data: unknown): ChatRunEvent | null {
         if (this.isTerminal()) return null;
-        const normalized = normalizeLegacyEvent(channel, data);
+        const normalized = normalizeRuntimeEvent(channel, data);
         if (!normalized) return null;
 
         if (this.status === 'queued') this.status = 'running';

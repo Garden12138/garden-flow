@@ -1,0 +1,64 @@
+name: Bug report
+description: 报告可复现的 GardenFlow 问题
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: 请勿提交 API Key、Cookie、Token、个人路径或私密内容。安全问题请使用 Security Advisory。
+  - type: textarea
+    id: summary
+    attributes:
+      label: 问题描述
+      description: 实际发生了什么？
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: "1. 打开…\n2. 点击…\n3. 看到…"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望结果
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: GardenFlow 版本或提交
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: 操作系统
+      options:
+        - macOS
+        - Windows
+        - Linux
+    validations:
+      required: true
+  - type: textarea
+    id: provider
+    attributes:
+      label: 相关供应商与模型
+      description: 如与 AI 有关，请写供应商类型、协议和模型，不要写 Key。
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 脱敏日志或截图
+      description: 上传前人工检查隐私；可在设置中导出本地诊断包。
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提交确认
+      options:
+        - label: 我已搜索现有 Issue。
+          required: true
+        - label: 我已移除密钥、Cookie、Token、个人路径和私密内容。
+          required: true

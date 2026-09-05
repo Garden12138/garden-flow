@@ -18,19 +18,16 @@ export async function showSystemNotification(
   notification: NotificationEnvelope,
   settings: NotificationSettings,
 ): Promise<void> {
-  if (!settings.system.enabled) return;
-  await window.ipcRenderer.notifications.showSystem({
-    title: notification.title,
-    body: notification.body,
-  });
+  if (!settings.system.enabled || typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  new Notification(notification.title, { body: notification.body });
 }
 
 export async function requestSystemNotificationPermission(): Promise<NotificationSystemPermissionSnapshot> {
-  const result = await window.ipcRenderer.notifications.requestPermission();
-  return normalizePermissionState(result);
+  if (typeof Notification === 'undefined') return { state: 'unknown' };
+  return normalizePermissionState({ state: await Notification.requestPermission() });
 }
 
 export async function getSystemNotificationPermissionState(): Promise<NotificationSystemPermissionSnapshot> {
-  const result = await window.ipcRenderer.notifications.getPermissionState();
-  return normalizePermissionState(result);
+  if (typeof Notification === 'undefined') return { state: 'unknown' };
+  return normalizePermissionState({ state: Notification.permission });
 }

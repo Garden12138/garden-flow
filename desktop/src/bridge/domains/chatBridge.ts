@@ -4,20 +4,11 @@ import type { BridgeCore, Listener } from '../types';
 
 export function createChatBridge(core: BridgeCore) {
   return {
-    startChat: (message: string, modelConfig?: unknown) =>
-      core.sendChannel('ai:start-chat', { message, modelConfig }),
-    cancelChat: () => core.sendChannel('ai:cancel'),
-    confirmTool: (callId: string, confirmed: boolean) =>
-      core.sendChannel('ai:confirm-tool', { callId, confirmed }),
     chat: {
       send: (data: Record<string, unknown>) => core.invokeChannel('chat:send-message', data) as Promise<ChatSendReceipt>,
       pickAttachment: (payload?: { sessionId?: string }) => core.invokeChannel('chat:pick-attachment', payload || {}),
-      createPathAttachment: (payload: { path: string; sessionId?: string }) =>
-        core.invokeChannel('chat:create-path-attachment', payload),
       createInlineAttachment: async (payload: { dataUrl: string; fileName?: string; sessionId?: string; rememberForChat?: boolean }) =>
         core.invokeChannel('chat:create-inline-attachment', await preflightInlineAttachmentPayload(payload)),
-      createVideoThumbnail: (payload: { path?: string; source?: string; sessionId?: string }) =>
-        core.invokeChannel('chat:create-video-thumbnail', payload),
       getStagedAttachments: (payload: { sessionId: string }) =>
         core.invokeChannel('chat:get-staged-attachments', payload),
       discardAttachments: (payload: { sessionId?: string; attachments: unknown[] }) =>

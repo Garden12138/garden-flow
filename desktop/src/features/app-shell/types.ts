@@ -50,17 +50,7 @@ export type AppIntent =
       manuscriptPath: string;
     };
 
-export type LegacyNavigateEventDetail = {
-  view?: ViewType;
-  settingsTab?: SettingsNavigationTarget['tab'];
-  aiModelSubTab?: SettingsNavigationTarget['aiModelSubTab'];
-  gardenflowAction?: GardenFlowNavigationAction['action'];
-  teamSessionId?: string;
-  sessionId?: string;
-  docketId?: string;
-};
-
-export type AppNavigateEventDetail = AppIntent | LegacyNavigateEventDetail;
+export type AppNavigateEventDetail = AppIntent;
 
 export interface PendingChatMessage {
   content: string;
@@ -208,20 +198,3 @@ export interface GenerationIntent {
   };
   assetReferences?: GenerationAssetReference[];
 }
-
-export type StartupMigrationState = {
-  status?: string;
-  needsDbImport?: boolean;
-  needsProjectUpgrade?: boolean;
-  shouldShowModal?: boolean;
-  legacyDbPath?: string | null;
-  legacyWorkspacePath?: string | null;
-  workspacePath?: string | null;
-  currentStep?: string | null;
-  message?: string | null;
-  error?: string | null;
-  progress?: number;
-  legacyMarkdownCount?: number | null;
-  importedCounts?: Record<string, number> | null;
-  projectUpgradeCounts?: Record<string, number> | null;
-};

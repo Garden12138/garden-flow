@@ -25,7 +25,7 @@ test('workflow stages map to the intended desktop pages', () => {
     );
 });
 
-test('new users open the workbench while existing legal pages still restore', () => {
+test('new users open the workbench while supported pages still restore', () => {
     assert.equal(normalizeRestoredWorkbenchView(null), 'home');
     assert.equal(normalizeRestoredWorkbenchView('removed-page'), 'home');
     assert.equal(normalizeRestoredWorkbenchView('gardenflow'), 'gardenflow');
@@ -66,7 +66,7 @@ test('generation handoff keeps the typed intent and ignores message-like keyword
     assert.equal(viewForFlowStage('produce'), 'generation-studio');
 });
 
-test('legacy sidebar width preferences remain valid and are safely clamped', () => {
+test('stored sidebar width preferences are safely clamped', () => {
     assert.equal(SIDEBAR_DEFAULT_WIDTH, 300);
     assert.equal(clampSidebarWidth(240), 240);
     assert.equal(clampSidebarWidth(320), 320);

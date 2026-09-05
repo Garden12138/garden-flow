@@ -1,110 +1,83 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { resolveSettingsLlm } from '../electron/core/aiModelRouteResolver.ts';
-import OpenAI from 'openai';
-import compatibility from '../shared/brandCompatibility.cjs';
-import { PRIVATE_GATEWAY_DEFAULT_MODEL_IDS } from '../shared/privateGateway.ts';
 
-const bailianSource = {
-  id: 'dashscope-home',
-  name: '阿里云百炼',
-  presetId: 'dashscope',
-  baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-  apiKey: 'sk-bailian-test',
-  model: 'qwen-plus',
-  models: ['qwen-plus', 'qwen-max'],
+const openAiSource = {
+  id: 'openai-main',
+  name: 'OpenAI',
+  presetId: 'openai',
+  baseURL: 'https://api.openai.com/v1',
+  apiKey: 'sk-openai-test',
+  model: 'gpt-4.1-mini',
+  models: ['gpt-4.1-mini'],
 };
 
-const officialSource = {
-  id: 'gardenflow_official_auto',
-  name: 'GardenFlow官方',
-  presetId: 'gardenflow-official',
-  baseURL: 'http://192.168.10.117:3000/v1',
+const localSource = {
+  id: 'ollama-local',
+  name: 'Ollama',
+  presetId: 'ollama-local',
+  baseURL: 'http://127.0.0.1:11434/v1',
   apiKey: '',
-  model: 'gardenflow-max',
-  models: ['gardenflow-max'],
+  model: 'qwen3:8b',
+  models: ['qwen3:8b'],
 };
 
-test('background capture follows the chat custom 百炼 route, not leftover official endpoint', () => {
+test('background work follows the configured chat route', () => {
   const resolved = resolveSettingsLlm({
-    api_endpoint: 'http://192.168.10.117:3000/v1',
-    api_key: 'sk-gateway-empty-quota',
-    model_name: 'gardenflow-max',
-    model_name_gardenflow: 'gardenflow-max',
-    ai_sources_json: JSON.stringify([officialSource, bailianSource]),
+    ai_sources_json: JSON.stringify([openAiSource]),
     ai_model_routes_json: JSON.stringify({
-      chat: { mode: 'custom', sourceId: 'dashscope-home', model: 'qwen-plus' },
-      gardenflow: { mode: 'official', sourceId: 'gardenflow_official_auto', model: 'gardenflow-max' },
+      chat: { mode: 'custom', sourceId: 'openai-main', model: 'gpt-4.1-mini' },
     }),
-  }, {
-    preferChat: true,
-    contextType: 'gardenflow',
-  });
+  }, { preferChat: true, contextType: 'gardenflow' });
 
-  assert.ok(resolved);
-  assert.equal(resolved?.modelName, 'qwen-plus');
-  assert.equal(resolved?.baseURL, 'https://dashscope.aliyuncs.com/compatible-mode/v1');
-  assert.equal(resolved?.apiKey, 'sk-bailian-test');
-  assert.equal(resolved?.scope, 'chat');
-  assert.equal(resolved?.sourceId, 'dashscope-home');
+  assert.deepEqual(resolved, {
+    modelName: 'gpt-4.1-mini',
+    baseURL: 'https://api.openai.com/v1',
+    apiKey: 'sk-openai-test',
+    sourceId: 'openai-main',
+    scope: 'chat',
+    mode: 'custom',
+  });
 });
 
-test('interactive gardenflow still uses the gardenflow route when not preferring chat', () => {
+test('scope-specific routes retain their provider and model', () => {
   const resolved = resolveSettingsLlm({
-    api_endpoint: 'http://192.168.10.117:3000/v1',
-    api_key: 'sk-gateway-token',
-    model_name: 'qwen-plus',
-    ai_sources_json: JSON.stringify([officialSource, bailianSource]),
+    ai_sources_json: JSON.stringify([openAiSource]),
     ai_model_routes_json: JSON.stringify({
-      chat: { mode: 'custom', sourceId: 'dashscope-home', model: 'qwen-plus' },
-      gardenflow: { mode: 'official', sourceId: 'gardenflow_official_auto', model: 'gardenflow-max' },
+      gardenflow: { mode: 'custom', sourceId: 'openai-main', model: 'gpt-4.1' },
     }),
-  }, {
-    preferChat: false,
-    contextType: 'gardenflow',
-  });
+  }, { contextType: 'gardenflow' });
 
-  assert.ok(resolved);
-  assert.equal(resolved?.modelName, 'gardenflow-max');
-  assert.equal(resolved?.baseURL, 'http://192.168.10.117:3000/v1');
-  assert.equal(resolved?.apiKey, 'sk-gateway-token');
   assert.equal(resolved?.scope, 'gardenflow');
+  assert.equal(resolved?.modelName, 'gpt-4.1');
+  assert.equal(resolved?.sourceId, 'openai-main');
 });
 
-test('returns null when the routed source is missing so callers can fall back', () => {
+test('local providers work without a user-supplied API key', () => {
   const resolved = resolveSettingsLlm({
-    api_endpoint: 'http://192.168.10.117:3000/v1',
-    api_key: 'sk-gateway-token',
-    model_name: 'gardenflow-max',
-    ai_sources_json: '[]',
+    ai_sources_json: JSON.stringify([localSource]),
     ai_model_routes_json: JSON.stringify({
-      chat: { mode: 'custom', sourceId: 'missing-source', model: 'qwen-plus' },
+      chat: { mode: 'custom', sourceId: 'ollama-local', model: 'qwen3:8b' },
     }),
   }, { preferChat: true });
 
-  assert.equal(resolved, null);
+  assert.equal(resolved?.baseURL, 'http://127.0.0.1:11434/v1');
+  assert.equal(resolved?.apiKey, 'local');
 });
 
-test('all eleven migrated model IDs reach the wire unchanged and gateway rejection is surfaced', async () => {
-  const ids = Object.entries(compatibility.identity.legacy.values).filter(([old, current]) => old.startsWith('bojin-') && PRIVATE_GATEWAY_DEFAULT_MODEL_IDS.includes(current));
-  assert.equal(ids.length, 11);
-  const sent: string[] = [];
-  const client = new OpenAI({
-    apiKey: 'test-not-a-real-key',
-    baseURL: 'http://gateway.invalid/v1',
-    maxRetries: 0,
-    fetch: async (_url, init) => {
-      sent.push(JSON.parse(String(init?.body)).model);
-      return new Response(JSON.stringify({ error: { message: 'GardenFlow model mapping is not configured', type: 'invalid_request_error', code: 'model_not_found' } }), { status: 404, headers: { 'content-type': 'application/json' } });
-    },
-  });
-  for (const [old, current] of ids) {
-    const route = resolveSettingsLlm({
-      ai_sources_json: JSON.stringify([{ ...officialSource, id: 'bojin_official_auto', apiKey: 'test-not-a-real-key', model: old }]),
-      ai_model_routes_json: JSON.stringify({ redclaw: { mode: 'official', sourceId: 'bojin_official_auto', model: old } }),
-    }, { contextType: 'redclaw' });
-    assert.equal(route?.modelName, current);
-    await assert.rejects(client.chat.completions.create({ model: route!.modelName, messages: [{ role: 'user', content: 'test' }] }), /GardenFlow model mapping is not configured/);
-  }
-  assert.deepEqual(sent, ids.map(([, current]) => current));
+test('disabled, missing, and incomplete routes resolve to null', () => {
+  assert.equal(resolveSettingsLlm({
+    ai_sources_json: '[]',
+    ai_model_routes_json: JSON.stringify({ chat: { mode: 'disabled' } }),
+  }, { preferChat: true }), null);
+
+  assert.equal(resolveSettingsLlm({
+    ai_sources_json: JSON.stringify([openAiSource]),
+    ai_model_routes_json: JSON.stringify({ chat: { mode: 'custom', sourceId: 'missing', model: 'gpt-4.1-mini' } }),
+  }, { preferChat: true }), null);
+
+  assert.equal(resolveSettingsLlm({
+    ai_sources_json: JSON.stringify([{ ...openAiSource, apiKey: '' }]),
+    ai_model_routes_json: JSON.stringify({ chat: { mode: 'custom', sourceId: 'openai-main', model: 'gpt-4.1-mini' } }),
+  }, { preferChat: true }), null);
 });

@@ -284,8 +284,8 @@ for (const contractText of ['gardenflow:generic-capture', 'Defuddle', 'DOMPurify
     `Built genericCaptureContent should preserve generic extraction contract: ${contractText}`,
   );
 }
-assert(builtBackground.includes('generic-capture-fallback'), 'Built background must retain the generic-capture legacy fallback');
-assert(builtBackground.includes('mp.weixin.qq.com'), 'Built background must retain WeChat legacy-capture protection');
+assert(builtBackground.includes('generic-capture-page-extractor'), 'Built background must retain the page extractor path');
+assert(builtBackground.includes('mp.weixin.qq.com'), 'Built background must retain the WeChat capture path');
 
 const browserClientPath = path.join(pluginRoot, 'scripts/browser-client.mjs');
 await exists(browserClientPath);
@@ -298,4 +298,4 @@ for (const docName of ['browser-runtime.md', 'browser-playwright.md', 'browser-t
   assert(doc.includes('browser'), `${docName} should describe browser runtime behavior`);
 }
 
-console.log('Verified built extension manifest, page assets, dynamic scripts, browser-control contracts, generic-capture fallback contracts, browser-client runtime, and key content-script contracts.');
+console.log('Verified built extension manifest, page assets, dynamic scripts, browser-control contracts, page-extractor contracts, browser-client runtime, and key content-script contracts.');

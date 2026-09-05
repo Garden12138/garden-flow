@@ -1,6 +1,5 @@
 import path from 'node:path';
 import fsSync from 'node:fs';
-import { resolveMigratedPath } from './legacyPathResolver.ts';
 import {
     extractLocalAssetPathCandidate,
     toGardenFlowAssetUrl,
@@ -57,7 +56,7 @@ export function resolveAssetSourceToPath(source: string): string {
         normalized = normalized.replace(/^\\\\([a-zA-Z]:)([\\/])/, '$1$2');
         normalized = normalized.replace(/^\\\\\?\\/, '');
     }
-    return resolveMigratedPath(normalized);
+    return normalized;
 }
 
 export function toAppAssetUrl(absolutePath: string): string {

@@ -1,4 +1,3 @@
-import './brandRuntime.js';
 import Defuddle from 'defuddle';
 import DOMPurify from 'dompurify';
 import {

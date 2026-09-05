@@ -83,7 +83,7 @@ export function normalizeCaptureDocument(input = {}) {
 
   return {
     schemaVersion: CAPTURE_DOCUMENT_SCHEMA_VERSION,
-    engine: normalizeCaptureText(input?.engine, 80) || 'legacy',
+    engine: normalizeCaptureText(input?.engine, 80) || 'page',
     status,
     captureKind,
     source: {
@@ -113,7 +113,7 @@ export function normalizeCaptureDocument(input = {}) {
   };
 }
 
-export function captureDocumentToLegacyPayload(document) {
+export function captureDocumentToPagePayload(document) {
   const normalized = normalizeCaptureDocument(document);
   const isArticle = normalized.captureKind === 'link-article' || normalized.status === 'complete';
   return {

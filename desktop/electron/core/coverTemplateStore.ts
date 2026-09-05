@@ -127,28 +127,3 @@ export async function deleteCoverTemplate(templateId: string): Promise<CoverTemp
   });
   return nextTemplates;
 }
-
-export async function importLegacyCoverTemplates(input: unknown[]): Promise<CoverTemplateRecord[]> {
-  const catalog = await readCatalog();
-  const merged = new Map<string, CoverTemplateRecord>();
-
-  for (const template of catalog.templates) {
-    merged.set(template.id, template);
-  }
-
-  for (const raw of input) {
-    const normalized = normalizeTemplate(raw);
-    if (!normalized) continue;
-    merged.set(normalized.id, {
-      ...normalized,
-      updatedAt: nowIso(),
-    });
-  }
-
-  const nextTemplates = [...merged.values()].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
-  await writeCatalog({
-    version: 1,
-    templates: nextTemplates,
-  });
-  return nextTemplates;
-}

@@ -2,20 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronDown, Eye, EyeOff, FileText, Image as ImageIcon, Video, AudioLines } from 'lucide-react';
 import { resolveRuntimeAssetUrl } from '../../utils/runtimeAssetUrl';
 import clsx from 'clsx';
-import { APP_BRAND } from '../../config/brand';
 import {
   type AiSourcePreset,
   type AiSourceConfig,
   DEFAULT_AI_PRESET_ID,
-  OFFICIAL_AI_SOURCE_BASE_URL,
-  OFFICIAL_AUTO_SOURCE_ID,
-  OFFICIAL_AI_SOURCE_DISPLAY_NAME,
-  canonicalizeOfficialAutoSourceId,
-  createOfficialAiSourceModels,
-  createOfficialAiSourceModelsMeta,
   findAiPresetById,
   inferPresetIdByEndpoint,
-  isOfficialAutoSourceId,
 } from '../../config/aiSources';
 import {
   enforceModelCapabilityPolicy,
@@ -27,8 +19,6 @@ import {
   type ModelCapability,
   type ModelInputCapability,
 } from '../../../shared/modelCapabilities';
-
-const GARDENFLOW_OFFICIAL_LOGO_URL = APP_BRAND.logoSrc;
 
 export interface UserMemory {
   id: string;
@@ -319,14 +309,6 @@ export interface RuntimePerfRunResult {
   timeline: RuntimePerfTimelineItem[];
 }
 
-export interface OfficialModelInfo {
-  id: string;
-  capability?: string;
-  capabilities?: ModelCapability[];
-  apiType?: string;
-  ownedBy?: string;
-}
-
 export interface AiModelDescriptor {
   id: string;
   capabilities: ModelCapability[];
@@ -416,8 +398,8 @@ export const IMAGE_PROVIDER_TEMPLATE_OPTIONS = [
   { value: 'ark-seedream-native', label: '方舟 Ark / Seedream 官方协议' },
   { value: 'midjourney-proxy', label: 'Midjourney Proxy 协议' },
   { value: 'jimeng-openai-wrapper', label: '即梦 OpenAI 包装协议（需自建网关）' },
-  { value: 'gemini-generate-content', label: 'Gemini generateContent（Legacy）' },
-  { value: 'jimeng-images', label: '即梦 / Jimeng Images（Legacy，需自建网关）' },
+  { value: 'gemini-generate-content', label: 'Gemini generateContent 原生协议' },
+  { value: 'jimeng-images', label: '即梦 / Jimeng Images（需自建网关）' },
 ] as const;
 
 export const IMAGE_PROVIDER_TEMPLATE_VALUES: Set<string> = new Set(
@@ -458,8 +440,6 @@ export const inferImageTemplateByProvider = (provider: string, currentTemplate =
 };
 
 export const AI_PRESET_LOGO_BY_ID: Record<string, string> = {
-  'gardenflow-official': GARDENFLOW_OFFICIAL_LOGO_URL,
-  [OFFICIAL_AUTO_SOURCE_ID]: GARDENFLOW_OFFICIAL_LOGO_URL,
   openai: 'provider-logos/openai.svg',
   anthropic: 'provider-logos/anthropic.svg',
   gemini: 'provider-logos/gemini.svg',
@@ -552,17 +532,7 @@ export const AiSourceLogo = ({
 }: {
   source: Pick<AiSourceConfig, 'id' | 'name' | 'baseURL' | 'presetId'>;
 }) => {
-  const normalizedId = String(source.id || '').trim().toLowerCase();
-  const normalizedName = String(source.name || '').trim().toLowerCase();
-  const resolvedPresetId = (
-    isOfficialAutoSourceId(normalizedId)
-      || normalizedName === 'gardenflow official'
-      || normalizedName === `${APP_BRAND.displayName} official`.toLowerCase()
-      || normalizedName === OFFICIAL_AI_SOURCE_DISPLAY_NAME.toLowerCase()
-      ? 'gardenflow-official'
-      : source.presetId
-  );
-  return <AiPresetLogo presetId={resolvedPresetId} label={source.name || 'AI'} />;
+  return <AiPresetLogo presetId={source.presetId} label={source.name || 'AI'} />;
 };
 
 export interface AiPresetGroup {
@@ -1029,35 +999,6 @@ export interface LocalAiGuide {
   tip: string;
 }
 
-export interface GardenFlowAuthUiSession {
-  accessToken: string;
-  refreshToken: string;
-  tokenType: string;
-  expiresAt: number | null;
-  apiKey: string;
-  user: Record<string, unknown> | null;
-  createdAt: number;
-  updatedAt: number;
-}
-
-export interface GardenFlowProductItem {
-  id: string;
-  name: string;
-  amount?: number;
-  points_topup?: number;
-  [key: string]: unknown;
-}
-
-export interface GardenFlowCallRecordItem {
-  id: string;
-  model: string;
-  endpoint: string;
-  tokens: number;
-  points: number;
-  createdAt: string;
-  status: string;
-}
-
 export const generateAiSourceId = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
@@ -1114,13 +1055,6 @@ export const parseAiSources = (raw: string | undefined): AiSourceConfig[] => {
         const model = String(item.model || item.modelName || '');
         const rawId = String(item.id || '');
         const name = String(item.name || findAiPresetById(presetId)?.label || '供应商');
-        const isOfficialSource = (
-          isOfficialAutoSourceId(rawId)
-          || presetId === 'gardenflow-official'
-          || name.trim().toLowerCase() === 'gardenflow official'
-          || name.trim().toLowerCase() === `${APP_BRAND.displayName} official`.toLowerCase()
-          || name.trim().toLowerCase() === OFFICIAL_AI_SOURCE_DISPLAY_NAME.toLowerCase()
-        );
         const modelsMeta = normalizeAiModelDescriptors(
           Array.isArray(item.modelsMeta)
             ? item.modelsMeta.map((value) => (value && typeof value === 'object' ? value as { id?: string; capability?: ModelCapability | string | null | undefined; capabilities?: Array<ModelCapability | string | null | undefined> } : null))
@@ -1129,27 +1063,15 @@ export const parseAiSources = (raw: string | undefined): AiSourceConfig[] => {
         const models = Array.isArray(item.models)
           ? normalizeSourceModels(item.models.map((value) => String(value || '')))
           : normalizeSourceModels([model]);
-        // 官方源已迁移到内网私有 new-api 网关：baseURL 由代码常量收口（旧库里的
-        // api.ziz.hk 不会自动跟随，必须在这里强制刷新）。旧库里的模型清单来自已下线的
-        // 官方登录下发，只要一个网关别名都不含就整体回填内置清单；用户自己增删过的
-        // 网关模型清单则原样保留。
-        const gatewayModelIds = createOfficialAiSourceModels();
-        const needsGatewayModelBackfill = isOfficialSource
-          && !models.some((id) => gatewayModelIds.includes(id));
-        const officialModels = needsGatewayModelBackfill ? gatewayModelIds : models;
-        const officialModelsMeta = needsGatewayModelBackfill
-          ? normalizeAiModelDescriptors(createOfficialAiSourceModelsMeta())
-          : modelsMeta;
         return {
-          id: isOfficialSource ? OFFICIAL_AUTO_SOURCE_ID : canonicalizeOfficialAutoSourceId(rawId || generateAiSourceId()),
-          name: isOfficialSource ? OFFICIAL_AI_SOURCE_DISPLAY_NAME : name,
-          presetId: isOfficialSource ? 'gardenflow-official' : presetId,
-          baseURL: isOfficialSource ? OFFICIAL_AI_SOURCE_BASE_URL : baseURL,
+          id: rawId || generateAiSourceId(),
+          name,
+          presetId,
+          baseURL,
           apiKey: String(item.apiKey || item.key || ''),
-          models: officialModels,
-          modelsMeta: officialModelsMeta,
-          // 回填时一并丢弃旧官方目录里的默认模型，避免把网关上不存在的模型名带进路由。
-          model: needsGatewayModelBackfill ? '' : model,
+          models,
+          modelsMeta,
+          model,
           protocol: (String(item.protocol || findAiPresetById(presetId)?.protocol || 'openai') as AiProtocol),
         } satisfies AiSourceConfig;
       });
@@ -1318,121 +1240,6 @@ export const isLikelyImageModel = (modelId: string): boolean => {
     || id.includes('stable')
     || id.includes('midjourney')
     || id.includes('imagen');
-};
-
-export const normalizeRechargeAmountInput = (raw: string): string => {
-  const text = String(raw || '').trim();
-  if (!text) return '';
-  const numeric = Number(text);
-  if (!Number.isFinite(numeric) || numeric <= 0) return '';
-  return numeric.toFixed(2);
-};
-
-export const isSettledSuccessOrderStatus = (status: string, tradeStatus: string, topupStatus: string): boolean => {
-  const statusUpper = String(status || '').trim().toUpperCase();
-  const tradeUpper = String(tradeStatus || '').trim().toUpperCase();
-  const topupUpper = String(topupStatus || '').trim().toUpperCase();
-  const paidByStatus = ['PAID', 'SUCCESS', 'COMPLETED', 'TRADE_SUCCESS', 'TRADE_FINISHED'].includes(statusUpper);
-  const paidByTrade = /SUCCESS|FINISH|PAID/.test(tradeUpper);
-  const topupDone = !topupUpper || topupUpper === 'SUCCESS' || topupUpper === 'NONE';
-  return (paidByStatus || paidByTrade) && topupDone;
-};
-
-export const isSettledFailedOrderStatus = (status: string, tradeStatus: string): boolean => {
-  const statusUpper = String(status || '').trim().toUpperCase();
-  const tradeUpper = String(tradeStatus || '').trim().toUpperCase();
-  return /CLOSE|FAIL|CANCEL|ERROR/.test(statusUpper) || /CLOSE|FAIL|CANCEL|ERROR/.test(tradeUpper);
-};
-
-export const decodeHtmlEntities = (value: string): string => {
-  return String(value || '')
-    .replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, '\'')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>');
-};
-
-export const extractAlipayUrlFromForm = (paymentForm: string): string => {
-  const raw = String(paymentForm || '').trim();
-  if (!raw) return '';
-  if (/^https?:\/\//i.test(raw)) return raw;
-
-  const formMatch = raw.match(/<form[\s\S]*?<\/form>/i);
-  const formHtml = formMatch ? formMatch[0] : raw;
-  const actionMatch = formHtml.match(/action\s*=\s*["']([^"']+)["']/i);
-  const action = decodeHtmlEntities(String(actionMatch?.[1] || '').trim());
-  if (!action) return '';
-
-  const inputTagRegex = /<input\b[^>]*>/gi;
-  const attrRegex = /([a-zA-Z_:][\w:.-]*)\s*=\s*["']([^"']*)["']/g;
-  const params = new URLSearchParams();
-
-  const inputTags = formHtml.match(inputTagRegex) || [];
-  for (const inputTag of inputTags) {
-    let name = '';
-    let value = '';
-    let attrMatch: RegExpExecArray | null;
-    attrRegex.lastIndex = 0;
-    while ((attrMatch = attrRegex.exec(inputTag)) !== null) {
-      const key = String(attrMatch[1] || '').toLowerCase();
-      const attrValue = decodeHtmlEntities(String(attrMatch[2] || ''));
-      if (key === 'name') name = attrValue;
-      if (key === 'value') value = attrValue;
-    }
-    if (name) {
-      params.append(name, value);
-    }
-  }
-
-  try {
-    const url = new URL(action);
-    params.forEach((value, key) => {
-      url.searchParams.set(key, value);
-    });
-    return url.toString();
-  } catch {
-    return '';
-  }
-};
-
-export const extractAlipayPayQrContent = (order: Record<string, unknown>): string => {
-  const candidates = [
-    order.payment_url,
-    order.payment_form,
-    order.url,
-    order.code_url,
-    order.qr_code,
-    order.qrcode,
-    order.qrCode,
-  ];
-  for (const value of candidates) {
-    const normalized = String(value || '').trim();
-    if (!normalized) continue;
-    if (/^https?:\/\//i.test(normalized)) return normalized;
-    if (/<form[\s>]/i.test(normalized)) {
-      const parsed = extractAlipayUrlFromForm(normalized);
-      if (parsed) return parsed;
-    }
-  }
-  return '';
-};
-
-export const filterOfficialModelsByCapability = (
-  models: OfficialModelInfo[],
-  capability: 'chat' | 'stt' | 'image' | 'embedding' | 'video' | 'audio' | 'tts' | 'voice_clone',
-): OfficialModelInfo[] => {
-  const normalizedCapability = capability === 'stt' ? 'transcription' : capability;
-  return models.filter((item) => {
-    const rawCapabilities = Array.isArray(item.capabilities) && item.capabilities.length > 0
-      ? normalizeModelCapabilities(item.capabilities)
-      : normalizeModelCapabilities([
-        ...(item.capability ? [item.capability] : []),
-        ...inferModelCapabilities(item.id),
-      ]);
-    const capabilities = enforceModelCapabilityPolicy(item.id, rawCapabilities);
-    return capabilities.includes(normalizedCapability as ModelCapability);
-  });
 };
 
 export const toAiModelDescriptor = (

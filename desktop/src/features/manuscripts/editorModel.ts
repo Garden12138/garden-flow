@@ -174,7 +174,6 @@ export type VideoProjectState = {
     ffmpegRecipeSummary?: string | null;
     remotion?: RemotionState | null;
     renderOutput?: string | null;
-    legacy?: Record<string, unknown>;
 };
 
 export type RemotionState = {

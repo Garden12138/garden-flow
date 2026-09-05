@@ -224,10 +224,12 @@ export function mapRuntimeErrorToNotification(
   const errorText = String(payload.errorPayload.error || payload.errorPayload.message || '').trim();
   const titleText = String(payload.errorPayload.title || '').trim();
   const normalizedErrorText = `${titleText} ${errorText}`.replace(/\s+/g, '').toLowerCase();
-  const shouldOpenRechargeSettings = normalizedErrorText.includes('余额不足');
-  const shouldOpenLoginSettings = shouldOpenRechargeSettings
-    || normalizedErrorText.includes('登陆失效')
-    || normalizedErrorText.includes('登录失效');
+  const isQuotaError = normalizedErrorText.includes('余额不足')
+    || normalizedErrorText.includes('额度不足')
+    || normalizedErrorText.includes('insufficientquota');
+  const shouldOpenAiSettings = isQuotaError
+    || normalizedErrorText.includes('unauthorized')
+    || normalizedErrorText.includes('invalidapikey');
   const createdAt = Date.now();
   const notification: NotificationEnvelope = {
     id: makeNotificationId('runtime', payload.sessionId || 'runtime', 'chat-error', createdAt),
@@ -242,11 +244,11 @@ export function mapRuntimeErrorToNotification(
     createdAt,
     actions: [
       {
-        id: shouldOpenLoginSettings ? 'open-settings-login' : 'open-runtime',
-        label: shouldOpenRechargeSettings ? '去充值' : shouldOpenLoginSettings ? '去登录页' : '查看',
+        id: shouldOpenAiSettings ? 'open-settings-ai' : 'open-runtime',
+        label: isQuotaError ? '检查供应商' : shouldOpenAiSettings ? '检查配置' : '查看',
         action: 'navigate',
-        payload: shouldOpenLoginSettings
-          ? { view: 'settings', settingsTab: 'ai', aiModelSubTab: 'login' }
+        payload: shouldOpenAiSettings
+          ? { view: 'settings', settingsTab: 'ai' }
           : { view: 'gardenflow' },
       },
     ],

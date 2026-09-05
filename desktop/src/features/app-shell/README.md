@@ -1,11 +1,3 @@
-# App Shell Feature
+# App shell
 
-Owns shell-only orchestration that should not live in `App.tsx`:
-
-- login/readiness gate UI
-- startup migration gate
-- view navigation cache/persistence
-- global navigation and GardenFlow auto-open intents
-- shared app-shell types
-
-`App.tsx` should remain the route composition surface. Product modules should expose typed callbacks or intents instead of adding provider-specific state here.
+应用壳负责页面懒加载、全局导航、空间切换、主题、反馈入口、运行状态恢复和结构化 handoff。业务数据与 AI 路由属于各自 feature 或主进程服务，不在壳层复制。

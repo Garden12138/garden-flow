@@ -2,17 +2,14 @@ import { useState, useEffect, useCallback, lazy, Suspense, type ReactNode } from
 import { FileText, Loader2, MessageSquareWarning } from 'lucide-react';
 import { AppDialogsHost } from './components/AppDialogsHost';
 import { Layout } from './components/Layout';
-import { getAppAcquisitionSource } from './components/AppOnboarding/constants';
 import { FeedbackReportDialog } from './components/FeedbackReportDialog';
 import { NotificationsHost } from './notifications/NotificationsHost';
 import { useI18n } from './i18n';
 import { AppSubjectsModal } from './features/app-shell/AppSubjectsModal';
-import { StartupMigrationGate } from './features/app-shell/StartupMigrationGate';
 import { useExecutionPersistence } from './features/app-shell/useExecutionPersistence';
 import { useFeedbackReportDialog } from './features/app-shell/useFeedbackReportDialog';
 import { useGenerationShellNavigation } from './features/app-shell/useGenerationShellNavigation';
 import { useGlobalIntentRouter } from './features/app-shell/useGlobalIntentRouter';
-import { useOfficialAuthNotice } from './features/app-shell/useOfficialAuthNotice';
 import { useGardenFlowShellNavigation } from './features/app-shell/useGardenFlowShellNavigation';
 import { useSettingsShellNavigation } from './features/app-shell/useSettingsShellNavigation';
 import { useSubjectsModal } from './features/app-shell/useSubjectsModal';
@@ -68,7 +65,6 @@ function AuthenticatedApp() {
   const [approvalTargetDocketId, setApprovalTargetDocketId] = useState('');
   const [generationAssetPicker, setGenerationAssetPicker] = useState<GenerationAssetPickerRequest | null>(null);
 
-  const globalAuthNotice = useOfficialAuthNotice();
   const {
     subjectsModalOpen,
     openSubjectsModal,
@@ -148,25 +144,6 @@ function AuthenticatedApp() {
   const isManuscriptEditorActive = currentView === 'gardenflow' && Boolean(activeManuscriptEditorFile);
   const effectiveImmersiveMode: ImmersiveMode = isManuscriptEditorActive ? false : immersiveMode;
 
-  useEffect(() => {
-    const acquisitionSource = getAppAcquisitionSource();
-    void window.ipcRenderer.analytics.track('app_launched', {
-      surface: 'app-shell',
-      origin: 'renderer',
-      properties: acquisitionSource ? { acquisitionSource } : {},
-    });
-  }, []);
-
-  useEffect(() => {
-    void window.ipcRenderer.analytics.track('surface_viewed', {
-      surface: currentView,
-      origin: 'renderer',
-      properties: {
-        surface: currentView,
-      },
-    });
-  }, [currentView]);
-
   return (
     <>
       <Layout
@@ -174,7 +151,6 @@ function AuthenticatedApp() {
         onNavigate={navigateToView}
         immersiveMode={effectiveImmersiveMode}
         hideGlobalSidebar={currentView === 'settings'}
-        globalNotice={globalAuthNotice}
         globalSidebarContent={gardenFlowGlobalSidebarContent}
         activeModalView={subjectsModalOpen ? 'subjects' : undefined}
         renderTitleBarContent={({ currentView }) => {
@@ -397,7 +373,6 @@ function AuthenticatedApp() {
         onClose={closeFeedbackReport}
         onSubmitted={notifyFeedbackReportSubmitted}
       />
-      <StartupMigrationGate />
       <NotificationsHost currentView={currentView} />
       <AppDialogsHost />
     </>

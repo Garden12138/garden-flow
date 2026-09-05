@@ -13,7 +13,6 @@
 - `infrastructure/README.md`
 - `shared/README.md`
 - `shared/state/README.md`
-- [docs/freecut-vendoring.md](/Users/Jam/LocalDev/GitHub/GardenFlow/desktop/docs/freecut-vendoring.md)
 
 ## Maintenance Rule
 

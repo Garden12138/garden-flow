@@ -13,7 +13,6 @@ export type ImageProviderTemplate =
     | 'ark-seedream-native'
     | 'midjourney-proxy'
     | 'jimeng-openai-wrapper'
-    // Legacy template ids kept for backward compatibility.
     | 'gemini-generate-content'
     | 'jimeng-images';
 
@@ -1268,7 +1267,7 @@ function resolveDashscopeWanEndpoints(
         }
     } else if (requireImageInput) {
         // Prefer newer unified image-generation endpoint first; many models/providers
-        // reject legacy paths with InvalidParameter/url error.
+        // reject unsupported path variants with InvalidParameter/url errors.
         candidates.push(normalizeEndpoint(base, '/api/v1/services/aigc/image-generation/generation'));
         candidates.push(normalizeEndpoint(base, '/api/v1/services/aigc/image2image/image-synthesis'));
         candidates.push(normalizeEndpoint(base, '/api/v1/services/aigc/multimodal-generation/generation'));

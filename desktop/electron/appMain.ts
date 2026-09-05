@@ -1,5 +1,4 @@
-import compatibility from '../shared/brandCompatibility.cjs';
-import { backgroundAutomationHeld } from './core/gardenflowMigrationState';
+import identity from '../shared/brand.generated.json';
 import { app, BrowserWindow, ipcMain, protocol, nativeImage, shell, clipboard, dialog, type IpcMainInvokeEvent, type WebContents } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs/promises'
@@ -82,9 +81,6 @@ import { indexManager, buildLanesFromStatus } from './core/IndexManager'
 import { embeddingService } from './core/vector/EmbeddingService'
 import { normalizeNote, normalizeVideo, normalizeFile, normalizeArchiveSample } from './core/normalization'
 import {
-  createAgentExecutor,
-  AgentExecutor,
-  type AgentConfig,
   getAllKnowledgeItems
 } from './core'
 import { loadPrompt, renderPrompt } from './prompts/runtime';
@@ -191,11 +187,9 @@ import {
 } from './core/coverStudioStore';
 import {
   deleteCoverTemplate,
-  importLegacyCoverTemplates,
   listCoverTemplates,
   saveCoverTemplate,
 } from './core/coverTemplateStore';
-import { loadOfficialFeatureModule } from './officialFeatureBridge';
 import { applyGlobalNetworkProxy } from './core/networkProxy';
 import {
   getDebugLogDirectory,
@@ -212,9 +206,8 @@ import {
   exportDiagnosticBundle,
   getDiagnosticsLogStatus,
   getRecentDiagnosticsLogs,
-  listPendingDiagnosticReports,
+  listDiagnosticReports,
   openDiagnosticsReportDirectory,
-  uploadDiagnosticReport,
 } from './core/diagnosticReportService';
 import {
   listToolDiagnostics,
@@ -235,7 +228,7 @@ import {
   previewGardenFlowTask,
   gardenFlowTaskStats,
   updateGardenFlowTask,
-} from './core/gardenflowTaskCompat';
+} from './core/gardenflowTaskService';
 import { formatWechatArticleFromMarkdown } from './core/wechatFormatter';
 import {
   bindWechatOfficialAccount,
@@ -275,6 +268,7 @@ import {
 } from './core/mcpStore';
 import { normalizeApiBaseUrl, normalizeRemoteAssetUrl, safeUrlJoin } from './core/urlUtils';
 import { resolveModelScopeFromContextType, resolveScopedModelName } from './core/modelScopeSettings';
+import { resolveSettingsLlm } from './core/aiModelRouteResolver';
 import {
   isPathWithinRoots,
   resolveAssetSourceToPath,
@@ -282,7 +276,6 @@ import {
 } from './core/localAssetManager';
 import {
   isLocalAssetSource,
-  LEGACY_LOCAL_FILE_PROTOCOL,
   GARDENFLOW_ASSET_PROTOCOL,
   resolveLocalAssetByteRange,
 } from '../shared/localAsset';
@@ -315,20 +308,8 @@ import {
 } from './core/wanderService';
 
 protocol.registerSchemesAsPrivileged([
-  ...compatibility.identity.legacy.assetProtocols.filter(scheme => scheme !== LEGACY_LOCAL_FILE_PROTOCOL).map(scheme => ({ scheme, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } })),
   {
     scheme: GARDENFLOW_ASSET_PROTOCOL,
-    privileges: {
-      standard: true,
-      secure: true,
-      supportFetchAPI: true,
-      stream: true,
-      corsEnabled: true,
-      bypassCSP: true,
-    },
-  },
-  {
-    scheme: LEGACY_LOCAL_FILE_PROTOCOL,
     privileges: {
       standard: true,
       secure: true,
@@ -784,7 +765,8 @@ const XHS_ASSET_REQUEST_HEADERS = {
 };
 const APP_UPDATE_CHECK_TIMEOUT_MS = 10000;
 const APP_UPDATE_CHECK_MIN_INTERVAL_MS = 6 * 60 * 60 * 1000;
-const APP_UPDATES_ENABLED = appUpdatesEnabled(compatibility.identity.updatesEnabled);
+const APP_UPDATES_ENABLED = appUpdatesEnabled(identity.updatesEnabled);
+const backgroundAutomationHeld = (): boolean => process.env.GARDENFLOW_HOLD_AUTOMATION === '1';
 let appUpdateCheckInFlight = false;
 let appUpdateLastCheckedAt = 0;
 
@@ -922,14 +904,6 @@ const BROWSER_PLUGIN_BUNDLE_RELATIVE_PATH = path.join('.plugin-runtime', 'browse
 const BROWSER_PLUGIN_EXPORT_RELATIVE_PATH = path.join('integrations', 'browser-extension', 'gardenflow-capture');
 const XHS_PUBLISHER_PLUGIN_BUNDLE_RELATIVE_PATH = path.join('.plugin-runtime', 'xhs-publisher-extension');
 const XHS_PUBLISHER_PLUGIN_EXPORT_RELATIVE_PATH = path.join('integrations', 'browser-extension', 'gardenflow-xhs-publisher');
-const LEGACY_BROWSER_PLUGIN_EXPORT_RELATIVE_PATHS = Array.isArray(
-  compatibility.identity?.legacy?.browserExtensionExportPaths,
-)
-  ? compatibility.identity.legacy.browserExtensionExportPaths
-      .map((item: unknown) => String(item || '').trim())
-      .filter(Boolean)
-  : [];
-
 const appSingleInstanceLock = app.requestSingleInstanceLock();
 const browserCaptureBridgeService = createBrowserCaptureBridgeService({
   appVersion: app.getVersion(),
@@ -1337,52 +1311,9 @@ const pathExists = async (targetPath: string): Promise<boolean> => {
   }
 };
 
-const getCompatibleLegacyBrowserPluginDirs = (): string[] => {
-  const appDataDir = path.resolve(app.getPath('appData'));
-  return LEGACY_BROWSER_PLUGIN_EXPORT_RELATIVE_PATHS
-    .map((relativePath: string) => path.resolve(appDataDir, relativePath))
-    .filter((candidate: string) => candidate.startsWith(`${appDataDir}${path.sep}`));
-};
-
-const syncCompatibleLegacyBrowserPlugins = async (
-  sourceDir: string,
-  bundleFingerprint: string,
-): Promise<string[]> => {
-  const refreshed: string[] = [];
-  for (const legacyDir of getCompatibleLegacyBrowserPluginDirs()) {
-    if (!await pathExists(legacyDir)) continue;
-    const backupDir = path.join(
-      app.getPath('userData'),
-      'integrations',
-      'browser-extension',
-      'legacy-backups',
-      `${path.basename(legacyDir)}-before-gardenflow`,
-    );
-    try {
-      const result = await syncBrowserExtensionDirectory({
-        appVersion: app.getVersion(),
-        backupDir,
-        bundleFingerprint,
-        requireMatchingExistingKey: true,
-        sourceDir,
-        sourceLabel: path.basename(sourceDir),
-        targetDir: legacyDir,
-      });
-      if (result.updated) {
-        refreshed.push(legacyDir);
-        console.info(`[browser-extension] Refreshed compatible legacy install: ${legacyDir}`);
-      }
-    } catch (error) {
-      console.warn(`[browser-extension] Skipped incompatible legacy install ${legacyDir}:`, error);
-    }
-  }
-  return refreshed;
-};
-
 const ensureBrowserPluginPrepared = async (): Promise<{
   path: string;
   alreadyPrepared: boolean;
-  refreshedLegacyPaths: string[];
 }> => {
   const sourceDir = await findBundledBrowserPluginDir();
   if (!sourceDir) {
@@ -1401,8 +1332,7 @@ const ensureBrowserPluginPrepared = async (): Promise<{
     sourceLabel: path.basename(sourceDir),
     targetDir,
   });
-  const refreshedLegacyPaths = await syncCompatibleLegacyBrowserPlugins(targetDir, bundleFingerprint);
-  return { path: targetDir, alreadyPrepared, refreshedLegacyPaths };
+  return { path: targetDir, alreadyPrepared };
 };
 
 const ensureXhsPublisherPluginPrepared = async (): Promise<{ path: string; alreadyPrepared: boolean }> => {
@@ -2055,21 +1985,6 @@ function broadcastSettingsUpdated() {
   }
 }
 
-function stopHttpServer(): Promise<void> {
-  if (!httpServer) {
-    return Promise.resolve();
-  }
-  const server = httpServer;
-  httpServer = null;
-  return new Promise<void>((resolve) => {
-    try {
-      server.close(() => resolve());
-    } catch {
-      resolve();
-    }
-  });
-}
-
 async function shutdownBackgroundServices(): Promise<void> {
   if (appShutdownPromise) {
     return appShutdownPromise;
@@ -2090,7 +2005,6 @@ async function shutdownBackgroundServices(): Promise<void> {
     (await getAdvisorYoutubeRunnerLazy()).stop();
 
     await Promise.allSettled([
-      capture('http-server', () => stopHttpServer()),
       capture('browser-capture-bridge', () => browserCaptureBridgeService.stop()),
       capture('gardenflow-runner', async () => (await getGardenFlowBackgroundRunnerLazy()).stop({ persist: false })),
       capture('assistant-daemon', async () => (await getAssistantDaemonServiceLazy()).dispose()),
@@ -2312,9 +2226,7 @@ const registerLocalAssetProtocols = () => {
     });
   };
 
-  for (const scheme of compatibility.identity.legacy.assetProtocols.filter(scheme => scheme !== LEGACY_LOCAL_FILE_PROTOCOL)) protocol.handle(scheme, handleAssetRequest(scheme));
   protocol.handle(GARDENFLOW_ASSET_PROTOCOL, handleAssetRequest(GARDENFLOW_ASSET_PROTOCOL));
-  protocol.handle(LEGACY_LOCAL_FILE_PROTOCOL, handleAssetRequest(LEGACY_LOCAL_FILE_PROTOCOL));
 };
 
 async function ensureWorkspaceStructureFor(paths: ReturnType<typeof getWorkspacePaths>) {
@@ -3000,38 +2912,6 @@ async function initializeStartupCoreServices() {
       console.error('[NetworkProxy] Failed to apply startup proxy settings:', error);
     }
 
-    const officialFeatureModule = await loadOfficialFeatureModule();
-    if (officialFeatureModule?.registerOfficialFeatures) {
-      try {
-        await officialFeatureModule.registerOfficialFeatures({
-          ipcMain,
-          shell,
-          getSettings: () => (getSettings() || {}) as Record<string, unknown>,
-          saveSettings: (settings) => {
-            saveSettings(
-              normalizeSettingsInput(settings) as Parameters<typeof saveSettings>[0]
-            );
-          },
-          normalizeSettingsInput,
-        });
-      } catch (error) {
-        console.error('[official-feature] Failed to register official features on startup:', error);
-      }
-    }
-
-    try {
-      await officialFeatureModule?.syncOfficialAiRoutingOnStartup?.({
-        getSettings: () => (getSettings() || {}) as Record<string, unknown>,
-        saveSettings: (settings) => {
-          saveSettings(
-            normalizeSettingsInput(settings) as Parameters<typeof saveSettings>[0]
-          );
-        },
-        normalizeSettingsInput,
-      });
-    } catch (e) {
-      console.error('[official-feature] Failed to hydrate official auth on startup:', e);
-    }
   })().catch((error) => {
     startupCoreServicesPromise = null;
     throw error;
@@ -3258,6 +3138,15 @@ ipcMain.handle('settings:pick-workspace-dir', async () => {
   }
 });
 
+ipcMain.handle('settings:open-workspace-dir', async () => {
+  const workspaceDir = getWorkspacePaths().base;
+  await fs.mkdir(workspaceDir, { recursive: true });
+  const openError = await shell.openPath(workspaceDir);
+  return openError
+    ? { success: false, path: workspaceDir, error: openError }
+    : { success: true, path: workspaceDir };
+});
+
 ipcMain.handle('debug:get-status', () => {
   const settings = (getSettings() || {}) as { debug_log_enabled?: boolean } | undefined;
   return {
@@ -3307,8 +3196,8 @@ ipcMain.handle('logs:open-dir', async () => {
   return openDiagnosticsReportDirectory();
 });
 
-ipcMain.handle('logs:list-pending-reports', async () => {
-  return listPendingDiagnosticReports();
+ipcMain.handle('logs:list-reports', async () => {
+  return listDiagnosticReports();
 });
 
 ipcMain.handle('logs:export-bundle', async (_event, payload?: { reportId?: string; includeAdvancedContext?: boolean }) => {
@@ -3317,34 +3206,17 @@ ipcMain.handle('logs:export-bundle', async (_event, payload?: { reportId?: strin
   });
 });
 
-ipcMain.handle('logs:create-feedback-report', async (event, payload?: Parameters<typeof createFeedbackReport>[0]) => {
-  const result = await createFeedbackReport(payload || {});
-  if (result?.success && result.report) {
-    event.sender.send('diagnostics:report-pending', result.report);
-  }
-  return result;
+ipcMain.handle('logs:create-feedback-report', async (_event, payload?: Parameters<typeof createFeedbackReport>[0]) => {
+  return createFeedbackReport(payload || {});
 });
 
-ipcMain.handle('logs:create-auto-report', async (event, payload?: Parameters<typeof createAutoDiagnosticReport>[0]) => {
-  const result = await createAutoDiagnosticReport(payload || {});
-  if (result?.success && result.report) {
-    event.sender.send('diagnostics:report-pending', result.report);
-  }
-  return result;
-});
-
-ipcMain.handle('logs:upload-report', async (_event, payload?: { reportId?: string } | string) => {
-  const reportId = typeof payload === 'string' ? payload : payload?.reportId || '';
-  return uploadDiagnosticReport(reportId);
+ipcMain.handle('logs:create-auto-report', async (_event, payload?: Parameters<typeof createAutoDiagnosticReport>[0]) => {
+  return createAutoDiagnosticReport(payload || {});
 });
 
 ipcMain.handle('logs:dismiss-report', async (_event, payload?: { reportId?: string } | string) => {
   const reportId = typeof payload === 'string' ? payload : payload?.reportId || '';
   return dismissDiagnosticReport(reportId);
-});
-
-ipcMain.handle('logs:set-upload-consent', () => {
-  return { success: true };
 });
 
 ipcMain.handle('logs:append-renderer', (_event, payload?: Parameters<typeof appendRendererDiagnosticLog>[0]) => {
@@ -3676,7 +3548,7 @@ ipcMain.handle('task-panel:list', async (_event, payload?: { limit?: number }) =
       const pendingReviewCount = teamDockets.filter((docket) => docket.taskId === taskRecord.id && docket.status === 'pending').length;
       const progress = Math.max(0, Math.min(100, Number(taskRecord.progressPercent || latestReport?.progressPercent || 0)));
       return {
-        id: `collab:${String(taskRecord.id || '')}`,
+        id: `team-task:${String(taskRecord.id || '')}`,
         source: 'collaboration',
         sourceLabel: '团队',
         sourceId: String(taskRecord.id || ''),
@@ -3789,26 +3661,18 @@ ipcMain.handle('task-panel:list', async (_event, payload?: { limit?: number }) =
   return { success: true, items: items.slice(0, limit), count: Math.min(items.length, limit) };
 });
 
-// Team Workbench and Approval pages share the historical 2.5.0 collaboration
-// contract. Keep these handlers on the same local durable store so mailbox,
-// task, report, and review-docket mutations have one source of truth.
+// Team Workbench and Approval share one local durable store for mailbox,
+// task, report, and review-docket mutations.
 ipcMain.handle('team-runtime:list-sessions', async () => (await getTeamRuntimeStoreLazy()).listSessions());
-ipcMain.handle('collab:sessions:list', async () => (await getTeamRuntimeStoreLazy()).listSessions());
 ipcMain.handle('team-runtime:create-session', async (_, payload?: Record<string, unknown>) =>
-  (await getTeamRuntimeStoreLazy()).createSession(payload || {}));
-ipcMain.handle('collab:sessions:create', async (_, payload?: Record<string, unknown>) =>
   (await getTeamRuntimeStoreLazy()).createSession(payload || {}));
 ipcMain.handle('team-runtime:guide-create', async (_, payload?: Record<string, unknown>) =>
   (await getTeamRuntimeStoreLazy()).createSession({ ...(payload || {}), source: 'team-guide' }));
 ipcMain.handle('team-runtime:get-session', async (_, payload?: Record<string, unknown>) =>
   (await getTeamRuntimeStoreLazy()).getSession(payload || {}));
-ipcMain.handle('collab:sessions:get', async (_, payload?: Record<string, unknown>) =>
-  (await getTeamRuntimeStoreLazy()).getSession(payload || {}));
 ipcMain.handle('team-runtime:list-members', async (_, payload?: Record<string, unknown>) =>
   (await getTeamRuntimeStoreLazy()).listMembers(payload || {}));
 ipcMain.handle('team-runtime:add-member', async (_, payload?: Record<string, unknown>) =>
-  (await getTeamRuntimeStoreLazy()).addMember(payload || {}));
-ipcMain.handle('collab:members:add', async (_, payload?: Record<string, unknown>) =>
   (await getTeamRuntimeStoreLazy()).addMember(payload || {}));
 ipcMain.handle('team-runtime:set-session-coordinator', async (_, payload?: Record<string, unknown>) =>
   (await getTeamRuntimeStoreLazy()).setSessionCoordinator(payload || {}));
@@ -3820,11 +3684,7 @@ ipcMain.handle('team-runtime:list-tasks', async (_, payload?: Record<string, unk
   (await getTeamRuntimeStoreLazy()).listTasks(payload || {}));
 ipcMain.handle('team-runtime:create-task', async (_, payload?: Record<string, unknown>) =>
   (await getTeamRuntimeStoreLazy()).createTask(payload || {}));
-ipcMain.handle('collab:tasks:create', async (_, payload?: Record<string, unknown>) =>
-  (await getTeamRuntimeStoreLazy()).createTask(payload || {}));
 ipcMain.handle('team-runtime:update-task', async (_, payload?: Record<string, unknown>) =>
-  (await getTeamRuntimeStoreLazy()).updateTask(payload || {}));
-ipcMain.handle('collab:tasks:update', async (_, payload?: Record<string, unknown>) =>
   (await getTeamRuntimeStoreLazy()).updateTask(payload || {}));
 
 for (const [channel, transition] of [
@@ -3874,15 +3734,11 @@ ipcMain.handle('team-runtime:read-mailbox', async (_, payload?: Record<string, u
   (await getTeamRuntimeStoreLazy()).listMessages(payload || {}, true));
 ipcMain.handle('team-runtime:send-message', async (_, payload?: Record<string, unknown>) =>
   (await getTeamRuntimeStoreLazy()).sendMessage(payload || {}));
-ipcMain.handle('collab:mailbox:post', async (_, payload?: Record<string, unknown>) =>
-  (await getTeamRuntimeStoreLazy()).sendMessage(payload || {}));
 ipcMain.handle('team-runtime:request-report', async (_, payload?: Record<string, unknown>) =>
   (await getTeamRuntimeStoreLazy()).requestReport(payload || {}));
 ipcMain.handle('team-runtime:list-reports', async (_, payload?: Record<string, unknown>) =>
   (await getTeamRuntimeStoreLazy()).listReports(payload || {}));
 ipcMain.handle('team-runtime:submit-report', async (_, payload?: Record<string, unknown>) =>
-  (await getTeamRuntimeStoreLazy()).submitReport(payload || {}));
-ipcMain.handle('collab:reports:submit', async (_, payload?: Record<string, unknown>) =>
   (await getTeamRuntimeStoreLazy()).submitReport(payload || {}));
 ipcMain.handle('team-runtime:pause-session', async (_, payload?: Record<string, unknown>) =>
   (await getTeamRuntimeStoreLazy()).updateSessionStatus(payload || {}, 'paused'));
@@ -4080,84 +3936,84 @@ ipcMain.handle('ai:roles:list', async () => {
 
 ipcMain.handle('app:get-version', () => app.getVersion());
 
-const ELECTRON_ARCHIVE_AUTH_UNAVAILABLE = 'electron-archive-official-auth-unavailable';
+const readLlmReadiness = () => {
+  const route = resolveSettingsLlm((getSettings() || {}) as Record<string, unknown>, { preferChat: true });
+  return route
+    ? {
+        ready: true,
+        mode: 'custom',
+        reason: 'configured',
+        sourceId: route.sourceId,
+        baseURL: route.baseURL,
+        model: route.modelName,
+        canUseCustom: true,
+        updatedAt: new Date().toISOString(),
+      }
+    : {
+        ready: false,
+        mode: 'disabled',
+        reason: 'provider_not_configured',
+        canUseCustom: true,
+        updatedAt: new Date().toISOString(),
+      };
+};
 
-function buildElectronArchiveAuthState() {
-  return {
-    status: 'anonymous',
-    loggedIn: false,
-    session: null,
-    user: null,
-    points: null,
-    models: [],
-    callRecords: [],
-    degradedReason: ELECTRON_ARCHIVE_AUTH_UNAVAILABLE,
-    lastError: null,
-    lastErrorKind: null,
-    lastRefreshAt: null,
-    nextRefreshAtMs: null,
-  };
-}
-
-function buildElectronArchiveAuthUnavailableResult(error = 'Official auth is unavailable in the Electron archive') {
-  return {
-    success: false,
-    loggedIn: false,
-    session: null,
-    data: null,
-    error,
-    reason: ELECTRON_ARCHIVE_AUTH_UNAVAILABLE,
-  };
-}
-
-function buildStartupMigrationNotNeededStatus() {
-  return {
-    status: 'not-needed',
-    needsDbImport: false,
-    needsProjectUpgrade: false,
-    shouldShowModal: false,
-    progress: 0,
-    legacyMarkdownCount: 0,
-    projectUpgradeCounts: null,
-  };
-}
-
-ipcMain.handle('app:startup-migration-status', async () => buildStartupMigrationNotNeededStatus());
-ipcMain.handle('app:startup-migration-start', async () => buildStartupMigrationNotNeededStatus());
-ipcMain.handle('auth:get-state', async () => buildElectronArchiveAuthState());
-ipcMain.handle('auth:refresh-now', async () => buildElectronArchiveAuthUnavailableResult('官方账号未登录'));
-ipcMain.handle('auth:login-sms', async () => buildElectronArchiveAuthUnavailableResult());
-ipcMain.handle('auth:login-wechat-start', async () => buildElectronArchiveAuthUnavailableResult());
-ipcMain.handle('auth:login-wechat-poll', async () => buildElectronArchiveAuthUnavailableResult());
-ipcMain.handle('auth:logout', async () => buildElectronArchiveAuthUnavailableResult());
-ipcMain.handle('gardenflow-auth:bootstrap', async () => buildElectronArchiveAuthUnavailableResult('官方账号未登录'));
-ipcMain.handle('gardenflow-auth:pricing', async () => ({ success: true, pricing: [], unavailable: true }));
-ipcMain.handle('gardenflow-auth:pricing-refresh', async () => ({ success: true, pricing: [], unavailable: true }));
-ipcMain.handle('gardenflow-auth:product', async () => ({
-  success: false,
-  product: null,
-  error: 'Official products are unavailable in the Electron archive',
-}));
-ipcMain.handle('gardenflow-auth:set-realm', async () => buildElectronArchiveAuthUnavailableResult());
-ipcMain.handle('llm-readiness:get-state', async () => ({
-  ready: false,
-  mode: 'custom',
-  reason: ELECTRON_ARCHIVE_AUTH_UNAVAILABLE,
-  officialLoggedIn: false,
-  canUseOfficial: false,
-  canUseCustom: true,
-  updatedAt: new Date().toISOString(),
-}));
-ipcMain.handle('llm-readiness:refresh', async () => ({
-  success: false,
-  ready: false,
-  reason: ELECTRON_ARCHIVE_AUTH_UNAVAILABLE,
-}));
-ipcMain.handle('llm-readiness:configure-custom-source', async () => ({
-  success: false,
-  ready: false,
-  reason: ELECTRON_ARCHIVE_AUTH_UNAVAILABLE,
-}));
+ipcMain.handle('llm-readiness:get-state', async () => readLlmReadiness());
+ipcMain.handle('llm-readiness:refresh', async () => ({ success: true, ...readLlmReadiness() }));
+ipcMain.handle('llm-readiness:configure-custom-source', async (_event, payload?: Record<string, unknown>) => {
+  const baseURL = normalizeApiBaseUrl(String(payload?.baseURL || ''), '');
+  const apiKey = String(payload?.apiKey || '').trim();
+  const model = String(payload?.preferredModel || payload?.model || '').trim();
+  const protocolName = String(payload?.protocol || 'openai').trim();
+  let localEndpoint = false;
+  try {
+    localEndpoint = ['localhost', '127.0.0.1', '::1', '0.0.0.0'].includes(new URL(baseURL).hostname.toLowerCase());
+  } catch {
+    localEndpoint = false;
+  }
+  if (!baseURL || !model || (!apiKey && !localEndpoint)) {
+    return { success: false, ready: false, reason: 'endpoint_key_model_required' };
+  }
+  const current = (getSettings() || {}) as Record<string, unknown>;
+  const sourceId = `custom-${Date.now().toString(36)}`;
+  let sources: Array<Record<string, unknown>> = [];
+  try {
+    const parsed = JSON.parse(String(current.ai_sources_json || '[]'));
+    if (Array.isArray(parsed)) sources = parsed.filter((item) => item && typeof item === 'object');
+  } catch {
+    sources = [];
+  }
+  sources.push({
+    id: sourceId,
+    name: String(payload?.name || 'Custom Provider').trim() || 'Custom Provider',
+    presetId: String(payload?.presetId || 'custom').trim() || 'custom',
+    baseURL,
+    apiKey,
+    model,
+    models: [model],
+    protocol: ['openai', 'anthropic', 'gemini'].includes(protocolName) ? protocolName : 'openai',
+  });
+  let routes: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(String(current.ai_model_routes_json || '{}'));
+    if (parsed && typeof parsed === 'object') routes = parsed;
+  } catch {
+    routes = {};
+  }
+  routes.chat = { mode: 'custom', sourceId, model };
+  saveSettings(normalizeSettingsInput({
+    ...current,
+    ai_sources_json: JSON.stringify(sources),
+    ai_model_routes_json: JSON.stringify(routes),
+    default_ai_source_id: sourceId,
+    api_endpoint: baseURL,
+    api_key: apiKey,
+    model_name: model,
+  }) as Parameters<typeof saveSettings>[0]);
+  const readiness = readLlmReadiness();
+  BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('llm-readiness:state-changed', readiness));
+  return { success: true, source: sources.at(-1), readiness };
+});
 
 function getSenderWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
   return BrowserWindow.fromWebContents(event.sender) || win || null;
@@ -5469,34 +5325,6 @@ ipcMain.handle('mcp:oauth-status', async (_, payload: { serverId?: string }) => 
   }
 });
 
-ipcMain.handle('mcp:sessions', async () => {
-  return { success: true, sessions: [] };
-});
-
-ipcMain.handle('mcp:list-tools', async () => {
-  return { success: false, error: 'Not supported in Electron compatibility mode', tools: [] };
-});
-
-ipcMain.handle('mcp:list-resources', async () => {
-  return { success: false, error: 'Not supported in Electron compatibility mode', resources: [] };
-});
-
-ipcMain.handle('mcp:list-resource-templates', async () => {
-  return { success: false, error: 'Not supported in Electron compatibility mode', resourceTemplates: [] };
-});
-
-ipcMain.handle('mcp:call', async () => {
-  return { success: false, error: 'Not supported in Electron compatibility mode' };
-});
-
-ipcMain.handle('mcp:disconnect', async () => {
-  return { success: true };
-});
-
-ipcMain.handle('mcp:disconnect-all', async () => {
-  return { success: true };
-});
-
 // AI Source: protocol detect / test / model list
 ipcMain.handle('ai:detect-protocol', async (_, payload: {
   baseURL?: string;
@@ -5652,10 +5480,10 @@ ipcMain.handle('chat:getOrCreateFileSession', async (_, { filePath, fileId }: { 
     }
   }
 
-  // 2. 如果没有 ID 或通过 ID 没找到 (兼容旧数据)，尝试通过路径查找
+  // 2. 未提供稳定 ID 时，通过当前文件路径查找
   const existingSession = getChatSessionByFile(filePath);
   if (existingSession) {
-    // 如果找到了旧会话但现在有了 ID，补全 ID 信息
+    // 后续获得稳定 ID 时补齐会话绑定信息
     if (fileId) {
        try {
         const meta = JSON.parse(existingSession.metadata || '{}');
@@ -5665,7 +5493,7 @@ ipcMain.handle('chat:getOrCreateFileSession', async (_, { filePath, fileId }: { 
           existingSession.metadata = JSON.stringify(meta);
         }
       } catch (e) {
-        console.error('Failed to migrate session ID:', e);
+        console.error('Failed to update session file ID:', e);
       }
     }
     return existingSession;
@@ -7278,19 +7106,6 @@ ipcMain.handle('cover:templates:delete', async (_, payload?: { templateId?: stri
   }
 });
 
-ipcMain.handle('cover:templates:import-legacy', async (_, payload?: { templates?: Record<string, unknown>[] }) => {
-  try {
-    const templates = await importLegacyCoverTemplates(Array.isArray(payload?.templates) ? payload!.templates! : []);
-    return {
-      success: true,
-      imported: templates.length,
-      templates,
-    };
-  } catch (error) {
-    return { success: false, error: String(error), templates: [] };
-  }
-});
-
 ipcMain.handle('cover:open', async (_, { assetId }: { assetId: string }) => {
   try {
     if (!assetId) {
@@ -7429,10 +7244,8 @@ ipcMain.handle('cover:generate', async (_, {
   }
 });
 
-// Historical 2.5.0 media pages use a durable generation job projection rather
-// than waiting on the provider request directly. Keep the legacy synchronous
-// channels below for older callers, but route the 2.5.0 surface through the
-// local Electron job registry.
+// Generation pages use durable jobs rather than waiting on provider requests
+// directly. Direct generation handlers remain available to the current editor.
 // Recording itself stays in the renderer so it works on macOS, Windows and Linux
 // without a second native audio stack. These host handlers make the contract
 // explicit and let the renderer choose its MediaRecorder fallback deterministically.
@@ -7816,24 +7629,6 @@ ipcMain.handle('chat:get-messages', async (_, sessionId: string) => {
   recoverActiveXhsSessionBinding(sessionId);
   reconcileInterruptedChatRun(sessionId);
   const messages = getChatMessages(sessionId);
-  for (const message of messages) {
-    if (!/^coord_(?:user|repair_user|repair_assistant)_/.test(message.id)) continue;
-    let metadata: Record<string, unknown> = {};
-    try {
-      metadata = message.metadata ? JSON.parse(message.metadata) as Record<string, unknown> : {};
-    } catch {
-      metadata = {};
-    }
-    if (metadata.visibility !== 'internal') {
-      updateChatMessage(message.id, {
-        metadata: JSON.stringify({
-          ...metadata,
-          visibility: 'internal',
-          source: 'legacy-coordinator',
-        }),
-      });
-    }
-  }
   return messages.filter((message) => {
     if (/^coord_(?:user|repair_user|repair_assistant)_/.test(message.id)) return false;
     if (!message.metadata) return true;
@@ -8039,42 +7834,6 @@ ipcMain.handle('chat:pick-attachment', async (event, payload?: { sessionId?: str
   }
 });
 
-ipcMain.handle('chat:create-path-attachment', async (_event, payload?: {
-  path?: string;
-  sessionId?: string;
-}) => {
-  try {
-    const rawPath = String(payload?.path || '').trim();
-    if (!rawPath) {
-      return { success: false, error: '缺少附件路径' };
-    }
-    const sourcePath = path.resolve(path.normalize(rawPath));
-    const fileStat = await fs.stat(sourcePath);
-    if (!fileStat.isFile()) {
-      return { success: false, error: '只能上传文件' };
-    }
-
-    const workspacePaths = getWorkspacePaths();
-    const uploadsDir = path.join(workspacePaths.gardenflow, 'uploads');
-    await fs.mkdir(uploadsDir, { recursive: true });
-
-    const safeBaseName = path.basename(sourcePath).replace(/[^\w.\-\u4e00-\u9fa5]+/g, '_');
-    const targetName = `${Date.now()}_${safeBaseName}`;
-    const targetPath = path.join(uploadsDir, targetName);
-    await fs.copyFile(sourcePath, targetPath);
-
-    const stagedAttachment = await buildStagedChatAttachment(targetPath, sourcePath, path.basename(sourcePath));
-    rememberStagedChatAttachment(payload?.sessionId, stagedAttachment);
-    return {
-      success: true,
-      attachment: stagedAttachment,
-    };
-  } catch (error) {
-    console.error('Failed to create path chat attachment:', error);
-    return { success: false, error: String(error) };
-  }
-});
-
 ipcMain.handle('chat:create-inline-attachment', async (_event, payload?: {
   dataUrl?: string;
   fileName?: string;
@@ -8111,19 +7870,6 @@ ipcMain.handle('chat:create-inline-attachment', async (_event, payload?: {
     console.error('Failed to create inline chat attachment:', error);
     return { success: false, error: String(error) };
   }
-});
-
-ipcMain.handle('chat:create-video-thumbnail', async (_event, payload?: {
-  path?: string;
-  source?: string;
-  sessionId?: string;
-}) => {
-  const source = String(payload?.source || payload?.path || '').trim();
-  return {
-    success: false,
-    source,
-    error: 'Electron archive uses renderer-side video thumbnail fallback',
-  };
 });
 
 ipcMain.handle('chat:get-staged-attachments', async (_event, payload?: { sessionId?: string }) => ({
@@ -8507,7 +8253,7 @@ async function executeChatMessage(
   const persistedChatRun = startedChatRun.run;
   persistedChatRun.markRunning();
   onReceipt?.(startedChatRun.receipt);
-  persistedChatRun.publishLegacy('chat:phase-start', { name: '正在准备回复' });
+  persistedChatRun.publishChannelEvent('chat:phase-start', { name: '正在准备回复' });
 
   try {
     const gardenFlowAuthoringHints = normalizeGardenFlowAuthoringHints(taskHints);
@@ -8555,7 +8301,7 @@ async function executeChatMessage(
         sessionId,
         hints: gardenFlowAuthoringHints,
         attachments: runtimeAttachments,
-        emitChatEvent: (channel, data) => persistedChatRun.publishLegacy(channel, data),
+        emitChatEvent: (channel, data) => persistedChatRun.publishChannelEvent(channel, data),
       });
       structuredXhsVideoGenerationRuns.set(generationKey, generationRun);
       try {
@@ -8589,9 +8335,9 @@ async function executeChatMessage(
 
     if ((routeAnalysis.shouldUseCoordinator || isStructuredXhsEditor) && runtimeMode !== 'background-maintenance') {
       emitForcedSkillActivationEvents(sender, forcedSkillNames);
-      persistedChatRun.publishLegacy('chat:phase-start', { name: '任务已进入协作模式' });
-      persistedChatRun.publishLegacy('chat:thought-start', {});
-      persistedChatRun.publishLegacy('chat:thought-delta', {
+      persistedChatRun.publishChannelEvent('chat:phase-start', { name: '任务已进入协作模式' });
+      persistedChatRun.publishChannelEvent('chat:thought-start', {});
+      persistedChatRun.publishChannelEvent('chat:thought-delta', {
         content: routeAnalysis.route.intent === 'manuscript_creation'
           ? '正在接管创作任务并准备读取素材...'
           : '正在接管任务并准备协作执行...',
@@ -8637,7 +8383,7 @@ async function executeChatMessage(
           model: resolvedModelName,
           timeoutMs: 90000,
         },
-        emitChatEvent: (channel, data) => persistedChatRun.publishLegacy(channel, data),
+        emitChatEvent: (channel, data) => persistedChatRun.publishChannelEvent(channel, data),
       });
       console.log('[chat:send-message] coordinator-completed', { sessionId, taskId: prepared.task.id });
       reconcilePersistedChatRun(sessionId, persistedChatRun);
@@ -8646,7 +8392,7 @@ async function executeChatMessage(
 
     const service = await getOrCreateChatService(sessionId, sender);
     service.setChatRunEventSink((channel, data) => {
-      persistedChatRun.publishLegacy(channel, data);
+      persistedChatRun.publishChannelEvent(channel, data);
     });
     if (forcedSkillNames.length > 0) {
       await service.activateSkills(forcedSkillNames);
@@ -8707,7 +8453,7 @@ async function executeChatMessage(
     );
     const hint = String(explicit?.chatErrorHint || '').trim() || (
       isInsufficientBalance
-      ? `本次 Agent 实际调用的是 ${modelLabel}；该模型所属 AI 源余额/额度不足。请充值或切换到有余额的 AI 源。`
+      ? `本次 Agent 实际调用的是 ${modelLabel}；该模型所属 AI 源余额/额度不足。请检查供应商账户或切换 AI 源。`
       : '请检查 API Key、模型和 AI 源地址配置。'
     );
     sender.send('chat:error', {
@@ -8781,7 +8527,7 @@ ipcMain.on('chat:cancel', (_, payload?: { sessionId?: string; runId?: string } |
       if (service) {
         service.abort();
       }
-      activeRun?.publishLegacy('chat:cancelled', { reason: '用户已停止当前执行' });
+      activeRun?.publishChannelEvent('chat:cancelled', { reason: '用户已停止当前执行' });
       return;
     }
 
@@ -8789,83 +8535,6 @@ ipcMain.on('chat:cancel', (_, payload?: { sessionId?: string; runId?: string } |
       service.abort();
     }
 });
-
-// ========== 保留旧的 ai:start-chat 以兼容旧 UI ==========
-let currentAgent: AgentExecutor | null = null;
-
-ipcMain.on('ai:start-chat', async (event, message, modelConfig) => {
-  const sender = event.sender
-
-  const settings = (getSettings() || {}) as Record<string, unknown>
-
-  const config: AgentConfig = {
-    apiKey: (modelConfig?.apiKey || settings.api_key || '') as string,
-    baseURL: normalizeApiBaseUrl((modelConfig?.baseURL || settings.api_endpoint || '') as string),
-    model: (modelConfig?.modelName || settings.model_name || '') as string,
-    projectRoot: process.cwd(),
-    maxTurns: 40,
-    maxTimeMinutes: 20,
-    temperature: 0.7,
-  }
-
-  if (!config.apiKey) {
-    sender.send('ai:error', 'API Key is missing. Please configure it in Settings.')
-    return
-  }
-
-  if (!config.model) {
-    sender.send('ai:error', 'Model Name is missing. Please configure a default model in Settings.')
-    return
-  }
-
-  try {
-    currentAgent = await createAgentExecutor(config, (agentEvent) => {
-      switch (agentEvent.type) {
-        case 'thinking':
-          sender.send('ai:stream-event', { type: 'stage_start', data: { stage: 'thinking', content: agentEvent.content } })
-          break
-        case 'tool_start':
-          sender.send('ai:stream-event', { type: 'tool_start', data: { callId: agentEvent.callId, name: agentEvent.name, input: agentEvent.params, description: agentEvent.description } })
-          break
-        case 'tool_end':
-          sender.send('ai:stream-event', { type: 'tool_end', data: { callId: agentEvent.callId, name: agentEvent.name, output: agentEvent.result } })
-          break
-        case 'tool_confirm_request':
-          sender.send('ai:tool-confirm-request', { callId: agentEvent.callId, name: agentEvent.name, details: agentEvent.details })
-          break
-        case 'response_chunk':
-          sender.send('ai:stream-event', { type: 'token_stream', data: { content: agentEvent.content } })
-          break
-        case 'skill_activated':
-          sender.send('ai:stream-event', { type: 'skill_activated', data: { name: agentEvent.name, description: agentEvent.description } })
-          break
-        case 'error':
-          sender.send('ai:error', agentEvent.message)
-          break
-        case 'done':
-          sender.send('ai:stream-end')
-          break
-      }
-    })
-    await currentAgent.run(message)
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown error occurred';
-    sender.send('ai:error', message)
-  } finally {
-    currentAgent = null
-  }
-})
-
-// 工具确认响应（旧版）
-ipcMain.on('ai:confirm-tool', (_, callId: string, confirmed: boolean) => {
-  if (currentAgent) {
-    const { ToolConfirmationOutcome } = require('./core/toolRegistry');
-    const outcome = confirmed
-      ? ToolConfirmationOutcome.ProceedOnce
-      : ToolConfirmationOutcome.Cancel;
-    currentAgent.confirmToolCall(callId, outcome)
-  }
-})
 
 ipcMain.on('chat:confirm-tool', (_, payload?: { callId?: string; confirmed?: boolean }) => {
   const callId = String(payload?.callId || '').trim();
@@ -8875,14 +8544,6 @@ ipcMain.on('chat:confirm-tool', (_, payload?: { callId?: string; confirmed?: boo
     if (service.resolveToolConfirmation?.(callId, confirmed)) {
       return;
     }
-  }
-  ipcMain.emit('ai:confirm-tool', {} as Electron.IpcMainEvent, callId, confirmed)
-})
-
-// 取消 Agent 执行（旧版）
-ipcMain.on('ai:cancel', () => {
-  if (currentAgent) {
-    currentAgent.cancel()
   }
 })
 
@@ -9102,21 +8763,6 @@ ipcMain.handle('skills:market-install', async (_, { slug, tag }: { slug: string;
     return await installSkillFromMarket(slug, tag);
   } catch (error) {
     console.error('Failed to install skill from market:', error);
-    return { success: false, error: String(error) };
-  }
-});
-
-// Legacy channel kept for compatibility with old renderer calls.
-ipcMain.handle('skills:install-from-github', async (_, { repoFullName, skillPath }: { repoFullName: string; skillPath?: string }) => {
-  const raw = (repoFullName || '').trim();
-  const slug = raw.replace(/^https?:\/\/clawhub\.ai\/skills\//i, '').replace(/^clawhub\//i, '').replace(/^\/+|\/+$/g, '');
-  try {
-    if (!slug || slug.includes('/')) {
-      return { success: false, error: '旧接口已切换为 ClawHub。请输入技能 slug（例如 redbook-browser-ops）。' };
-    }
-    return await installSkillFromMarket(slug, skillPath || 'latest');
-  } catch (error) {
-    console.error('Failed to install skill from legacy channel:', error);
     return { success: false, error: String(error) };
   }
 });
@@ -9761,16 +9407,6 @@ ipcMain.handle('advisors:generate-persona', async (_, {
     return { success: false, error: String(error) };
   }
 });
-
-const memberSkillUnavailable = () => ({
-  success: false,
-  error: '成员技能管理后端尚未迁移到 Electron 开源版',
-});
-
-ipcMain.handle('advisors:distill-member-skill', async () => memberSkillUnavailable());
-ipcMain.handle('advisors:promote-member-skill-candidate', async () => memberSkillUnavailable());
-ipcMain.handle('advisors:discard-member-skill-candidate', async () => memberSkillUnavailable());
-ipcMain.handle('advisors:rollback-member-skill-version', async () => memberSkillUnavailable());
 
 // YouTube Import
 ipcMain.handle('youtube:check-ytdlp', async () => {
@@ -11407,8 +11043,8 @@ async function upgradeMarkdownManuscriptToPackage(sourcePath: string, targetPack
     title: String(metadata.title || '').trim() || stripManuscriptExtension(sourceFileName),
     draftType: targetPackageExtension === ARTICLE_DRAFT_EXTENSION ? 'longform' : 'richpost',
     packageKind: targetPackageExtension === ARTICLE_DRAFT_EXTENSION ? 'article' : 'post',
-    migratedFrom: sourcePath,
-    migratedAt: Date.now(),
+    convertedFrom: sourcePath,
+    convertedAt: Date.now(),
   };
 
   try {
@@ -15156,38 +14792,9 @@ const transcribeVideoToText = async (videoPath: string): Promise<{ text: string 
     return { text: null, error: `${message}；请在设置中单独配置支持 Whisper 的转录端点。` };
   }
 
-  let isOfficialGatewayEndpoint = false;
-  const officialFeatureModule = await loadOfficialFeatureModule();
-  if (officialFeatureModule?.prepareOfficialTranscriptionAuth) {
-    try {
-      const officialAuth = await officialFeatureModule.prepareOfficialTranscriptionAuth({
-        endpoint,
-        apiKey,
-      });
-      if (officialAuth?.handled) {
-        isOfficialGatewayEndpoint = Boolean(officialAuth.officialGateway);
-        if (officialAuth.apiKey) {
-          apiKey = officialAuth.apiKey;
-        }
-        if (officialAuth.error) {
-          return {
-            text: null,
-            error: officialAuth.error,
-          };
-        }
-      }
-    } catch (error) {
-      const details = error instanceof Error ? error.message : String(error);
-      return {
-        text: null,
-        error: `转录鉴权失败：${details}`,
-      };
-    }
-  }
   console.log('[Transcription] auth prepared', {
     endpoint,
-    officialGateway: isOfficialGatewayEndpoint,
-    authMode: String(apiKey || '').trim().startsWith('rbx_') ? 'api-key' : 'access-token',
+    authMode: 'api-key',
     model: modelName,
   });
 
@@ -15210,7 +14817,7 @@ const transcribeVideoToText = async (videoPath: string): Promise<{ text: string 
       fileMimeType,
       });
 
-    if (!isOfficialGatewayEndpoint && isOfficialOpenAiTranscriptionModel) {
+    if (isOfficialOpenAiTranscriptionModel) {
       const OpenAI = require('openai').default;
       const { toFile } = require('openai');
       const client = new OpenAI({
@@ -15232,7 +14839,7 @@ const transcribeVideoToText = async (videoPath: string): Promise<{ text: string 
       return { text: text || null };
     }
 
-    if (!isOfficialGatewayEndpoint && isOfficialGeminiEndpoint) {
+    if (isOfficialGeminiEndpoint) {
       const { GoogleGenAI } = require('@google/genai');
       const client = new GoogleGenAI({
         apiKey,
@@ -15269,58 +14876,6 @@ const transcribeVideoToText = async (videoPath: string): Promise<{ text: string 
       });
       const text = String(sdkResponse?.text || '').trim();
       return { text: text || null };
-    }
-
-    // Align with gateway-api-node OpenAI compat controller:
-    // it accepts both multipart file upload and file_base64.
-    if (isOfficialGatewayEndpoint) {
-      const abortController = new AbortController();
-      const timeout = setTimeout(() => abortController.abort(), 180000);
-      try {
-        const form = new FormData();
-        form.set('model', modelName);
-        form.set('task', 'transcribe');
-        form.set(
-          'file',
-          new Blob([new Uint8Array(audioBuffer)], { type: fileMimeType || 'application/octet-stream' }),
-          fileName || 'audio.wav',
-        );
-        const response = await fetch(endpointUrl, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: form,
-          signal: abortController.signal,
-        });
-        const raw = await response.text().catch(() => '');
-        console.log('[Transcription] official response', {
-          status: response.status,
-          statusText: response.statusText,
-          bodyPreview: raw.slice(0, 500),
-        });
-        if (!response.ok) {
-          return {
-            text: null,
-            error: `转录请求失败：HTTP ${response.status} ${response.statusText} | endpoint=${endpointUrl} | body=${raw || '(empty)'}`,
-          };
-        }
-        const parsed = raw ? (() => {
-          try {
-            return JSON.parse(raw) as Record<string, unknown>;
-          } catch {
-            return {} as Record<string, unknown>;
-          }
-        })() : {};
-        const text = String(
-          parsed.text
-          || (parsed.data && typeof parsed.data === 'object' ? (parsed.data as Record<string, unknown>).text : '')
-          || ''
-        ).trim();
-        return { text: text || null };
-      } finally {
-        clearTimeout(timeout);
-      }
     }
 
     const abortController = new AbortController();
@@ -15785,11 +15340,6 @@ ipcMain.handle('indexing:rebuild-advisor', async (_, advisorId: string) => {
 });
 
 // --------- Local HTTP Server for Plugin Integration ---------
-import http from 'http'
-
-const HTTP_PORT = 23456;
-let httpServer: http.Server | null = null;
-
 async function persistXhsNote(note: any): Promise<{ success: boolean; noteId?: string; error?: string }> {
   const fs = require('fs/promises');
   try {
@@ -16200,496 +15750,6 @@ async function persistYoutubeNote(payload: {
   }
 }
 
-function startHttpServer() {
-  const fs = require('fs/promises');
-
-  httpServer = http.createServer(async (req, res) => {
-    // CORS headers
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-    if (req.method === 'OPTIONS') {
-      res.writeHead(204);
-      res.end();
-      return;
-    }
-
-    if (req.method === 'GET' && req.url === '/api/knowledge/health') {
-      try {
-        await ensureKnowledgeRedbookDir();
-        await ensureKnowledgeYoutubeDir();
-        const [redbookDirs, youtubeDirs, mediaAssets] = await Promise.all([
-          fs.readdir(getKnowledgeRedbookDir(), { withFileTypes: true }).catch(() => []),
-          fs.readdir(getKnowledgeYoutubeDir(), { withFileTypes: true }).catch(() => []),
-          listMediaAssets(5000).catch(() => []),
-        ]);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          success: true,
-          status: 'ok',
-          app: 'GardenFlow',
-          counts: {
-            redbook: countTruthyDirectoryEntries(redbookDirs.filter((entry: fsSync.Dirent) => entry.isDirectory())),
-            youtube: countTruthyDirectoryEntries(youtubeDirs.filter((entry: fsSync.Dirent) => entry.isDirectory())),
-            media: Array.isArray(mediaAssets) ? mediaAssets.length : 0,
-          },
-        }));
-      } catch (error) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, error: String(error) }));
-      }
-      return;
-    }
-
-    if (req.method === 'POST' && req.url === '/api/knowledge/entries') {
-      let body = '';
-      req.on('data', (chunk) => { body += chunk; });
-      req.on('end', async () => {
-        try {
-          const payload = JSON.parse(body || '{}') as KnowledgeEntryPayload;
-          const result = await persistKnowledgeEntry(payload);
-          if (!result.success) {
-            throw new Error(result.error || '保存失败');
-          }
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            success: true,
-            entryId: result.entryId,
-            duplicate: Boolean(result.duplicate),
-            updated: Boolean(result.updated),
-          }));
-        } catch (error) {
-          console.error('Failed to persist knowledge entry:', error);
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, error: String(error) }));
-        }
-      });
-      return;
-    }
-
-    if (req.method === 'POST' && req.url === '/api/knowledge/media-assets') {
-      let body = '';
-      req.on('data', (chunk) => { body += chunk; });
-      req.on('end', async () => {
-        try {
-          const payload = JSON.parse(body || '{}') as {
-            items?: Array<{ title?: string; source?: string }>;
-          };
-          const items = Array.isArray(payload?.items)
-            ? payload.items
-                .map((item) => ({
-                  title: String(item?.title || '').trim(),
-                  source: String(item?.source || '').trim(),
-                }))
-                .filter((item) => item.source)
-            : [];
-          if (items.length === 0) {
-            throw new Error('items is required');
-          }
-          const imported = await importMediaSources(items);
-          emitRendererDataChanged('media', { action: 'import' });
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            success: true,
-            imported: imported.length,
-            items: imported.map((asset) => ({
-              id: asset.id,
-              title: asset.title,
-              mimeType: asset.mimeType,
-              relativePath: asset.relativePath,
-            })),
-          }));
-        } catch (error) {
-          console.error('Failed to import media assets:', error);
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, error: String(error) }));
-        }
-      });
-      return;
-    }
-
-    if (req.method === "POST" && req.url === "/api/save-text") {
-      let body = "";
-      req.on("data", chunk => { body += chunk; });
-      req.on("end", async () => {
-        try {
-          const parsed = JSON.parse(body);
-          if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-            throw new Error('Invalid save-text payload: expected object');
-          }
-          const data = parsed as Record<string, any>;
-          const isLinkArticle = String(data.type || '').trim() === 'link-article';
-          const noteId = `${isLinkArticle ? 'link' : 'text'}_${Date.now()}`;
-          const noteDir = path.join(getKnowledgeRedbookDir(), noteId);
-          await fs.mkdir(noteDir, { recursive: true });
-          const extractedArticle = isLinkArticle && String(data.captureKind || '').trim() !== 'wechat-article'
-            ? extractArticleFromHtmlSnapshot({
-                htmlSnapshot: String(data.htmlSnapshot || ''),
-                url: String(data.url || ''),
-                fallbackTitle: String(data.title || ''),
-                fallbackExcerpt: String(data.excerpt || ''),
-                fallbackAuthor: String(data.author || ''),
-                fallbackSiteName: String(data.siteName || ''),
-              })
-            : null;
-
-          const meta: {
-            id: string;
-            type: 'link-article' | 'text';
-            captureKind?: string;
-            htmlFile?: string;
-            title: string;
-            content: string;
-            sourceUrl: string;
-            siteName: string;
-            excerpt: string;
-            createdAt: string;
-            author: string;
-            stats: { likes: number; collects: number };
-            images: string[];
-            cover: string;
-            tags?: string[];
-          } = {
-            id: noteId,
-            type: isLinkArticle ? 'link-article' : 'text',
-            captureKind: String(data.captureKind || '').trim() || undefined,
-            title: extractedArticle?.title || data.title || (isLinkArticle ? 'Link Article' : 'Text Clipping'),
-            content: extractedArticle?.markdown || data.text || "",
-            sourceUrl: data.url || "",
-            siteName: extractedArticle?.siteName || data.siteName || '',
-            excerpt: extractedArticle?.excerpt || data.excerpt || '',
-            createdAt: new Date().toISOString(),
-            author: extractedArticle?.author || data.author || 'User',
-            stats: { likes: 0, collects: 0 },
-            images: [],
-            cover: '',
-            tags: Array.isArray(data.tags)
-              ? data.tags.map((value: unknown) => String(value || '').trim()).filter(Boolean)
-              : [],
-          };
-          if (isLinkArticle && !meta.tags?.includes('网页文章')) {
-            meta.tags = [...(meta.tags || []), '网页文章'];
-          }
-
-          const imagesDir = path.join(noteDir, 'images');
-          let nextImageIndex = 0;
-          const persistedImageBySource = new Map<string, string>();
-          const persistImage = async (imageSource: string, preferredName?: string) => {
-            if (!imageSource || typeof imageSource !== 'string') return '';
-            const normalizedSource = String(imageSource || '').trim();
-            if (persistedImageBySource.has(normalizedSource)) {
-              return persistedImageBySource.get(normalizedSource) || '';
-            }
-            await fs.mkdir(imagesDir, { recursive: true });
-            const fileName = preferredName || `${nextImageIndex++}.jpg`;
-            const outputPath = path.join(imagesDir, fileName);
-            if (normalizedSource.startsWith('data:image')) {
-              const base64Data = normalizedSource.split(',')[1];
-              await fs.writeFile(outputPath, Buffer.from(base64Data, 'base64'));
-              const relativePath = `images/${fileName}`;
-              persistedImageBySource.set(normalizedSource, relativePath);
-              return relativePath;
-            }
-            if (normalizedSource.startsWith('http')) {
-              await downloadImageToFile(normalizedSource, outputPath);
-              const relativePath = `images/${fileName}`;
-              persistedImageBySource.set(normalizedSource, relativePath);
-              return relativePath;
-            }
-            return '';
-          };
-
-          if (typeof data.coverUrl === 'string' && data.coverUrl.trim()) {
-            try {
-              const coverPath = await persistImage(data.coverUrl.trim(), 'cover.jpg');
-              if (coverPath) {
-                meta.cover = coverPath;
-                meta.images.push(coverPath);
-              }
-            } catch (error) {
-              console.error('Failed to persist link cover:', error);
-            }
-          }
-
-          if (Array.isArray(data.images)) {
-            for (const imageSource of data.images.slice(0, 8)) {
-              try {
-                const imagePath = await persistImage(String(imageSource || '').trim());
-                if (imagePath && !meta.images.includes(imagePath)) {
-                  meta.images.push(imagePath);
-                }
-              } catch (error) {
-                console.error('Failed to persist link image:', error);
-              }
-            }
-          }
-
-          if (!meta.cover && meta.images.length > 0) {
-            meta.cover = meta.images[0];
-          }
-
-          const richHtmlImageTokens = Array.isArray(data.richHtmlImageMap)
-            ? data.richHtmlImageMap
-                .map((entry: any) => ({
-                  token: String(entry?.token || '').trim(),
-                  url: String(entry?.url || '').trim(),
-                }))
-                .filter((entry: { token: string; url: string }) => entry.token && entry.url)
-                .slice(0, 80)
-            : [];
-
-          if (String(data.captureKind || '').trim() === 'wechat-article' && String(data.richHtmlDocument || '').trim()) {
-            const replacements: Array<{ token: string; localPath: string }> = [];
-            for (const entry of richHtmlImageTokens) {
-              try {
-                const localPath = await persistImage(entry.url);
-                if (localPath) {
-                  if (!meta.images.includes(localPath)) {
-                    meta.images.push(localPath);
-                  }
-                  replacements.push({ token: entry.token, localPath });
-                }
-              } catch (error) {
-                console.error('Failed to persist wechat rich-html image:', error);
-              }
-            }
-
-            const richHtmlDocument = absolutizeEmbeddedLocalAssetReferences(
-              rewriteRichHtmlTokens(String(data.richHtmlDocument || ''), replacements),
-              noteDir,
-            );
-            const htmlFile = 'content.html';
-            await fs.writeFile(path.join(noteDir, htmlFile), richHtmlDocument, 'utf-8');
-            meta.htmlFile = htmlFile;
-            if (!meta.tags?.includes('公众号文章')) {
-              meta.tags = [...(meta.tags || []), '公众号文章'];
-            }
-          } else if (isLinkArticle && extractedArticle?.contentHtml) {
-            const htmlFile = 'content.html';
-            const articleHtmlBody = await localizeGenericArticleHtml(
-              extractedArticle.contentHtml,
-              noteDir,
-              persistImage,
-              (localPath) => {
-                if (!meta.images.includes(localPath)) {
-                  meta.images.push(localPath);
-                }
-              },
-            );
-            if (!meta.cover && meta.images.length > 0) {
-              meta.cover = meta.images[0];
-            }
-            const simpleArticleHtml = `<!doctype html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${String(meta.title || 'Article')}</title>
-  <style>
-    :root { color-scheme: light; }
-    * { box-sizing: border-box; }
-    body { margin: 0; background: #f5f5f3; color: #1f2937; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif; line-height: 1.85; }
-    .rb-article-shell { max-width: 820px; margin: 0 auto; padding: 28px 20px 60px; }
-    .rb-article { background: #ffffff; border-radius: 18px; padding: 32px 28px 40px; box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08); border: 1px solid rgba(15, 23, 42, 0.06); }
-    .rb-article-title { margin: 0; font-size: 30px; line-height: 1.3; font-weight: 700; color: #111827; }
-    .rb-article-meta { margin-top: 12px; font-size: 13px; color: #6b7280; }
-    .rb-article-body { margin-top: 24px; font-size: 17px; color: #1f2937; word-break: break-word; }
-    .rb-article-body img { max-width: 100%; height: auto; display: block; margin: 18px auto; border-radius: 14px; }
-    .rb-article-body a { color: #0369a1; text-decoration: underline; text-underline-offset: 2px; }
-    .rb-article-body pre { white-space: pre-wrap; background: #111827; color: #f9fafb; padding: 14px 16px; border-radius: 12px; overflow: auto; }
-    .rb-article-body table { width: 100%; border-collapse: collapse; }
-    .rb-article-body td, .rb-article-body th { border: 1px solid #d1d5db; padding: 10px 12px; vertical-align: top; }
-  </style>
-</head>
-<body>
-  <div class="rb-article-shell">
-    <article class="rb-article">
-      <h1 class="rb-article-title">${String(meta.title || 'Article')}</h1>
-      <div class="rb-article-meta">${[meta.author, meta.siteName].filter(Boolean).join(' · ')}</div>
-      <div class="rb-article-body">${articleHtmlBody}</div>
-    </article>
-  </div>
-</body>
-</html>`;
-            await fs.writeFile(path.join(noteDir, htmlFile), simpleArticleHtml, 'utf-8');
-            meta.htmlFile = htmlFile;
-          }
-
-          await fs.writeFile(path.join(noteDir, "meta.json"), JSON.stringify(meta, null, 2));
-          await fs.writeFile(path.join(noteDir, "content.md"), meta.content || "");
-
-          // Index the text
-          indexManager.addToQueue(normalizeNote(noteId, meta, meta.content || ""));
-
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ success: true, noteId }));
-
-          // Notify renderer
-          if (win) win.webContents.send("knowledge-updated");
-        } catch (err) {
-          console.error("Failed to save text:", err);
-          res.writeHead(500);
-          res.end(JSON.stringify({ error: (err as Error).message }));
-        }
-      });
-      return;
-    }
-    if (req.method === 'POST' && req.url === '/api/notes') {
-      let body = '';
-      req.on('data', chunk => { body += chunk; });
-      req.on('end', async () => {
-        try {
-          const note = JSON.parse(body);
-          const result = await persistXhsNote(note);
-          if (!result.success || !result.noteId) {
-            throw new Error(result.error || '保存失败');
-          }
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: true, noteId: result.noteId }));
-        } catch (error) {
-          console.error('Failed to save note:', error);
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, error: String(error) }));
-        }
-      });
-    } else if (req.method === 'GET' && req.url === '/api/archives') {
-      const profiles = listArchiveProfiles().map((profile) => ({
-        id: profile.id,
-        name: profile.name,
-        platform: profile.platform || '',
-        goal: profile.goal || ''
-      }));
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: true, profiles }));
-    } else if (req.method === 'POST' && req.url === '/api/archives/samples') {
-      let body = '';
-      req.on('data', chunk => { body += chunk; });
-      req.on('end', async () => {
-        try {
-          const payload = JSON.parse(body);
-          const profiles = listArchiveProfiles();
-          let profileId = payload.profileId as string | undefined;
-          if (!profileId && profiles.length === 1) {
-            profileId = profiles[0].id;
-          }
-          if (!profileId || !profiles.find(profile => profile.id === profileId)) {
-            throw new Error('未找到可用的档案，请先在桌面端创建档案');
-          }
-
-          const title = payload.title || '未命名笔记';
-          const content = payload.content || '';
-          const archiveDir = getArchiveDir();
-          await fs.mkdir(archiveDir, { recursive: true });
-          const sampleId = `sample_${Date.now()}`;
-          const sampleDir = path.join(archiveDir, sanitizeFilenameSegment(profileId), sanitizeFilenameSegment(sampleId));
-          const sampleImagesDir = path.join(sampleDir, 'images');
-          await fs.mkdir(sampleImagesDir, { recursive: true });
-          const imagePaths: string[] = [];
-
-          if (payload.images && Array.isArray(payload.images)) {
-            for (let i = 0; i < payload.images.length; i++) {
-              const imgUrl = payload.images[i];
-              if (!imgUrl || typeof imgUrl !== 'string') continue;
-              const imgPath = path.join(sampleImagesDir, `${i}.jpg`);
-              if (imgUrl.startsWith('data:image')) {
-                const base64Data = imgUrl.split(',')[1];
-                await fs.writeFile(imgPath, Buffer.from(base64Data, 'base64'));
-                imagePaths.push(path.relative(archiveDir, imgPath));
-              } else if (imgUrl.startsWith('http')) {
-                try {
-                  await downloadImageToFile(imgUrl, imgPath);
-                  imagePaths.push(path.relative(archiveDir, imgPath));
-                } catch (error) {
-                  console.error('Failed to download archive image:', error);
-                }
-              }
-            }
-          }
-
-          const sample = createArchiveSample({
-            id: sampleId,
-            profile_id: profileId,
-            title,
-            content,
-            excerpt: buildExcerpt(content),
-            tags: extractTagsFromText(title, content),
-            images: imagePaths,
-            platform: payload.platform || '小红书',
-            source_url: payload.source || '',
-            sample_date: new Date().toISOString().slice(0, 10),
-            is_featured: payload.isFeatured ? 1 : 0
-          });
-
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: true, sampleId: sample.id }));
-          win?.webContents.send('archives:sample-created', { profileId, sampleId: sample.id });
-
-          // Index the new sample
-          // Fetch profile to get platform info
-          const profile = profiles.find(p => p.id === profileId) || { platform: payload.platform };
-
-          // Construct sample object for normalization (matching ArchiveSample interface approximately)
-          const sampleObj = {
-            id: sampleId,
-            profile_id: profileId,
-            title: title,
-            content: content,
-            platform: payload.platform,
-            source_url: payload.source,
-            sample_date: payload.sampleDate,
-            images: [], // Images not indexed for now
-            created_at: Date.now()
-          };
-
-          indexManager.addToQueue(normalizeArchiveSample(sampleObj, profile));
-
-        } catch (error) {
-          console.error('Failed to save archive sample:', error);
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, error: String(error) }));
-        }
-      });
-    } else if (req.method === 'GET' && req.url === '/api/status') {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: 'ok', app: 'GardenFlow' }));
-    } else if (req.method === 'POST' && req.url === '/api/youtube-notes') {
-      let body = '';
-      req.on('data', chunk => { body += chunk; });
-      req.on('end', async () => {
-        try {
-          const data = JSON.parse(body || '{}');
-          const result = await persistYoutubeNote(data);
-          if (!result.success) {
-            throw new Error(result.error || '保存失败');
-          }
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify(result));
-        } catch (error) {
-          console.error('Failed to save YouTube video:', error);
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, error: String(error) }));
-        }
-      });
-    } else {
-      res.writeHead(404);
-      res.end('Not Found');
-    }
-  });
-
-  httpServer.listen(HTTP_PORT, '127.0.0.1', () => {
-    try {
-      console.log(`HTTP Server running at http://127.0.0.1:${HTTP_PORT}`);
-    } catch {}
-  });
-
-  httpServer.on('error', (err) => {
-    try {
-      console.error('HTTP Server error:', err);
-    } catch {}
-  });
-}
-
 ipcMain.handle('xhs:save-note', async (_event, note: any) => {
   return persistXhsNote(note);
 });
@@ -16708,7 +15768,4 @@ app.whenReady().then(() => {
   if (!appSingleInstanceLock) return;
   ensureKnowledgeRedbookDir();
   ensureKnowledgeYoutubeDir();
-  if (process.env.GARDENFLOW_ENABLE_LEGACY_PLUGIN_HTTP === '1') {
-    startHttpServer();
-  }
 });

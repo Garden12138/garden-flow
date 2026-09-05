@@ -6,7 +6,6 @@ export * from './digitalHuman';
 export * from './digitalHumanReadiness';
 export * from './feedModel';
 export * from './feedVisibility';
-export * from './pricingEstimate';
 export * from './references';
 export * from './submitPayload';
 export * from './submitter';

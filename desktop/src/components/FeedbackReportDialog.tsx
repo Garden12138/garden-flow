@@ -74,7 +74,6 @@ export function FeedbackReportDialog({
         priority,
         source: 'desktop',
         includeAdvancedContext,
-        uploadNow: true,
         context: {
           window: sourcePage,
           sessionId: contextValue(context, 'sessionId'),
@@ -88,11 +87,7 @@ export function FeedbackReportDialog({
       }
       onClose();
       onSubmitted?.();
-      if (result.uploaded) {
-        await appAlert('问题已提交。');
-      } else {
-        await appAlert(result.error ? `已保存待发送报告：${result.error}` : '已保存待发送报告。');
-      }
+      await appAlert('报告已保存到本地。你可以在“设置 > 隐私与诊断”中手动导出。');
     } catch (error) {
       void appAlert(error instanceof Error ? error.message : '提交失败');
     } finally {
@@ -200,7 +195,7 @@ export function FeedbackReportDialog({
             className="inline-flex items-center gap-2 rounded-md bg-accent-primary px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-primary/90 disabled:opacity-60"
           >
             {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            提交
+            保存到本地
           </button>
         </div>
       </div>

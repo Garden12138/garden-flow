@@ -1,12 +1,12 @@
 # FreeCut Attribution
 
 This subtree contains source vendored from the FreeCut project and adapted for
-Bojin integration.
+GardenFlow integration.
 
 ## Scope
 
 - Vendored path: `src/vendor/freecut/**`
-- Primary Bojin integration points:
+- Primary GardenFlow integration points:
   - `src/components/manuscripts/freecutTimelineCapabilities.ts`
   - `src/vendor/freecut/features/timeline/deps/*`
 
@@ -46,8 +46,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## Bojin Note
+## GardenFlow Note
 
 This file is an attribution marker for the vendored subtree only. It does not
-change Bojin ownership for surrounding integration code outside
+change GardenFlow ownership for surrounding integration code outside
 `src/vendor/freecut/**`.

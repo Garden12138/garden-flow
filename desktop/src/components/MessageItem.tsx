@@ -307,7 +307,6 @@ function CopyableBlockquote({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Legacy types for compatibility (will be migrated)
 export interface ToolEvent {
   id: string;
   callId: string;
@@ -439,7 +438,7 @@ export interface Message {
   // Plan steps
   plan?: PlanStep[];
 
-  // Legacy fields (kept for compatibility during migration, but UI will prefer timeline)
+  // Compact workflow fields used when a persisted timeline is unavailable.
   thinking?: string;
   tools: ToolEvent[];
   activatedSkill?: SkillEvent;
@@ -1270,7 +1269,7 @@ export const MessageItem = memo(({
     }, ...filteredTimeline];
   }, [activeThoughtContent, filteredTimeline, msg.id, msg.isStreaming, msg.processingStartedAt, timelineHasThought]);
   const showTimeline = !shouldAutoHideWorkflow && !isUser && !isThinkingMessage && displayTimeline.length > 0;
-  const showLegacyWorkflow = !isUser
+  const showFallbackWorkflow = !isUser
     && !isThinkingMessage
     && !shouldAutoHideWorkflow
     && displayTimeline.length === 0
@@ -1523,11 +1522,19 @@ export const MessageItem = memo(({
             className="flex items-start gap-3 rounded-xl border border-border bg-surface-secondary/60 p-2.5"
           >
             {item.cover ? (
-              <img
-                src={resolveAssetUrl(item.cover)}
-                alt={item.title}
-                className="h-14 w-14 rounded-lg object-cover shrink-0"
-              />
+              <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-border bg-surface-secondary">
+                <div className="absolute inset-0 flex items-center justify-center text-lg">
+                  {item.itemType === 'video' ? '▶' : '📝'}
+                </div>
+                <img
+                  src={resolveAssetUrl(item.cover)}
+                  alt={item.title}
+                  className="relative h-full w-full object-cover"
+                  onError={(event) => {
+                    event.currentTarget.style.display = 'none';
+                  }}
+                />
+              </div>
             ) : (
               <div className="h-14 w-14 rounded-lg bg-surface-secondary border border-border flex items-center justify-center text-lg shrink-0">
                 {item.itemType === 'video' ? '▶' : '📝'}
@@ -1819,8 +1826,8 @@ export const MessageItem = memo(({
 
       {showWorkflowOnTop && showTimeline && renderTimelineWorkflow(displayTimeline)}
 
-      {/* AI 工作流可视化 (兼容旧版：思考、工具、技能) - 仅当 timeline 为空时显示 */}
-      {showWorkflowOnTop && showLegacyWorkflow && (
+      {/* timeline 为空时显示紧凑工作流。 */}
+      {showWorkflowOnTop && showFallbackWorkflow && (
         <div className="mb-4 w-full max-w-3xl space-y-3">
           {/* Thinking Bubble */}
           {msg.thinking && (
@@ -1998,7 +2005,7 @@ export const MessageItem = memo(({
       {/* AI 工作流可视化 (底部渲染) */}
       {!showWorkflowOnTop && showTimeline && renderTimelineWorkflow(displayTimeline)}
 
-      {!showWorkflowOnTop && showLegacyWorkflow && (
+      {!showWorkflowOnTop && showFallbackWorkflow && (
         <div className="mt-3 w-full max-w-3xl space-y-3">
           {msg.thinking && (
             renderThoughtText(stripInternalProtocolMarkup(msg.thinking))

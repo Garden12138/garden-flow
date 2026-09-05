@@ -43,14 +43,14 @@ test('browser extension fingerprint covers assets and ignores GardenFlow sync me
     }
 });
 
-test('legacy unpacked extension is backed up and atomically refreshed without changing its key', async () => {
+test('current unpacked extension is backed up and atomically refreshed without changing its key', async () => {
     const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'gardenflow-extension-sync-'));
     const sourceDir = path.join(temporaryRoot, 'source');
-    const targetDir = path.join(temporaryRoot, 'redbox-capture');
-    const backupDir = path.join(temporaryRoot, 'backup', 'redbox-capture-before-gardenflow');
+    const targetDir = path.join(temporaryRoot, 'gardenflow-capture');
+    const backupDir = path.join(temporaryRoot, 'backup', 'gardenflow-capture-previous');
     try {
         await writeExtension(sourceDir, { name: 'GardenFlow', marker: 'new' });
-        await writeExtension(targetDir, { name: 'Bojin', marker: 'old' });
+        await writeExtension(targetDir, { name: 'GardenFlow', marker: 'old' });
         const first = await syncBrowserExtensionDirectory({
             appVersion: '2.5.0',
             backupDir,
@@ -62,7 +62,7 @@ test('legacy unpacked extension is backed up and atomically refreshed without ch
         assert.equal(first.updated, true);
         assert.equal(first.backupCreated, true);
         assert.equal(JSON.parse(await fs.readFile(path.join(targetDir, 'manifest.json'), 'utf8')).name, 'GardenFlow');
-        assert.equal(JSON.parse(await fs.readFile(path.join(backupDir, 'manifest.json'), 'utf8')).name, 'Bojin');
+        assert.equal(JSON.parse(await fs.readFile(path.join(backupDir, 'manifest.json'), 'utf8')).name, 'GardenFlow');
         assert.equal(await fs.readFile(path.join(targetDir, 'icons', 'icon16.png'), 'utf8'), 'new');
 
         const second = await syncBrowserExtensionDirectory({
@@ -81,10 +81,10 @@ test('legacy unpacked extension is backed up and atomically refreshed without ch
     }
 });
 
-test('legacy extension with another public key is never overwritten', async () => {
+test('an unrelated extension with another public key is never overwritten', async () => {
     const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'gardenflow-extension-key-'));
     const sourceDir = path.join(temporaryRoot, 'source');
-    const targetDir = path.join(temporaryRoot, 'legacy');
+    const targetDir = path.join(temporaryRoot, 'unrelated-extension');
     try {
         await writeExtension(sourceDir, { name: 'GardenFlow', marker: 'new' });
         await writeExtension(targetDir, { key: 'another-extension-key', name: 'Unrelated', marker: 'old' });

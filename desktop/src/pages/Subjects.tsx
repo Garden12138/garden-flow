@@ -332,7 +332,6 @@ interface MediaAsset {
     absolutePath?: string;
     previewUrl?: string;
     thumbnailUrl?: string;
-    thumbnail_url?: string;
     exists?: boolean;
 }
 
@@ -576,20 +575,14 @@ function normalizeMediaSource(source: unknown): MediaAssetSource {
 }
 
 function normalizeMediaAsset(asset: MediaAsset): MediaAsset {
-    const legacyAsset = asset as MediaAsset & {
-        mime_type?: string;
-        relative_path?: string;
-        absolute_path?: string;
-        preview_url?: string;
-    };
     return {
         ...asset,
         source: normalizeMediaSource(asset.source),
-        mimeType: asset.mimeType || legacyAsset.mime_type,
-        relativePath: asset.relativePath || legacyAsset.relative_path,
-        absolutePath: asset.absolutePath || legacyAsset.absolute_path,
-        previewUrl: asset.previewUrl || legacyAsset.preview_url,
-        thumbnailUrl: asset.thumbnailUrl || asset.thumbnail_url,
+        mimeType: asset.mimeType,
+        relativePath: asset.relativePath,
+        absolutePath: asset.absolutePath,
+        previewUrl: asset.previewUrl,
+        thumbnailUrl: asset.thumbnailUrl,
         exists: asset.exists !== false,
     };
 }
@@ -1131,7 +1124,7 @@ function buildProductDetailVersionOptions(
         };
     });
     const knownKeys = new Set(options.map((item) => item.key));
-    const legacyOptions = pages
+    const customOptions = pages
         .filter((page) => {
             const key = detailVersionKey(page.market, page.locale);
             return key !== '__default__' && !knownKeys.has(key);
@@ -1145,7 +1138,7 @@ function buildProductDetailVersionOptions(
             builtIn: false,
         }));
 
-    return [...options, ...legacyOptions];
+    return [...options, ...customOptions];
 }
 
 function detailVersionKey(market = '', locale = ''): string {

@@ -31,7 +31,6 @@ import {
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { enforceModelCapabilityPolicy, getForcedModelCapabilities, inferModelCapabilities, normalizeModelCapabilities, type ModelCapability } from '../../shared/modelCapabilities';
-import { canonicalizeOfficialAutoSourceId, isOfficialAutoSourceId } from '../config/aiSources';
 import { resolveAssetUrl } from '../utils/pathManager';
 import { isChatComposerTextEditable } from '../utils/chatComposerState';
 import { parseAiModelRoutesValue } from '../features/settings/modelRouteValue';
@@ -750,7 +749,7 @@ export function buildChatModelOptions(settings?: ChatSettingsSnapshot | null): C
       ? route as Record<string, unknown>
       : {};
   })();
-  const routeSourceId = canonicalizeOfficialAutoSourceId(String(chatRoute.sourceId || chatRoute.source_id || '').trim());
+  const routeSourceId = String(chatRoute.sourceId || chatRoute.source_id || '').trim();
   const routeModel = String(chatRoute.model || chatRoute.modelName || chatRoute.model_name || '').trim();
   const selectedChatSourceId = routeSourceId;
   const selectedChatModel = routeModel;
@@ -760,7 +759,7 @@ export function buildChatModelOptions(settings?: ChatSettingsSnapshot | null): C
     if (Array.isArray(parsed)) {
       for (const item of parsed) {
         if (!item || typeof item !== 'object') continue;
-        const sourceId = canonicalizeOfficialAutoSourceId(String(item.id || '').trim());
+        const sourceId = String(item.id || '').trim();
         const presetId = String(item.presetId || item.preset_id || '').trim();
         const sourceName = String(item.name || sourceId || '供应商').trim();
         const baseURL = String(item.baseURL || item.baseUrl || '').trim();

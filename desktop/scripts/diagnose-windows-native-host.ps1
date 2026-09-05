@@ -159,7 +159,6 @@ if ([string]::IsNullOrWhiteSpace($HostExecutable)) {
 Write-DiagnosticSection 'GardenFlow Native Host logs'
 Show-LogTail -Label 'Structured log' -Path (Join-Path $StateRoot 'native-host.log')
 Show-LogTail -Label 'Previous structured log' -Path (Join-Path $StateRoot 'native-host.previous.log')
-Show-LogTail -Label 'Legacy startup-error log' -Path (Join-Path $StateRoot 'native-host-errors.log')
 
 Write-DiagnosticSection 'Browser logs'
 $BrowserLogs = @(

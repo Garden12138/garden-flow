@@ -5,7 +5,7 @@ const TARGET_CURSOR_ARRIVED = 'AGENT_CURSOR_ARRIVED';
 const CURSOR_ASSET_PATH = 'images/cursor-chat.png';
 const TARGET_OVERLAY_ROOT_ID = 'codex-agent-overlay-root';
 const TARGET_OVERLAY_ROOT_DATASET = 'codexAgentOverlayRoot';
-const LEGACY_CURSOR_ID = 'gardenflow-browser-data-ai-cursor';
+const CURSOR_ID = 'gardenflow-browser-data-ai-cursor';
 const CURSOR_STYLE_ID = 'gardenflow-browser-data-ai-cursor-style';
 const TARGET_CURSOR_PATH_CONFIG = {
   arcFlow: 0.5783555327868779,
@@ -70,14 +70,14 @@ function ensureAgentCursor() {
   ensureCursorRepairObserver();
   ensureAgentCursorStyle();
   const root = ensureTargetOverlayRoot();
-  let cursor = document.getElementById(LEGACY_CURSOR_ID);
+  let cursor = document.getElementById(CURSOR_ID);
   if (cursor) {
     if (cursor.parentElement !== root) root.appendChild(cursor);
     if (lastCursorState) applyCursorDomState(cursor, lastCursorState, { animate: false });
     return cursor;
   }
   cursor = document.createElement('div');
-  cursor.id = LEGACY_CURSOR_ID;
+  cursor.id = CURSOR_ID;
   cursor.className = 'codex-agent-overlay';
   cursor.setAttribute('aria-hidden', 'true');
   cursor.dataset.visible = 'false';
@@ -511,7 +511,7 @@ function ensureCursorRepairObserver() {
     if (lastCursorState?.isVisible === false) return;
     if (!document.documentElement) return;
     const root = document.getElementById(TARGET_OVERLAY_ROOT_ID);
-    const cursor = document.getElementById(LEGACY_CURSOR_ID);
+    const cursor = document.getElementById(CURSOR_ID);
     const style = document.getElementById(CURSOR_STYLE_ID);
     if (root && cursor && style) return;
     ensureAgentCursor();

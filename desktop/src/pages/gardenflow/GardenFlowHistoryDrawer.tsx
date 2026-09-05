@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react';
 import { Archive, ChevronRight, Clock3, Edit3, FilePlus2, FileText, Folder, FolderOpen, FolderPlus, History, Loader2, MoreHorizontal, Pin, Plus, RefreshCw, Trash2, Users, X } from 'lucide-react';
 import { clsx } from 'clsx';
-import { GARDENFLOW_DISPLAY_NAME } from './config';
 import { appAlert, appConfirm } from '../../utils/appDialogs';
 
 interface GardenFlowTeamRoom {
@@ -35,9 +34,7 @@ type GardenFlowManuscriptNode = {
 };
 
 function displaySessionTitle(title: string, surface: GardenFlowHistorySurface): string {
-    if (surface !== 'gardenflow') return title;
-    const legacyAiPrefix = new RegExp(`^${['Red', 'Claw'].join('')}(\\s*·\\s*)`);
-    return title.replace(legacyAiPrefix, `${GARDENFLOW_DISPLAY_NAME}$1`);
+    return surface === 'gardenflow' ? title.trim() : title;
 }
 
 function recordFromUnknown(value: unknown): Record<string, unknown> {

@@ -1,4 +1,4 @@
-import { captureDocumentToLegacyPayload } from './captureDocument.js';
+import { captureDocumentToPagePayload } from './captureDocument.js';
 
 function fallbackNormalizeText(value) {
   return String(value || '').trim();
@@ -39,11 +39,7 @@ function replaceTokens(html, replacements, normalizeText) {
   return output;
 }
 
-/**
- * This is deliberately the old Knowledge payload shape. New capture engines
- * are not allowed to bypass it, which protects existing Desktop ingestion,
- * source identity, and dedupe semantics.
- */
+/** Map browser extraction results to the stable Desktop Knowledge contract. */
 export function buildKnowledgeEntryFromPagePayload(payload = {}, helpers = {}) {
   const normalizeText = helpers.normalizeText || fallbackNormalizeText;
   const truncateText = helpers.truncateText || fallbackTruncateText;
@@ -102,5 +98,5 @@ export function buildKnowledgeEntryFromPagePayload(payload = {}, helpers = {}) {
 }
 
 export function buildKnowledgeEntryFromCaptureDocument(document, helpers = {}) {
-  return buildKnowledgeEntryFromPagePayload(captureDocumentToLegacyPayload(document), helpers);
+  return buildKnowledgeEntryFromPagePayload(captureDocumentToPagePayload(document), helpers);
 }

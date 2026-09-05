@@ -108,10 +108,6 @@ const BUILTIN_SUBJECT_CATEGORIES: SubjectCategory[] = [
   },
 ];
 
-const LEGACY_CATEGORY_NAME_ALIASES: Record<string, string> = {
-  人物: '角色',
-};
-
 const DEFAULT_CATEGORIES: SubjectCategoriesFile = {
   version: 1,
   categories: [...BUILTIN_SUBJECT_CATEGORIES],
@@ -125,9 +121,8 @@ function normalizeText(input: unknown): string {
   return String(input || '').trim();
 }
 
-function canonicalSubjectCategoryName(input: unknown): string {
-  const name = normalizeText(input);
-  return LEGACY_CATEGORY_NAME_ALIASES[name] || name;
+function normalizeSubjectCategoryName(input: unknown): string {
+  return normalizeText(input);
 }
 
 function normalizeList(input: unknown): string[] {
@@ -154,45 +149,6 @@ function normalizeAttributes(input: SubjectAttribute[] | unknown): SubjectAttrib
     result.push({ key, value });
   }
   return result;
-}
-
-function builtinCategoryForName(name: string): SubjectCategory | undefined {
-  const canonicalName = canonicalSubjectCategoryName(name);
-  return BUILTIN_SUBJECT_CATEGORIES.find((item) => item.name === canonicalName);
-}
-
-function buildBuiltinCategoryIdRemaps(categories: SubjectCategory[]): Map<string, string> {
-  const remaps = new Map<string, string>();
-  for (const category of categories) {
-    const builtin = builtinCategoryForName(category.name);
-    if (builtin && category.id && category.id !== builtin.id) {
-      remaps.set(category.id, builtin.id);
-    }
-  }
-  return remaps;
-}
-
-async function migrateSubjectCategoryRefs(categoryIdRemaps: Map<string, string>): Promise<boolean> {
-  if (categoryIdRemaps.size === 0) return false;
-  const catalog = await readCatalog();
-  let changed = false;
-  const changedSubjects: SubjectRecord[] = [];
-  const subjects = catalog.subjects.map((subject) => {
-    const nextCategoryId = subject.categoryId ? categoryIdRemaps.get(subject.categoryId) : undefined;
-    if (!nextCategoryId || nextCategoryId === subject.categoryId) return subject;
-    changed = true;
-    const nextSubject = {
-      ...subject,
-      categoryId: nextCategoryId,
-      updatedAt: nowIso(),
-    };
-    changedSubjects.push(nextSubject);
-    return nextSubject;
-  });
-  if (!changed) return false;
-  await writeCatalog({ version: 1, subjects });
-  await Promise.all(changedSubjects.map((subject) => writeSubjectFile(subject)));
-  return true;
 }
 
 function normalizeRelativeStorePath(input: string): string {
@@ -291,15 +247,13 @@ async function readCategoriesFile(): Promise<SubjectCategoriesFile> {
         version: 1,
         categories: parsed.categories.map((item) => ({
           id: normalizeText(item.id),
-          name: canonicalSubjectCategoryName(item.name),
+          name: normalizeSubjectCategoryName(item.name),
           createdAt: normalizeText(item.createdAt) || nowIso(),
           updatedAt: normalizeText(item.updatedAt) || nowIso(),
         })),
       };
-      const categoryIdRemaps = buildBuiltinCategoryIdRemaps(normalized.categories);
-      const migratedRefs = await migrateSubjectCategoryRefs(categoryIdRemaps);
       const merged = ensureBuiltinCategories(normalized.categories);
-      if (merged.changed || migratedRefs) {
+      if (merged.changed) {
         await writeCategoriesFile({ version: 1, categories: merged.categories });
       }
       return {
@@ -327,7 +281,7 @@ function ensureBuiltinCategories(categories: SubjectCategory[]): { categories: S
   const next = categories
     .map((category) => ({
       ...category,
-      name: canonicalSubjectCategoryName(category.name),
+      name: normalizeSubjectCategoryName(category.name),
     }))
     .filter((category) => category.id && category.name);
   let changed = false;

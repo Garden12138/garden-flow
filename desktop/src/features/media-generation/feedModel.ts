@@ -497,12 +497,12 @@ export function normalizeGenerationRequest(value: unknown): GenerationRequest | 
             ? record.promptSwitches as Partial<CoverPromptSwitches>
             : {};
         const referenceItems = normalizeReferenceItems(record.referenceItems);
-        const legacyReferenceItems = [
+        const directReferenceItems = [
             normalizeReferenceItem(record.templateImage),
             normalizeReferenceItem(record.baseImage),
         ].filter((item): item is ReferenceItem => Boolean(item));
         const manuscriptSource = normalizeCoverManuscriptSource(record.manuscriptSource);
-        if (!prompt && referenceItems.length === 0 && legacyReferenceItems.length === 0 && !manuscriptSource) return null;
+        if (!prompt && referenceItems.length === 0 && directReferenceItems.length === 0 && !manuscriptSource) return null;
         return {
             type: 'cover',
             prompt,
@@ -511,7 +511,7 @@ export function normalizeGenerationRequest(value: unknown): GenerationRequest | 
             count: Math.max(1, Math.min(4, Number(record.count || 1) || 1)),
             model: String(record.model || '').trim(),
             quality: normalizeImageQuality(record.quality),
-            referenceItems: (referenceItems.length > 0 ? referenceItems : legacyReferenceItems).slice(0, 4),
+            referenceItems: (referenceItems.length > 0 ? referenceItems : directReferenceItems).slice(0, 4),
             manuscriptSource,
             promptSwitches: {
                 learnTypography: rawSwitches.learnTypography !== false,

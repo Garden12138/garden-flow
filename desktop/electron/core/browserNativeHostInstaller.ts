@@ -1,4 +1,3 @@
-import compatibility from '../../shared/brandCompatibility.cjs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -309,9 +308,6 @@ export async function installBrowserNativeHost(options: BrowserNativeHostInstall
                     '/f',
                 ], { windowsHide: true });
             }
-            const legacyPath = target.manifestPath.replace(BROWSER_CAPTURE_NATIVE_HOST_NAME, compatibility.identity.legacy.nativeHost);
-            await fs.writeFile(legacyPath, JSON.stringify(manifest(hostPath, compatibility.identity.legacy.nativeHost), null, 2) + '\n', 'utf8');
-            if (target.registryKey) await execFileAsync('reg.exe', ['ADD', target.registryKey.replace(BROWSER_CAPTURE_NATIVE_HOST_NAME, compatibility.identity.legacy.nativeHost), '/ve', '/t', 'REG_SZ', '/d', legacyPath, '/f'], { windowsHide: true });
             installedTargets.push({
                 id: target.id,
                 label: target.label,

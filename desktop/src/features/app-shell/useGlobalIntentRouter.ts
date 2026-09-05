@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { GARDENFLOW_NAVIGATE_EVENT } from '../../notifications/types';
-import type { AppIntent, AppNavigateEventDetail, GenerationIntent, GardenFlowNavigationAction, PendingChatMessage, SettingsNavigationTarget, ViewType } from './types';
+import type { AppNavigateEventDetail, GenerationIntent, GardenFlowNavigationAction, PendingChatMessage, SettingsNavigationTarget, ViewType } from './types';
 import { resolveFlowOpen } from '../workbench/navigation';
 
 function recordFromUnknown(value: unknown): Record<string, unknown> {
@@ -25,43 +25,8 @@ function shouldAutoOpenTeamSession(session: Record<string, unknown>): boolean {
     || Boolean(metadata.sourceTaskId || metadata.intent || metadata.recommendedRole);
 }
 
-function isAppIntent(detail: AppNavigateEventDetail | null | undefined): detail is AppIntent {
-  return Boolean(detail && typeof detail === 'object' && 'type' in detail);
-}
-
-function normalizeNavigateIntent(detail: AppNavigateEventDetail | null | undefined): AppIntent | null {
-  if (isAppIntent(detail)) return detail;
-
-  const view = detail?.view;
-  if (!view) return null;
-
-  if (view === 'settings') {
-    return {
-      type: 'settings.open',
-      tab: detail.settingsTab,
-      aiModelSubTab: detail.aiModelSubTab,
-    };
-  }
-
-  if (view === 'gardenflow') {
-    return {
-      type: 'gardenflow.open',
-      action: detail.gardenflowAction,
-      sessionId: detail.teamSessionId || detail.sessionId,
-    };
-  }
-
-  if (view === 'approval') {
-    return {
-      type: 'approval.open',
-      docketId: detail.docketId,
-    };
-  }
-
-  return {
-    type: 'view.open',
-    view,
-  };
+function normalizeNavigateIntent(detail: AppNavigateEventDetail | null | undefined): AppNavigateEventDetail | null {
+  return detail && typeof detail === 'object' && 'type' in detail ? detail : null;
 }
 
 type UseGlobalIntentRouterParams = {

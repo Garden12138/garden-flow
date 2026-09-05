@@ -223,7 +223,6 @@ export interface KnowledgeIndexStatus {
     lastIndexedAt?: string | null;
     isBuilding: boolean;
     lastError?: string | null;
-    migrationStatus?: string | null;
     pendingRebuildReason?: string | null;
 }
 

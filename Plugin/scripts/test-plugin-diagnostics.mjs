@@ -3,8 +3,8 @@
 import assert from 'node:assert/strict';
 
 const storage = {};
-let retryAlarmCreates = 0;
-const fetchCalls = [];
+const downloads = [];
+let networkCalls = 0;
 
 globalThis.chrome = {
   runtime: {
@@ -18,38 +18,34 @@ globalThis.chrome = {
       set: async (values) => Object.assign(storage, values),
     },
   },
-  alarms: {
-    get: async () => null,
-    create: async () => {
-      retryAlarmCreates += 1;
+  downloads: {
+    download: async (options) => {
+      downloads.push(options);
+      return downloads.length;
     },
-    clear: async () => {},
   },
 };
 
-globalThis.fetch = async (url, options) => {
-  fetchCalls.push({ url, options });
-  return {
-    ok: true,
-    status: 201,
-    json: async () => ({ success: true }),
-  };
+globalThis.fetch = async () => {
+  networkCalls += 1;
+  throw new Error('diagnostics must not use the network');
 };
 
 const {
-  PLUGIN_DIAGNOSTICS_QUEUE_KEY,
-  PLUGIN_FEEDBACK_ENDPOINT,
+  PLUGIN_DIAGNOSTICS_RECORDS_KEY,
   buildPluginDiagnosticPayload,
   drainPluginDiagnostics,
+  exportPluginDiagnostics,
+  listPluginDiagnostics,
   reportPluginError,
 } = await import('../src/background/diagnostics.js');
 
 const payload = buildPluginDiagnosticPayload(
   Object.assign(new Error('capture failed at https://example.com/private?token=secret'), {
     details: {
-      body: 'page正文不应进入诊断',
+      body: 'page content must not enter diagnostics',
       token: 'secret-token',
-      path: '/Users/jam/private/page.html',
+      path: '/Users/example/private/page.html',
     },
   }),
   {
@@ -59,7 +55,7 @@ const payload = buildPluginDiagnosticPayload(
     sourceOrigin: 'https://example.com/private?token=secret',
     fields: {
       sourceUrl: 'https://example.com/private?token=secret',
-      content: 'page正文不应进入诊断',
+      content: 'page content must not enter diagnostics',
       count: 2,
     },
   },
@@ -69,8 +65,8 @@ const serializedPayload = JSON.stringify(payload);
 assert.equal(payload.fields.sourceOrigin, 'https://example.com');
 assert.equal(payload.fields.sourceUrl, 'https://example.com');
 assert(!serializedPayload.includes('secret-token'));
-assert(!serializedPayload.includes('page正文不应进入诊断'));
-assert(!serializedPayload.includes('/Users/jam/private/page.html'));
+assert(!serializedPayload.includes('page content must not enter diagnostics'));
+assert(!serializedPayload.includes('/Users/example/private/page.html'));
 assert(!serializedPayload.includes('/private?token=secret'));
 
 const first = await reportPluginError(new Error('native host disconnected'), {
@@ -81,18 +77,9 @@ const first = await reportPluginError(new Error('native host disconnected'), {
   code: 'NATIVE_HOST_DISCONNECTED',
   phase: 'native_messaging',
 });
-assert.equal(first.sent, 1);
-assert.equal(first.queued, 0);
-assert.equal(storage[PLUGIN_DIAGNOSTICS_QUEUE_KEY].length, 0);
-assert.equal(fetchCalls.length, 1);
-assert.equal(fetchCalls[0].url, PLUGIN_FEEDBACK_ENDPOINT);
-const firstRequest = JSON.parse(fetchCalls[0].options.body);
-assert.equal(firstRequest.request_kind, 'plugin_error');
-assert.equal(firstRequest.source, 'browser_extension');
-assert.equal(firstRequest.category, 'plugin_connection');
-assert.equal(firstRequest.context.schema, 'gardenflow.browserPluginDiagnostic.v1');
-assert.equal(firstRequest.context.automatic, true);
-assert(!JSON.stringify(firstRequest).includes('native host disconnected at https://'));
+assert.equal(first.localOnly, true);
+assert.equal(first.saved, true);
+assert.equal((await listPluginDiagnostics()).length, 1);
 
 const duplicate = await reportPluginError(new Error('native host disconnected'), {
   category: 'plugin.connection',
@@ -102,43 +89,37 @@ const duplicate = await reportPluginError(new Error('native host disconnected'),
   code: 'NATIVE_HOST_DISCONNECTED',
   phase: 'native_messaging',
 });
-assert.equal(duplicate.skipped, true);
-assert.equal(storage[PLUGIN_DIAGNOSTICS_QUEUE_KEY].length, 0);
-assert.equal(retryAlarmCreates, 1);
+assert.equal(duplicate.localOnly, true);
+assert.equal(duplicate.saved, false);
+assert.equal(duplicate.reason, 'deduplicated');
+assert.equal((await listPluginDiagnostics())[0].occurrences, 2);
 
-globalThis.fetch = async () => {
-  throw new Error('network offline');
-};
-const offline = await reportPluginError(new Error('capture unavailable'), {
-  category: 'plugin.capture',
-  event: 'plugin.capture.failed',
-  operation: 'capture.tab',
-  trigger: 'capture_error',
-  code: 'CAPTURE_UNAVAILABLE',
-  phase: 'content_script',
-});
-assert.equal(offline.sent, 0);
-assert.equal(offline.queued, 1);
-assert.equal(storage[PLUGIN_DIAGNOSTICS_QUEUE_KEY].length, 1);
+for (let index = 0; index < 45; index += 1) {
+  await reportPluginError(new Error(`bounded error ${index}`), {
+    category: 'plugin.bounded-test',
+    event: `plugin.bounded-test.${index}`,
+    operation: `bounded-${index}`,
+    code: `BOUNDED_${index}`,
+  });
+}
+assert.equal(storage[PLUGIN_DIAGNOSTICS_RECORDS_KEY].length, 40);
 
-globalThis.fetch = async (url, options) => {
-  fetchCalls.push({ url, options });
-  return {
-    ok: true,
-    status: 201,
-    json: async () => ({ success: true }),
-  };
-};
-storage[PLUGIN_DIAGNOSTICS_QUEUE_KEY][0].lastAttemptAt = 0;
-const retry = await drainPluginDiagnostics();
-assert.equal(retry.sent, 1);
-assert.equal(retry.queued, 0);
-assert.equal(storage[PLUGIN_DIAGNOSTICS_QUEUE_KEY].length, 0);
-assert.equal(fetchCalls.at(-1).url, PLUGIN_FEEDBACK_ENDPOINT);
+const drain = await drainPluginDiagnostics();
+assert.deepEqual(drain, { success: true, localOnly: true, sent: 0, queued: 40 });
+assert.equal(networkCalls, 0);
+
+const exported = await exportPluginDiagnostics();
+assert.equal(exported.success, true);
+assert.equal(exported.localOnly, true);
+assert.equal(exported.count, 40);
+assert.equal(downloads.length, 1);
+assert.match(downloads[0].url, /^data:application\/json/);
+assert.equal(downloads[0].saveAs, true);
+assert.equal(networkCalls, 0);
 
 console.log(JSON.stringify({
   ok: true,
-  queuedReports: storage[PLUGIN_DIAGNOSTICS_QUEUE_KEY].length,
-  directSubmissions: fetchCalls.length,
-  retryAlarmCreates,
+  localRecords: storage[PLUGIN_DIAGNOSTICS_RECORDS_KEY].length,
+  exportedReports: downloads.length,
+  networkCalls,
 }, null, 2));

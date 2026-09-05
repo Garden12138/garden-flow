@@ -26,6 +26,6 @@ coverage/
 developer_id.key
 developer_id.certSigningRequest
 
-# Personal migration backups and staging data
+# Local backups and staging data
 .gardenflow-backups/
 .gardenflow-stage*/

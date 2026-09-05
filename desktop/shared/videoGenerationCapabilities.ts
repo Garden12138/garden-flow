@@ -1,11 +1,9 @@
 import {
-    ALIYUN_BAILIAN_BEIJING_PUBLIC_ENDPOINT,
-    MINIMAX_VIDEO_BASE_URL,
     isHappyHorseReferenceVideoModel,
     resolveVideoProvider,
+    type VideoProviderPreset,
     type VideoProviderKind,
 } from './videoProvider.ts';
-import { getPrivateGatewayVideoModelMeta } from './privateGateway.ts';
 
 export type VideoGenerationMode = 'text-to-video' | 'reference-guided' | 'first-last-frame' | 'continuation';
 export type VideoResolution = '720p' | '1080p';
@@ -14,6 +12,7 @@ export type VideoAspectRatio = '16:9' | '9:16';
 export type VideoProviderConfig = {
     id: string;
     name: string;
+    preset: VideoProviderPreset;
     endpoint: string;
     apiKey: string;
     model: string;
@@ -80,19 +79,16 @@ export function parseVideoProviderConfigs(settings: Record<string, unknown>): Vi
         const model = String(record.model || '').trim();
         const models = stringList(record.models);
         if (model && !models.includes(model)) models.push(model);
-        const storedEndpoint = String(record.endpoint || '').trim();
-        const endpoint = storedEndpoint
-            || (models.some((item) => item.toLowerCase().startsWith('happyhorse-'))
-                ? ALIYUN_BAILIAN_BEIJING_PUBLIC_ENDPOINT
-                : models.some((item) => item.toLowerCase() === 'minimax-h3')
-                    ? MINIMAX_VIDEO_BASE_URL
-                    : '');
+        const endpoint = String(record.endpoint || '').trim();
+        const preset = String(record.preset || '').trim() as VideoProviderPreset;
+        if (!['aliyun-bailian', 'minimax', 'new-api-aliyun', 'new-api-minimax', 'custom'].includes(preset)) return [];
         const signature = `${endpoint}\n${models.join('\n')}`;
         if (!endpoint || models.length === 0 || seen.has(signature)) return [];
         seen.add(signature);
         return [{
             id: String(record.id || `video-provider-${index + 1}`).trim() || `video-provider-${index + 1}`,
             name: String(record.name || '').trim() || '视频服务商',
+            preset,
             endpoint,
             apiKey: String(record.apiKey || '').trim(),
             model: model || models[0],
@@ -108,6 +104,7 @@ export function parseVideoProviderConfigs(settings: Record<string, unknown>): Vi
     return [{
         id: 'video-provider-current',
         name: '当前视频服务商',
+        preset: 'custom',
         endpoint: String(settings.video_endpoint || '').trim(),
         apiKey: String(settings.video_api_key || '').trim(),
         model: fallbackModel,
@@ -119,43 +116,25 @@ function integerRange(min: number, max: number): number[] {
     return Array.from({ length: Math.max(0, max - min + 1) }, (_, index) => min + index);
 }
 
-export function getVideoModelCapabilities(model: string, endpoint = ''): VideoModelCapabilities {
+export function getVideoModelCapabilities(model: string, endpoint = '', preset?: VideoProviderPreset): VideoModelCapabilities {
     const normalizedModel = String(model || '').trim().toLowerCase();
-    const providerKind = resolveVideoProvider(endpoint, model);
+    const providerKind = resolveVideoProvider(endpoint, model, preset);
 
-    if (providerKind === 'new-api') {
-        const meta = getPrivateGatewayVideoModelMeta(model);
-        if (!meta) {
-            // 网关上未收录元数据的模型走保守默认，避免向 UI 暴露上游未必支持的模式。
-            return {
-                providerKind,
-                supportedModes: ['text-to-video'],
-                aspectRatios: ALL_ASPECT_RATIOS,
-                resolutions: ALL_RESOLUTIONS,
-                durationSeconds: integerRange(4, 15),
-                minReferenceImages: 0,
-                maxReferenceImages: 0,
-                supportsReferenceAudio: false,
-                maxReferenceAudios: 0,
-                referenceAudioFormats: [],
-                supportsGeneratedAudio: false,
-                summary: '私有网关视频生成',
-            };
-        }
+    if (providerKind === 'new-api-aliyun' || providerKind === 'new-api-minimax') {
+        const aliyun = providerKind === 'new-api-aliyun';
         return {
             providerKind,
-            supportedModes: [...meta.modes],
+            supportedModes: aliyun ? ['text-to-video', 'reference-guided'] : ['text-to-video', 'reference-guided', 'first-last-frame'],
             aspectRatios: ALL_ASPECT_RATIOS,
             resolutions: ALL_RESOLUTIONS,
-            durationSeconds: integerRange(meta.minDurationSeconds, meta.maxDurationSeconds),
-            minReferenceImages: meta.minReferenceImages,
-            maxReferenceImages: meta.maxReferenceImages,
-            // 阿里 reference_voice 与 MiniMax 参考音频经 new-api 均会被丢弃。
+            durationSeconds: integerRange(aliyun ? 3 : 4, 15),
+            minReferenceImages: 0,
+            maxReferenceImages: aliyun ? 5 : 9,
             supportsReferenceAudio: false,
             maxReferenceAudios: 0,
             referenceAudioFormats: [],
             supportsGeneratedAudio: false,
-            summary: meta.summary,
+            summary: aliyun ? 'New API · 阿里云视频上游' : 'New API · MiniMax 视频上游',
         };
     }
 
@@ -241,22 +220,6 @@ export function getVideoModelCapabilities(model: string, endpoint = ''): VideoMo
                 : '文生/参考图/首尾帧视频',
         };
     }
-    if (providerKind === 'gardenflow') {
-        return {
-            providerKind,
-            supportedModes: ['text-to-video', 'reference-guided', 'first-last-frame', 'continuation'],
-            aspectRatios: ALL_ASPECT_RATIOS,
-            resolutions: ALL_RESOLUTIONS,
-            durationSeconds: integerRange(5, 12),
-            minReferenceImages: 0,
-            maxReferenceImages: 5,
-            supportsReferenceAudio: false,
-            maxReferenceAudios: 0,
-            referenceAudioFormats: [],
-            supportsGeneratedAudio: false,
-            summary: '文生/参考图/首尾帧/续写',
-        };
-    }
     return {
         providerKind,
         supportedModes: ['text-to-video', 'reference-guided', 'first-last-frame', 'continuation'],
@@ -289,7 +252,7 @@ export function buildVideoModelRoutes(settings: Record<string, unknown>): VideoM
             routes.push({
                 provider,
                 model,
-                capabilities: getVideoModelCapabilities(model, provider.endpoint),
+                capabilities: getVideoModelCapabilities(model, provider.endpoint, provider.preset),
             });
         }
     }

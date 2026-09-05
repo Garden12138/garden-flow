@@ -1,13 +1,19 @@
 ---
-description: 当任务进入选题 framing、标题拟定、完整写稿、改写、扩写或润色时，用它统一语气、结构和禁区。
+name: writing-style
+description: >-
+  当任务进入选题 framing、标题拟定、完整写稿、改写、扩写或润色时，用它统一语气、结构和禁区。
 allowedRuntimeModes: [wander, gardenflow, chatroom]
 hookMode: inline
 autoActivate: true
 activationScope: turn
-activationHint: 当任务进入选题 framing、标题拟定、完整写稿、改写、扩写、润色、内容表达方式调整，或用户明确要求沿用既定写作风格时，可调用 `Operate(resource="skills", operation="invoke", input={ "name": "writing-style" })`。如果用户要做的是文章卡片、图解卡片、演示卡片、电商套图、组图或配图包，不要只因出现“文章”“内容”“标题”这些词就启用它；这类任务优先交给 image-director。
-contextNote: 这是当前空间统一的写作风格底盘。若任务已经进入选题 framing、标题拟定、完整写稿、改写、扩写、润色，或用户明确提到 writing-style，应优先加载它。写作前先读取用户档案和创作者档案，理解自媒体创作目标、目标读者、内容边界和长期风格；但如果目标交付物是卡片图、图解图、演示卡片、电商套图或其它成套图片，就不要让它干扰图片导演类决策。
-promptPrefix: 你当前已加载 writing-style。凡是涉及选题 framing、完整写稿、改写、扩写、润色或内容表达方式调整，都先按这份技能执行。动笔前先读取 `profiles://user` 与 `profiles://creator_profile`，或调用 `Operate(resource="gardenflow.profile", operation="bundle", input={})` 获取档案包，理解用户的自媒体创作目标和长期边界，再开始标题、结构和正文。
-promptSuffix: 如果当前任务不是写作，就不要让 writing-style 主导其他决策；如果当前任务是写作，标题、内容方向、正文和文案细节都必须体现这份技能的约束。所有标题必须控制在 20 个汉字以内，或其它语言下等价的简洁长度。写稿时禁止输出控制字符、非正文占位标记或孤立分隔线。
+activationHint: >-
+  当任务进入选题 framing、标题拟定、完整写稿、改写、扩写、润色、内容表达方式调整，或用户明确要求沿用既定写作风格时，可调用 `Operate(resource="skills", operation="invoke", input={ "name": "writing-style" })`。如果用户要做的是文章卡片、图解卡片、演示卡片、电商套图、组图或配图包，不要只因出现“文章”“内容”“标题”这些词就启用它；这类任务优先交给 image-director。
+contextNote: >-
+  这是当前空间统一的写作风格底盘。若任务已经进入选题 framing、标题拟定、完整写稿、改写、扩写、润色，或用户明确提到 writing-style，应优先加载它。写作前先读取用户档案和创作者档案，理解自媒体创作目标、目标读者、内容边界和长期风格；但如果目标交付物是卡片图、图解图、演示卡片、电商套图或其它成套图片，就不要让它干扰图片导演类决策。
+promptPrefix: >-
+  你当前已加载 writing-style。凡是涉及选题 framing、完整写稿、改写、扩写、润色或内容表达方式调整，都先按这份技能执行。动笔前先读取 `profiles://user` 与 `profiles://creator_profile`，或调用 `Operate(resource="gardenflow.profile", operation="bundle", input={})` 获取档案包，理解用户的自媒体创作目标和长期边界，再开始标题、结构和正文。
+promptSuffix: >-
+  如果当前任务不是写作，就不要让 writing-style 主导其他决策；如果当前任务是写作，标题、内容方向、正文和文案细节都必须体现这份技能的约束。所有标题必须控制在 20 个汉字以内，或其它语言下等价的简洁长度。写稿时禁止输出控制字符、非正文占位标记或孤立分隔线。
 maxPromptChars: 3600
 ---
 # Writing Style

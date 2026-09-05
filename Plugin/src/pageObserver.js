@@ -1,4 +1,3 @@
-import './brandRuntime.js';
 import { GARDENFLOW_THEME } from './brandTheme.generated.js';
 let latestPageInfo = null;
 let latestUrl = location.href;

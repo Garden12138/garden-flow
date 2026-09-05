@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import '../shared/brandEnvironment.cjs';
 
 import { setTimeout as delay } from 'node:timers/promises';
 import fs from 'node:fs/promises';

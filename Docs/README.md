@@ -1,38 +1,22 @@
-# GardenFlow 项目文档
+# GardenFlow 文档
 
-本目录面向需要本地运行、使用或继续开发本仓库的人。基础文档继承自 GardenFlow 开源快照，GardenFlow 的迁移基线与当前验收范围见迁移记录。
+这里记录当前公开仓库中可以验证的产品、架构与维护方式。
 
-## 文档导航
+| 文档 | 内容 |
+| --- | --- |
+| [使用手册](./USER_MANUAL.md) | 首次启动、空间、采集、知识、灵感、创作、生成、自动化和隐私 |
+| [AI 供应商](./AI_PROVIDERS.md) | 文本与多媒体供应商、路由、配置检查和错误处理 |
+| [架构](./ARCHITECTURE.md) | 进程、模块、数据、IPC、浏览器桥和安全边界 |
+| [本地开发与部署](./LOCAL_DEPLOYMENT.md) | 环境、源码运行、调试、配置和备份 |
+| [测试与验收](./TESTING.md) | 静态检查、测试、构建、冷启动和隐私验证 |
+| [安装包构建](./PACKAGING.md) | 无签名构建、平台产物、签名与发布前检查 |
+| [自然编辑部界面规范](./NATURAL_NEWSROOM_UI.md) | 信息架构、视觉令牌、布局与交互原则 |
 
-| 文档 | 适合读者 | 内容 |
-| --- | --- | --- |
-| [迁移记录](./MIGRATION.md) | 开发者、维护者 | GardenFlow 迁移基线、保留范围、初始化调整和验收结果 |
-| [项目架构](./ARCHITECTURE.md) | 开发者、维护者 | 产品边界、运行时架构、模块、数据流、持久化和扩展点 |
-| [本地部署](./LOCAL_DEPLOYMENT.md) | 部署者、开发者 | 环境准备、源码启动、本地模型、打包、验收、备份和故障排查 |
-| [安装包构建](./PACKAGING.md) | 发布者、测试人员 | 新机器自举环境、macOS/Windows 一键打包、签名和故障排查 |
-| [使用手册](./USER_MANUAL.md) | 最终用户、测试人员 | 首次配置、各工作台操作、典型工作流、数据管理和常见问题 |
-| [自然编辑部界面规范](./NATURAL_NEWSROOM_UI.md) | 设计师、开发者、测试人员 | 新版信息架构、视觉令牌、布局、快捷键、响应式规则和页面模式 |
-| [自测步骤：网关 + 自动化](./SELF_TEST_NEWAPI_AND_AUTOMATION.md) | 测试人员、开发者 | new-api 网关、对话建任务、内置小红书采集（插件编排）的验收清单与实测结论 |
+模块文档：
 
-相关模块文档：
+- [浏览器采集扩展](../Plugin/README.md)
+- [renderer 架构](../desktop/src/README.md)
+- [bridge 约定](../desktop/src/bridge/README.md)
+- [FreeCut 归属](../desktop/src/vendor/freecut/ATTRIBUTION.md)
 
-- [桌面 renderer 说明](../desktop/src/README.md)
-- [浏览器插件说明](../Plugin/README.md)
-- [插件通用网页采集架构](../Plugin/docs/generic-web-capture-architecture.md)
-
-## 名称与版本说明
-
-当前仓库名为 **GardenFlow**。迁移暂时保留源项目的 **GardenFlow / GardenFlow** 产品名称，以及 `gardenflow-*`、`gardenflow-*` 和 `gardenflow-*` 等兼容名称。它们通常出现在应用 ID、数据库文件、协议名、IPC channel、工作目录和历史迁移代码中，不代表存在多套产品。
-
-各模块版本独立维护：
-
-- 桌面开源快照：以 `desktop/package.json` 为准。
-- 浏览器插件：以 `Plugin/package.json` 为准。
-- 根 `README.md`：面向产品和发布信息，不作为源码版本号的唯一依据。
-
-## 维护约定
-
-- 功能、命令或目录发生变化时，同步更新对应文档。
-- 文档只声明开源仓库中可验证的能力；生产版专有能力应明确标为未包含或降级。
-- 路径使用仓库相对路径，不写个人机器的绝对路径。
-- 部署命令优先来自各模块 `package.json`，避免复制已经失效的历史命令。
+文档约定：命令以各级 `package.json` 为准；配置示例不包含真实密钥、私有地址或个人绝对路径；产品名、协议、数据库和 Native Host 统一使用当前 GardenFlow 契约。

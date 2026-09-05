@@ -208,7 +208,7 @@ function queueMode(value: unknown): 'free_creation' | 'ai_generation' {
 function providerKeyFor(kind: string, request: Record<string, unknown>): string {
   const explicit = optionalText(request.providerKey) || optionalText(request.provider);
   if (explicit) return explicit;
-  if (kind === 'video' || kind === 'video_sequence') return 'gardenflow-official';
+  if (kind === 'video' || kind === 'video_sequence') return 'configured-video-provider';
   if (kind === 'audio' || kind === 'audio_sequence' || kind === 'voice_clone') return 'voice-gateway';
   return optionalText(request.providerTemplate) || 'openai-compatible';
 }
@@ -451,31 +451,6 @@ async function synthesizeSpeechAsset(request: Record<string, unknown>): Promise<
   return { asset, voiceId, model };
 }
 
-async function uploadRemoteTempFile(filePath: string, payload: Record<string, unknown>): Promise<Record<string, unknown> | null> {
-  const settings = readSettings();
-  const endpoint = normalizeApiBaseUrl(endpointFromRequest(payload, settings));
-  const apiKey = apiKeyFromRequest(payload, settings);
-  if (!endpoint || !apiKey || !/api\.ziz\.hk|gardenflow/i.test(endpoint)) return null;
-  const bytes = await fs.readFile(filePath);
-  const contentType = text(payload.contentType) || 'application/octet-stream';
-  const keyPrefix = text(payload.keyPrefix) || 'ai/digital-human';
-  const form = new FormData();
-  form.append('file', new Blob([bytes], { type: contentType }), path.basename(filePath));
-  form.append('key_prefix', keyPrefix);
-  form.append('content_type', contentType);
-  const response = await fetch(safeUrlJoin(endpoint, '/upload/file-buffer'), {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}` },
-    body: form,
-  });
-  if (!response.ok) throw new Error(`媒体上传失败 (${response.status})`);
-  const parsed = await response.json() as Record<string, unknown>;
-  const fileUrl = text(parsed.file_url) || text(parsed.fileUrl) || text(parsed.url)
-    || (parsed.data && typeof parsed.data === 'object' ? text((parsed.data as Record<string, unknown>).file_url) || text((parsed.data as Record<string, unknown>).url) : '');
-  if (!fileUrl) throw new Error('媒体上传响应缺少 fileUrl');
-  return { success: true, fileUrl, url: fileUrl, contentType, keyPrefix, upload: parsed };
-}
-
 export async function stageGenerationTempFile(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
   const rawPath = text(payload.path) || text(payload.filePath) || text(payload.sourcePath);
   if (!rawPath) return { success: false, error: 'generation:upload-temp-file requires path' };
@@ -489,11 +464,6 @@ export async function stageGenerationTempFile(payload: Record<string, unknown>):
   if (!stat?.isFile()) return { success: false, error: `file does not exist: ${sourcePath}` };
   if (stat.size === 0) return { success: false, error: 'upload file is empty' };
   if (stat.size > MAX_UPLOAD_BYTES) return { success: false, error: 'upload file is too large' };
-  const remote = await uploadRemoteTempFile(sourcePath, payload).catch((error) => ({
-    success: false,
-    error: error instanceof Error ? error.message : String(error),
-  }));
-  if (remote?.success) return remote;
   const targetDir = path.join(getWorkspacePaths().base, '.gardenflow', 'media-runtime', 'uploads');
   await fs.mkdir(targetDir, { recursive: true });
   const targetPath = path.join(targetDir, `${Date.now()}-${path.basename(sourcePath).replace(/[^a-zA-Z0-9._-]+/g, '_')}`);
@@ -505,7 +475,6 @@ export async function stageGenerationTempFile(payload: Record<string, unknown>):
     url: fileUrl,
     path: targetPath,
     local: true,
-    remoteError: remote?.error,
   };
 }
 

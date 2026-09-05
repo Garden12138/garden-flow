@@ -92,11 +92,3 @@ test('leaves non-persistent gardenflow writes on the trusted path', () => {
     assert.equal(analysis.className, 'trusted-write');
     assert.equal(analysis.requiresUserAcknowledgement, undefined);
 });
-
-// Historical commands must retain the same confirmation boundary as the new namespace.
-test('legacy CLI aliases and GardenFlow commands have identical permissions', () => {
-    const expected = analyzeAppCliCommand('gardenflow schedule-add --name task --prompt test', { interactive: true });
-    for (const command of ['redclaw schedule-add --name task --prompt test', 'redconvert redclaw schedule-add --name task --prompt test', 'app_cli gardenflow schedule-add --name task --prompt test']) {
-        assert.deepEqual(analyzeAppCliCommand(command, { interactive: true }), expected);
-    }
-});

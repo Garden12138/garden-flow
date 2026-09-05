@@ -8,7 +8,7 @@ import {
   logDebugEvent,
 } from './debugLogger';
 
-export interface DiagnosticsPendingReport {
+export interface DiagnosticReport {
   id: string;
   trigger: string;
   status: string;
@@ -16,10 +16,6 @@ export interface DiagnosticsPendingReport {
   updatedAt: string;
   summary: string;
   includeAdvancedContext: boolean;
-  lastError?: string | null;
-  uploadedAt?: string | null;
-  lastAttemptAt?: string | null;
-  dedupeKey?: string | null;
   bundleFileName?: string | null;
   metadata?: unknown;
 }
@@ -32,7 +28,6 @@ type FeedbackReportPayload = {
   source?: string;
   contact?: string;
   includeAdvancedContext?: boolean;
-  uploadNow?: boolean;
   context?: Record<string, unknown>;
 };
 
@@ -49,8 +44,8 @@ function reportsRoot(): string {
   return path.join(app.getPath('userData'), 'diagnostic-reports');
 }
 
-function pendingDir(): string {
-  return path.join(reportsRoot(), 'pending');
+function recordsDir(): string {
+  return path.join(reportsRoot(), 'records');
 }
 
 function exportDir(): string {
@@ -66,12 +61,46 @@ function slug(value: string): string {
 }
 
 function reportPath(reportId: string): string {
-  return path.join(pendingDir(), `${slug(reportId)}.json`);
+  return path.join(recordsDir(), `${slug(reportId)}.json`);
 }
 
 async function ensureReportDirs(): Promise<void> {
-  await fs.mkdir(pendingDir(), { recursive: true });
+  await fs.mkdir(recordsDir(), { recursive: true });
   await fs.mkdir(exportDir(), { recursive: true });
+}
+
+const MAX_REPORTS = 40;
+const MAX_TEXT_CHARS = 4_000;
+const SENSITIVE_KEY_PATTERN = /authorization|cookie|credential|password|passwd|secret|token|api[_-]?key|access[_-]?key|refresh|html|markdown|body|page[_-]?(?:content|text)|raw[_-]?(?:content|html)|attachment|base64|binary|blob/i;
+
+function redactText(value: unknown, maxChars = MAX_TEXT_CHARS): string {
+  return String(value ?? '')
+    .replace(/data:(?:image|audio|video)\/[\w.+-]+;base64,[^\s]+/gi, '[REDACTED_DATA_URI]')
+    .replace(/bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [REDACTED_SECRET]')
+    .replace(/([?&](?:token|access_token|refresh_token|api_key|apikey|secret|signature)=)[^&\s]+/gi, '$1[REDACTED_SECRET]')
+    .replace(/((?:api[_-]?key|token|secret|password|cookie|authorization)["']?\s*[:=]\s*["']?)[^\s,"'}]+/gi, '$1[REDACTED_SECRET]')
+    .replace(/(?:[A-Za-z]:\\|\/Users\/|\/home\/|\/var\/folders\/)[^\s,;"']+/g, '[REDACTED_PATH]')
+    .slice(0, maxChars);
+}
+
+function sanitizeValue(value: unknown, key = '', depth = 0): unknown {
+  if (SENSITIVE_KEY_PATTERN.test(key)) return '[REDACTED_SENSITIVE_FIELD]';
+  if (depth > 4) return '[TRUNCATED]';
+  if (value == null || typeof value === 'boolean' || typeof value === 'number') return value;
+  if (typeof value === 'string') return redactText(value);
+  if (Array.isArray(value)) return value.slice(0, 30).map((item) => sanitizeValue(item, key, depth + 1));
+  if (typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .slice(0, 60)
+        .map(([childKey, childValue]) => [childKey, sanitizeValue(childValue, childKey, depth + 1)]),
+    );
+  }
+  return redactText(value);
+}
+
+function sanitizedLogs(limit: number): string[] {
+  return getRecentDebugLogs(limit).map((line) => redactText(line, 8_000));
 }
 
 function nowIso(): string {
@@ -84,25 +113,34 @@ function summarize(value: string, fallback: string): string {
   return text.length > 80 ? `${text.slice(0, 80)}...` : text;
 }
 
-async function readReport(filePath: string): Promise<DiagnosticsPendingReport | null> {
+async function readReport(filePath: string): Promise<DiagnosticReport | null> {
   try {
     const raw = await fs.readFile(filePath, 'utf8');
-    const parsed = JSON.parse(raw) as DiagnosticsPendingReport;
+    const parsed = JSON.parse(raw) as DiagnosticReport;
     return parsed && typeof parsed.id === 'string' ? parsed : null;
   } catch {
     return null;
   }
 }
 
-async function writeReport(report: DiagnosticsPendingReport): Promise<DiagnosticsPendingReport> {
+async function writeReport(report: DiagnosticReport): Promise<DiagnosticReport> {
   await ensureReportDirs();
   await fs.writeFile(reportPath(report.id), `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+  const entries = await fs.readdir(recordsDir(), { withFileTypes: true });
+  const files = await Promise.all(entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
+    .map(async (entry) => ({
+      path: path.join(recordsDir(), entry.name),
+      modifiedAt: (await fs.stat(path.join(recordsDir(), entry.name))).mtimeMs,
+    })));
+  const stale = files.sort((left, right) => right.modifiedAt - left.modifiedAt).slice(MAX_REPORTS);
+  await Promise.all(stale.map((entry) => fs.rm(entry.path, { force: true })));
   return report;
 }
 
 export async function getDiagnosticsLogStatus() {
   await ensureReportDirs();
-  const pending = await listPendingDiagnosticReports();
+  const records = await listDiagnosticReports();
   return {
     enabled: true,
     logDirectory: getDebugLogDirectory(),
@@ -110,9 +148,7 @@ export async function getDiagnosticsLogStatus() {
     retentionDays: 7,
     maxFileMb: 10,
     recentPreviewLimit: 200,
-    uploadConfigured: false,
-    uploadEndpoint: null,
-    pendingCount: pending.length,
+    recordCount: records.length,
     debugVerboseEnabled: isDebugLoggingEnabled(),
     previousUncleanShutdown: false,
   };
@@ -120,7 +156,7 @@ export async function getDiagnosticsLogStatus() {
 
 export function getRecentDiagnosticsLogs(limit = 200) {
   return {
-    lines: getRecentDebugLogs(Number.isFinite(limit) ? Math.max(1, Math.min(limit, 1000)) : 200),
+    lines: sanitizedLogs(Number.isFinite(limit) ? Math.max(1, Math.min(limit, 1000)) : 200),
   };
 }
 
@@ -140,21 +176,21 @@ export async function openDiagnosticsReportDirectory(): Promise<{ success: boole
   }
 }
 
-export async function listPendingDiagnosticReports(): Promise<DiagnosticsPendingReport[]> {
+export async function listDiagnosticReports(): Promise<DiagnosticReport[]> {
   await ensureReportDirs();
-  const entries = await fs.readdir(pendingDir(), { withFileTypes: true }).catch(() => []);
+  const entries = await fs.readdir(recordsDir(), { withFileTypes: true }).catch(() => []);
   const reports = await Promise.all(
     entries
       .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
-      .map((entry) => readReport(path.join(pendingDir(), entry.name))),
+      .map((entry) => readReport(path.join(recordsDir(), entry.name))),
   );
   return reports
-    .filter((report): report is DiagnosticsPendingReport => Boolean(report))
+    .filter((report): report is DiagnosticReport => Boolean(report))
     .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)));
 }
 
 export async function createFeedbackReport(payload: FeedbackReportPayload) {
-  const content = String(payload?.content || payload?.title || '').trim();
+  const content = redactText(payload?.content || payload?.title || '').trim();
   if (!content) {
     return { success: false, error: 'content is required' };
   }
@@ -162,34 +198,30 @@ export async function createFeedbackReport(payload: FeedbackReportPayload) {
   const createdAt = nowIso();
   const id = `feedback-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const includeAdvancedContext = Boolean(payload.includeAdvancedContext);
-  const report: DiagnosticsPendingReport = {
+  const report: DiagnosticReport = {
     id,
     trigger: 'manual-feedback',
-    status: 'pending',
+    status: 'saved',
     createdAt,
     updatedAt: createdAt,
     summary: summarize(payload.title || content, '用户反馈'),
     includeAdvancedContext,
-    lastError: null,
-    uploadedAt: null,
-    lastAttemptAt: null,
-    dedupeKey: null,
     bundleFileName: null,
     metadata: {
       kind: 'feedback',
-      title: String(payload.title || '').trim(),
+      title: redactText(payload.title || '').trim(),
       content,
       category: payload.category || 'desktop_bug',
       priority: payload.priority || 'medium',
       source: payload.source || 'desktop',
-      contact: String(payload.contact || '').trim(),
-      context: payload.context || {},
-      recentLogs: getRecentDebugLogs(includeAdvancedContext ? 300 : 120),
+      contact: redactText(payload.contact || '', 320).trim(),
+      context: sanitizeValue(payload.context || {}),
+      recentLogs: sanitizedLogs(includeAdvancedContext ? 300 : 120),
     },
   };
   await writeReport(report);
   logDebugEvent('diagnostics', 'info', 'feedback report created', { reportId: id, summary: report.summary });
-  return { success: true, uploaded: false, report };
+  return { success: true, report };
 }
 
 export async function createAutoDiagnosticReport(payload?: AutoReportPayload) {
@@ -210,7 +242,6 @@ export async function createAutoDiagnosticReport(payload?: AutoReportPayload) {
     priority: level === 'error' ? 'high' : 'medium',
     source: 'renderer-auto',
     includeAdvancedContext: false,
-    uploadNow: false,
     context: {
       kind: 'auto-renderer-report',
       trigger,
@@ -226,7 +257,7 @@ export async function exportDiagnosticBundle(reportId?: string, payload?: { incl
   await ensureReportDirs();
   const targetId = String(reportId || '').trim();
   const includeAdvancedContext = Boolean(payload?.includeAdvancedContext);
-  let report: DiagnosticsPendingReport | null = null;
+  let report: DiagnosticReport | null = null;
 
   if (targetId) {
     report = await readReport(reportPath(targetId));
@@ -241,8 +272,7 @@ export async function exportDiagnosticBundle(reportId?: string, payload?: { incl
     reportId: exportId,
     report,
     includeAdvancedContext,
-    logDirectory: getDebugLogDirectory(),
-    recentLogs: getRecentDebugLogs(includeAdvancedContext ? 500 : 200),
+    recentLogs: sanitizedLogs(includeAdvancedContext ? 500 : 200),
   };
   await fs.writeFile(exportPath, `${JSON.stringify(bundle, null, 2)}\n`, 'utf8');
 
@@ -253,18 +283,6 @@ export async function exportDiagnosticBundle(reportId?: string, payload?: { incl
   }
 
   return { success: true, reportId: exportId, path: exportPath };
-}
-
-export async function uploadDiagnosticReport(reportId: string) {
-  const targetId = String(reportId || '').trim();
-  if (!targetId) return { success: false, error: 'reportId is required' };
-  const report = await readReport(reportPath(targetId));
-  if (!report) return { success: false, error: 'Report not found' };
-  report.lastAttemptAt = nowIso();
-  report.lastError = '开源 Electron 版未配置诊断上传服务，请导出诊断包后手动发送。';
-  report.updatedAt = report.lastAttemptAt;
-  await writeReport(report);
-  return { success: false, report, error: report.lastError };
 }
 
 export async function dismissDiagnosticReport(reportId: string) {
@@ -285,6 +303,6 @@ export function appendRendererDiagnosticLog(payload?: {
   const category = String(payload?.category || 'renderer').trim() || 'renderer';
   const event = String(payload?.event || 'event').trim() || 'event';
   const message = String(payload?.message || event);
-  logDebugEvent(category, level, message, payload?.fields);
+  logDebugEvent(category, level, redactText(message), sanitizeValue(payload?.fields));
   return { success: true };
 }

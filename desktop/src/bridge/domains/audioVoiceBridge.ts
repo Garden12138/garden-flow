@@ -1,44 +1,14 @@
 import type { BridgeCore } from '../types';
 
-const voiceUnavailable = {
-  success: false,
-  status: 'unavailable',
-  error: 'Voice generation is unavailable in the Electron archive',
-};
-
 export function createAudioVoiceBridge(core: BridgeCore) {
   return {
     voice: {
-      list: (payload?: Record<string, unknown>) => core.invokeChannelGuarded(
-        'voice:list',
-        payload || {},
-        { fallback: { success: true, voices: [], items: [] } },
-      ),
-      get: (payload: { voiceId: string }) => core.invokeChannelGuarded(
-        'voice:get',
-        payload,
-        { fallback: { ...voiceUnavailable, voice: null } },
-      ),
-      clone: (payload: Record<string, unknown>) => core.invokeChannelGuarded(
-        'voice:clone',
-        payload,
-        { fallback: voiceUnavailable },
-      ),
-      bindAsset: (payload: Record<string, unknown>) => core.invokeChannelGuarded(
-        'voice:bind-asset',
-        payload,
-        { fallback: voiceUnavailable },
-      ),
-      speech: (payload: Record<string, unknown>) => core.invokeChannelGuarded(
-        'voice:speech',
-        payload,
-        { fallback: voiceUnavailable },
-      ),
-      delete: (payload: { voiceId: string }) => core.invokeChannelGuarded(
-        'voice:delete',
-        payload,
-        { fallback: voiceUnavailable },
-      ),
+      list: (payload?: Record<string, unknown>) => core.invokeChannel('voice:list', payload || {}),
+      get: (payload: { voiceId: string }) => core.invokeChannel('voice:get', payload),
+      clone: (payload: Record<string, unknown>) => core.invokeChannel('voice:clone', payload),
+      bindAsset: (payload: Record<string, unknown>) => core.invokeChannel('voice:bind-asset', payload),
+      speech: (payload: Record<string, unknown>) => core.invokeChannel('voice:speech', payload),
+      delete: (payload: { voiceId: string }) => core.invokeChannel('voice:delete', payload),
     },
     audio: {
       getCaptureCapability: () => core.invokeChannel('audio:get-capture-capability'),

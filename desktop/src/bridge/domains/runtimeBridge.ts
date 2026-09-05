@@ -8,13 +8,9 @@ export function createRuntimeBridge(core: BridgeCore) {
       resume: (payload: { sessionId: string }) => core.invokeChannel('runtime:resume', payload),
       forkSession: (payload: { sessionId: string }) => core.invokeChannel('runtime:fork-session', payload),
       exportSession: (payload: { sessionId: string; includeChildSessions?: boolean; writePackage?: boolean }) =>
-        core.invokeChannelGuarded('runtime:export-session', payload, {
-          fallback: { success: false, error: 'Runtime session export is unavailable in the Electron archive' },
-        }),
+        core.invokeChannel('runtime:export-session', payload),
       importSession: (payload: { packagePath: string; overwrite?: boolean }) =>
-        core.invokeChannelGuarded('runtime:import-session', payload, {
-          fallback: { success: false, error: 'Runtime session import is unavailable in the Electron archive' },
-        }),
+        core.invokeChannel('runtime:import-session', payload),
       getTrace: (payload: { sessionId: string; limit?: number }) => core.invokeChannel('runtime:get-trace', payload),
       getCheckpoints: (payload: { sessionId: string; limit?: number }) =>
         core.invokeChannel('runtime:get-checkpoints', payload),

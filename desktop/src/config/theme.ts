@@ -79,8 +79,6 @@ const TOKEN_TO_CSS_VAR: Record<keyof AppBrandThemeModeTokens, string> = {
   moduleRepurposeIcon: '--module-repurpose-icon',
   moduleScheduleBg: '--module-schedule-bg',
   moduleScheduleIcon: '--module-schedule-icon',
-  moduleAnalyticsBg: '--module-analytics-bg',
-  moduleAnalyticsIcon: '--module-analytics-icon',
   moduleBrandBg: '--module-brand-bg',
   moduleBrandIcon: '--module-brand-icon',
 };

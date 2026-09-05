@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import '../brandEnvironment.cjs';
 
 import fs from 'node:fs/promises';
 import net from 'node:net';
@@ -17,13 +16,8 @@ const runtimeEnv = runtimeProcess?.env && typeof runtimeProcess.env === 'object'
   : {};
 const runtimePlatform = runtimeProcess?.platform || os.platform();
 const defaultStateRoot = resolveDefaultStateRoot();
-const defaultEndpointStatePath = runtimeEnv.GARDENFLOW_BROWSER_CONTROL_ENDPOINT_STATE
-  || path.join(defaultStateRoot, 'browser-control-agent-endpoint.json');
 const defaultEndpointsDirectory = runtimeEnv.GARDENFLOW_BROWSER_CONTROL_ENDPOINTS_DIRECTORY
-  || path.join(path.dirname(defaultEndpointStatePath), 'browser-control-agent-endpoints');
-const defaultSocketPath = runtimePlatform === 'win32'
-  ? '\\\\.\\pipe\\gardenflow-browser-control'
-  : path.join(os.tmpdir(), `gardenflow-browser-control-${currentUserId()}.sock`);
+  || path.join(defaultStateRoot, 'browser-control-agent-endpoints');
 const defaultTimeoutMs = Number(runtimeEnv.GARDENFLOW_BROWSER_CONTROL_CLIENT_TIMEOUT_MS || 30_000);
 const endpointStaleAfterMs = Number(runtimeEnv.GARDENFLOW_BROWSER_CONTROL_ENDPOINT_STALE_MS || 120_000);
 const maxEndpointResponseBytes = 8 * 1024 * 1024;
@@ -33,15 +27,6 @@ function resolveDefaultStateRoot() {
   if (runtimePlatform === 'darwin') return path.join(os.homedir(), 'Library/Application Support/GardenFlow/native-host');
   if (runtimePlatform === 'win32') return path.join(runtimeEnv.APPDATA || path.join(os.homedir(), 'AppData/Roaming'), 'GardenFlow/native-host');
   return path.join(runtimeEnv.XDG_DATA_HOME || path.join(os.homedir(), '.local/share'), 'GardenFlow/native-host');
-}
-
-function currentUserId() {
-  try {
-    const uid = os.userInfo().uid;
-    return uid == null || uid < 0 ? 'user' : String(uid);
-  } catch {
-    return 'user';
-  }
 }
 
 const documentationAliases = new Map([
@@ -76,7 +61,6 @@ export class BrowserControlTransport {
   constructor(options = {}) {
     this.socketPath = options.socketPath || '';
     this.endpoint = isObject(options.endpoint) ? options.endpoint : null;
-    this.endpointStatePath = options.endpointStatePath || defaultEndpointStatePath;
     this.endpointsDirectory = options.endpointsDirectory || defaultEndpointsDirectory;
     this.browserId = String(options.browserId || options.instanceId || options.extensionInstanceId || '').trim();
     this.timeoutMs = Number(options.timeoutMs || defaultTimeoutMs);
@@ -101,13 +85,6 @@ export class BrowserControlTransport {
         } catch {}
       }
     } catch {}
-    try {
-      const state = JSON.parse(await fs.readFile(this.endpointStatePath, 'utf8'));
-      if (isEndpointDescriptor(state) && endpointIsFresh(state) && !descriptors.some((entry) => endpointKey(entry) === endpointKey(state))) {
-        descriptors.push({ ...state, source: 'legacy' });
-      }
-    } catch {}
-    if (!descriptors.length) descriptors.push({ socketPath: defaultSocketPath, id: 'legacy-default', source: 'legacy-default' });
     return dedupeBrowserEndpoints(descriptors.sort(compareEndpointDescriptors));
   }
 
@@ -179,7 +156,6 @@ export class BrowserControlTransport {
 
   withBrowser(browserId) {
     return new BrowserControlTransport({
-      endpointStatePath: this.endpointStatePath,
       endpointsDirectory: this.endpointsDirectory,
       browserId,
       timeoutMs: this.timeoutMs,
@@ -189,7 +165,6 @@ export class BrowserControlTransport {
   withEndpoint(endpoint) {
     return new BrowserControlTransport({
       endpoint,
-      endpointStatePath: this.endpointStatePath,
       endpointsDirectory: this.endpointsDirectory,
       timeoutMs: this.timeoutMs,
     });
@@ -198,7 +173,6 @@ export class BrowserControlTransport {
   withSocketPath(socketPath) {
     return new BrowserControlTransport({
       socketPath,
-      endpointStatePath: this.endpointStatePath,
       endpointsDirectory: this.endpointsDirectory,
       timeoutMs: this.timeoutMs,
     });

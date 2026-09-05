@@ -152,9 +152,6 @@ importers:
       '@remotion/renderer':
         specifier: ^4.0.447
         version: 4.0.450(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@tauri-apps/api':
-        specifier: ^2.0.0
-        version: 2.10.1
       '@types/glob':
         specifier: ^8.1.0
         version: 8.1.0
@@ -2458,9 +2455,6 @@ packages:
   '@szmarczak/http-timer@4.0.6':
     resolution: {integrity: sha512-4BAffykYOgO+5nzBWYwE3W90sBgLJoUPRWWcL8wlyiM8IB8ipJz3UMJ9KXQd1RKQXpKp8Tutn80HZtWsu2u76w==}
     engines: {node: '>=10'}
-
-  '@tauri-apps/api@2.10.1':
-    resolution: {integrity: sha512-hKL/jWf293UDSUN09rR69hrToyIXBb8CjGaWC7gfinvnQrBVvnLr08FeFi38gxtugAVyVcTa5/FD/Xnkb1siBw==}
 
   '@tootallnate/once@2.0.0':
     resolution: {integrity: sha512-XCuKFP5PS55gnMVu3dty8KPatLqUoy/ZYzDzAGCQ8JNFCkLXzmI7vNHCR+XpbZaMWQK/vQubr7PkYq8g470J/A==}
@@ -8275,8 +8269,6 @@ snapshots:
   '@szmarczak/http-timer@4.0.6':
     dependencies:
       defer-to-connect: 2.0.1
-
-  '@tauri-apps/api@2.10.1': {}
 
   '@tootallnate/once@2.0.0': {}
 

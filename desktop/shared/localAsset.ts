@@ -1,7 +1,5 @@
-import compatibility from './brandCompatibility.mjs';
 export const GARDENFLOW_ASSET_PROTOCOL = 'gardenflow-asset';
 export const GARDENFLOW_ASSET_HOST = 'asset';
-export const LEGACY_LOCAL_FILE_PROTOCOL = 'local-file';
 
 export interface LocalAssetByteRange {
     start: number;
@@ -73,18 +71,14 @@ export function isFileUrl(value: string): boolean {
     return /^file:/i.test(String(value || '').trim());
 }
 
-export function isLegacyLocalFileUrl(value: string): boolean {
-    return /^local-file:\/\//i.test(String(value || '').trim());
-}
-
 export function isGardenFlowAssetUrl(value: string): boolean {
-    return [GARDENFLOW_ASSET_PROTOCOL, ...compatibility.identity.legacy.assetProtocols].some(scheme => String(value || '').toLowerCase().startsWith(scheme + '://'));
+    return String(value || '').toLowerCase().startsWith(`${GARDENFLOW_ASSET_PROTOCOL}://`);
 }
 
 export function isLocalAssetSource(value: string): boolean {
     const raw = String(value || '').trim();
     if (!raw) return false;
-    if (isGardenFlowAssetUrl(raw) || isLegacyLocalFileUrl(raw) || isFileUrl(raw) || isLikelyAbsoluteLocalPath(raw)) {
+    if (isGardenFlowAssetUrl(raw) || isFileUrl(raw) || isLikelyAbsoluteLocalPath(raw)) {
         return true;
     }
     const decoded = decodeEncodedLocalPathSource(raw);
@@ -104,10 +98,6 @@ function normalizeAssetPathForUrl(pathValue: string): string {
 function normalizeUriForParsing(raw: string): string {
     return String(raw || '')
         .trim()
-        .replace(/^local-file:\/\/localhost\//i, 'local-file:///')
-        .replace(/^local-file:\/\/([a-zA-Z]:[\\/])/i, 'local-file:///$1')
-        .replace(/^local-file:\/([a-zA-Z]:[\\/])/i, 'local-file:///$1')
-        .replace(/^local-file:([a-zA-Z]:[\\/])/i, 'local-file:///$1')
         .replace(/^file:\/\/([a-zA-Z]:[\\/])/i, 'file:///$1')
         .replace(/^file:\/([a-zA-Z]:[\\/])/i, 'file:///$1')
         .replace(/^file:([a-zA-Z]:[\\/])/i, 'file:///$1')
@@ -122,10 +112,8 @@ export function extractLocalAssetPathCandidate(value: string): string {
         return normalizeAssetPathForUrl(localPathSource);
     }
 
-    if (isGardenFlowAssetUrl(raw) || isLegacyLocalFileUrl(raw) || isFileUrl(raw)) {
-        const parseTarget = isLegacyLocalFileUrl(raw)
-            ? normalizeUriForParsing(raw).replace(/^local-file:/i, 'file:')
-            : normalizeUriForParsing(raw);
+    if (isGardenFlowAssetUrl(raw) || isFileUrl(raw)) {
+        const parseTarget = normalizeUriForParsing(raw);
         try {
             const parsed = new URL(parseTarget);
             let pathname = safeDecodeUriComponent(parsed.pathname || '');
@@ -143,11 +131,6 @@ export function extractLocalAssetPathCandidate(value: string): string {
             if (isGardenFlowAssetUrl(raw)) {
                 return normalizeAssetPathForUrl(
                     safeDecodeUriComponent(raw.replace(new RegExp(`^${GARDENFLOW_ASSET_PROTOCOL}:\\/\\/${GARDENFLOW_ASSET_HOST}\\/?`, 'i'), '')),
-                );
-            }
-            if (isLegacyLocalFileUrl(raw)) {
-                return normalizeAssetPathForUrl(
-                    safeDecodeUriComponent(normalizeUriForParsing(raw).replace(/^local-file:\/+/i, '')),
                 );
             }
             return normalizeAssetPathForUrl(
@@ -172,7 +155,7 @@ export function coerceToGardenFlowAssetUrl(value: string): string {
         const pathCandidate = extractLocalAssetPathCandidate(raw);
         return pathCandidate ? toGardenFlowAssetUrl(pathCandidate) : raw;
     }
-    if (isLegacyLocalFileUrl(raw) || isFileUrl(raw) || isLikelyAbsoluteLocalPath(raw)) {
+    if (isFileUrl(raw) || isLikelyAbsoluteLocalPath(raw)) {
         const pathCandidate = extractLocalAssetPathCandidate(raw);
         return pathCandidate ? toGardenFlowAssetUrl(pathCandidate) : '';
     }

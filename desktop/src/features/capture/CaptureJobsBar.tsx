@@ -144,9 +144,6 @@ export function CaptureJobsBar({ videos = [] }: CaptureJobsBarProps) {
                       {statusLabel(task.status)}{taskDetail(task) ? ` · ${taskDetail(task)}` : ''}
                     </div>
                   </div>
-                  {typeof task.pointsCost === 'number' && task.pointsCost > 0 && (
-                    <div className="shrink-0 text-[11px] text-text-tertiary">{task.pointsCost} pts</div>
-                  )}
                 </div>
               ))}
               {remoteActive.map((job) => (
@@ -157,9 +154,6 @@ export function CaptureJobsBar({ videos = [] }: CaptureJobsBarProps) {
                       {statusLabel(job.status)}{job.progress?.message ? ` · ${job.progress.message}` : ''}
                     </div>
                   </div>
-                  {typeof job.pointsCost === 'number' && job.pointsCost > 0 && (
-                    <div className="shrink-0 text-[11px] text-text-tertiary">{job.pointsCost} pts</div>
-                  )}
                 </div>
               ))}
               {processingVideos.map((video) => (

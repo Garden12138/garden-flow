@@ -1,7 +1,4 @@
 #!/usr/bin/env node
-import compatibility from './brandCompatibility.cjs';
-compatibility.applyEnvironmentAliases(process.env);
-
 import { DesktopBridgeControlClient } from './scripts/desktop-bridge-client.mjs';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.GARDENFLOW_BROWSER_CONTROL_MCP_TIMEOUT_MS || 30_000);

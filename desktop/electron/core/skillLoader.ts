@@ -1,4 +1,3 @@
-import compatibility from '../../shared/brandCompatibility.cjs';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import os from 'os';
@@ -40,7 +39,7 @@ const IGNORE_PATTERNS = [
 ];
 
 function normalizeSkillKey(value: string): string {
-    return compatibility.canonicalKey(String(value || '').trim())
+    return String(value || '').trim()
         .trim()
         .toLowerCase()
         .replace(/\.md$/i, '')

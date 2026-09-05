@@ -1,14 +1,19 @@
 ---
 name: xhs-comment-insight
-description: 小红书评论区洞察选题技能，用于从单条笔记的评论区统计和分析追问、反驳、补充、情绪和未满足需求，生成 1 个可继续创作的小红书选题。
+description: >-
+  小红书评论区洞察选题技能，用于从单条笔记的评论区统计和分析追问、反驳、补充、情绪和未满足需求，生成 1 个可继续创作的小红书选题。
 allowedRuntimeModes: [wander, chatroom]
 hookMode: inline
 autoActivate: false
 activationScope: session
-activationHint: 当选题中心随机挑取一条小红书笔记，并要求分析这条笔记评论区后产出潜在选题时，加载本技能；在 AI 聊天中，当用户明确要求“评论区洞察”、分析一条小红书笔记的评论、从评论里找选题、或输入 `/xhs-comment-insight` 时，也可调用 `Operate(resource="skills", operation="invoke", input={ "name": "xhs-comment-insight" })` 单独激活。
-contextNote: 评论区洞察阶段只处理本轮提供的 1 条笔记与评论摘录；AI 聊天中如果用户没有提供笔记和评论内容，应先要求用户提供评论素材或选择一条带评论的小红书笔记，不要读取长期记忆、账号定位或未提供素材。
-promptPrefix: 你当前已加载 xhs-comment-insight。评论区洞察流程固定为：1 条小红书笔记 -> 统计和分析该笔记评论区 -> 输出 1 个潜在选题。选题中心会随机提供 1 条带评论笔记；AI 聊天中则使用用户本轮提供或指定的 1 条笔记评论素材。它不是评论摘要，也不是复述原笔记；它要从评论里的真实用户问题、误解、反驳、补充信息、情绪和行动需求中提炼一个更值得写的新选题。最终只能输出严格 JSON。
-promptSuffix: 完成前执行 xhs-comment-insight 输出自检：只能输出一个 JSON 对象，不要 Markdown、代码块或解释；topic.title、content_direction、direction_frame 四字段必须完整；topic.connections 必须是 [1]。
+activationHint: >-
+  当选题中心随机挑取一条小红书笔记，并要求分析这条笔记评论区后产出潜在选题时，加载本技能；在 AI 聊天中，当用户明确要求“评论区洞察”、分析一条小红书笔记的评论、从评论里找选题、或输入 `/xhs-comment-insight` 时，也可调用 `Operate(resource="skills", operation="invoke", input={ "name": "xhs-comment-insight" })` 单独激活。
+contextNote: >-
+  评论区洞察阶段只处理本轮提供的 1 条笔记与评论摘录；AI 聊天中如果用户没有提供笔记和评论内容，应先要求用户提供评论素材或选择一条带评论的小红书笔记，不要读取长期记忆、账号定位或未提供素材。
+promptPrefix: >-
+  你当前已加载 xhs-comment-insight。评论区洞察流程固定为：1 条小红书笔记 -> 统计和分析该笔记评论区 -> 输出 1 个潜在选题。选题中心会随机提供 1 条带评论笔记；AI 聊天中则使用用户本轮提供或指定的 1 条笔记评论素材。它不是评论摘要，也不是复述原笔记；它要从评论里的真实用户问题、误解、反驳、补充信息、情绪和行动需求中提炼一个更值得写的新选题。最终只能输出严格 JSON。
+promptSuffix: >-
+  完成前执行 xhs-comment-insight 输出自检：只能输出一个 JSON 对象，不要 Markdown、代码块或解释；topic.title、content_direction、direction_frame 四字段必须完整；topic.connections 必须是 [1]。
 maxPromptChars: 3600
 ---
 # XHS Comment Insight

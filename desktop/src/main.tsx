@@ -17,7 +17,7 @@ import '@fontsource/noto-serif-sc/chinese-simplified-700.css'
 import './index.css'
 import { APP_BRAND } from './config/brand'
 import { applyAppTheme, readThemePreference, resolveThemeMode } from './config/theme'
-import { appAlert, appConfirm } from './utils/appDialogs'
+import { appAlert } from './utils/appDialogs'
 import { installRendererDiagnostics, reportRendererError } from './logging/client'
 import { I18nProvider } from './i18n'
 
@@ -42,30 +42,6 @@ const disableNativeContextMenu = (event: MouseEvent) => {
 };
 
 document.addEventListener('contextmenu', disableNativeContextMenu);
-
-void window.ipcRenderer.logs.onReportPending(async (payload) => {
-  const summary = typeof payload?.summary === 'string'
-    ? payload.summary
-    : '已生成新的诊断报告。';
-  const reportId = typeof payload?.id === 'string' ? payload.id : '';
-  const confirmed = await appConfirm(
-    `${summary}\n\n是否现在上传这份诊断报告？你也可以稍后在“设置 > 常规设置 > 诊断与日志”里处理。`,
-    {
-      title: '发送诊断报告',
-      confirmLabel: '立即上传',
-      cancelLabel: '稍后处理',
-    },
-  );
-  if (!confirmed || !reportId) {
-    return;
-  }
-  const result = await window.ipcRenderer.logs.uploadReport(reportId);
-  if (result?.success) {
-    await appAlert('诊断报告已上传。');
-    return;
-  }
-  await appAlert(`诊断报告上传失败：${result?.error || '未知错误'}`);
-});
 
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: Error | null }> {
   constructor(props: { children: React.ReactNode }) {

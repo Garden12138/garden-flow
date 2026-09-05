@@ -1,5 +1,3 @@
-import { OFFICIAL_AUTO_SOURCE_ID, canonicalizeOfficialAutoSourceId } from '../../config/aiSources';
-import { PRIVATE_GATEWAY_SCOPE_MODELS } from '../../../shared/privateGateway';
 import type { McpServerConfig, RuntimePerfPreset } from '../../pages/settings/shared';
 import { createDefaultMcpServer } from '../../pages/settings/shared';
 
@@ -12,189 +10,6 @@ export const DEFAULT_VISUAL_INDEX_PROMPT_VERSION = 'visual-manifest-v2-zh';
 export const RUNTIME_PERF_HISTORY_LIMIT = 12;
 export const RUNTIME_PERF_TIMELINE_LIMIT = 40;
 export const RUNTIME_PERF_CHECKPOINT_WINDOW_MS = 1500;
-export type AiPricingRate = Record<string, unknown>;
-
-export type AiPricingModel = {
-  model: string;
-  display_name?: string;
-  provider?: string;
-  capability?: string;
-  pricing_mode?: string;
-  points_per_mtoken?: number;
-  points_input_per_mtoken?: number;
-  points_cached_input_per_mtoken?: number;
-  points_cache_write_5m_per_mtoken?: number;
-  points_cache_write_1h_per_mtoken?: number;
-  points_output_per_mtoken?: number;
-  points_per_call?: number;
-  points_per_minute?: number;
-  points_per_100_chars?: number;
-  billing_unit?: string;
-  tts_character_rate?: AiPricingRate;
-  is_default?: boolean;
-  price_table?: AiPricingRate[];
-  image_quality_resolution_rates?: AiPricingRate[];
-  video_resolution_rates?: AiPricingRate[];
-};
-
-export type AiPricingGroup = {
-  type: string;
-  label: string;
-  models: AiPricingModel[];
-};
-
-export type AiPricingCatalog = {
-  object?: string;
-  updated_at?: number | string;
-  groups: AiPricingGroup[];
-};
-
-export const normalizePricingNumber = (value: unknown): number | null => {
-  const numberValue = typeof value === 'number' ? value : Number(value);
-  return Number.isFinite(numberValue) ? numberValue : null;
-};
-
-export const formatPricingPoints = (value: unknown): string => {
-  const numberValue = normalizePricingNumber(value);
-  if (numberValue === null || numberValue <= 0) return '-';
-  return numberValue.toLocaleString();
-};
-
-export const hasMeaningfulPricingValue = (value: unknown): boolean => {
-  if (value === null || value === undefined) return false;
-  if (typeof value === 'number') return Number.isFinite(value) && value !== 0;
-  if (typeof value === 'string') {
-    const normalized = value.trim();
-    if (!normalized) return false;
-    const numberValue = Number(normalized);
-    return !Number.isFinite(numberValue) || numberValue !== 0;
-  }
-  return true;
-};
-
-export const formatPricingUpdatedAt = (value: unknown): string => {
-  const numberValue = normalizePricingNumber(value);
-  if (numberValue && numberValue > 0) {
-    const timestamp = numberValue > 10_000_000_000 ? numberValue : numberValue * 1000;
-    return new Date(timestamp).toLocaleString();
-  }
-  if (typeof value === 'string' && value.trim()) {
-    const date = new Date(value);
-    if (!Number.isNaN(date.getTime())) return date.toLocaleString();
-  }
-  return '未同步';
-};
-
-export const parseAiPricingCatalog = (value: unknown): AiPricingCatalog | null => {
-  const root = value && typeof value === 'object' ? value as Record<string, unknown> : null;
-  const groups = Array.isArray(root?.groups) ? root.groups : [];
-  const normalizedGroups = groups
-    .map((group) => {
-      const groupRecord = group && typeof group === 'object' ? group as Record<string, unknown> : {};
-      const models = Array.isArray(groupRecord.models) ? groupRecord.models : [];
-      return {
-        type: String(groupRecord.type || '').trim() || 'other',
-        label: String(groupRecord.label || groupRecord.type || '其他模型').trim(),
-        models: models
-          .filter((model): model is AiPricingModel => Boolean(model && typeof model === 'object'))
-          .map((model) => model as AiPricingModel),
-      };
-    })
-    .filter((group) => group.models.length > 0);
-  if (!normalizedGroups.length) return null;
-  return {
-    object: typeof root?.object === 'string' ? root.object : undefined,
-    updated_at: typeof root?.updated_at === 'number' || typeof root?.updated_at === 'string' ? root.updated_at : undefined,
-    groups: normalizedGroups,
-  };
-};
-
-export const pricingModeLabel = (mode?: string): string => {
-  switch (mode) {
-    case 'per_mtoken':
-      return '每百万 tokens';
-    case 'per_call':
-      return '按次';
-    case 'per_minute':
-      return '按分钟';
-    case 'per_mchar':
-      return '每 100 字符';
-    default:
-      return mode || '-';
-  }
-};
-
-export const pricingRateLabel = (key: string): string => {
-  switch (key) {
-    case 'quality':
-      return '质量';
-    case 'resolution':
-      return '分辨率';
-    case 'points_per_call':
-      return '积分/次';
-    case 'points_per_second':
-      return '积分/秒';
-    case 'points_per_minute':
-      return '积分/分钟';
-    case 'points_per_100_chars':
-      return '积分/100 字符';
-    case 'price_rmb_per_call':
-      return '人民币/次';
-    case 'price_rmb_per_second':
-      return '人民币/秒';
-    case 'billing_unit':
-      return '单位';
-    case 'note':
-      return '备注';
-    default:
-      return key;
-  }
-};
-
-export const pricingRateValue = (value: unknown): string => {
-  if (value === null || value === undefined || value === '') return '-';
-  if (typeof value === 'number') {
-    return value.toLocaleString(undefined, { maximumFractionDigits: 4 });
-  }
-  return String(value);
-};
-
-export const pricingRateCellValue = (key: string, value: unknown): string => {
-  if (key === 'billing_unit') {
-    const normalized = String(value || '').trim().toLowerCase();
-    if (normalized === 'call') return '次';
-    if (normalized === '100_characters') return '100 字符';
-  }
-  return pricingRateValue(value);
-};
-
-export const pricingModelFields = (model: AiPricingModel, groupType?: string): Array<{ label: string; value: string }> => {
-  if (groupType === 'chat') {
-    return hasMeaningfulPricingValue(model.points_per_mtoken)
-      ? [{ label: '百万 tokens', value: formatPricingPoints(model.points_per_mtoken) }]
-      : [];
-  }
-  const usesCharacterBilling = hasMeaningfulPricingValue(model.points_per_100_chars)
-    || String(model.billing_unit || '').trim().toLowerCase() === '100_characters';
-  const fields: Array<{ label: string; raw: unknown; suffix?: string }> = [
-    { label: '百万 tokens', raw: model.points_per_mtoken },
-    { label: '输入', raw: model.points_input_per_mtoken, suffix: ' / 百万 tokens' },
-    { label: '缓存输入', raw: model.points_cached_input_per_mtoken, suffix: ' / 百万 tokens' },
-    { label: '缓存写入 5m', raw: model.points_cache_write_5m_per_mtoken, suffix: ' / 百万 tokens' },
-    { label: '缓存写入 1h', raw: model.points_cache_write_1h_per_mtoken, suffix: ' / 百万 tokens' },
-    { label: '输出', raw: model.points_output_per_mtoken, suffix: ' / 百万 tokens' },
-    { label: '每 100 字符', raw: model.points_per_100_chars, suffix: ' / 100 字符' },
-    { label: '按次', raw: usesCharacterBilling ? 0 : model.points_per_call, suffix: ' / 次' },
-    { label: '按分钟', raw: model.points_per_minute, suffix: ' / 分钟' },
-  ];
-  return fields
-    .filter((field) => hasMeaningfulPricingValue(field.raw))
-    .map((field) => ({
-      label: field.label,
-      value: `${formatPricingPoints(field.raw)}${field.suffix || ''}`,
-    }));
-};
-
 export const RUNTIME_PERF_PRESETS: RuntimePerfPreset[] = [
   {
     id: 'latency-smoke',
@@ -223,7 +38,7 @@ export type SettingsNavigationTarget = {
   nonce?: number;
 };
 
-export type AiModelRouteMode = 'official' | 'custom' | 'disabled';
+export type AiModelRouteMode = 'custom' | 'disabled';
 export type AiModelRouteScope =
   | 'chat'
   | 'wander'
@@ -249,21 +64,19 @@ export type AiModelRoutes = Record<AiModelRouteScope, AiModelRouteConfig>;
 export const DEFAULT_VIDEO_ANALYSIS_ENABLED = true;
 export const DEFAULT_VISUAL_INDEX_ENABLED = false;
 
-// 默认路由全部指向官方源（= 私有 new-api 网关），模型取网关对外别名。
-// 音色克隆网关无对应上游，默认关闭而不是指向不存在的模型。
 export const DEFAULT_AI_MODEL_ROUTES: AiModelRoutes = {
-  chat: { mode: 'official', sourceId: OFFICIAL_AUTO_SOURCE_ID, model: PRIVATE_GATEWAY_SCOPE_MODELS.chat },
-  wander: { mode: 'official', sourceId: OFFICIAL_AUTO_SOURCE_ID, model: PRIVATE_GATEWAY_SCOPE_MODELS.chat },
-  team: { mode: 'official', sourceId: OFFICIAL_AUTO_SOURCE_ID, model: PRIVATE_GATEWAY_SCOPE_MODELS.chat },
-  knowledge: { mode: 'official', sourceId: OFFICIAL_AUTO_SOURCE_ID, model: PRIVATE_GATEWAY_SCOPE_MODELS.chat },
-  gardenflow: { mode: 'official', sourceId: OFFICIAL_AUTO_SOURCE_ID, model: PRIVATE_GATEWAY_SCOPE_MODELS.chat },
-  transcription: { mode: 'official', sourceId: OFFICIAL_AUTO_SOURCE_ID, model: PRIVATE_GATEWAY_SCOPE_MODELS.transcription },
-  embedding: { mode: 'official', sourceId: OFFICIAL_AUTO_SOURCE_ID, model: PRIVATE_GATEWAY_SCOPE_MODELS.embedding },
-  image: { mode: 'official', sourceId: OFFICIAL_AUTO_SOURCE_ID, model: PRIVATE_GATEWAY_SCOPE_MODELS.image },
-  visualIndex: { mode: 'official', sourceId: OFFICIAL_AUTO_SOURCE_ID, model: PRIVATE_GATEWAY_SCOPE_MODELS.chat },
-  videoAnalysis: { mode: 'official', sourceId: OFFICIAL_AUTO_SOURCE_ID, model: PRIVATE_GATEWAY_SCOPE_MODELS.videoAnalysis },
-  voiceTts: { mode: 'official', sourceId: OFFICIAL_AUTO_SOURCE_ID, model: PRIVATE_GATEWAY_SCOPE_MODELS.voiceTts },
-  voiceClone: { mode: 'disabled', sourceId: OFFICIAL_AUTO_SOURCE_ID, model: DEFAULT_VOICE_CLONE_MODEL },
+  chat: { mode: 'disabled', sourceId: '', model: '' },
+  wander: { mode: 'disabled', sourceId: '', model: '' },
+  team: { mode: 'disabled', sourceId: '', model: '' },
+  knowledge: { mode: 'disabled', sourceId: '', model: '' },
+  gardenflow: { mode: 'disabled', sourceId: '', model: '' },
+  transcription: { mode: 'disabled', sourceId: '', model: '' },
+  embedding: { mode: 'disabled', sourceId: '', model: '' },
+  image: { mode: 'disabled', sourceId: '', model: '' },
+  visualIndex: { mode: 'disabled', sourceId: '', model: '' },
+  videoAnalysis: { mode: 'disabled', sourceId: '', model: '' },
+  voiceTts: { mode: 'disabled', sourceId: '', model: '' },
+  voiceClone: { mode: 'disabled', sourceId: '', model: '' },
 };
 
 export const normalizeModelKey = (value: string) => String(value || '').trim().toLowerCase();
@@ -383,13 +196,9 @@ export function normalizeAiModelRoutes(value: unknown): AiModelRoutes {
     if (!route || typeof route !== 'object') continue;
     const mode = String(route.mode || '').trim();
     next[key] = {
-      mode: mode === 'custom' || mode === 'disabled' || mode === 'official'
-        ? mode
-        : mode === 'inherit'
-          ? 'official'
-          : DEFAULT_AI_MODEL_ROUTES[key].mode,
-      sourceId: canonicalizeOfficialAutoSourceId(String(route.sourceId || '').trim()) || DEFAULT_AI_MODEL_ROUTES[key].sourceId,
-      model: String(route.model || '').trim() || DEFAULT_AI_MODEL_ROUTES[key].model,
+      mode: mode === 'custom' || mode === 'disabled' ? mode : DEFAULT_AI_MODEL_ROUTES[key].mode,
+      sourceId: String(route.sourceId || '').trim(),
+      model: String(route.model || '').trim(),
     };
   }
   return next;

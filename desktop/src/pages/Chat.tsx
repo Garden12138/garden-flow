@@ -508,10 +508,10 @@ interface StructuredChatErrorNotice {
   detail?: string;
   metaParts?: string[];
   tone: 'neutral' | 'warning' | 'danger';
-  kind: 'billing' | 'auth' | 'rate-limit' | 'network' | 'model' | 'attachment' | 'critical' | 'generic';
+  kind: 'quota' | 'auth' | 'rate-limit' | 'network' | 'model' | 'attachment' | 'critical' | 'generic';
   action?: {
     label: string;
-    target: 'settings-login';
+    target: 'settings-ai';
   };
 }
 
@@ -722,7 +722,7 @@ const fixedSessionInflightLoads = new Map<string, Promise<[unknown[], ChatRuntim
 function shouldPreserveFixedSessionWarmMessages(
   warm: FixedSessionWarmSnapshot | null,
   history: unknown[],
-): warm is FixedSessionWarmSnapshot {
+): boolean {
   if (!warm?.messages.length) return false;
   const activeMessage = [...warm.messages].reverse().find((message) => message.role === 'ai' && message.isStreaming);
   if (!activeMessage) return false;
@@ -1174,26 +1174,23 @@ function normalizeChatErrorNotice(payload: ChatErrorEventPayload | string | null
       ? normalizedSearchable.includes(pattern.toLowerCase())
       : pattern.test(searchable)
   ));
-  const isBilling = includesAny([
+  const isQuota = includesAny([
     '余额不足',
-    '积分不足',
     '额度不足',
     'insufficientbalance',
     'insufficientcredit',
     'insufficientquota',
-    'notenoughpoints',
-    'pointsnotenough',
   ]);
-  const isAuth = includesAny(['登陆失效', '登录失效', '未登录', '请先登录', 'unauthorized', 'invalidtoken', 'tokenexpired']);
+  const isAuth = statusCode === 401 || statusCode === 403 || includesAny(['unauthorized', 'invalidtoken', 'tokenexpired', 'invalidapikey', 'incorrectapikey']);
   const isRateLimit = statusCode === 429 || includesAny(['ratelimit', 'toomanyrequests', '请求过于频繁', '限流']);
   const isNetwork = [408, 500, 502, 503, 504].includes(Number(statusCode || 0))
     || includesAny(['timeout', 'timedout', 'fetchfailed', 'badgateway', 'gatewaytimeout', 'serviceunavailable', 'operationwasaborted', '网络']);
   const isModel = includesAny(['modelnotfound', 'unsupportedmodel', '模型不可用', '模型不支持', 'modelunavailable']);
   const isAttachment = includesAny(['attachment', 'filetoolarge', 'unsupportedfile', '不支持该文件', '附件']);
-  const isCritical = !isBilling && !isAuth && !isRateLimit && !isNetwork && !isModel && !isAttachment
+  const isCritical = !isQuota && !isAuth && !isRateLimit && !isNetwork && !isModel && !isAttachment
     && includesAny(['permissiondenied', 'forbidden', '安全策略', '数据损坏', 'fatal', 'panic']);
-  const kind: StructuredChatErrorNotice['kind'] = isBilling
-    ? 'billing'
+  const kind: StructuredChatErrorNotice['kind'] = isQuota
+    ? 'quota'
     : isAuth
       ? 'auth'
       : isRateLimit
@@ -1207,10 +1204,10 @@ function normalizeChatErrorNotice(payload: ChatErrorEventPayload | string | null
               : isCritical
                 ? 'critical'
                 : 'generic';
-  const tone: StructuredChatErrorNotice['tone'] = kind === 'critical' ? 'danger' : kind === 'billing' || kind === 'rate-limit' ? 'warning' : 'neutral';
+  const tone: StructuredChatErrorNotice['tone'] = kind === 'critical' ? 'danger' : kind === 'quota' || kind === 'rate-limit' ? 'warning' : 'neutral';
   const title = (() => {
-    if (kind === 'billing') return '余额不足';
-    if (kind === 'auth') return '账号需要确认';
+    if (kind === 'quota') return '供应商额度不足';
+    if (kind === 'auth') return '供应商鉴权失败';
     if (kind === 'rate-limit') return '请求太频繁';
     if (kind === 'network') return '服务暂时不可用';
     if (kind === 'model') return '当前模型不可用';
@@ -1219,8 +1216,8 @@ function normalizeChatErrorNotice(payload: ChatErrorEventPayload | string | null
   })();
   const friendlyHint = (() => {
     if (hint) return hint;
-    if (kind === 'billing') return '积分不够，本次请求没有继续执行。';
-    if (kind === 'auth') return '登录状态可能已过期，确认账号后可以继续。';
+    if (kind === 'quota') return '请检查供应商账户额度，或切换到其他已配置的 AI 源。';
+    if (kind === 'auth') return '请检查 Endpoint、API Key 和模型访问权限。';
     if (kind === 'rate-limit') return '稍等一下再试即可。';
     if (kind === 'network') return '上游服务短暂不可用，可以稍后重试。';
     if (kind === 'model') return '换一个可用模型后再发送。';
@@ -1241,10 +1238,10 @@ function normalizeChatErrorNotice(payload: ChatErrorEventPayload | string | null
     tone,
     kind,
     metaParts: metaParts.length > 0 ? metaParts : undefined,
-    action: kind === 'billing'
-      ? { label: '去充值', target: 'settings-login' }
+    action: kind === 'quota'
+      ? { label: '检查供应商', target: 'settings-ai' }
       : kind === 'auth'
-      ? { label: '查看账号', target: 'settings-login' }
+      ? { label: '检查配置', target: 'settings-ai' }
       : undefined,
   };
 }
@@ -1340,14 +1337,6 @@ function runtimeEventCreatedAt(event: PersistedRuntimeEvent): number {
 
 function runtimeEventId(event: PersistedRuntimeEvent, fallback: string): string {
   return runtimeText(event.id) || fallback;
-}
-
-function isLegacyInternalRuntimeNarration(payload: Record<string, unknown>): boolean {
-  // Versions before the structured execution-summary contract persisted this
-  // runtime-owned stage label as a visible thought. New runs no longer emit it;
-  // keep this narrow compatibility filter until legacy events age out.
-  return runtimeText(payload.messagePhase) === 'thought'
-    && /^Turn \d+: preparing final response$/i.test(runtimeText(payload.content));
 }
 
 function stringifyRuntimePreview(value: unknown, maxLength = 420): string {
@@ -1493,7 +1482,6 @@ function applyPersistedRuntimeEventsToMessages(
     const eventId = runtimeEventId(event, `runtime_event_${timestamp}_${index}`);
 
     if (eventType === 'runtime:text-delta' || eventType === 'text_delta') {
-      if (isLegacyInternalRuntimeNarration(payload)) return;
       const content = runtimeText(payload.content);
       const stream = runtimeText(payload.stream || 'response');
       const messagePhase = runtimeText(payload.messagePhase || (stream === 'thought' ? 'thought' : 'final_answer'));
@@ -2381,11 +2369,10 @@ export function Chat({
     void loadChatModelOptions();
   }, [isActive, loadChatModelOptions]);
 
-  const handleOpenSettingsLogin = useCallback(() => {
+  const handleOpenAiSettings = useCallback(() => {
     dispatchAppIntent({
       type: 'settings.open',
       tab: 'ai',
-      aiModelSubTab: 'login',
     });
   }, []);
 
@@ -2854,7 +2841,7 @@ export function Chat({
       const messageTimes: Array<number | undefined> = [];
       let uiMessages: Message[] = history.map((msg: any) => {
         const metadata = chatMessageMetadataRecord(msg.metadata);
-        const attachments = uploadedAttachmentsFromPersistedMessage(msg) as UploadedFileAttachment[];
+        const attachments = uploadedAttachmentsFromPersistedMessage(msg) as unknown as UploadedFileAttachment[];
         const attachment = primaryAttachmentFromPersistedMessage(msg) as Message['attachment'] | undefined;
 
         const role = msg.role === 'user' ? 'user' : 'ai';
@@ -2905,8 +2892,9 @@ export function Chat({
         };
       });
       uiMessages = applyPersistedRuntimeEventsToMessages(uiMessages, messageTimes, runtimeEventsRaw);
-      if (warm?.messages.length) {
-        uiMessages = mergeChatMessageSnapshots(uiMessages, warm.messages);
+      const warmMessages = warm?.messages || [];
+      if (warmMessages.length) {
+        uiMessages = mergeChatMessageSnapshots(uiMessages, warmMessages);
       }
 
       const runtimeProcessing = Boolean(runtimeState?.success && runtimeState?.isProcessing);
@@ -3236,10 +3224,8 @@ export function Chat({
       void loadChatModelOptions();
     };
     const unsubscribeSettingsUpdated = subscribeSettingsUpdated(refreshChatModels);
-    window.ipcRenderer.auth.onDataChanged(refreshChatModels);
     return () => {
       unsubscribeSettingsUpdated();
-      window.ipcRenderer.auth.offDataChanged(refreshChatModels);
     };
   }, [isActive, loadChatModelOptions]);
 
@@ -3558,7 +3544,7 @@ export function Chat({
             }
         });
 
-        // Also update legacy tools array
+        // Keep the compact tool projection in sync with the timeline.
         const newTool: ToolEvent = {
           id: Math.random().toString(36),
           callId: toolData.callId,
@@ -3603,18 +3589,6 @@ export function Chat({
             }
         }
 
-        // Fallback by name for backward compatibility
-        if (matchedIndex === -1) {
-          for (let i = newTimeline.length - 1; i >= 0; i--) {
-              if (newTimeline[i].type === 'tool-call' && newTimeline[i].status === 'running') {
-                  if (newTimeline[i].toolData?.name === toolData.name) {
-                    matchedIndex = i;
-                    break;
-                  }
-              }
-          }
-        }
-
         if (matchedIndex !== -1) {
           const targetItem = newTimeline[matchedIndex];
           newTimeline[matchedIndex] = {
@@ -3629,7 +3603,7 @@ export function Chat({
           };
         }
 
-        // Update Legacy Tools
+        // Update the compact tool projection.
         const updatedTools = lastMsg.tools.map(t =>
           t.callId === toolData.callId
             ? {
@@ -5603,10 +5577,10 @@ export function Chat({
                               </div>
                             )}
                           </div>
-                          {structuredNotice?.action?.target === 'settings-login' && (
+                          {structuredNotice?.action?.target === 'settings-ai' && (
                             <button
                               type="button"
-                              onClick={handleOpenSettingsLogin}
+                              onClick={handleOpenAiSettings}
                               className={clsx('inline-flex h-7 shrink-0 items-center rounded-md border px-2 text-[11px] font-medium transition-colors', actionClass)}
                             >
                               {structuredNotice.action.label}

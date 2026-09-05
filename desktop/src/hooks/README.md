@@ -1,15 +1,3 @@
-# `src/hooks/`
+# Hooks
 
-本目录放 renderer 可复用行为型 hook。
-
-## Current Files
-
-- `useFeatureFlags.ts`
-- `useOfficialAuthLifecycle.ts`
-- `usePageRefresh.ts`
-
-## Rules
-
-- hook 负责复用行为，不负责定义产品结构。
-- 涉及页面刷新时，必须遵守 stale-while-revalidate。
-- 涉及宿主监听时，必须处理清理和重复订阅问题。
+这里放跨页面复用的 renderer hooks。页面独有状态应留在页面或对应 `features/` 模块；涉及 Electron 能力时通过 typed bridge 调用，不直接导入主进程代码。

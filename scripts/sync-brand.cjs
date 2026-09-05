@@ -1,43 +1,30 @@
 'use strict';
+
 const fs = require('node:fs');
 const path = require('node:path');
+
 const root = path.resolve(__dirname, '..');
-const identity = fs.readFileSync(path.join(root, 'branding/identity.json'), 'utf8');
+const identityText = fs.readFileSync(path.join(root, 'branding/identity.json'), 'utf8');
+const identity = JSON.parse(identityText);
 const visualTheme = JSON.parse(fs.readFileSync(path.join(root, 'branding/visual-theme.json'), 'utf8'));
-const compatibility = fs.readFileSync(path.join(root, 'branding/compatibility.cjs'), 'utf8').replace("require('./identity.json')", "require('./brand.generated.json')");
-const compatibilityEsm = fs.readFileSync(path.join(root, 'branding/compatibility.cjs'), 'utf8')
-    .replace("'use strict';\n\n", '')
-    .replace("const identity = require('./identity.json');", `const identity = ${identity.trim()};`)
-    .replace(
-        'module.exports = { identity, canonicalKey, canonicalValue, migrateStructured, applyEnvironmentAliases, migrateStorage };',
-        'const compatibility = { identity, canonicalKey, canonicalValue, migrateStructured, applyEnvironmentAliases, migrateStorage };\n\nexport { identity, canonicalKey, canonicalValue, migrateStructured, applyEnvironmentAliases, migrateStorage };\nexport default compatibility;',
-    );
-const environment = fs.readFileSync(path.join(root, 'branding/environment.cjs'), 'utf8').replace("require('./compatibility.cjs')", "require('./brandCompatibility.cjs')");
-for (const dir of ['desktop/shared', 'Plugin']) {
-    fs.writeFileSync(path.join(root, dir, 'brand.generated.json'), identity);
-    fs.writeFileSync(path.join(root, dir, 'brandCompatibility.cjs'), compatibility);
-    fs.writeFileSync(path.join(root, dir, 'brandEnvironment.cjs'), environment);
+
+for (const directory of ['desktop/shared', 'Plugin']) {
+    fs.writeFileSync(path.join(root, directory, 'brand.generated.json'), identityText);
 }
-fs.writeFileSync(path.join(root, 'desktop/shared/brandCompatibility.mjs'), compatibilityEsm);
-const brand = JSON.parse(identity);
-const shellAliases = Object.entries(brand.legacy.environment).map(([previous, current]) => {
-    if (!/^[A-Z][A-Z0-9_]+$/.test(previous) || !/^[A-Z][A-Z0-9_]+$/.test(current)) throw new Error('Invalid environment alias');
-    return `if [[ -z \${${current}+x} && -n \${${previous}+x} ]]; then export ${current}="\$${previous}"; fi`;
-});
-fs.writeFileSync(path.join(root, 'desktop/shared/brandEnvironment.sh'), '# Generated compatibility aliases; edit branding/identity.json.\n' + shellAliases.join('\n') + '\n');
+
 const rendererFile = path.join(root, 'desktop/src/config/brand.generated.json');
 const renderer = JSON.parse(fs.readFileSync(rendererFile, 'utf8'));
 Object.assign(renderer, {
-    variant: brand.slug,
-    displayName: brand.displayName,
-    windowTitle: brand.displayName,
-    htmlTitle: brand.displayName,
-    aiDisplayName: brand.displayName,
+    variant: identity.slug,
+    displayName: identity.displayName,
+    windowTitle: identity.displayName,
+    htmlTitle: identity.displayName,
+    aiDisplayName: identity.displayName,
     logoSrc: '/branding/app-icon.png',
     tagline: 'Grow content with AI.',
     theme: visualTheme.theme,
 });
-fs.writeFileSync(rendererFile, JSON.stringify(renderer, null, 2) + '\n');
+fs.writeFileSync(rendererFile, `${JSON.stringify(renderer, null, 2)}\n`);
 
 const rgbTokenToHex = (value) => `#${String(value).trim().split(/\s+/).map((channel) => Number(channel).toString(16).padStart(2, '0')).join('')}`.toUpperCase();
 const palette = visualTheme.palette;
@@ -69,9 +56,11 @@ fs.writeFileSync(
     path.join(root, 'Plugin/src/brandTheme.generated.js'),
     `// Generated from branding/visual-theme.json; run pnpm sync:brand.\nexport const GARDENFLOW_THEME = Object.freeze(${JSON.stringify(pluginTheme, null, 2)});\nexport const GARDENFLOW_ICON_32_DATA_URL = 'data:image/png;base64,${fs.readFileSync(path.join(root, 'Plugin/src/icons/icon32.png')).toString('base64')}';\n`,
 );
-const pluginFile = path.join(root, 'Plugin/src/manifest.json');
-const plugin = JSON.parse(fs.readFileSync(pluginFile, 'utf8'));
-plugin.name = brand.displayName;
-plugin.action.default_title = brand.displayName;
-fs.writeFileSync(pluginFile, JSON.stringify(plugin, null, 2) + '\n');
-console.log('GardenFlow brand runtime files synchronized.');
+
+const manifestFile = path.join(root, 'Plugin/src/manifest.json');
+const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
+manifest.name = identity.displayName;
+manifest.action.default_title = identity.displayName;
+fs.writeFileSync(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`);
+
+console.log('GardenFlow brand files synchronized.');

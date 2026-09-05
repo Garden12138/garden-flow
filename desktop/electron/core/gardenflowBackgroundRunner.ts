@@ -1,4 +1,3 @@
-import { readMigrationState, backgroundAutomationHeld } from './gardenflowMigrationState';
 import { EventEmitter } from 'events';
 import path from 'node:path';
 import fs from 'node:fs/promises';
@@ -49,6 +48,8 @@ import {
 type RunResult = 'success' | 'error' | 'skipped';
 type ScheduleMode = 'interval' | 'daily' | 'weekly' | 'once';
 type LongCycleStatus = 'running' | 'paused' | 'completed';
+
+const backgroundAutomationHeld = (): boolean => process.env.GARDENFLOW_HOLD_AUTOMATION === '1';
 
 export interface GardenFlowBackgroundProjectState {
   projectId: string;
@@ -799,21 +800,7 @@ export class GardenFlowBackgroundRunner extends EventEmitter {
       heartbeat.nextRunAt = undefined;
     }
 
-    const cutoff = readMigrationState().skipCatchUpBefore || 0;
-    if (cutoff) {
-      for (const task of Object.values(this.config.scheduledTasks)) {
-        if ((parseIsoMs(task.nextRunAt) || 0) <= cutoff && task.mode !== 'once') task.nextRunAt = computeNextRunForScheduledTask(task, nowMs) || undefined;
-      }
-      for (const task of Object.values(this.config.longCycleTasks)) {
-        if ((parseIsoMs(task.nextRunAt) || 0) <= cutoff && task.enabled && task.status === 'running') task.nextRunAt = nextIsoFromMinutes(nowMs, sanitizeIntervalMinutes(task.intervalMinutes));
-      }
-      for (const definition of listBuiltinAutomationDefinitions()) {
-        const state = this.ensureBuiltinTaskState(definition);
-        if ((parseIsoMs(state.nextRunAt) || 0) <= cutoff && state.enabled) state.nextRunAt = computeNextRunForBuiltinTask(definition, state, nowMs) || undefined;
-      }
-      if (heartbeat.enabled && (parseIsoMs(heartbeat.nextRunAt) || 0) <= cutoff) heartbeat.nextRunAt = nextIsoFromMinutes(nowMs, heartbeat.intervalMinutes);
-    }
-    this.scheduledTaskScheduler.sync(Object.values(this.config.scheduledTasks).filter(task => !(cutoff && task.mode === 'once' && (parseIsoMs(task.runAt) || 0) <= cutoff)), nowMs);
+    this.scheduledTaskScheduler.sync(Object.values(this.config.scheduledTasks), nowMs);
     const longCycleSchedulerItems = Object.values(this.config.longCycleTasks)
       .filter((task) => task.enabled && task.status === 'running')
       .map((task) => ({
@@ -826,9 +813,7 @@ export class GardenFlowBackgroundRunner extends EventEmitter {
 
   private refreshCatchUpQueue(nowMs: number): void {
     const missed = findMissedScheduledTasks(Object.values(this.config.scheduledTasks), nowMs);
-    const cutoff = readMigrationState().skipCatchUpBefore || 0;
     for (const task of missed) {
-      if (cutoff && (parseIsoMs(task.nextRunAt) || 0) <= cutoff) continue;
       this.pendingCatchUpTaskIds.add(task.id);
     }
   }

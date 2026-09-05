@@ -13,14 +13,14 @@
   "scripts": {
     "setup": "pnpm install --frozen-lockfile && pnpm --dir Plugin install --frozen-lockfile && pnpm --dir PublishPlugin install --frozen-lockfile && pnpm --dir desktop install --frozen-lockfile",
     "dev": "pnpm --dir desktop dev",
-    "check": "pnpm check:brand && pnpm --dir desktop check:parity && pnpm --dir Plugin check && pnpm --dir PublishPlugin check",
+    "check": "pnpm check:brand && pnpm check:docs && pnpm --dir desktop check:source && pnpm --dir Plugin check && pnpm --dir PublishPlugin check",
     "test": "pnpm --dir desktop test",
     "build": "pnpm --dir desktop build:nosign",
     "build:plugin": "pnpm --dir Plugin build && pnpm --dir PublishPlugin build",
     "generate:brand-assets": "python3 scripts/generate-brand-assets.py",
-    "migrate:data": "node desktop/scripts/gardenflow-data-migration.cjs",
     "sync:brand": "node scripts/sync-brand.cjs",
-    "check:brand": "node scripts/check-brand.cjs"
+    "check:brand": "node scripts/check-brand.cjs",
+    "check:docs": "node scripts/check-docs.cjs"
   },
   "dependencies": {
     "@types/diff": "^7.0.2",

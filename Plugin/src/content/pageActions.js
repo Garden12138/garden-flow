@@ -51,7 +51,7 @@ export async function scrollPage(options) {
   }
   return {
     success: true,
-    mode: 'legacy-auto',
+    mode: 'document-auto',
     direction,
     pixels: explicitPixels,
     steps,

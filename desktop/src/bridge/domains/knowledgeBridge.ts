@@ -84,7 +84,6 @@ export function createKnowledgeBridge(core: BridgeCore) {
               lastIndexedAt: typeof raw.lastIndexedAt === 'string' ? raw.lastIndexedAt : null,
               isBuilding: raw.isBuilding === true,
               lastError: typeof raw.lastError === 'string' ? raw.lastError : null,
-              migrationStatus: typeof raw.migrationStatus === 'string' ? raw.migrationStatus : null,
               pendingRebuildReason: typeof raw.pendingRebuildReason === 'string' ? raw.pendingRebuildReason : null,
             } as T;
           },

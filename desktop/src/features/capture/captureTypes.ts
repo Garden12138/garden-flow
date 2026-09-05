@@ -40,7 +40,6 @@ export interface ClipboardCaptureTask {
   updatedAt: string;
   serverJobId?: string;
   progressMessage?: string;
-  pointsCost?: number;
   error?: string;
   logs?: ClipboardCaptureTaskLog[];
   debugDetails?: string;
@@ -104,7 +103,6 @@ export interface ServerCaptureJob {
     details?: unknown;
   } | null;
   logs?: Array<string | { message?: string | null; level?: string | null; timestamp?: string | null }>;
-  pointsCost?: number;
   createdAt?: string;
   startedAt?: string | null;
   completedAt?: string | null;

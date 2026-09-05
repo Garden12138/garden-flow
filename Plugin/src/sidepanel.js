@@ -1,8 +1,8 @@
-import './brandStorage.js';
 const elements = {
   serverStatus: document.getElementById('server-status'),
   refresh: document.getElementById('refresh'),
   openSettings: document.getElementById('open-settings'),
+  exportDiagnostics: document.getElementById('export-diagnostics'),
   platformLogo: document.getElementById('platform-logo'),
   platformIcon: document.getElementById('platform-icon'),
   platformFallback: document.getElementById('platform-fallback'),
@@ -84,6 +84,14 @@ async function init() {
 function bindEvents() {
   elements.refresh.addEventListener('click', () => void refreshContext());
   elements.openSettings.addEventListener('click', () => chrome.runtime.openOptionsPage());
+  elements.exportDiagnostics.addEventListener('click', async () => {
+    elements.exportDiagnostics.disabled = true;
+    try {
+      await sendMessage({ type: 'diagnostics:export' });
+    } finally {
+      elements.exportDiagnostics.disabled = false;
+    }
+  });
   elements.bloggerNotesApiMode.addEventListener('change', () => {
     renderBloggerNotesMode();
   });

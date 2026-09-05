@@ -1,4 +1,3 @@
-import compatibility from '../../shared/brandCompatibility.cjs';
 export type CommandPermissionClass =
   | 'read-only'
   | 'trusted-write'
@@ -122,7 +121,7 @@ const tokenize = (input: string): string[] => {
   return tokens;
 };
 
-const normalizeAction = (value: string): string => compatibility.canonicalKey(value.trim().toLowerCase());
+const normalizeAction = (value: string): string => value.trim().toLowerCase();
 
 const mapHasAction = (map: Map<string, Set<string>>, namespace: string, action: string): boolean => {
   return map.get(namespace)?.has(action) === true;
@@ -149,7 +148,7 @@ export function analyzeAppCliCommand(command: string, options?: {
   runtimeMode?: string;
 }): CommandPermissionAnalysis {
   const tokens = tokenize(command);
-  while (tokens.length > 0 && ['app-cli', 'app_cli', 'gardenflow-cli', ...compatibility.identity.legacy.cliExecutables].includes(tokens[0].toLowerCase())) {
+  while (tokens.length > 0 && ['app-cli', 'app_cli', 'gardenflow-cli'].includes(tokens[0].toLowerCase())) {
     tokens.shift();
   }
   const namespace = normalizeAction(tokens[0] || 'help');

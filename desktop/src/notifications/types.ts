@@ -1,4 +1,4 @@
-export type NotificationSource = 'runtime' | 'generation' | 'gardenflow' | 'system' | 'server';
+export type NotificationSource = 'runtime' | 'generation' | 'gardenflow' | 'system';
 export type NotificationLevel = 'success' | 'error' | 'attention' | 'info';
 export type NotificationSound = 'success' | 'failure' | 'attention' | 'none';
 
@@ -12,7 +12,7 @@ export type NotificationAction =
         docketId?: string;
         escalationId?: string;
         settingsTab?: 'general' | 'ai' | 'platforms' | 'tools' | 'profile' | 'remote' | 'experimental';
-        aiModelSubTab?: 'custom' | 'login';
+        aiModelSubTab?: 'custom';
       };
     }
   | {
@@ -38,7 +38,6 @@ export type NotificationView =
   | 'gardenflow'
   | 'approval'
   | 'generation-studio'
-  | 'manuscripts'
   | 'settings';
 
 export interface NotificationEnvelope {
@@ -59,26 +58,6 @@ export interface NotificationEnvelope {
 
 export interface NotificationRecord extends NotificationEnvelope {
   read: boolean;
-}
-
-export interface ServerNotificationItem {
-  id: string;
-  type: string;
-  title: string;
-  message: string;
-  payload: Record<string, unknown>;
-  is_read: boolean;
-  read_at: string | null;
-  created_at: string;
-}
-
-export interface ServerNotificationState {
-  appSlug: string;
-  userId: string;
-  cursor: string | null;
-  unreadCount: number;
-  items: ServerNotificationItem[];
-  lastSyncAt: string | null;
 }
 
 export type NotificationRuleMap = {

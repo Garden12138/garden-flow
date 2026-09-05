@@ -1,4 +1,3 @@
-import compatibility from '../../shared/brandCompatibility.cjs';
 /**
  * PiChatService - 基于 pi-agent-core 的聊天服务
  *
@@ -597,7 +596,7 @@ export class PiChatService {
       lower.includes('额度')
     ) {
       category = 'quota';
-      hint = '账号额度可能已用尽，请充值或切换到有余额的 AI 源。';
+      hint = '供应商额度可能已用尽，请检查供应商账户或切换 AI 源。';
     } else if (
       statusCode === 429 ||
       lower.includes('rate limit') ||
@@ -2782,11 +2781,11 @@ export class PiChatService {
   }
 
   private createModelWithBaseUrl(modelName: string, baseURL: string, settings?: Record<string, unknown>): Model<any> {
-    const requestedModel = compatibility.canonicalValue((modelName || 'gpt-4o').trim());
+    const requestedModel = (modelName || 'gpt-4o').trim();
     const resolvedBaseUrl = normalizeApiBaseUrl(baseURL || 'https://api.openai.com/v1', 'https://api.openai.com/v1');
     const isOfficialOpenAI = this.isOfficialOpenAIEndpoint(resolvedBaseUrl);
 
-    if (isOfficialOpenAI && !requestedModel.startsWith(`${compatibility.identity.slug}-`)) {
+    if (isOfficialOpenAI) {
       const resolved = getModel('openai', requestedModel as any) as (Model<any> & { baseUrl?: string }) | undefined;
       if (resolved) {
         console.log('[PiChatService] model-resolved', { mode: 'openai-official', modelId: resolved.id, api: resolved.api });

@@ -10,14 +10,8 @@ export interface WorkspaceSpace {
 
 type SpaceDialogMode = 'create' | 'rename';
 
-type UseLayoutSpacesOptions = {
-  canCreateSpace?: boolean;
-  openMembershipModal?: () => void;
-};
-
-export function useLayoutSpaces(sidebarVisualCollapsed: boolean, options: UseLayoutSpacesOptions = {}) {
+export function useLayoutSpaces(sidebarVisualCollapsed: boolean) {
   const { t } = useI18n();
-  const { canCreateSpace = false, openMembershipModal } = options;
   const [spaces, setSpaces] = useState<WorkspaceSpace[]>([]);
   const [activeSpaceId, setActiveSpaceId] = useState<string>('');
   const [isSwitchingSpace, setIsSwitchingSpace] = useState(false);
@@ -123,15 +117,11 @@ export function useLayoutSpaces(sidebarVisualCollapsed: boolean, options: UseLay
 
   const openCreateSpaceDialog = useCallback(() => {
     setIsSpaceMenuOpen(false);
-    if (!canCreateSpace) {
-      openMembershipModal?.();
-      return;
-    }
     setSpaceDialogMode('create');
     setSpaceDialogTargetId(null);
     setSpaceDialogName('');
     setIsSpaceDialogOpen(true);
-  }, [canCreateSpace, openMembershipModal]);
+  }, []);
 
   const handleDeleteSpace = useCallback(async (space: WorkspaceSpace) => {
     if (!space.id || space.id === 'default' || deletingSpaceId) return;

@@ -1,4 +1,3 @@
-import './brandStorage.js';
 const DEFAULT_SETTINGS = {
   xhsSaveCommentsWithNote: true,
   saveToGardenFlowByDefault: true,

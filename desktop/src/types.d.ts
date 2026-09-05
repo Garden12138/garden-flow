@@ -820,14 +820,12 @@ export interface DiagnosticsLogStatus {
   retentionDays?: number;
   maxFileMb?: number;
   recentPreviewLimit?: number;
-  uploadConfigured?: boolean;
-  uploadEndpoint?: string | null;
-  pendingCount?: number;
+  recordCount?: number;
   debugVerboseEnabled?: boolean;
   previousUncleanShutdown?: boolean;
 }
 
-export interface DiagnosticsPendingReport {
+export interface DiagnosticReport {
   id: string;
   trigger: string;
   status: string;
@@ -835,10 +833,6 @@ export interface DiagnosticsPendingReport {
   updatedAt: string;
   summary: string;
   includeAdvancedContext: boolean;
-  lastError?: string | null;
-  uploadedAt?: string | null;
-  lastAttemptAt?: string | null;
-  dedupeKey?: string | null;
   bundleFileName?: string | null;
   metadata?: unknown;
 }
@@ -1167,20 +1161,14 @@ declare global {
         cancelRecording: () => Promise<{ success?: boolean; error?: string; reason?: string; durationMs?: number; discarded?: boolean }>;
         openMicrophoneSettings: () => Promise<{ success?: boolean; error?: string; path?: string }>;
       };
-      analytics: {
-        getStatus: () => Promise<{ consent: 'none' | 'prompt' | 'approved'; enabled: boolean; endpoint: string; pendingCount: number }>;
-        setConsent: (consent: 'none' | 'prompt' | 'approved') => Promise<unknown>;
-        track: (event: string, payload?: { surface?: string; origin?: string; properties?: Record<string, string | number | boolean | null | undefined> }) => Promise<unknown>;
-        flush: () => Promise<unknown>;
-        clearQueue: () => Promise<unknown>;
-      };
-      saveSettings: (settings: { api_endpoint?: string; api_key?: string; model_name?: string; model_name_wander?: string; model_name_chatroom?: string; model_name_knowledge?: string; model_name_gardenflow?: string; search_provider?: string; search_endpoint?: string; search_api_key?: string; visual_index_enabled?: boolean; visual_index_provider?: string; visual_index_endpoint?: string; visual_index_api_key?: string; visual_index_model?: string; visual_index_prompt_version?: string; visual_index_timeout_seconds?: number; visual_index_max_image_edge?: number; visual_index_skip_small_images?: boolean; visual_index_pdf_max_pages?: number; visual_index_pdf_render_dpi?: number; visual_index_concurrency?: number; video_analysis_enabled?: boolean; video_analysis_endpoint?: string; video_analysis_api_key?: string; video_analysis_model?: string; video_analysis_protocol?: string; video_analysis_max_direct_video_bytes?: number; proxy_enabled?: boolean; proxy_url?: string; proxy_bypass?: string; workspace_dir?: string; active_space_id?: string; role_mapping?: Record<string, string> | string; transcription_model?: string; transcription_endpoint?: string; transcription_key?: string; embedding_endpoint?: string; embedding_key?: string; embedding_model?: string; ai_sources_json?: string; default_ai_source_id?: string; image_provider?: string; image_endpoint?: string; image_api_key?: string; image_model?: string; video_endpoint?: string; video_api_key?: string; video_model?: string; video_models_json?: string; video_providers_json?: string; active_video_provider_id?: string; image_provider_template?: string; image_aspect_ratio?: string; image_size?: string; image_quality?: string; mcp_servers_json?: string; gardenflow_compact_target_tokens?: number; wander_deep_think_enabled?: boolean; wander_skill_loading_enabled?: boolean; memberSkillDistillation?: boolean; memberRuntimeOverlay?: boolean; memberToolPolicy?: boolean; memberSkillAutoRefresh?: boolean; debug_log_enabled?: boolean; developer_mode_enabled?: boolean; developer_mode_unlocked_at?: string | null; cli_runtime_execution_mode?: string; chat_max_tokens_default?: number; chat_max_tokens_deepseek?: number; diagnostics_upload_consent?: 'none' | 'prompt' | 'approved'; diagnostics_include_advanced_context?: boolean; diagnostics_auto_send_same_crash?: boolean; diagnostics_last_prompted_at?: string | null; analytics_consent?: 'none' | 'prompt' | 'approved'; analytics_last_prompted_at?: string | null; release_log_retention_days?: number; release_log_max_file_mb?: number; notifications_json?: string; ai_model_routes_json?: string; image_hosting_json?: string }) => Promise<unknown>;
-      getSettings: () => Promise<{ api_endpoint: string; api_key: string; model_name: string; model_name_wander?: string; model_name_chatroom?: string; model_name_knowledge?: string; model_name_gardenflow?: string; search_provider?: string; search_endpoint?: string; search_api_key?: string; visual_index_enabled?: boolean; visual_index_provider?: string; visual_index_endpoint?: string; visual_index_api_key?: string; visual_index_model?: string; visual_index_prompt_version?: string; visual_index_timeout_seconds?: number; visual_index_max_image_edge?: number; visual_index_skip_small_images?: boolean; visual_index_pdf_max_pages?: number; visual_index_pdf_render_dpi?: number; visual_index_concurrency?: number; video_analysis_enabled?: boolean; video_analysis_endpoint?: string; video_analysis_api_key?: string; video_analysis_model?: string; video_analysis_protocol?: string; video_analysis_max_direct_video_bytes?: number; proxy_enabled?: boolean; proxy_url?: string; proxy_bypass?: string; workspace_dir?: string; active_space_id?: string; role_mapping?: string; transcription_model?: string; transcription_endpoint?: string; transcription_key?: string; embedding_endpoint?: string; embedding_key?: string; embedding_model?: string; ai_sources_json?: string; default_ai_source_id?: string; image_provider?: string; image_endpoint?: string; image_api_key?: string; image_model?: string; video_endpoint?: string; video_api_key?: string; video_model?: string; video_models_json?: string; video_providers_json?: string; active_video_provider_id?: string; image_provider_template?: string; image_aspect_ratio?: string; image_size?: string; image_quality?: string; mcp_servers_json?: string; gardenflow_compact_target_tokens?: number; wander_deep_think_enabled?: boolean; wander_skill_loading_enabled?: boolean; memberSkillDistillation?: boolean; memberRuntimeOverlay?: boolean; memberToolPolicy?: boolean; memberSkillAutoRefresh?: boolean; debug_log_enabled?: boolean; developer_mode_enabled?: boolean; developer_mode_unlocked_at?: string | null; chat_max_tokens_default?: number; chat_max_tokens_deepseek?: number; diagnostics_upload_consent?: 'none' | 'prompt' | 'approved'; diagnostics_include_advanced_context?: boolean; diagnostics_auto_send_same_crash?: boolean; diagnostics_last_prompted_at?: string | null; analytics_consent?: 'none' | 'prompt' | 'approved'; analytics_last_prompted_at?: string | null; release_log_retention_days?: number; release_log_max_file_mb?: number; notifications_json?: string; ai_model_routes_json?: string; image_hosting_json?: string } | undefined>;
+      saveSettings: (settings: { api_endpoint?: string; api_key?: string; model_name?: string; model_name_wander?: string; model_name_chatroom?: string; model_name_knowledge?: string; model_name_gardenflow?: string; search_provider?: string; search_endpoint?: string; search_api_key?: string; visual_index_enabled?: boolean; visual_index_provider?: string; visual_index_endpoint?: string; visual_index_api_key?: string; visual_index_model?: string; visual_index_prompt_version?: string; visual_index_timeout_seconds?: number; visual_index_max_image_edge?: number; visual_index_skip_small_images?: boolean; visual_index_pdf_max_pages?: number; visual_index_pdf_render_dpi?: number; visual_index_concurrency?: number; video_analysis_enabled?: boolean; video_analysis_endpoint?: string; video_analysis_api_key?: string; video_analysis_model?: string; video_analysis_protocol?: string; video_analysis_max_direct_video_bytes?: number; proxy_enabled?: boolean; proxy_url?: string; proxy_bypass?: string; workspace_dir?: string; active_space_id?: string; role_mapping?: Record<string, string> | string; transcription_model?: string; transcription_endpoint?: string; transcription_key?: string; embedding_endpoint?: string; embedding_key?: string; embedding_model?: string; ai_sources_json?: string; default_ai_source_id?: string; image_provider?: string; image_endpoint?: string; image_api_key?: string; image_model?: string; video_endpoint?: string; video_api_key?: string; video_model?: string; video_models_json?: string; video_providers_json?: string; active_video_provider_id?: string; image_provider_template?: string; image_aspect_ratio?: string; image_size?: string; image_quality?: string; mcp_servers_json?: string; gardenflow_compact_target_tokens?: number; wander_deep_think_enabled?: boolean; wander_skill_loading_enabled?: boolean; memberSkillDistillation?: boolean; memberRuntimeOverlay?: boolean; memberToolPolicy?: boolean; memberSkillAutoRefresh?: boolean; debug_log_enabled?: boolean; developer_mode_enabled?: boolean; developer_mode_unlocked_at?: string | null; cli_runtime_execution_mode?: string; chat_max_tokens_default?: number; chat_max_tokens_deepseek?: number; diagnostics_include_advanced_context?: boolean; release_log_retention_days?: number; release_log_max_file_mb?: number; notifications_json?: string; ai_model_routes_json?: string; image_hosting_json?: string }) => Promise<unknown>;
+      getSettings: () => Promise<{ api_endpoint: string; api_key: string; model_name: string; model_name_wander?: string; model_name_chatroom?: string; model_name_knowledge?: string; model_name_gardenflow?: string; search_provider?: string; search_endpoint?: string; search_api_key?: string; visual_index_enabled?: boolean; visual_index_provider?: string; visual_index_endpoint?: string; visual_index_api_key?: string; visual_index_model?: string; visual_index_prompt_version?: string; visual_index_timeout_seconds?: number; visual_index_max_image_edge?: number; visual_index_skip_small_images?: boolean; visual_index_pdf_max_pages?: number; visual_index_pdf_render_dpi?: number; visual_index_concurrency?: number; video_analysis_enabled?: boolean; video_analysis_endpoint?: string; video_analysis_api_key?: string; video_analysis_model?: string; video_analysis_protocol?: string; video_analysis_max_direct_video_bytes?: number; proxy_enabled?: boolean; proxy_url?: string; proxy_bypass?: string; workspace_dir?: string; active_space_id?: string; role_mapping?: string; transcription_model?: string; transcription_endpoint?: string; transcription_key?: string; embedding_endpoint?: string; embedding_key?: string; embedding_model?: string; ai_sources_json?: string; default_ai_source_id?: string; image_provider?: string; image_endpoint?: string; image_api_key?: string; image_model?: string; video_endpoint?: string; video_api_key?: string; video_model?: string; video_models_json?: string; video_providers_json?: string; active_video_provider_id?: string; image_provider_template?: string; image_aspect_ratio?: string; image_size?: string; image_quality?: string; mcp_servers_json?: string; gardenflow_compact_target_tokens?: number; wander_deep_think_enabled?: boolean; wander_skill_loading_enabled?: boolean; memberSkillDistillation?: boolean; memberRuntimeOverlay?: boolean; memberToolPolicy?: boolean; memberSkillAutoRefresh?: boolean; debug_log_enabled?: boolean; developer_mode_enabled?: boolean; developer_mode_unlocked_at?: string | null; chat_max_tokens_default?: number; chat_max_tokens_deepseek?: number; diagnostics_include_advanced_context?: boolean; release_log_retention_days?: number; release_log_max_file_mb?: number; notifications_json?: string; ai_model_routes_json?: string; image_hosting_json?: string } | undefined>;
       onSettingsUpdated: (listener: (...args: unknown[]) => void) => void;
       offSettingsUpdated: (listener: (...args: unknown[]) => void) => void;
       onDataChanged: (listener: (...args: unknown[]) => void) => void;
       offDataChanged: (listener: (...args: unknown[]) => void) => void;
-      pickWorkspaceDir: () => Promise<{ success: boolean; canceled?: boolean; path?: string | null; error?: string }>;
+        pickWorkspaceDir: () => Promise<{ success: boolean; canceled?: boolean; path?: string | null; error?: string }>;
+        openWorkspaceDir: () => Promise<{ success: boolean; path?: string; error?: string }>;
       debug: {
         getStatus: () => Promise<{ enabled: boolean; logDirectory: string }>;
         getRecent: (limit?: number) => Promise<{ lines: string[] }>;
@@ -1249,155 +1237,23 @@ declare global {
         getStatus: () => Promise<DiagnosticsLogStatus>;
         getRecent: (limit?: number) => Promise<{ lines: string[] }>;
         openDir: () => Promise<{ success: boolean; error?: string; path: string }>;
-        listPendingReports: () => Promise<DiagnosticsPendingReport[]>;
+        listReports: () => Promise<DiagnosticReport[]>;
         exportBundle: (reportId?: string, payload?: { includeAdvancedContext?: boolean }) => Promise<{ success: boolean; reportId: string; path: string; error?: string }>;
-        createFeedbackReport: (payload: { title?: string; content: string; category?: string; priority?: 'low' | 'medium' | 'high' | 'urgent'; source?: string; contact?: string; includeAdvancedContext?: boolean; uploadNow?: boolean; context?: Record<string, unknown> }) => Promise<{ success: boolean; uploaded?: boolean; report?: DiagnosticsPendingReport; response?: unknown; error?: string }>;
-        uploadReport: (reportId: string) => Promise<{ success: boolean; report?: DiagnosticsPendingReport; response?: { reportId: string; receivedAt: string; retentionDays: number; dedupeKey: string }; error?: string }>;
+        createFeedbackReport: (payload: { title?: string; content: string; category?: string; priority?: 'low' | 'medium' | 'high' | 'urgent'; source?: string; contact?: string; includeAdvancedContext?: boolean; context?: Record<string, unknown> }) => Promise<{ success: boolean; report?: DiagnosticReport; error?: string }>;
         dismissReport: (reportId: string) => Promise<{ success: boolean; reportId: string; error?: string }>;
-        setUploadConsent: (payload: { consent: 'none' | 'prompt' | 'approved'; autoSendSameCrash?: boolean }) => Promise<{ success: boolean; error?: string }>;
         appendRenderer: (payload: { level?: 'trace' | 'debug' | 'info' | 'warn' | 'error'; category?: string; event?: string; message?: string; fields?: unknown }) => Promise<{ success: boolean; error?: string }>;
-        createAutoReport: (payload: { level?: 'trace' | 'debug' | 'info' | 'warn' | 'error'; category?: string; event?: string; message?: string; fields?: unknown; trigger?: string }) => Promise<{ success: boolean; uploaded?: boolean; report?: DiagnosticsPendingReport; upload?: unknown; error?: string }>;
-        onReportPending: (listener: (...args: unknown[]) => void) => void;
-        offReportPending: (listener: (...args: unknown[]) => void) => void;
-      };
-      startupMigration: {
-        getStatus: () => Promise<{
-          status?: string;
-          needsDbImport?: boolean;
-          needsProjectUpgrade?: boolean;
-          shouldShowModal?: boolean;
-          legacyDbPath?: string | null;
-          legacyWorkspacePath?: string | null;
-          workspacePath?: string | null;
-          currentStep?: string | null;
-          message?: string | null;
-          error?: string | null;
-          progress?: number;
-          legacyMarkdownCount?: number | null;
-          importedCounts?: Record<string, number> | null;
-          projectUpgradeCounts?: Record<string, number> | null;
-        }>;
-        start: () => Promise<{
-          status?: string;
-          needsDbImport?: boolean;
-          needsProjectUpgrade?: boolean;
-          shouldShowModal?: boolean;
-          legacyDbPath?: string | null;
-          legacyWorkspacePath?: string | null;
-          workspacePath?: string | null;
-          currentStep?: string | null;
-          message?: string | null;
-          error?: string | null;
-          progress?: number;
-          legacyMarkdownCount?: number | null;
-          importedCounts?: Record<string, number> | null;
-          projectUpgradeCounts?: Record<string, number> | null;
-        }>;
-        onStatus: (listener: (...args: unknown[]) => void) => void;
-        offStatus: (listener: (...args: unknown[]) => void) => void;
-      };
-      officialAuth: {
-        bootstrap: (payload?: { reason?: string }) => Promise<{
-          success: boolean;
-          loggedIn?: boolean;
-          session?: Record<string, unknown> | null;
-          data?: Record<string, unknown> | null;
-          reason?: string;
-          error?: string;
-        }>;
-        refresh: () => Promise<{
-          success: boolean;
-          queued?: boolean;
-          tokenRefreshed?: boolean;
-          requestedAt?: string;
-          session?: Record<string, unknown> | null;
-          data?: Record<string, unknown> | null;
-          error?: string;
-        }>;
-        getConfig: () => Promise<{
-          success?: boolean;
-          activeRealm?: 'cn' | 'global';
-          error?: string;
-        }>;
-        getWechatStatus: (payload: { sessionId: string }) => Promise<{
-          success?: boolean;
-          data?: {
-            status?: string;
-            session?: unknown;
-          };
-          error?: string;
-        }>;
-        getWechatUrl: (payload?: { state?: string }) => Promise<{
-          success?: boolean;
-          data?: {
-            sessionId?: string;
-            qrContentUrl?: string;
-            url?: string;
-          };
-          error?: string;
-        }>;
-        sendSmsCode: (payload: { phone: string }) => Promise<{ success?: boolean; error?: string }>;
-        loginSms: (payload: { phone: string; code: string; inviteCode?: string }) => Promise<{
-          success?: boolean;
-          session?: unknown;
-          error?: string;
-        }>;
-        registerSms: (payload: { phone: string; code: string; inviteCode?: string }) => Promise<{
-          success?: boolean;
-          session?: unknown;
-          error?: string;
-        }>;
-        logout: () => Promise<{ success?: boolean; error?: string }>;
-        getProducts: () => Promise<{
-          success?: boolean;
-          products?: Array<Record<string, unknown>>;
-          error?: string;
-        }>;
-        getProduct: (payload: { productId: string }) => Promise<{
-          success?: boolean;
-          product?: Record<string, unknown>;
-          error?: string;
-        }>;
-        createPagePayOrder: (payload: Record<string, unknown>) => Promise<{
-          success?: boolean;
-          order?: Record<string, unknown>;
-          error?: string;
-        }>;
-        getOrderStatus: (payload: { outTradeNo: string }) => Promise<{
-          success?: boolean;
-          order?: Record<string, unknown>;
-          error?: string;
-        }>;
-        openPaymentForm: (payload: { paymentForm: string }) => Promise<{
-          success?: boolean;
-          opened?: string;
-          error?: string;
-        }>;
-        getPricing: () => Promise<{
-          success: boolean;
-          pricing?: Record<string, unknown> | null;
-          stale?: boolean;
-          error?: string;
-        }>;
-        refreshPricing: () => Promise<{
-          success: boolean;
-          pricing?: Record<string, unknown> | null;
-          stale?: boolean;
-          error?: string;
-        }>;
+        createAutoReport: (payload: { level?: 'trace' | 'debug' | 'info' | 'warn' | 'error'; category?: string; event?: string; message?: string; fields?: unknown; trigger?: string }) => Promise<{ success: boolean; report?: DiagnosticReport; error?: string }>;
       };
       llmReadiness: {
         getState: () => Promise<{
           ready?: boolean;
-          mode?: 'official' | 'custom' | 'local' | 'none' | string;
+          mode?: 'custom' | 'disabled' | string;
           reason?: string;
           sourceId?: string;
           sourceName?: string;
           baseURL?: string;
           model?: string;
           protocol?: 'openai' | 'anthropic' | 'gemini' | string;
-          officialLoggedIn?: boolean;
-          canUseOfficial?: boolean;
           canUseCustom?: boolean;
           updatedAt?: string;
         }>;
@@ -1523,7 +1379,6 @@ declare global {
         onEvent: (listener: (event: RuntimeUnifiedEvent) => void) => void;
         offEvent: (listener: (event: RuntimeUnifiedEvent) => void) => void;
       };
-      collab: Window['ipcRenderer']['teamRuntime'];
       toolHooks: {
         list: () => Promise<unknown[]>;
         register: (hook: unknown) => Promise<{ success: boolean; hookId: string }>;
@@ -1917,9 +1772,6 @@ declare global {
       fetchModels: (config: { apiKey: string; baseURL: string; presetId?: string; protocol?: 'openai' | 'anthropic' | 'gemini'; purpose?: 'chat' | 'image' }) => Promise<Array<{ id: string; capabilities?: string[] }>>;
       detectAiProtocol: (config: { baseURL: string; presetId?: string; protocol?: string }) => Promise<{ success: boolean; protocol: 'openai' | 'anthropic' | 'gemini'; error?: string }>;
       testAiConnection: (config: { apiKey: string; baseURL: string; presetId?: string; protocol?: 'openai' | 'anthropic' | 'gemini' }) => Promise<{ success: boolean; protocol: 'openai' | 'anthropic' | 'gemini'; models: Array<{ id: string }>; message: string }>;
-      startChat: (message: string, modelConfig?: unknown) => void;
-      cancelChat: () => void;
-      confirmTool: (callId: string, confirmed: boolean) => void;
       listSkills: () => Promise<SkillDefinition[]>;
       listSkillsGuarded: <T = SkillDefinition>() => Promise<T[] | null>;
       skills: {
@@ -1951,7 +1803,6 @@ declare global {
           list: () => Promise<unknown>;
           save: (payload: { template: Record<string, unknown> }) => Promise<unknown>;
           delete: (payload: { templateId: string }) => Promise<unknown>;
-          importLegacy: (payload: { templates: Record<string, unknown>[] }) => Promise<unknown>;
         };
       };
       toolDiagnostics: {
@@ -1985,14 +1836,8 @@ declare global {
         update: (payload: Record<string, unknown>) => Promise<unknown>;
         delete: (advisorId: string) => Promise<unknown>;
         pickKnowledgeFiles: <T = Record<string, unknown>>() => Promise<T>;
-        pickKnowledgeFolder: <T = Record<string, unknown>>() => Promise<T>;
         uploadKnowledge: (payload: string | { advisorId: string; filePaths?: string[] }) => Promise<unknown>;
         deleteKnowledge: (payload: { advisorId: string; fileName: string }) => Promise<unknown>;
-        inspectMemberSkill: (payload: { advisorId: string }) => Promise<unknown>;
-        distillMemberSkill: (payload: { advisorId: string }) => Promise<unknown>;
-        promoteMemberSkillCandidate: (payload: { advisorId: string; candidateVersion?: string }) => Promise<unknown>;
-        discardMemberSkillCandidate: (payload: { advisorId: string }) => Promise<unknown>;
-        rollbackMemberSkillVersion: (payload: { advisorId: string; version: string }) => Promise<unknown>;
         optimizePrompt: (payload: Record<string, unknown>) => Promise<unknown>;
         optimizePromptDeep: (payload: Record<string, unknown>) => Promise<unknown>;
         generatePersona: (payload: Record<string, unknown>) => Promise<unknown>;
@@ -2070,44 +1915,6 @@ declare global {
           previewText?: string | null;
         }>;
       };
-      notifications: {
-        getPermissionState: () => Promise<NotificationPermissionState>;
-        requestPermission: () => Promise<NotificationPermissionState>;
-        showSystem: (payload: { title: string; body?: string; sound?: string }) => Promise<{ success: boolean; error?: string }>;
-        syncRemote: (payload?: { cursor?: string | null; limit?: number; unreadOnly?: boolean }) => Promise<{
-          success: boolean;
-          status?: number;
-          data?: Record<string, unknown>;
-          raw?: Record<string, unknown>;
-          context?: { appSlug?: string; userId?: string; realm?: string; baseUrl?: string };
-          error?: string;
-        }>;
-        listRemote: (payload?: { limit?: number; unreadOnly?: boolean }) => Promise<{
-          success: boolean;
-          status?: number;
-          data?: Record<string, unknown>;
-          raw?: Record<string, unknown>;
-          context?: { appSlug?: string; userId?: string; realm?: string; baseUrl?: string };
-          error?: string;
-        }>;
-        markRemoteRead: (payload: { notificationId: string }) => Promise<{
-          success: boolean;
-          status?: number;
-          data?: Record<string, unknown>;
-          raw?: Record<string, unknown>;
-          context?: { appSlug?: string; userId?: string; realm?: string; baseUrl?: string };
-          error?: string;
-        }>;
-        markAllRemoteRead: () => Promise<{
-          success: boolean;
-          status?: number;
-          data?: Record<string, unknown>;
-          raw?: Record<string, unknown>;
-          context?: { appSlug?: string; userId?: string; realm?: string; baseUrl?: string };
-          error?: string;
-        }>;
-      };
-
       // YouTube Import
       fetchYoutubeInfo: (channelUrl: string) => Promise<{ success: boolean; data?: any; error?: string }>;
       onFetchYoutubeInfoProgress: (listener: (...args: unknown[]) => void) => void;
@@ -2170,9 +1977,7 @@ declare global {
         };
       }) => void;
         pickAttachment: (payload?: { sessionId?: string }) => Promise<{ success?: boolean; canceled?: boolean; error?: string; attachment?: unknown }>;
-        createPathAttachment: (payload: { path: string; sessionId?: string }) => Promise<{ success?: boolean; error?: string; attachment?: unknown }>;
         createInlineAttachment: (payload: { dataUrl: string; fileName?: string; sessionId?: string; rememberForChat?: boolean }) => Promise<{ success?: boolean; error?: string; attachment?: unknown }>;
-        createVideoThumbnail: (payload: { path?: string; source?: string; sessionId?: string }) => Promise<{ success?: boolean; error?: string; thumbnailUrl?: string; thumbnailDataUrl?: string }>;
         getStagedAttachments: (payload: { sessionId: string }) => Promise<{ success?: boolean; error?: string; attachments?: unknown[] }>;
         discardAttachments: (payload: { sessionId?: string; attachments: unknown[] }) => Promise<{ success?: boolean; error?: string }>;
         transcribeAudio: (payload: { audioBase64: string; mimeType?: string; fileName?: string }) => Promise<{ success?: boolean; text?: string; error?: string; reason?: string; diagnostic?: string }>;
@@ -2623,154 +2428,6 @@ declare global {
         onTaskEvent: (listener: (...args: unknown[]) => void) => void;
         offTaskEvent: (listener: (...args: unknown[]) => void) => void;
       };
-      gardenflowOrchestration: {
-        createRun: (payload: {
-          goal: string;
-          sessionId?: string;
-          projectId?: string;
-          platform?: string;
-          format?: string;
-        }) => Promise<{
-          success: boolean;
-          runId: string;
-          runtimeTaskId: string;
-          sessionId: string;
-          graph: {
-            id: string;
-            goal: string;
-            platform?: string | null;
-            contentFormat?: string | null;
-            createdAt: string;
-            nodes: Array<{
-              id: string;
-              title: string;
-              agentId: string;
-              skillIds: string[];
-              requiredArtifacts: string[];
-              outputSchema: string;
-              status: string;
-            }>;
-            edges: Array<{
-              from: string;
-              to: string;
-              dependencyType: string;
-            }>;
-          };
-          snapshot?: unknown;
-          task?: unknown;
-        }>;
-        getRegistry: () => Promise<{
-          success: boolean;
-          agents: Array<Record<string, unknown>>;
-          skills: Array<Record<string, unknown>>;
-          memoryScopes: string[];
-        }>;
-      };
-      gardenflowProjects: {
-        list: () => Promise<{
-          success?: boolean;
-          count?: number;
-          items?: Array<{
-            id: string;
-            goal: string;
-            platform?: string | null;
-            taskType?: string | null;
-            status: string;
-            runId?: string | null;
-            graphId?: string | null;
-            runtimeTaskId?: string | null;
-            collabSessionId?: string | null;
-            contentFormat?: string | null;
-            artifactPath?: string | null;
-            artifacts?: Array<Record<string, unknown>>;
-            checkpoints?: Array<Record<string, unknown>>;
-            learningCandidates?: Array<Record<string, unknown>>;
-            skillRuns?: Array<Record<string, unknown>>;
-            metadata?: Record<string, unknown> | null;
-            createdAt?: string | null;
-            updatedAt: string;
-          }>;
-        }>;
-        updateLearningCandidate: (payload: {
-          projectId: string;
-          candidateId: string;
-          status: 'accepted' | 'rejected' | 'pending';
-        }) => Promise<{
-          success?: boolean;
-          project?: unknown;
-          candidate?: unknown;
-          error?: string;
-        }>;
-        updateSection: (payload: {
-          projectId: string;
-          sectionId: string;
-          content: string;
-        }) => Promise<{
-          success?: boolean;
-          project?: unknown;
-          sectionId?: string;
-          error?: string;
-        }>;
-        exportMediaPlan: (payload: {
-          projectId: string;
-        }) => Promise<{
-          success?: boolean;
-          project?: unknown;
-          path?: string;
-          packagePath?: string;
-          concatPath?: string;
-          readmePath?: string;
-          plan?: unknown;
-          error?: string;
-        }>;
-        renderRoughCut: (payload: {
-          projectId: string;
-        }) => Promise<{
-          success?: boolean;
-          project?: unknown;
-          path?: string;
-          packagePath?: string;
-          inputCount?: number;
-          sizeBytes?: number;
-          error?: string;
-        }>;
-        exportPublishPackage: (payload: {
-          projectId: string;
-        }) => Promise<{
-          success?: boolean;
-          project?: unknown;
-          packagePath?: string;
-          jsonPath?: string;
-          markdownPath?: string;
-          coverBriefPath?: string;
-          package?: unknown;
-          error?: string;
-        }>;
-        exportReviewReport: (payload: {
-          projectId: string;
-        }) => Promise<{
-          success?: boolean;
-          project?: unknown;
-          packagePath?: string;
-          jsonPath?: string;
-          markdownPath?: string;
-          report?: unknown;
-          error?: string;
-        }>;
-        exportXhsPackage: (payload: {
-          projectId: string;
-        }) => Promise<{
-          success?: boolean;
-          project?: unknown;
-          packagePath?: string;
-          jsonPath?: string;
-          markdownPath?: string;
-          layoutPath?: string;
-          imageManifestPath?: string;
-          package?: unknown;
-          error?: string;
-        }>;
-      };
       gardenflowProfile: {
         getBundle: () => Promise<{
           activeSpaceId?: string;
@@ -3120,19 +2777,6 @@ declare global {
         }>;
       };
       mcp: {
-        sessions: () => Promise<{ success: boolean; sessions: Array<{
-          key: string;
-          serverId: string;
-          serverName: string;
-          transport: 'stdio' | 'sse' | 'streamable-http' | string;
-          connectionStrategy: string;
-          initializedAt: number;
-          lastUsedAt: number;
-          callCount: number;
-          toolCount: number;
-          resourceCount: number;
-          resourceTemplateCount: number;
-        }>; error?: string }>;
         list: () => Promise<{ success: boolean; servers: Array<{
           id: string;
           name: string;
@@ -3149,12 +2793,6 @@ declare global {
         }>; items?: Array<{ server: unknown; session?: unknown }>; sessions?: unknown[] }>;
         save: (servers: unknown[]) => Promise<{ success: boolean; servers?: unknown[]; error?: string }>;
         test: (server: unknown) => Promise<{ success: boolean; message: string; detail?: string; session?: unknown; capabilities?: unknown }>;
-        call: (server: unknown, method: string, params?: unknown) => Promise<{ success: boolean; response?: unknown; session?: unknown; capabilities?: unknown; error?: string }>;
-        listTools: (server: unknown) => Promise<{ success: boolean; response?: unknown; session?: unknown; capabilities?: unknown; error?: string }>;
-        listResources: (server: unknown) => Promise<{ success: boolean; response?: unknown; session?: unknown; capabilities?: unknown; error?: string }>;
-        listResourceTemplates: (server: unknown) => Promise<{ success: boolean; response?: unknown; session?: unknown; capabilities?: unknown; error?: string }>;
-        disconnect: (server: unknown) => Promise<{ success: boolean; disconnected?: boolean; sessions?: unknown[]; error?: string }>;
-        disconnectAll: () => Promise<{ success: boolean; disconnected?: number; sessions?: unknown[]; error?: string }>;
         discoverLocal: () => Promise<{ success: boolean; items: Array<{ sourcePath: string; count: number; servers: unknown[] }>; error?: string }>;
         importLocal: () => Promise<{ success: boolean; imported?: number; total?: number; sources?: string[]; servers?: unknown[]; error?: string }>;
         oauthStatus: (serverId: string) => Promise<{ success: boolean; connected?: boolean; tokenPath?: string; error?: string }>;

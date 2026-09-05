@@ -1,6 +1,6 @@
 ---
 name: gardenflow-video-director
-description: Use when generating short videos with GardenFlow official video API. Produces a detailed shot script first, asks the user to confirm it, then chooses between text-to-video, reference-guided, and first-last-frame modes and calls the correct wan2.7 video model with prompt discipline focused on motion, reference elements, and transitions.
+description: Use when generating short videos with a user-configured GardenFlow video provider. Produces a detailed shot script first, asks the user to confirm it, then chooses between text-to-video, reference-guided, and first-last-frame modes with prompt discipline focused on motion, reference elements, and transitions.
 when_to_use: Trigger for short video generation, motion clip creation, animated cover/video requests, reference-image video, image-to-video, or first/last frame transitions.
 allowed-tools: app_cli, image_generate, video_generate, audio_generate
 ---
@@ -57,12 +57,10 @@ This is preferred over keeping all video context only inside chat history.
 
 ## Hard Rules
 
-- GardenFlow video generation is locked to the GardenFlow official video route.
-- Do not choose arbitrary video endpoints or third-party video models.
-- Use only these official model mappings:
-  - `text-to-video` -> `wan2.7-t2v-video`
-  - `reference-guided` -> `wan2.7-r2v-video`
-  - `first-last-frame` -> `wan2.7-i2v-video`
+- Use the active video provider and model configured by the user.
+- Never invent an endpoint, API key, provider preset, or model name.
+- If no valid video provider is configured, explain that setup is required and stop before calling the tool.
+- Follow the supported modes and input limits reported by the configured model.
 - Treat first/last-frame transitions as a subtype of image-to-video work.
 - Do not skip the script review step just because the request sounds obvious.
 - Unless the user explicitly asks for a longer continuous shot, a single shot should usually be `1-3` seconds.

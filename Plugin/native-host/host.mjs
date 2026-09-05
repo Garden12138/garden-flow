@@ -1,7 +1,4 @@
 #!/usr/bin/env node
-import compatibility from '../brandCompatibility.cjs';
-compatibility.applyEnvironmentAliases(process.env);
-
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
@@ -18,10 +15,8 @@ const STATE_ROOT = process.env.GARDENFLOW_BROWSER_CONTROL_STATE_DIR || (
       : path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local/share'), 'GardenFlow/native-host')
 );
 const LOG_PATH = path.join(STATE_ROOT, 'browser-control-host.log');
-const ENDPOINT_STATE_PATH = process.env.GARDENFLOW_BROWSER_CONTROL_ENDPOINT_STATE
-  || path.join(STATE_ROOT, 'browser-control-agent-endpoint.json');
 const ENDPOINTS_DIRECTORY = process.env.GARDENFLOW_BROWSER_CONTROL_ENDPOINTS_DIRECTORY
-  || path.join(path.dirname(ENDPOINT_STATE_PATH), 'browser-control-agent-endpoints');
+  || path.join(STATE_ROOT, 'browser-control-agent-endpoints');
 const DEFAULT_AGENT_SOCKET_PATH = process.platform === 'win32'
   ? '\\\\.\\pipe\\gardenflow-browser-control'
   : path.join(os.tmpdir(), `gardenflow-browser-control-${typeof process.getuid === 'function' ? process.getuid() : 'user'}-${process.pid}.sock`);
@@ -317,7 +312,6 @@ function buildHostInfo(patch = {}) {
     node: process.version,
     platform: process.platform,
     socketPath: agentSocketPath,
-    endpointStatePath: ENDPOINT_STATE_PATH,
     endpointDescriptorPath,
     endpointsDirectory: ENDPOINTS_DIRECTORY,
     instanceId: hostInstanceId,
@@ -408,7 +402,6 @@ function startAgentServer() {
 
 function writeEndpointState() {
   try {
-    fs.mkdirSync(path.dirname(ENDPOINT_STATE_PATH), { recursive: true });
     fs.mkdirSync(ENDPOINTS_DIRECTORY, { recursive: true });
     const descriptor = buildHostInfo({
       ok: true,
@@ -416,8 +409,6 @@ function writeEndpointState() {
       updatedAt: new Date().toISOString(),
     });
     fs.writeFileSync(endpointDescriptorPath, JSON.stringify(descriptor, null, 2), { mode: 0o600 });
-    // Keep the v1 singleton state file as a compatibility pointer for older clients.
-    fs.writeFileSync(ENDPOINT_STATE_PATH, JSON.stringify(descriptor, null, 2), { mode: 0o600 });
   } catch (error) {
     log(`failed to write endpoint state: ${error instanceof Error ? error.message : String(error)}`);
   }

@@ -1,4 +1,3 @@
-import compatibility from '../../brandCompatibility.cjs';
 export const SIDE_PANEL_OPEN_WINDOW_IDS_KEY = 'gardenflowBrowserControlSidePanelOpenWindowIds';
 export const TARGET_SIDE_PANEL_OPEN_WINDOW_IDS_KEY = 'codexSidePanelOpenWindowIds';
 export const TOGGLE_SIDE_PANEL_COMMANDS = new Set(['open-gardenflow-side-panel', 'open-codex-side-panel']);
@@ -18,7 +17,7 @@ export function registerSidePanelStatus() {
     if (Number.isInteger(details?.windowId)) void setSidePanelOpen(details.windowId, false).catch(() => {});
   });
   chrome.commands?.onCommand?.addListener((command, tab) => {
-    if (TOGGLE_SIDE_PANEL_COMMANDS.has(compatibility.canonicalKey(command))) {
+    if (TOGGLE_SIDE_PANEL_COMMANDS.has(String(command || ''))) {
       void toggleSidePanel(tab?.windowId).catch(() => {});
     }
   });

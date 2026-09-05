@@ -9,7 +9,6 @@ import { BrowserControlTransport, setupBrowserRuntime } from './browser-client.m
 
 const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'gardenflow-browser-binding-'));
 const endpointsDirectory = path.join(tempRoot, 'endpoints');
-const endpointStatePath = path.join(tempRoot, 'legacy-endpoint.json');
 const servers = new Set();
 const requestAudit = [];
 
@@ -41,7 +40,7 @@ async function testSelectionAndStableBinding() {
   await writeDescriptor(chrome);
   await writeDescriptor(edge);
 
-  const transport = new BrowserControlTransport({ endpointStatePath, endpointsDirectory, timeoutMs: 500 });
+  const transport = new BrowserControlTransport({ endpointsDirectory, timeoutMs: 500 });
   await assert.rejects(
     transport.hostInfo(),
     (error) => error?.code === 'BROWSER_INSTANCE_SELECTION_REQUIRED'

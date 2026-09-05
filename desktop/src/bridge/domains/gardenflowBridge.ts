@@ -24,18 +24,10 @@ export type GardenFlowTaskConfirmPayload = {
 
 export type GardenFlowScheduledTaskPayload = Record<string, unknown>;
 
-const unavailable = (feature: string) => ({
-  success: false,
-  error: `${feature} is not available in the Electron archive build.`,
-});
-
 export function createGardenFlowBridge(core: BridgeCore) {
   return {
     gardenflowRunner: {
-      getStatus: () => core.invokeCommandGuarded('gardenflow_runner_status', undefined, {
-        timeoutMs: 2800,
-        fallbackChannel: 'gardenflow:runner-status',
-      }),
+      getStatus: () => core.invokeChannel('gardenflow:runner-status'),
       start: (payload?: Record<string, unknown>) => core.invokeChannel('gardenflow:runner-start', payload || {}),
       stop: () => core.invokeChannel('gardenflow:runner-stop'),
       runNow: (payload?: Record<string, unknown>) => core.invokeChannel('gardenflow:runner-run-now', payload || {}),
@@ -74,55 +66,6 @@ export function createGardenFlowBridge(core: BridgeCore) {
       onTaskEvent: (listener: Listener) => core.on('gardenflow:task-event', listener),
       offTaskEvent: (listener: Listener) => core.off('gardenflow:task-event', listener),
     },
-    gardenflowOrchestration: {
-      createRun: (payload: { goal: string; sessionId?: string; projectId?: string; platform?: string; format?: string }) =>
-        core.invokeChannelGuarded('gardenflow:orchestration-create-run', payload, {
-          timeoutMs: 3200,
-          fallback: unavailable('GardenFlow orchestration runs'),
-        }),
-      getRegistry: () => core.invokeChannelGuarded('gardenflow:orchestration-registry', undefined, {
-        timeoutMs: 3200,
-        fallback: { success: true, registry: {}, unavailable: true },
-      }),
-    },
-    gardenflowProjects: {
-      list: () => core.invokeChannel('gardenflow:list-projects'),
-      updateLearningCandidate: (payload: { projectId: string; candidateId: string; status: 'accepted' | 'rejected' | 'pending' }) =>
-        core.invokeChannelGuarded('gardenflow:learning-candidate-update', payload, {
-          timeoutMs: 3200,
-          fallback: unavailable('GardenFlow learning candidate updates'),
-        }),
-      updateSection: (payload: { projectId: string; sectionId: string; content: string }) =>
-        core.invokeChannelGuarded('gardenflow:project-section-update', payload, {
-          timeoutMs: 3200,
-          fallback: unavailable('GardenFlow project section updates'),
-        }),
-      exportMediaPlan: (payload: { projectId: string }) =>
-        core.invokeChannelGuarded('gardenflow:media-plan-export', payload, {
-          timeoutMs: 3200,
-          fallback: unavailable('GardenFlow media plan export'),
-        }),
-      renderRoughCut: (payload: { projectId: string }) =>
-        core.invokeChannelGuarded('gardenflow:media-plan-render', payload, {
-          timeoutMs: 3200,
-          fallback: unavailable('GardenFlow rough cut render'),
-        }),
-      exportPublishPackage: (payload: { projectId: string }) =>
-        core.invokeChannelGuarded('gardenflow:publish-package-export', payload, {
-          timeoutMs: 3200,
-          fallback: unavailable('GardenFlow publish package export'),
-        }),
-      exportReviewReport: (payload: { projectId: string }) =>
-        core.invokeChannelGuarded('gardenflow:review-report-export', payload, {
-          timeoutMs: 3200,
-          fallback: unavailable('GardenFlow review report export'),
-        }),
-      exportXhsPackage: (payload: { projectId: string }) =>
-        core.invokeChannelGuarded('gardenflow:xhs-package-export', payload, {
-          timeoutMs: 3200,
-          fallback: unavailable('GardenFlow XHS package export'),
-        }),
-    },
     gardenflowProfile: {
       getBundle: () => core.invokeChannel('gardenflow:profile:get-bundle'),
       updateDoc: (payload: { docType: 'agent' | 'soul' | 'user' | 'creator_profile'; markdown: string; reason?: string }) =>
@@ -134,15 +77,9 @@ export function createGardenFlowBridge(core: BridgeCore) {
       completeInitialization: (payload: { answers: Record<string, unknown> }) =>
         core.invokeChannel('gardenflow:profile:complete-initialization', payload),
       startStyleDefinition: (payload?: { forceRestart?: boolean; source?: string; sessionId?: string }) =>
-        core.invokeChannelGuarded('gardenflow:profile:start-style-definition', payload || {}, {
-          timeoutMs: 3200,
-          fallback: unavailable('GardenFlow style definition'),
-        }),
+        core.invokeChannel('gardenflow:profile:start-style-definition', payload || {}),
       completeStyleDefinition: (payload: Record<string, unknown>) =>
-        core.invokeChannelGuarded('gardenflow:profile:complete-style-definition', payload, {
-          timeoutMs: 3200,
-          fallback: unavailable('GardenFlow style definition completion'),
-        }),
+        core.invokeChannel('gardenflow:profile:complete-style-definition', payload),
     },
   };
 }

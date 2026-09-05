@@ -29,7 +29,6 @@ import { usePageRefresh } from '../../hooks/usePageRefresh';
 import { composeMarkdownWithFrontmatter } from '../../utils/markdownFrontmatter';
 import { parseTimestampMs } from '../../utils/time';
 import { uiDebug, uiMeasure } from '../../utils/uiDebug';
-import { GARDENFLOW_OFFICIAL_VIDEO_BASE_URL, getGardenFlowOfficialVideoModel } from '../../../shared/gardenflowVideo';
 import { getLiquidGlassMenuItemClassName, LiquidGlassMenuPanel, LiquidGlassMenuSeparator } from '@/components/ui/liquid-glass-menu';
 import { buildEditorSessionBinding, type EditorAiWorkspaceMode } from '../../features/chat/editorSessionBinding';
 import { renameManuscriptKeepingExtension } from '../../../shared/manuscriptFiles';
@@ -1898,10 +1897,10 @@ export function ManuscriptEditorHost({ filePath, onNavigateToGenerationStudio, i
     const resolvedEndpoint = (settings.image_endpoint || settings.api_endpoint || '').trim();
     const resolvedApiKey = (settings.image_api_key || settings.api_key || '').trim();
     const hasImageConfig = Boolean(resolvedEndpoint) && Boolean(resolvedApiKey);
-    const resolvedVideoEndpoint = (settings.video_endpoint || GARDENFLOW_OFFICIAL_VIDEO_BASE_URL).trim();
-    const resolvedVideoApiKey = (settings.video_api_key || settings.api_key || '').trim();
-    const effectiveVideoModel = (settings.video_model || getGardenFlowOfficialVideoModel(videoGenerationMode)).trim();
-    const hasVideoConfig = Boolean(resolvedVideoEndpoint) && Boolean(resolvedVideoApiKey);
+    const resolvedVideoEndpoint = (settings.video_endpoint || '').trim();
+    const resolvedVideoApiKey = (settings.video_api_key || '').trim();
+    const effectiveVideoModel = (settings.video_model || '').trim();
+    const hasVideoConfig = Boolean(resolvedVideoEndpoint) && Boolean(resolvedVideoApiKey) && Boolean(effectiveVideoModel);
 
     const handleGenerateVideo = useCallback(async () => {
         const effectiveVideoReferenceImages = videoGenerationMode === 'reference-guided'

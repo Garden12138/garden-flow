@@ -8,12 +8,6 @@
 export * from './toolRegistry';
 export * from './tools';
 
-// Agent Executor
-export * from './agentExecutor';
-
-// Chat Service (统一入口)
-export * from './ChatService';
-
 // Skill System
 export * from './skillManager';
 export * from './skillLoader';

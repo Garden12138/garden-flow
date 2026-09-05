@@ -4,10 +4,6 @@ import { getSettings } from '../db';
 import { createGeneratedMediaAsset, type MediaAsset } from './mediaLibraryStore';
 import { normalizeApiBaseUrl } from './urlUtils';
 import {
-    GARDENFLOW_OFFICIAL_VIDEO_BASE_URL,
-    getGardenFlowOfficialVideoModel,
-} from '../../shared/gardenflowVideo';
-import {
     buildAliyunBailianVideoCreateUrl,
     buildAliyunBailianVideoCreateUrlCandidates,
     buildAliyunBailianVideoRequest,
@@ -20,12 +16,12 @@ import {
     resolveVideoProvider,
 } from '../../shared/videoProvider';
 import {
-    buildPrivateGatewayVideoCreateUrl,
-    buildPrivateGatewayVideoQueryUrl,
-    buildPrivateGatewayVideoRequest,
-    shouldRetryPrivateGatewayVideoCreate,
-    getPrivateGatewayVideoModelMeta,
-} from '../../shared/privateGateway';
+    buildNewApiVideoCreateUrl,
+    buildNewApiVideoQueryUrl,
+    buildNewApiVideoRequest,
+    shouldRetryNewApiVideoCreate,
+    type NewApiVideoUpstream,
+} from '../../shared/newApiVideo';
 import {
     getVideoModelCapabilities,
     resolveVideoModelRoute,
@@ -96,11 +92,6 @@ const NEW_API_VIDEO_TASK_POLL_TIMEOUT_MS = 15 * 60 * 1000;
 const NEW_API_VIDEO_SUCCESS_STATUSES = new Set(['SUCCESS', 'SUCCEEDED', 'COMPLETED']);
 const NEW_API_VIDEO_FAILURE_STATUSES = new Set(['FAILURE', 'FAILED', 'CANCELED', 'CANCELLED']);
 const aliyunEndpointFallbacks = new Map<string, string>();
-
-function isGardenFlowCompatibleEndpoint(endpoint: string): boolean {
-    const normalized = normalizeApiBaseUrl(endpoint).toLowerCase();
-    return normalized.includes('api.ziz.hk') && normalized.includes('/v1');
-}
 
 function normalizeVideoAspectRatio(value: string): '16:9' | '9:16' {
     return String(value || '').trim() === '9:16' ? '9:16' : '16:9';
@@ -224,19 +215,7 @@ function buildCompatibleVideoRouteUrl(endpoint: string, suffix: string): string 
 }
 
 function buildCompatibleVideoRouteUrls(endpoint: string, suffix: string): string[] {
-    const primary = buildCompatibleVideoRouteUrl(endpoint, suffix);
-    const urls = [primary];
-    if (isGardenFlowCompatibleEndpoint(endpoint)) {
-        try {
-            const parsed = new URL(normalizeApiBaseUrl(endpoint));
-            const apiRoute = `${parsed.origin}/api/v1${suffix}`;
-            const v1Route = `${parsed.origin}/v1${suffix}`;
-            return [primary, apiRoute, v1Route].filter((item, index, arr) => arr.indexOf(item) === index);
-        } catch {
-            return urls;
-        }
-    }
-    return urls;
+    return [buildCompatibleVideoRouteUrl(endpoint, suffix)];
 }
 
 function sleep(ms: number): Promise<void> {
@@ -389,84 +368,21 @@ async function generateViaOpenAiCompatibleVideoRoute(input: {
         seconds,
         n: input.count,
     };
-    if (isGardenFlowCompatibleEndpoint(input.endpoint)) {
-        body.resolution = input.resolution === '1080p' ? '1080P' : '720P';
-        body.duration = input.durationSeconds;
-
-        if (input.generationMode === 'text-to-video') {
-            if (normalizedDrivingAudio) {
-                body.audio_url = normalizedDrivingAudio;
-                body.driving_audio_url = normalizedDrivingAudio;
-            }
-        } else if (input.generationMode === 'reference-guided') {
-            const referenceImages = await Promise.all(refs.slice(0, 5).map((item) => normalizeMediaValueForRemote(item)));
-            const normalizedRefs = referenceImages.filter(Boolean);
-            if (normalizedRefs.length) {
-                body.images = normalizedRefs;
-                body.reference_images = normalizedRefs;
-                body.reference_image_urls = normalizedRefs;
-                body.image_urls = normalizedRefs;
-                body.image = normalizedRefs[0];
-                body.image_url = normalizedRefs[0];
-                body.reference_image = normalizedRefs[0];
-                body.img_url = normalizedRefs[0];
-            }
-            if (normalizedDrivingAudio) {
-                body.reference_voice = normalizedDrivingAudio;
-                body.reference_voice_url = normalizedDrivingAudio;
-                body.audio_url = normalizedDrivingAudio;
-            }
-        } else if (input.generationMode === 'first-last-frame') {
-            const firstFrame = refs[0] ? await normalizeMediaValueForRemote(refs[0]) : '';
-            const lastFrame = refs[1] ? await normalizeMediaValueForRemote(refs[1]) : '';
-            if (firstFrame || lastFrame) {
-                body.video_mode = 'first_last_frame';
-                body.media = [
-                    ...(firstFrame ? [{ type: 'first_frame', url: firstFrame }] : []),
-                    ...(lastFrame ? [{ type: 'last_frame', url: lastFrame }] : []),
-                    ...(normalizedDrivingAudio ? [{ type: 'driving_audio', url: normalizedDrivingAudio }] : []),
-                ];
-                if (firstFrame) {
-                    body.image = firstFrame;
-                    body.image_url = firstFrame;
-                    body.reference_image = firstFrame;
-                    body.img_url = firstFrame;
-                }
-                body.images = [firstFrame, lastFrame].filter(Boolean);
-                if (lastFrame) {
-                    body.last_frame = lastFrame;
-                    body.last_frame_url = lastFrame;
-                    body.last_image_url = lastFrame;
-                }
-                if (normalizedDrivingAudio) {
-                    body.audio_url = normalizedDrivingAudio;
-                    body.driving_audio_url = normalizedDrivingAudio;
-                }
-            }
-        } else if (input.generationMode === 'continuation') {
-            const firstClip = input.firstClip ? await normalizeMediaValueForRemote(input.firstClip) : '';
-            if (firstClip) {
-                body.video_mode = 'continuation';
-                body.media = [{ type: 'first_clip', url: firstClip }];
-                body.first_clip_url = firstClip;
-                body.video_url = firstClip;
-                body.video = firstClip;
-            }
-        }
-    } else {
-        if (refs[0]) {
-            body.image = refs[0];
-            body.image_url = refs[0];
-            body.reference_image = refs[0];
-            body.img_url = refs[0];
-        }
-        if (refs.length > 0) {
-            body.images = refs.slice(0, 2);
-        }
-        if (normalizedDrivingAudio) {
-            body.audio_url = normalizedDrivingAudio;
-            body.driving_audio_url = normalizedDrivingAudio;
-        }
+    if (refs[0]) {
+        body.image = refs[0];
+        body.image_url = refs[0];
+        body.reference_image = refs[0];
+        body.img_url = refs[0];
+    }
+    if (refs.length > 0) {
+        body.images = refs.slice(0, 2);
+    }
+    if (normalizedDrivingAudio) {
+        body.audio_url = normalizedDrivingAudio;
+        body.driving_audio_url = normalizedDrivingAudio;
+    }
+    if (input.generationMode === 'continuation' && input.firstClip) {
+        body.video_url = await normalizeMediaValueForRemote(input.firstClip);
     }
     let response: Response | null = null;
     let payload: any = {};
@@ -605,7 +521,7 @@ async function generateViaOpenAiCompatibleVideoRoute(input: {
             dataBuffer: downloaded.buffer,
             mimeType: downloaded.mimeType,
             projectId: input.projectId?.trim() || undefined,
-            provider: input.endpoint.toLowerCase().includes('/gardenflow/') ? 'gardenflow' : 'openai-compatible',
+            provider: 'openai-compatible',
             model: input.model,
             aspectRatio: input.aspectRatio,
             size: input.resolution,
@@ -622,7 +538,7 @@ async function generateViaOpenAiCompatibleVideoRoute(input: {
     return {
         model: input.model,
         endpoint: input.endpoint,
-        provider: input.endpoint.toLowerCase().includes('/gardenflow/') ? 'gardenflow' : 'openai-compatible',
+        provider: 'openai-compatible',
         aspectRatio: input.aspectRatio,
         resolution: input.resolution,
         durationSeconds: input.durationSeconds,
@@ -677,7 +593,7 @@ function extractNewApiFailureMessage(payload: any): string {
     const root = asRecord(payload);
     const wrapped = asRecord(root.data);
     const failReason = String(wrapped.fail_reason || root.fail_reason || '').trim();
-    // 成功时旧版本会把视频 URL 塞进 fail_reason，不能当成错误信息回显。
+    // 某些兼容服务会把成功结果的视频 URL 写入 fail_reason，不能作为错误回显。
     if (failReason && !/^https?:\/\//i.test(failReason)) {
         if (/raw\.githubusercontent\.com|cdn\.jsdelivr\.net/i.test(failReason) && /Failed to download|Model not exist/i.test(failReason)) {
             return `${failReason}。阿里云通常拉不下 GitHub Raw / 官方 jsDelivr，请把图床公开访问方式改成国内镜像。`;
@@ -701,17 +617,14 @@ async function generateViaNewApiVideoRoute(input: {
     referenceImages?: string[];
     generationMode: VideoGenerationMode;
     maxReferenceImages: number;
+    upstream: NewApiVideoUpstream;
 }): Promise<GenerateVideosResult> {
     if (input.generationMode === 'continuation') {
-        throw new Error('私有网关的两个视频上游均不支持“视频续写”模式。');
+        throw new Error('New API 视频上游不支持“视频续写”模式。');
     }
-    const meta = getPrivateGatewayVideoModelMeta(input.model);
-    if (!meta) {
-        throw new Error(`${input.model} 不在私有网关的视频模型清单中，请先在 shared/privateGateway.ts 中登记其上游与支持的模式。`);
-    }
-    const createUrl = buildPrivateGatewayVideoCreateUrl(input.endpoint);
+    const createUrl = buildNewApiVideoCreateUrl(input.endpoint);
     if (!createUrl) {
-        throw new Error('私有网关生视频 Endpoint 无效。');
+        throw new Error('New API 生视频 Endpoint 无效。');
     }
 
     const refs = (Array.isArray(input.referenceImages) ? input.referenceImages : [])
@@ -726,16 +639,15 @@ async function generateViaNewApiVideoRoute(input: {
         });
     }
     if (normalizedRefs.some((item) => item.startsWith('data:') || /^[A-Za-z0-9+/=]+$/.test(item))) {
-        // 实测：data URL / 本地转码图打到阿里 r2v 会变成 InvalidParameter / Model not exist。
-        throw new Error('私有网关参考图生视频目前只接受公网可达的图片 URL。请先在设置中配置图床，或直接提供 https 图片地址。');
+        throw new Error('New API 参考图生视频只接受公网可达的图片 URL。请先配置图床，或直接提供 https 图片地址。');
     }
 
     const assets: MediaAsset[] = [];
     for (let index = 0; index < input.count; index += 1) {
-        const body = buildPrivateGatewayVideoRequest({
+        const body = buildNewApiVideoRequest({
             model: input.model,
             prompt: input.prompt,
-            upstream: meta.upstream,
+            upstream: input.upstream,
             generationMode: input.generationMode,
             referenceImages: normalizedRefs,
             resolution: input.resolution,
@@ -766,12 +678,12 @@ async function generateViaNewApiVideoRoute(input: {
                 });
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error || 'fetch failed');
-                throw new Error(`私有网关生视频网络请求失败（请检查内网连通性、Endpoint 或防火墙）：${message}`);
+                throw new Error(`New API 生视频网络请求失败（请检查 Endpoint、网络或防火墙）：${message}`);
             }
             createPayload = await response.json().catch(async () => ({ message: await response?.text().catch(() => '') }));
             if (response.ok) break;
             const failureMessage = extractNewApiFailureMessage(createPayload) || response.statusText || 'request failed';
-            if (attempt < maxCreateAttempts && shouldRetryPrivateGatewayVideoCreate(response.status, failureMessage)) {
+            if (attempt < maxCreateAttempts && shouldRetryNewApiVideoCreate(response.status, failureMessage)) {
                 console.log('[VideoGeneration] new-api create retry', {
                     attempt,
                     status: response.status,
@@ -781,27 +693,27 @@ async function generateViaNewApiVideoRoute(input: {
                 continue;
             }
             throw new VideoGenerationProviderError(
-                `私有网关生视频创建失败 (${response.status})：${failureMessage}`,
+                `New API 生视频创建失败 (${response.status})：${failureMessage}`,
                 { statusCode: response.status, terminal: response.status >= 400 && response.status < 500 },
             );
         }
         if (!response?.ok) {
             throw new VideoGenerationProviderError(
-                `私有网关生视频创建失败 (${response?.status || 400})：${extractNewApiFailureMessage(createPayload) || 'request failed'}`,
+                `New API 生视频创建失败 (${response?.status || 400})：${extractNewApiFailureMessage(createPayload) || 'request failed'}`,
                 { statusCode: response?.status, terminal: true },
             );
         }
         const taskId = extractTaskId(createPayload) || String(createPayload?.id || '').trim();
         if (!taskId) {
-            throw new Error('私有网关生视频创建成功，但接口未返回 task_id。');
+            throw new Error('New API 生视频创建成功，但接口未返回 task_id。');
         }
-        const queryUrl = buildPrivateGatewayVideoQueryUrl(input.endpoint, taskId);
+        const queryUrl = buildNewApiVideoQueryUrl(input.endpoint, taskId);
         if (!queryUrl) {
-            throw new Error('私有网关生视频查询地址无效。');
+            throw new Error('New API 生视频查询地址无效。');
         }
         console.log('[VideoGeneration] new-api task created', {
             model: input.model,
-            upstream: meta.upstream,
+            upstream: input.upstream,
             taskId,
             endpoint: createUrl,
         });
@@ -813,7 +725,7 @@ async function generateViaNewApiVideoRoute(input: {
             if (NEW_API_VIDEO_SUCCESS_STATUSES.has(finalStatus)) break;
             if (NEW_API_VIDEO_FAILURE_STATUSES.has(finalStatus)) {
                 throw new VideoGenerationProviderError(
-                    `私有网关生视频任务失败：${extractNewApiFailureMessage(finalPayload) || finalStatus}`,
+                    `New API 生视频任务失败：${extractNewApiFailureMessage(finalPayload) || finalStatus}`,
                     { terminal: true },
                 );
             }
@@ -826,12 +738,12 @@ async function generateViaNewApiVideoRoute(input: {
                 });
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error || 'fetch failed');
-                throw new Error(`私有网关生视频任务查询网络失败：${message}`);
+                throw new Error(`New API 生视频任务查询网络失败：${message}`);
             }
             finalPayload = await queryResponse.json().catch(async () => ({ message: await queryResponse.text().catch(() => '') }));
             if (!queryResponse.ok) {
                 throw new VideoGenerationProviderError(
-                    `私有网关生视频任务查询失败 (${queryResponse.status})：${extractNewApiFailureMessage(finalPayload) || queryResponse.statusText || 'request failed'}`,
+                    `New API 生视频任务查询失败 (${queryResponse.status})：${extractNewApiFailureMessage(finalPayload) || queryResponse.statusText || 'request failed'}`,
                     { statusCode: queryResponse.status, terminal: queryResponse.status >= 400 && queryResponse.status < 500 },
                 );
             }
@@ -843,11 +755,11 @@ async function generateViaNewApiVideoRoute(input: {
             });
         }
         if (!NEW_API_VIDEO_SUCCESS_STATUSES.has(finalStatus)) {
-            throw new Error(`私有网关生视频任务超时，task_id=${taskId}`);
+            throw new Error(`New API 生视频任务超时，task_id=${taskId}`);
         }
         const videoUrl = extractNewApiVideoUrl(finalPayload);
         if (!videoUrl) {
-            throw new Error('私有网关生视频任务已完成，但接口未返回可下载的视频地址。');
+            throw new Error('New API 生视频任务已完成，但接口未返回可下载的视频地址。');
         }
         const downloaded = await fetchGeneratedVideoBuffer(videoUrl, input.apiKey);
         assets.push(await createGeneratedMediaAsset({
@@ -855,7 +767,7 @@ async function generateViaNewApiVideoRoute(input: {
             dataBuffer: downloaded.buffer,
             mimeType: downloaded.mimeType,
             projectId: input.projectId?.trim() || undefined,
-            provider: 'new-api',
+            provider: `new-api-${input.upstream}`,
             model: input.model,
             aspectRatio: input.aspectRatio,
             size: input.resolution,
@@ -867,7 +779,7 @@ async function generateViaNewApiVideoRoute(input: {
     return {
         model: input.model,
         endpoint: input.endpoint,
-        provider: 'new-api',
+        provider: `new-api-${input.upstream}`,
         aspectRatio: input.aspectRatio,
         resolution: input.resolution,
         durationSeconds: input.durationSeconds,
@@ -1209,36 +1121,30 @@ export async function generateVideosToMediaLibrary(input: GenerateVideosInput): 
     const generationMode = (String(input.generationMode || '').trim() || 'text-to-video') as VideoGenerationMode;
     const configuredRoute = resolveVideoModelRoute(settings, input.model);
     const endpoint = normalizeApiBaseUrl(
-        String(input.endpoint || configuredRoute?.provider.endpoint || settings.video_endpoint || GARDENFLOW_OFFICIAL_VIDEO_BASE_URL).trim(),
-        GARDENFLOW_OFFICIAL_VIDEO_BASE_URL
+        String(input.endpoint || configuredRoute?.provider.endpoint || settings.video_endpoint || '').trim(),
     );
     const configuredModel = String(input.model || configuredRoute?.model || settings.video_model || '').trim();
-    const model = configuredModel || getGardenFlowOfficialVideoModel(generationMode);
-    const provider = resolveVideoProvider(endpoint, model);
+    const model = configuredModel;
+    const provider = resolveVideoProvider(endpoint, model, configuredRoute?.provider.preset);
     const inputApiKey = String(input.apiKey || '').trim();
     const videoApiKey = String(configuredRoute?.provider.apiKey || settings.video_api_key || '').trim();
-    const globalApiKey = String(settings.api_key || '').trim();
-    // 直连上游需要各自的专用 key；private new-api 网关与官方源共用同一个 sk- 令牌，
-    // 因此可以回落到全局 api_key。
-    const providerRequiresDedicatedKey = provider === 'aliyun-bailian' || provider === 'minimax';
-    const apiKey = inputApiKey || videoApiKey || (providerRequiresDedicatedKey ? '' : globalApiKey);
+    const apiKey = inputApiKey || videoApiKey;
     const selectedKeySource = inputApiKey
         ? 'input.apiKey'
         : videoApiKey
             ? 'settings.video_api_key'
-            : !providerRequiresDedicatedKey && globalApiKey
-                ? 'settings.api_key'
-                : 'none';
+            : 'none';
     const aspectRatio = normalizeVideoAspectRatio(String(input.aspectRatio || '').trim());
     const resolution = normalizeVideoResolution(String(input.resolution || '').trim());
-    const modelCapabilities = getVideoModelCapabilities(model, endpoint);
+    const modelCapabilities = getVideoModelCapabilities(model, endpoint, configuredRoute?.provider.preset);
+    const isNewApi = provider === 'new-api-aliyun' || provider === 'new-api-minimax';
     const durationSeconds = normalizeVideoDuration(
         input.durationSeconds,
         provider === 'aliyun-bailian'
             ? { min: 3, max: 15 }
             : provider === 'minimax'
                 ? { min: 4, max: 15 }
-                : provider === 'new-api'
+                : isNewApi
                     ? {
                         min: modelCapabilities.durationSeconds[0] ?? 4,
                         max: modelCapabilities.durationSeconds[modelCapabilities.durationSeconds.length - 1] ?? 15,
@@ -1249,7 +1155,7 @@ export async function generateVideosToMediaLibrary(input: GenerateVideosInput): 
     const generateAudio = Boolean(input.generateAudio);
     const maxReferenceImages = provider === 'aliyun-bailian' || provider === 'minimax'
         ? 9
-        : provider === 'new-api'
+        : isNewApi
             ? Math.max(modelCapabilities.maxReferenceImages, generationMode === 'first-last-frame' ? 2 : 0)
             : generationMode === 'reference-guided' ? 5 : 2;
     const referenceImages = Array.isArray(input.referenceImages)
@@ -1263,13 +1169,16 @@ export async function generateVideosToMediaLibrary(input: GenerateVideosInput): 
     if (!endpoint) {
         throw new Error('生视频 Endpoint 未配置。请先在设置中填写视频服务地址。');
     }
+    if (!model) {
+        throw new Error('生视频模型未配置。请先在设置中填写视频模型。');
+    }
     if (!apiKey) {
         throw new Error(provider === 'aliyun-bailian'
             ? '阿里云百炼 API Key 未配置。请在生视频模型设置中填写 DASHSCOPE_API_KEY。'
             : provider === 'minimax'
                 ? 'MiniMax API Key 未配置。请在生视频模型设置中填写 MINIMAX_API_KEY。'
-                : provider === 'new-api'
-                    ? '私有网关令牌未配置。请在设置中为官方源或该视频服务商填写 sk- 开头的网关令牌。'
+                : isNewApi
+                    ? 'New API 令牌未配置。请在视频服务商设置中填写 API Key。'
                     : '生视频 API Key 未配置。请先在设置中填写视频服务密钥。');
     }
     if (!modelCapabilities.supportedModes.includes(generationMode)) {
@@ -1292,7 +1201,6 @@ export async function generateVideosToMediaLibrary(input: GenerateVideosInput): 
         keySource: selectedKeySource,
         keySuffix: maskKeySuffix(apiKey),
         videoKeySuffix: maskKeySuffix(videoApiKey),
-        globalKeySuffix: maskKeySuffix(globalApiKey),
         model,
         provider,
         generationMode,
@@ -1351,7 +1259,7 @@ export async function generateVideosToMediaLibrary(input: GenerateVideosInput): 
         });
     }
 
-    if (provider === 'new-api') {
+    if (isNewApi) {
         return generateViaNewApiVideoRoute({
             prompt,
             endpoint,
@@ -1366,6 +1274,7 @@ export async function generateVideosToMediaLibrary(input: GenerateVideosInput): 
             referenceImages,
             generationMode,
             maxReferenceImages,
+            upstream: provider === 'new-api-aliyun' ? 'aliyun-bailian' : 'minimax',
         });
     }
 

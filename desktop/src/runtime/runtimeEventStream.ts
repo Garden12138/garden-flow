@@ -15,6 +15,8 @@ type RuntimeEnvelopeMeta = {
 
 type RuntimeScopedPayload = {
   sessionId: string;
+  runId?: string;
+  sequence?: number;
   runtimeId?: string;
   parentRuntimeId?: string;
 };

@@ -9,7 +9,7 @@
 
 ## Relationship
 
-- CLI 渲染脚本在 [remotion/render.mjs](/Users/Jam/LocalDev/GitHub/GardenFlow/desktop/remotion/render.mjs)
+- 渲染入口由 `index.ts` 注册，composition 在 `Root.tsx` 组装。
 - 编辑器侧协议在 `src/components/manuscripts/remotion/`
 - 稿件编辑器状态在 `src/components/manuscripts/ManuscriptEditorHost.tsx`
 

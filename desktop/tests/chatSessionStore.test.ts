@@ -153,7 +153,7 @@ test('keeps richer cached assistant content and execution details during databas
     const cached = [{
         ...persisted[0],
         timeline: [{ id: 'tool-1', status: 'failed', toolData: { callId: 'call-1' } }],
-        tools: [{ id: 'legacy-tool-1' }],
+        tools: [{ id: 'cached-tool-1' }],
     }];
     const merged = mergeChatMessageSnapshots(persisted, cached);
     assert.equal(merged[0].content, persisted[0].content);
