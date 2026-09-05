@@ -407,163 +407,140 @@ export function Layout({ children, currentView, onNavigate, immersiveMode = fals
               )}
 
               {/* Footer */}
-              <div className="workbench-context-shelf__footer border-t border-border px-4 py-2 space-y-2">
-            {sidebarVisualCollapsed && (
-              <button
-                type="button"
-                onClick={() => onNavigate('settings')}
-                className="h-8 w-8 rounded-md text-text-tertiary hover:text-text-primary transition-colors inline-flex items-center justify-center shrink-0"
-                title={t('nav.settings')}
-                aria-label={t('nav.settings')}
-              >
-                <SettingsIcon className="w-[17px] h-[17px]" strokeWidth={1.75} />
-              </button>
-            )}
-            <div
-              className={clsx(
-                'app-sidebar-footer-meta flex items-center gap-2 text-[11px] text-text-tertiary/90 whitespace-nowrap transition-[max-height,opacity,transform]',
-                sidebarVisualCollapsed ? 'max-h-0 overflow-hidden opacity-0 translate-y-1' : 'max-h-8 overflow-visible opacity-100 translate-y-0 justify-start',
-                isSpaceMenuOpen && 'relative z-[140]'
-              )}
-            >
-              <button
-                type="button"
-                onClick={() => onNavigate('settings')}
-                className="h-8 rounded-md px-2 text-text-tertiary hover:text-text-primary hover:bg-surface-primary transition-colors inline-flex items-center justify-center gap-1.5 shrink-0"
-                title={t('nav.settings')}
-                aria-label={t('nav.settings')}
-              >
-                <SettingsIcon className="w-[19px] h-[19px]" strokeWidth={1.75} />
-                <span className="text-xs font-medium">{t('nav.settings')}</span>
-              </button>
-              {!usesAppTitleBar && (
-                <>
-                  <button
-                    type="button"
-                    onClick={toggleNotificationDrawer}
-                    className="relative h-5 w-5 rounded-md border border-border bg-surface-primary text-text-secondary hover:text-text-primary hover:bg-surface-secondary transition-colors inline-flex items-center justify-center shrink-0"
-                    title={notificationDrawerOpen ? t('layout.closeNotificationCenter') : t('layout.openNotificationCenter')}
-                    aria-label={notificationDrawerOpen ? t('layout.closeNotificationCenter') : t('layout.openNotificationCenter')}
-                  >
-                    <Bell className="w-[11px] h-[11px]" strokeWidth={1.75} />
-                    {unreadNotificationCount > 0 && (
-                      <span className="absolute -right-1.5 -top-1.5 min-w-[14px] h-[14px] rounded-full bg-accent-primary px-1 text-[9px] leading-[14px] text-white">
-                        {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
-                      </span>
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setManualThemeMode((prev) => prev === 'dark' ? 'light' : 'dark')}
-                    className="h-5 w-5 rounded-md border border-border bg-surface-primary text-text-secondary hover:text-text-primary hover:bg-surface-secondary transition-colors inline-flex items-center justify-center shrink-0"
-                    title={themeMode === 'dark' ? t('layout.switchToLight') : t('layout.switchToDark')}
-                    aria-label={themeMode === 'dark' ? t('layout.switchToLight') : t('layout.switchToDark')}
-                  >
-                    {themeMode === 'dark'
-                      ? <Sun className="w-[11px] h-[11px]" strokeWidth={1.75} />
-                      : <Moon className="w-[11px] h-[11px]" strokeWidth={1.75} />}
-                  </button>
-                </>
-              )}
-              <div ref={spaceMenuRef} className="relative min-w-0">
-                <button
-                  type="button"
-                  onClick={() => setIsSpaceMenuOpen((prev) => !prev)}
-                  disabled={isSwitchingSpace}
-                  className="h-7 w-[118px] px-2.5 text-[12px] flex items-center justify-between gap-1 rounded-lg border border-border bg-surface-primary text-text-primary disabled:opacity-50"
+              <div className="workbench-context-shelf__footer border-t border-border px-4 py-2">
+                <div
+                  className={clsx(
+                    'app-sidebar-footer-meta flex w-full items-center gap-2 text-[11px] text-text-tertiary/90 whitespace-nowrap',
+                    isSpaceMenuOpen && 'relative z-[140]'
+                  )}
                 >
-                  <span className="min-w-0 truncate">{activeSpaceName}</span>
-                  <ChevronDown className={clsx('w-[13px] h-[13px] shrink-0 text-text-tertiary transition-transform', isSpaceMenuOpen && 'rotate-180')} strokeWidth={1.75} />
-                </button>
-
-                {isSpaceMenuOpen && (
-                  <div
-                    className="app-space-menu absolute right-0 bottom-full z-[1] mb-1.5 w-[172px] overflow-hidden rounded-lg border border-border shadow-lg"
-                  >
-                    <div className="max-h-44 overflow-y-auto">
-                      {spaces.length === 0 ? (
-                        <div className="h-9 px-2.5 text-[12px] text-text-tertiary flex items-center">
-                          {t('layout.noSpace')}
-                        </div>
-                      ) : (
-                        spaces.map((space) => {
-                          const isActive = space.id === activeSpaceId;
-                          const showEdit = hoveredSpaceId === space.id;
-                          const canDelete = space.id !== 'default';
-                          const isDeleting = deletingSpaceId === space.id;
-                          return (
-                            <div
-                              key={space.id}
-                              className={clsx(
-                                'h-9 px-2.5 flex items-center gap-1.5',
-                                isActive ? 'bg-accent-primary/10' : 'hover:bg-surface-secondary'
-                              )}
-                              onMouseEnter={() => setHoveredSpaceId(space.id)}
-                              onMouseLeave={() => setHoveredSpaceId((prev) => (prev === space.id ? null : prev))}
-                            >
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  void handleSwitchSpace(space.id);
-                                }}
-                                className={clsx('flex-1 text-left text-[12px] truncate', isActive ? 'text-accent-primary' : 'text-text-primary')}
-                              >
-                                {space.name}
-                              </button>
-                              <button
-                                type="button"
-                                onMouseDown={(event) => {
-                                  event.preventDefault();
-                                  event.stopPropagation();
-                                  openRenameSpaceDialog(space);
-                                }}
-                                className={clsx(
-                                  'w-5 h-5 inline-flex items-center justify-center rounded-md text-text-secondary hover:text-text-primary hover:bg-surface-primary transition-opacity',
-                                  showEdit ? 'opacity-100' : 'opacity-0 pointer-events-none'
-                                )}
-                                title={t('layout.renameSpace')}
-                              >
-                                <Pencil className="w-[12px] h-[12px]" strokeWidth={1.75} />
-                              </button>
-                              {canDelete && (
-                                <button
-                                  type="button"
-                                  disabled={isDeleting}
-                                  onMouseDown={(event) => {
-                                    event.preventDefault();
-                                    event.stopPropagation();
-                                    void handleDeleteSpace(space);
-                                  }}
-                                  className={clsx(
-                                    'w-5 h-5 inline-flex items-center justify-center rounded-md text-text-secondary hover:text-red-500 hover:bg-surface-primary disabled:opacity-50 transition-opacity',
-                                    showEdit ? 'opacity-100' : 'opacity-0 pointer-events-none'
-                                  )}
-                                  title={t('layout.deleteSpace')}
-                                >
-                                  <Trash2 className="w-[12px] h-[12px]" strokeWidth={1.75} />
-                                </button>
-                              )}
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
+                  {!usesAppTitleBar && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={toggleNotificationDrawer}
+                        className="relative h-5 w-5 rounded-md border border-border bg-surface-primary text-text-secondary hover:text-text-primary hover:bg-surface-secondary transition-colors inline-flex items-center justify-center shrink-0"
+                        title={notificationDrawerOpen ? t('layout.closeNotificationCenter') : t('layout.openNotificationCenter')}
+                        aria-label={notificationDrawerOpen ? t('layout.closeNotificationCenter') : t('layout.openNotificationCenter')}
+                      >
+                        <Bell className="w-[11px] h-[11px]" strokeWidth={1.75} />
+                        {unreadNotificationCount > 0 && (
+                          <span className="absolute -right-1.5 -top-1.5 min-w-[14px] h-[14px] rounded-full bg-accent-primary px-1 text-[9px] leading-[14px] text-white">
+                            {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+                          </span>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setManualThemeMode((prev) => prev === 'dark' ? 'light' : 'dark')}
+                        className="h-5 w-5 rounded-md border border-border bg-surface-primary text-text-secondary hover:text-text-primary hover:bg-surface-secondary transition-colors inline-flex items-center justify-center shrink-0"
+                        title={themeMode === 'dark' ? t('layout.switchToLight') : t('layout.switchToDark')}
+                        aria-label={themeMode === 'dark' ? t('layout.switchToLight') : t('layout.switchToDark')}
+                      >
+                        {themeMode === 'dark'
+                          ? <Sun className="w-[11px] h-[11px]" strokeWidth={1.75} />
+                          : <Moon className="w-[11px] h-[11px]" strokeWidth={1.75} />}
+                      </button>
+                    </>
+                  )}
+                  <div ref={spaceMenuRef} className="relative min-w-0 flex-1">
                     <button
                       type="button"
-                      onClick={() => {
-                        openCreateSpaceDialog();
-                      }}
-                      className="h-9 w-full border-t border-border px-2.5 text-[12px] text-accent-primary hover:bg-surface-secondary flex items-center gap-1.5"
+                      onClick={() => setIsSpaceMenuOpen((prev) => !prev)}
+                      disabled={isSwitchingSpace}
+                      className="h-7 w-full px-2.5 text-[12px] flex items-center justify-between gap-1 rounded-lg border border-border bg-surface-primary text-text-primary disabled:opacity-50"
                     >
-                      <span className="text-[15px] leading-none">+</span>
-                      <span className="truncate">{t('layout.createSpace')}</span>
+                      <span className="min-w-0 truncate">{activeSpaceName}</span>
+                      <ChevronDown className={clsx('w-[13px] h-[13px] shrink-0 text-text-tertiary transition-transform', isSpaceMenuOpen && 'rotate-180')} strokeWidth={1.75} />
                     </button>
 
+                    {isSpaceMenuOpen && (
+                      <div
+                        className="app-space-menu absolute right-0 bottom-full z-[1] mb-1.5 w-full min-w-[172px] overflow-hidden rounded-lg border border-border shadow-lg"
+                      >
+                        <div className="max-h-44 overflow-y-auto">
+                          {spaces.length === 0 ? (
+                            <div className="h-9 px-2.5 text-[12px] text-text-tertiary flex items-center">
+                              {t('layout.noSpace')}
+                            </div>
+                          ) : (
+                            spaces.map((space) => {
+                              const isActive = space.id === activeSpaceId;
+                              const showEdit = hoveredSpaceId === space.id;
+                              const canDelete = space.id !== 'default';
+                              const isDeleting = deletingSpaceId === space.id;
+                              return (
+                                <div
+                                  key={space.id}
+                                  className={clsx(
+                                    'h-9 px-2.5 flex items-center gap-1.5',
+                                    isActive ? 'bg-accent-primary/10' : 'hover:bg-surface-secondary'
+                                  )}
+                                  onMouseEnter={() => setHoveredSpaceId(space.id)}
+                                  onMouseLeave={() => setHoveredSpaceId((prev) => (prev === space.id ? null : prev))}
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      void handleSwitchSpace(space.id);
+                                    }}
+                                    className={clsx('flex-1 text-left text-[12px] truncate', isActive ? 'text-accent-primary' : 'text-text-primary')}
+                                  >
+                                    {space.name}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onMouseDown={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      openRenameSpaceDialog(space);
+                                    }}
+                                    className={clsx(
+                                      'w-5 h-5 inline-flex items-center justify-center rounded-md text-text-secondary hover:text-text-primary hover:bg-surface-primary transition-opacity',
+                                      showEdit ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                                    )}
+                                    title={t('layout.renameSpace')}
+                                  >
+                                    <Pencil className="w-[12px] h-[12px]" strokeWidth={1.75} />
+                                  </button>
+                                  {canDelete && (
+                                    <button
+                                      type="button"
+                                      disabled={isDeleting}
+                                      onMouseDown={(event) => {
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        void handleDeleteSpace(space);
+                                      }}
+                                      className={clsx(
+                                        'w-5 h-5 inline-flex items-center justify-center rounded-md text-text-secondary hover:text-red-500 hover:bg-surface-primary disabled:opacity-50 transition-opacity',
+                                        showEdit ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                                      )}
+                                      title={t('layout.deleteSpace')}
+                                    >
+                                      <Trash2 className="w-[12px] h-[12px]" strokeWidth={1.75} />
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            openCreateSpaceDialog();
+                          }}
+                          className="h-9 w-full border-t border-border px-2.5 text-[12px] text-accent-primary hover:bg-surface-secondary flex items-center gap-1.5"
+                        >
+                          <span className="text-[15px] leading-none">+</span>
+                          <span className="truncate">{t('layout.createSpace')}</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
-              </div>
-            </div>
             </div>
           )}
 
