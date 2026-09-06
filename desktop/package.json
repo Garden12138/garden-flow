@@ -143,6 +143,8 @@
     },
     "linux": {
       "icon": "gardenflow.png",
+      "artifactName": "GardenFlow-${version}-x64.${ext}",
+      "maintainer": "Garden <garden@gzbojintech.com>",
       "target": [
         {
           "target": "AppImage",

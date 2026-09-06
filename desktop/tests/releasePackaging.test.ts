@@ -31,6 +31,8 @@ test('desktop release packaging exposes one native command per supported target'
     }
 
     assert.equal(packageConfig.build.artifactName, 'GardenFlow-${version}-${arch}.${ext}');
+    assert.equal(packageConfig.build.linux.artifactName, 'GardenFlow-${version}-x64.${ext}');
+    assert.match(packageConfig.build.linux.maintainer, /<[^<>\s]+@[^<>\s]+>/);
     assert.deepEqual(
         packageConfig.build.linux.target,
         [
