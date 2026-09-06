@@ -144,7 +144,7 @@
     "linux": {
       "icon": "gardenflow.png",
       "artifactName": "GardenFlow-${version}-x64.${ext}",
-      "maintainer": "Garden <garden@gzbojintech.com>",
+      "maintainer": "Garden12138 <Garden12138@users.noreply.github.com>",
       "target": [
         {
           "target": "AppImage",
