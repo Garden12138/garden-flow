@@ -138,6 +138,25 @@ test('app updater accepts only GardenFlow installers for the current platform an
         selectCompatibleGardenFlowReleaseAsset(assets.slice(0, 2), 'win32', 'x64'),
         null,
     );
+
+    const multiPlatformAssets = [
+        { name: 'GardenFlow-2.5.1-x64.deb', downloadUrl: 'https://example.com/gardenflow.deb', size: 1, digest: '' },
+        { name: 'GardenFlow-2.5.1-arm64.dmg', downloadUrl: 'https://example.com/gardenflow-arm64.dmg', size: 1, digest: '' },
+        { name: 'GardenFlow-2.5.1-x64.AppImage', downloadUrl: 'https://example.com/gardenflow.AppImage', size: 1, digest: '' },
+        { name: 'GardenFlow-2.5.1-x64.dmg', downloadUrl: 'https://example.com/gardenflow-x64.dmg', size: 1, digest: '' },
+    ];
+    assert.equal(
+        selectCompatibleGardenFlowReleaseAsset(multiPlatformAssets, 'darwin', 'arm64')?.name,
+        'GardenFlow-2.5.1-arm64.dmg',
+    );
+    assert.equal(
+        selectCompatibleGardenFlowReleaseAsset(multiPlatformAssets, 'darwin', 'x64')?.name,
+        'GardenFlow-2.5.1-x64.dmg',
+    );
+    assert.equal(
+        selectCompatibleGardenFlowReleaseAsset(multiPlatformAssets, 'linux', 'x64')?.name,
+        'GardenFlow-2.5.1-x64.AppImage',
+    );
 });
 
 test('disabled app updates skip automatic and remote update work', () => {

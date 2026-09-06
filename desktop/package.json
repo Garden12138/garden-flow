@@ -1,6 +1,6 @@
 {
   "name": "gardenflow-desktop",
-  "version": "2.5.0",
+  "version": "0.0.1",
   "description": "Local-first AI workspace for research, ideation, writing, media generation, and automation.",
   "author": "Garden12138",
   "license": "SEE LICENSE IN ../LICENSE",
@@ -38,6 +38,10 @@
     "build:win": "pnpm run prepare:plugin-runtime && pnpm run prepare:windows-native-host && pnpm run prepare:ffmpeg && pnpm run clean && tsc && vite build && pnpm run sync:prompt-library && electron-builder --win --x64",
     "build:all": "pnpm run prepare:plugin-runtime && pnpm run prepare:ffmpeg && pnpm run clean && tsc && vite build && pnpm run sync:prompt-library && electron-builder --mac --x64 --arm64 --win --x64",
     "build:mac:nosign": "pnpm run prepare:plugin-runtime && pnpm run prepare:unix-native-host && pnpm run prepare:ffmpeg && pnpm run clean && tsc && vite build && pnpm run sync:prompt-library && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --x64 --arm64 -c.mac.identity=null",
+    "build:release:mac:arm64": "pnpm run prepare:plugin-runtime && pnpm run prepare:unix-native-host && pnpm run prepare:ffmpeg && pnpm run clean && tsc && vite build && pnpm run sync:prompt-library && electron-builder --mac dmg --arm64 -c.mac.identity=null",
+    "build:release:mac:x64": "pnpm run prepare:plugin-runtime && pnpm run prepare:unix-native-host && pnpm run prepare:ffmpeg && pnpm run clean && tsc && vite build && pnpm run sync:prompt-library && electron-builder --mac dmg --x64 -c.mac.identity=null",
+    "build:release:win:x64": "pnpm run prepare:plugin-runtime && pnpm run prepare:windows-native-host && pnpm run prepare:ffmpeg && pnpm run clean && tsc && vite build && pnpm run sync:prompt-library && electron-builder --win nsis --x64",
+    "build:release:linux:x64": "pnpm run prepare:plugin-runtime && pnpm run prepare:unix-native-host && pnpm run prepare:ffmpeg && pnpm run clean && tsc && vite build && pnpm run sync:prompt-library && electron-builder --linux AppImage deb --x64",
     "build:nosign": "pnpm run prepare:plugin-runtime && pnpm run prepare:unix-native-host && pnpm run prepare:ffmpeg && pnpm run clean && tsc && vite build && pnpm run sync:prompt-library && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder",
     "postinstall": "electron-builder install-app-deps",
     "preview": "vite preview",
@@ -51,6 +55,16 @@
       "output": "release"
     },
     "compression": "maximum",
+    "extraResources": [
+      {
+        "from": "../LICENSE",
+        "to": "LICENSE.txt"
+      },
+      {
+        "from": "src/vendor/freecut/ATTRIBUTION.md",
+        "to": "ATTRIBUTION-FreeCut.md"
+      }
+    ],
     "files": [
       "dist-electron/**",
       "dist/**",
@@ -129,6 +143,20 @@
     },
     "linux": {
       "icon": "gardenflow.png",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "extraResources": [
         {
           "from": ".native-host-runtime/unix/gardenflow-browser-native-host.cjs",

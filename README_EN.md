@@ -76,6 +76,14 @@ Exact availability depends on the protocols and models offered by your configure
 
 ## Quick start
 
+### Install a release build
+
+Download the public package for your platform from [GitHub Releases](https://github.com/Garden12138/garden-flow/releases/latest): DMG for macOS Apple Silicon (arm64) or Intel (x64), an x64 installer for Windows, and AppImage or deb for Linux x64.
+
+Current public packages are not Apple-notarized or Windows code-signed, so the operating system may display a security warning on first launch. GardenFlow uses a non-commercial source-available license rather than an OSI-approved open-source license; installation and use remain subject to the repository [LICENSE](./LICENSE).
+
+### Run from source
+
 Requirements: Node.js 22, pnpm 10.28.2, and native build tools. On macOS, install Command Line Tools with `xcode-select --install`.
 
 ```bash
@@ -168,4 +176,4 @@ Bug reports, feature proposals, and pull requests are welcome. Please read [CONT
 
 Copyright © Garden12138. GardenFlow is distributed under the [GardenFlow Source-Available License (Non-Commercial)](./LICENSE). Non-commercial study, modification, and distribution are permitted; commercial use requires prior written permission through the repository owner's GitHub contact.
 
-Third-party dependencies and vendored code remain under their respective licenses. See the repository's `THIRD_PARTY_NOTICES`, `ATTRIBUTION`, and dependency declarations.
+Third-party dependencies and vendored code remain under their respective licenses. See the [browser extension notices](./Plugin/src/THIRD_PARTY_NOTICES.txt), [FreeCut attribution](./desktop/src/vendor/freecut/ATTRIBUTION.md), and dependency declarations.

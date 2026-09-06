@@ -1,0 +1,238 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '22'
+  PNPM_VERSION: '10.28.2'
+
+jobs:
+  verify:
+    name: Verify release tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate stable version tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tags must use the stable vX.Y.Z format: ${GITHUB_REF_NAME}" >&2
+            exit 1
+          fi
+
+          package_version="$(node -p "require('./desktop/package.json').version")"
+          expected_tag="v${package_version}"
+          if [[ "${GITHUB_REF_NAME}" != "${expected_tag}" ]]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match desktop/package.json version ${package_version}" >&2
+            exit 1
+          fi
+
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/main; then
+            echo "Release tag ${GITHUB_REF_NAME} must point to a commit contained in main" >&2
+            exit 1
+          fi
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            Plugin/pnpm-lock.yaml
+            PublishPlugin/pnpm-lock.yaml
+            desktop/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm run setup
+
+      - name: Static checks
+        run: pnpm check
+
+      - name: Tests
+        run: pnpm test
+
+  build:
+    name: Package ${{ matrix.label }}
+    needs: verify
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: macos-arm64
+            label: macOS arm64
+            runner: macos-15
+            command: build:release:mac:arm64
+            paths: desktop/release/GardenFlow-*-arm64.dmg
+          - id: macos-x64
+            label: macOS x64
+            runner: macos-15-intel
+            command: build:release:mac:x64
+            paths: desktop/release/GardenFlow-*-x64.dmg
+          - id: windows-x64
+            label: Windows x64
+            runner: windows-latest
+            command: build:release:win:x64
+            paths: desktop/release/GardenFlow-*-x64.exe
+          - id: linux-x64
+            label: Linux x64
+            runner: ubuntu-latest
+            command: build:release:linux:x64
+            paths: |
+              desktop/release/GardenFlow-*-x64.AppImage
+              desktop/release/GardenFlow-*-x64.deb
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      NODE_OPTIONS: --max-old-space-size=4096
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            Plugin/pnpm-lock.yaml
+            PublishPlugin/pnpm-lock.yaml
+            desktop/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm run setup
+
+      - name: Build installer
+        run: pnpm --dir desktop run ${{ matrix.command }}
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-${{ matrix.id }}
+          path: ${{ matrix.paths }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download installer artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: installer-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Validate release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          expected=(
+            "GardenFlow-${version}-arm64.dmg"
+            "GardenFlow-${version}-x64.dmg"
+            "GardenFlow-${version}-x64.exe"
+            "GardenFlow-${version}-x64.AppImage"
+            "GardenFlow-${version}-x64.deb"
+          )
+
+          shopt -s nullglob
+          actual=(release-assets/*)
+          if [[ "${#actual[@]}" -ne "${#expected[@]}" ]]; then
+            echo "Expected ${#expected[@]} installers, found ${#actual[@]}" >&2
+            find release-assets -maxdepth 1 -type f -print >&2
+            exit 1
+          fi
+
+          for name in "${expected[@]}"; do
+            path="release-assets/${name}"
+            if [[ ! -s "${path}" ]]; then
+              echo "Missing or empty release asset: ${name}" >&2
+              exit 1
+            fi
+            size="$(stat -c '%s' "${path}")"
+            if (( size >= 2147483648 )); then
+              echo "Release asset exceeds GitHub's 2 GiB limit: ${name}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release-assets
+          sha256sum GardenFlow-* > SHA256SUMS.txt
+
+      - name: Attest release assets
+        uses: actions/attest@v4
+        with:
+          subject-path: release-assets/*
+
+      - name: Create or reuse draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if release_is_draft="$(gh release view "${GITHUB_REF_NAME}" --json isDraft --jq '.isDraft' 2>/dev/null)"; then
+            if [[ "${release_is_draft}" != 'true' ]]; then
+              echo "Release ${GITHUB_REF_NAME} is already published and will not be overwritten" >&2
+              exit 1
+            fi
+          else
+            gh release create "${GITHUB_REF_NAME}" \
+              --verify-tag \
+              --draft \
+              --generate-notes \
+              --title "GardenFlow ${GITHUB_REF_NAME}"
+          fi
+
+      - name: Upload and publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release upload "${GITHUB_REF_NAME}" release-assets/* --clobber
+          gh release edit "${GITHUB_REF_NAME}" --draft=false --latest

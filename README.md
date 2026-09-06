@@ -76,6 +76,12 @@ flowchart LR
 
 ## 快速开始
 
+### 下载安装包
+
+前往 [GitHub Releases](https://github.com/Garden12138/garden-flow/releases/latest) 下载与系统和架构匹配的公开安装包：macOS 提供 Apple Silicon（arm64）和 Intel（x64）DMG，Windows 提供 x64 安装程序，Linux 提供 x64 AppImage 与 deb。
+
+当前公开安装包未进行 Apple 公证或 Windows 代码签名，首次启动时系统可能显示安全提示。GardenFlow 采用非商业 Source-Available 许可证，并非 OSI 认可的开源软件；下载安装即表示使用者应遵守本仓库的 [LICENSE](./LICENSE)。
+
 ### 环境要求
 
 - Node.js 22
@@ -181,4 +187,4 @@ Copyright © Garden12138。
 
 本仓库按 [GardenFlow Source-Available License (Non-Commercial)](./LICENSE) 提供，允许非商业使用、学习、修改和分发，商业使用需要事先书面授权。商业授权请通过仓库所有者的 GitHub 联系方式沟通。
 
-第三方依赖与 vendored 代码继续适用其各自许可证；详见仓库中的 `THIRD_PARTY_NOTICES`、`ATTRIBUTION` 和依赖声明。
+第三方依赖与 vendored 代码继续适用其各自许可证；详见[浏览器扩展第三方声明](./Plugin/src/THIRD_PARTY_NOTICES.txt)、[FreeCut 归属声明](./desktop/src/vendor/freecut/ATTRIBUTION.md)和依赖声明。
