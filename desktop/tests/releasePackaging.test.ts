@@ -68,4 +68,6 @@ test('release workflow gates stable tags and publishes the complete installer se
     assert.match(workflow, /gh release create[\s\S]*--draft[\s\S]*--generate-notes/);
     assert.match(workflow, /gh release edit[\s\S]*--draft=false --latest/);
     assert.match(ciWorkflow, /push:\s*\n\s+branches:\s*\n\s+- '\*\*'/);
+    assert.doesNotMatch(workflow, /uses: pnpm\/action-setup@v4\s+with:\s+version:/);
+    assert.doesNotMatch(ciWorkflow, /uses: pnpm\/action-setup@v4\s+with:\s+version:/);
 });
