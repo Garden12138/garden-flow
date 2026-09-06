@@ -21,6 +21,14 @@ test('desktop release packaging exposes one native command per supported target'
     assert.match(scripts['build:release:win:x64'], /electron-builder --win nsis --x64/);
     assert.match(scripts['build:release:linux:x64'], /prepare:unix-native-host/);
     assert.match(scripts['build:release:linux:x64'], /electron-builder --linux AppImage deb --x64/);
+    for (const command of [
+        scripts['build:release:mac:arm64'],
+        scripts['build:release:mac:x64'],
+        scripts['build:release:win:x64'],
+        scripts['build:release:linux:x64'],
+    ]) {
+        assert.match(command, /--publish never/);
+    }
 
     assert.equal(packageConfig.build.artifactName, 'GardenFlow-${version}-${arch}.${ext}');
     assert.deepEqual(
