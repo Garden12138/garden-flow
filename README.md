@@ -1,27 +1,31 @@
 # GardenFlow
 
-[English](./README_EN.md) · 简体中文
+**把收集的资料，变成有来源的稿件和封面。**
 
-![CI](https://github.com/Garden12138/garden-flow/actions/workflows/ci.yml/badge.svg)
-![Node.js 22](https://img.shields.io/badge/Node.js-22-3c873a?logo=nodedotjs&logoColor=white)
-![pnpm 10.28.2](https://img.shields.io/badge/pnpm-10.28.2-f69220?logo=pnpm&logoColor=white)
-![Electron 39](https://img.shields.io/badge/Electron-39-47848f?logo=electron&logoColor=white)
-![License: source-available](https://img.shields.io/badge/license-source--available-6f5a8a)
+GardenFlow 是本地优先的 AI 内容创作工作台，把素材、选题、AI 写作和媒体资产放在同一处。
 
-**本地优先的 AI 内容全链路工作台。** GardenFlow 把内容采集、知识沉淀、灵感发现、AI 创作、多媒体生成和自动化计划放进一套桌面工作流，让创作者从资料到可交付作品不再来回切换工具。
+[下载安装包](https://github.com/Garden12138/garden-flow/releases/latest) · [观看演示](./Docs/DEMO.md) · [首次体验](./Docs/FIRST_CREATION.md) · [English](./README_EN.md)
 
-> GardenFlow 是非商业用途的源码开放（source-available）项目，并非采用 OSI 认可许可证的开源软件。使用前请阅读[许可证](./LICENSE)。
+[![GardenFlow 首次创作流程预览](./images/first-creation-demo.gif)](./Docs/DEMO.md)
 
-![GardenFlow 浅色主工作台](./images/workbench-light.jpg)
+- **从已有资料开始写**，保留来源与引用。
+- **素材、会话、稿件和封面集中管理**，围绕同一空间组织。
+- **自行选择模型服务**，工作空间保存在本机。
+
+> [首次体验](./Docs/FIRST_CREATION.md)需要自行配置文本模型；封面需要单独配置图片服务。云端请求可能产生供应商费用。GardenFlow 采用[非商业 Source-Available 许可证](./LICENSE)，并非 OSI 认可的开源软件。
+
+如果这个工作流对你有用，欢迎 Star 关注更新，或在 [Discussions](https://github.com/Garden12138/garden-flow/discussions) 分享使用反馈。
+
+## 从一篇介绍稿开始
+
+[用 GardenFlow 介绍 GardenFlow](./Docs/FIRST_CREATION.md)：下载公开示例资料 → 添加到知识库 → 选择角度 → 带来源写作并保存 → 可选生成封面。教程提供输入资料和分步提示词，先完成文字稿，再逐步启用其他能力。
 
 ## 为什么选择 GardenFlow
 
-- **内容上下文不散落**：素材、引用、会话、稿件和媒体资产围绕同一空间组织。
-- **从研究直接进入创作**：浏览器采集进入知识库，灵感池再把证据和选题交给创作工作台。
-- **模型由你控制**：支持 OpenAI、Anthropic、Gemini、本地模型和自定义兼容服务；新安装默认不连接任何 AI 服务。
-- **多媒体是工作流的一部分**：图片、视频、音频生成结果进入统一媒体库，可继续用于封面、稿件和视频工程。
-- **自动化可见、可停、可复核**：计划任务、执行状态和产物在本地留档，不依赖 GardenFlow 官方账号。
-- **隐私边界清楚**：工作空间、SQLite 数据库和诊断记录默认在本机；没有使用分析和自动诊断上传。
+- **从研究直接进入创作**：浏览器采集进入知识库，灵感池把证据和选题交给创作工作台。
+- **多媒体进入统一媒体库**：图片、视频、音频可继续用于封面、稿件和视频工程，能力范围取决于所配置模型。
+- **自动化可见、可停、可复核**：计划任务、执行状态和产物在本地留档。
+- **隐私边界清楚**：没有使用分析和自动诊断上传；外部 AI 请求按用户选择发送给对应供应商。
 
 ## 产品流程
 
@@ -40,6 +44,8 @@ flowchart LR
 ## 产品界面
 
 以下截图来自同一个实际使用中的 GardenFlow 空间，展示的是已有素材、选题、稿件和媒体产物，而不是静态原型。
+
+![GardenFlow 浅色主工作台](./images/workbench-light.jpg)
 
 ### 从采集素材到形成选题
 
@@ -82,7 +88,14 @@ flowchart LR
 
 当前公开安装包未进行 Apple 公证或 Windows 代码签名，首次启动时系统可能显示安全提示。GardenFlow 采用非商业 Source-Available 许可证，并非 OSI 认可的开源软件；下载安装即表示使用者应遵守本仓库的 [LICENSE](./LICENSE)。
 
-### 环境要求
+安装后从[首次创作教程](./Docs/FIRST_CREATION.md)开始。普通用户不需要 Node.js 或 pnpm；网页采集扩展可以从应用内准备和导出。
+
+### 源码开发环境
+
+![CI](https://github.com/Garden12138/garden-flow/actions/workflows/ci.yml/badge.svg)
+![Node.js 22](https://img.shields.io/badge/Node.js-22-3c873a?logo=nodedotjs&logoColor=white)
+![pnpm 10.28.2](https://img.shields.io/badge/pnpm-10.28.2-f69220?logo=pnpm&logoColor=white)
+![Electron 39](https://img.shields.io/badge/Electron-39-47848f?logo=electron&logoColor=white)
 
 - Node.js 22
 - pnpm 10.28.2
@@ -99,7 +112,7 @@ pnpm run setup
 pnpm dev
 ```
 
-首次启动会创建当前 GardenFlow 数据目录、`gardenflow.db` 和默认空间。随后打开“设置 → AI 服务”添加供应商并为文本、图片、视频、音频或 Embedding 选择路由。
+首次启动会创建当前 GardenFlow 数据目录、`gardenflow.db` 和默认空间。随后打开“设置 → AI 供应商”添加供应商并选择能力路由；视频服务单独配置。
 
 ### 常用命令
 
@@ -130,11 +143,17 @@ GardenFlow 不提供共享密钥或默认云端网关。新安装的 AI 路由�
 
 ## 浏览器扩展
 
+安装包用户：在“设置 → 隐私与诊断 → 浏览器插件”点击“准备插件”，再点“打开插件目录”。应用会导出扩展并安装或修复 Native Messaging Host。
+
+在 Chrome、Edge 或 Brave 的扩展管理页开启开发者模式，选择“加载已解压的扩展程序”并加载导出的目录。保持 GardenFlow 打开，检查知识库中的插件连接状态。“已准备”不代表浏览器已连接。详见[首次体验中的插件步骤](./Docs/FIRST_CREATION.md#需要采集网页时再装扩展)。
+
+开发者从源码构建时使用：
+
 ```bash
 pnpm build:plugin
 ```
 
-在 Chrome、Edge 或 Brave 的扩展管理页开启开发者模式，加载 `Plugin/dist/extension/`。然后在 GardenFlow 的“设置 → 浏览器插件”点击“准备浏览器插件”，安装当前 Native Messaging Host 并检查连接。
+采集扩展构建目录为 `Plugin/dist/extension/`，Native Host 仍通过应用的插件准备流程安装。
 
 扩展只把用户明确采集的内容传给本机 GardenFlow；诊断最多在浏览器本地保存 40 条脱敏记录，仅在用户点击导出时生成报告。详见 [浏览器扩展说明](./Plugin/README.md)。
 
@@ -168,6 +187,9 @@ Native Messaging ── browser extensions
 
 ## 文档
 
+- [首次创作教程](./Docs/FIRST_CREATION.md)
+- [演示与验证记录](./Docs/DEMO.md)
+- [路线图](./ROADMAP.md)
 - [文档导航](./Docs/README.md)
 - [使用手册](./Docs/USER_MANUAL.md)
 - [本地开发与部署](./Docs/LOCAL_DEPLOYMENT.md)
@@ -179,7 +201,7 @@ Native Messaging ── browser extensions
 
 ## 参与贡献
 
-欢迎报告缺陷、提出功能建议或提交 Pull Request。开始前请阅读 [CONTRIBUTING.md](./CONTRIBUTING.md) 和 [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md)。安全问题请按 [SECURITY.md](./SECURITY.md) 私下报告，不要公开披露密钥或个人数据。
+使用提问与作品分享请到 [Discussions](https://github.com/Garden12138/garden-flow/discussions)，可复现缺陷和功能建议请用 [Issues](https://github.com/Garden12138/garden-flow/issues)。开始贡献前请阅读 [CONTRIBUTING.md](./CONTRIBUTING.md)、[路线图](./ROADMAP.md)和 [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md)。安全问题请按 [SECURITY.md](./SECURITY.md) 私下报告，不要公开披露密钥或个人数据。
 
 ## 许可证
 

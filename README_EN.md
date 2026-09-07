@@ -1,27 +1,31 @@
 # GardenFlow
 
-English · [简体中文](./README.md)
+**Turn collected sources into drafts and covers, with references you can revisit.**
 
-![CI](https://github.com/Garden12138/garden-flow/actions/workflows/ci.yml/badge.svg)
-![Node.js 22](https://img.shields.io/badge/Node.js-22-3c873a?logo=nodedotjs&logoColor=white)
-![pnpm 10.28.2](https://img.shields.io/badge/pnpm-10.28.2-f69220?logo=pnpm&logoColor=white)
-![Electron 39](https://img.shields.io/badge/Electron-39-47848f?logo=electron&logoColor=white)
-![License: source-available](https://img.shields.io/badge/license-source--available-6f5a8a)
+GardenFlow is a local-first AI content workspace that brings sources, ideas, writing and media assets together.
 
-**A local-first, end-to-end AI content workspace.** GardenFlow brings capture, knowledge, ideation, AI writing, multimedia generation, and automation into one desktop workflow—from raw sources to a deliverable piece of content.
+[Download](https://github.com/Garden12138/garden-flow/releases/latest) · [Watch the demo](./Docs/DEMO.md) · [First creation](./Docs/FIRST_CREATION_EN.md) · [简体中文](./README.md)
 
-> GardenFlow is source-available for non-commercial use. It is not distributed under an OSI-approved open source license. Read the [license](./LICENSE) before use.
+[![GardenFlow first-creation workflow preview](./images/first-creation-demo.gif)](./Docs/DEMO.md)
 
-![GardenFlow light workbench](./images/workbench-light.jpg)
+- **Write from your existing sources**, keeping references and citations.
+- **Organize sources, conversations, drafts and covers together** in one workspace.
+- **Choose your model providers**, with workspace data stored locally.
+
+> [First creation](./Docs/FIRST_CREATION_EN.md) requires your own text-model configuration; covers need a separate image service. External providers may charge for requests. GardenFlow uses a [non-commercial source-available license](./LICENSE), not an OSI-approved open source license.
+
+If this workflow is useful to you, star the repository for updates or share feedback in [Discussions](https://github.com/Garden12138/garden-flow/discussions).
+
+## Start with one introduction
+
+[Introduce GardenFlow with GardenFlow](./Docs/FIRST_CREATION_EN.md): download the public sample → add it to your knowledge library → choose an angle → write with sources and save → optionally generate a cover. The tutorial includes input material and prompts; finish a text draft before enabling more capabilities.
 
 ## Why GardenFlow
 
-- **One continuous context** for sources, citations, conversations, drafts, and media.
-- **Research flows into creation** through browser capture, the knowledge base, and evidence-backed ideas.
-- **Bring your own models** from OpenAI, Anthropic, Gemini, a local server, or a custom compatible provider.
-- **Media is part of the workflow**, not a separate download folder: images, video, audio, covers, and projects share one library.
-- **Automation stays observable** with schedules, run state, approvals, and local artifacts.
-- **Clear privacy boundaries**: workspaces, SQLite data, settings, and diagnostics remain local by default.
+- **Research flows into creation** through browser capture, the knowledge base and evidence-backed ideas.
+- **One media library** for images, video, audio, covers and projects. Available capabilities depend on the configured model.
+- **Observable automation** with schedules, run state, approvals and local artifacts.
+- **Clear privacy boundaries**: no usage analytics or automatic diagnostic uploads. External AI requests go to the provider you select.
 
 ## Workflow
 
@@ -40,6 +44,8 @@ flowchart LR
 ## Product tour
 
 These screenshots come from one actively used GardenFlow workspace. They show existing sources, ideas, drafts, and generated media rather than static mockups.
+
+![GardenFlow light workbench](./images/workbench-light.jpg)
 
 ### From captured sources to a scored idea
 
@@ -82,7 +88,14 @@ Download the public package for your platform from [GitHub Releases](https://git
 
 Current public packages are not Apple-notarized or Windows code-signed, so the operating system may display a security warning on first launch. GardenFlow uses a non-commercial source-available license rather than an OSI-approved open-source license; installation and use remain subject to the repository [LICENSE](./LICENSE).
 
+After installation, follow [First creation](./Docs/FIRST_CREATION_EN.md). Release users do not need Node.js or pnpm; the browser extension can be prepared and exported from the app.
+
 ### Run from source
+
+![CI](https://github.com/Garden12138/garden-flow/actions/workflows/ci.yml/badge.svg)
+![Node.js 22](https://img.shields.io/badge/Node.js-22-3c873a?logo=nodedotjs&logoColor=white)
+![pnpm 10.28.2](https://img.shields.io/badge/pnpm-10.28.2-f69220?logo=pnpm&logoColor=white)
+![Electron 39](https://img.shields.io/badge/Electron-39-47848f?logo=electron&logoColor=white)
 
 Requirements: Node.js 22, pnpm 10.28.2, and native build tools. On macOS, install Command Line Tools with `xcode-select --install`.
 
@@ -123,11 +136,17 @@ See [AI provider configuration](./Docs/AI_PROVIDERS.md).
 
 ## Browser extension
 
+Release users: open **Settings → Privacy and diagnostics → Browser extension** (`设置 → 隐私与诊断 → 浏览器插件`), click **Prepare extension** (`准备插件`), then **Open extension folder** (`打开插件目录`). GardenFlow exports the extension and installs or repairs the Native Messaging Host.
+
+Enable developer mode in Chrome, Edge or Brave, load the exported unpacked directory, and keep GardenFlow open. Check the connection state in the knowledge library: prepared does not mean connected. See [First creation](./Docs/FIRST_CREATION_EN.md#optional-browser-capture).
+
+For developers building from source:
+
 ```bash
 pnpm build:plugin
 ```
 
-Enable developer mode in Chrome, Edge, or Brave and load `Plugin/dist/extension/`. In GardenFlow, open **Settings → Browser extension** and choose **Prepare browser extension** to install the current Native Messaging Host.
+The capture extension build is at `Plugin/dist/extension/`; install the Native Host through the app's preparation flow.
 
 The extension sends only user-requested captures to the local GardenFlow app. It keeps at most 40 redacted diagnostic records in browser storage and exports them only on explicit request. See the [extension guide](./Plugin/README.md).
 
@@ -161,6 +180,9 @@ Read the [architecture guide](./Docs/ARCHITECTURE.md) for details.
 
 ## Documentation
 
+- [First creation](./Docs/FIRST_CREATION_EN.md)
+- [Demo and verification](./Docs/DEMO.md)
+- [Roadmap](./ROADMAP.md)
 - [Documentation index](./Docs/README.md)
 - [User guide](./Docs/USER_MANUAL.md)
 - [Local development and deployment](./Docs/LOCAL_DEPLOYMENT.md)
@@ -172,7 +194,7 @@ Read the [architecture guide](./Docs/ARCHITECTURE.md) for details.
 
 ## Contributing and license
 
-Bug reports, feature proposals, and pull requests are welcome. Please read [CONTRIBUTING.md](./CONTRIBUTING.md), [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md), and [SECURITY.md](./SECURITY.md).
+Use [Discussions](https://github.com/Garden12138/garden-flow/discussions) for questions and workflow sharing, and [Issues](https://github.com/Garden12138/garden-flow/issues) for reproducible bugs and feature proposals. Please read [CONTRIBUTING.md](./CONTRIBUTING.md), the [roadmap](./ROADMAP.md), [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md), and [SECURITY.md](./SECURITY.md).
 
 Copyright © Garden12138. GardenFlow is distributed under the [GardenFlow Source-Available License (Non-Commercial)](./LICENSE). Non-commercial study, modification, and distribution are permitted; commercial use requires prior written permission through the repository owner's GitHub contact.
 

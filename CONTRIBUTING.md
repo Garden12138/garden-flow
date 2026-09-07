@@ -9,6 +9,8 @@
 3. 大型功能先创建功能建议，说明用户问题、范围、数据影响和 UI 草图。
 4. 安全漏洞不要创建公开 Issue，请按 [SECURITY.md](./SECURITY.md) 报告。
 
+使用问题与作品分享请到 [Discussions](https://github.com/Garden12138/garden-flow/discussions)。产品改进顺序见[路线图](./ROADMAP.md)。欢迎从可复现的安装反馈、文档补充和最小示例开始；不要将已有的 MCP 或 Skills 实现重复提议为全新功能。
+
 提交贡献即表示你有权提供这些内容，并同意贡献按本仓库的非商业源码开放许可证分发。第三方代码必须保留其许可证与 attribution。
 
 ## 开发环境

@@ -1,5 +1,11 @@
 blank_issues_enabled: false
 contact_links:
+  - name: 使用问答 / Usage questions
+    url: https://github.com/Garden12138/garden-flow/discussions
+    about: 配置、首次体验和工作流问题；可复现缺陷仍请使用 Bug report
+  - name: 首次创作 / First creation
+    url: https://github.com/Garden12138/garden-flow/blob/main/Docs/FIRST_CREATION.md
+    about: 从公开资料完成一篇带来源的介绍稿
   - name: Security report
     url: https://github.com/Garden12138/garden-flow/security/advisories/new
     about: 私下报告安全漏洞
