@@ -2,15 +2,36 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import {
+  assertChromeManifestVersion,
+  toChromeManifestVersion,
+} from '../../Plugin/scripts/sync-manifest-version.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const repositoryRoot = path.resolve(root, '..');
 const output = path.join(root, 'dist', 'extension');
-const required = ['manifest.json', 'background.js', 'pageAdapter.js', 'popup.html', 'popup.js', 'popup.css'];
+const required = [
+  'manifest.json',
+  'background.js',
+  'pageAdapter.js',
+  'popup.html',
+  'popup.js',
+  'popup.css',
+  'icons/icon16.png',
+  'icons/icon32.png',
+  'icons/icon48.png',
+  'icons/icon128.png',
+];
 for (const file of required) {
   if (!fs.existsSync(path.join(output, file))) throw new Error(`Missing extension output: ${file}`);
 }
 const manifest = JSON.parse(fs.readFileSync(path.join(output, 'manifest.json'), 'utf8'));
+const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+const desktopPackageJson = JSON.parse(fs.readFileSync(path.join(repositoryRoot, 'desktop', 'package.json'), 'utf8'));
 if (manifest.manifest_version !== 3) throw new Error('Publisher extension must use Manifest V3');
+if (packageJson.version !== desktopPackageJson.version) throw new Error('Publisher package version must match Desktop');
+if (assertChromeManifestVersion(manifest.version) !== toChromeManifestVersion(desktopPackageJson.version)) throw new Error('Publisher manifest version must match Desktop');
+if (manifest.version_name !== desktopPackageJson.version) throw new Error('Publisher version_name must show the Desktop release version');
 if (manifest.host_permissions?.length !== 1 || manifest.host_permissions[0] !== 'https://creator.xiaohongshu.com/*') throw new Error('Publisher host permissions are too broad');
 if (manifest.permissions?.includes('cookies') || manifest.host_permissions?.includes('<all_urls>')) throw new Error('Publisher extension requests forbidden permissions');
 const extensionId = createHash('sha256').update(Buffer.from(manifest.key, 'base64')).digest('hex').slice(0, 32)

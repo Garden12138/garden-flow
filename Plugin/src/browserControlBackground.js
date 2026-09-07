@@ -614,10 +614,11 @@ configureNativeTransport({
   onTelemetry: (event) => browserEventBridge.publishNativeTransportEvent(event),
   getRegistration: async () => {
     const lifecycle = await ensureLifecycleInstallState();
+    const manifest = chrome.runtime.getManifest();
     return {
       extensionId: chrome.runtime.id,
       extensionInstanceId: lifecycle.extensionInstanceId,
-      version: chrome.runtime.getManifest().version,
+      version: manifest.version_name || manifest.version,
       browser: detectBrowserFamily(),
     };
   },

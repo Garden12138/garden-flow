@@ -124,13 +124,15 @@ async function assertOutputFile(relativePath) {
 const sourceManifest = await readJson(path.join(sourceDir, 'manifest.json'));
 const outputManifest = await readJson(path.join(outputDir, 'manifest.json'));
 const packageJson = await readJson(path.join(pluginRoot, 'package.json'));
+const desktopPackageJson = await readJson(path.join(repositoryRoot, 'desktop', 'package.json'));
 const browserIdentity = await readJson(path.join(pluginRoot, 'browser-control.identity.json'));
 const siteResearchCapabilities = await readJson(path.join(sourceDir, 'background', 'siteResearchCapabilities.json'));
 assert.deepEqual(outputManifest, sourceManifest, 'Built manifest must match source manifest exactly');
+assert.equal(packageJson.version, desktopPackageJson.version, 'Plugin package version must match Desktop');
 assert.equal(
   assertChromeManifestVersion(outputManifest.version),
-  toChromeManifestVersion(packageJson.version),
-  'Manifest version must be a Chrome-compatible projection of package.json version',
+  toChromeManifestVersion(desktopPackageJson.version),
+  'Manifest version must be a Chrome-compatible projection of the Desktop release version',
 );
 const extensionIdFromKey = crypto.createHash('sha256')
   .update(Buffer.from(outputManifest.key, 'base64'))
@@ -142,8 +144,8 @@ assert.equal(outputManifest.key, browserIdentity.manifestPublicKey, 'Built manif
 assert.equal(extensionIdFromKey, browserIdentity.publishedExtensionId, 'Built manifest key must derive the published extension id');
 assert.equal(
   outputManifest.version_name,
-  packageJson.version,
-  'Manifest version_name must preserve the release version shown to users',
+  desktopPackageJson.version,
+  'Manifest version_name must show the Desktop release version',
 );
 assert.equal(siteResearchCapabilities.schemaVersion, 1, 'Site research capability schema must be versioned');
 assert.equal(siteResearchCapabilities.contractVersion, 6, 'Site research capability contract must match Desktop');

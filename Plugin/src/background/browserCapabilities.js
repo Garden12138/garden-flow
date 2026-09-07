@@ -562,7 +562,7 @@ export function buildBrowserCapabilityMetadata(options = {}) {
     extensionId: chrome.runtime.id,
     extensionInstanceId: options.extensionInstanceId || '',
     name: manifest.name,
-    version: manifest.version,
+    version: manifest.version_name || manifest.version,
     manifestVersion: manifest.manifest_version,
     type: 'extension',
     capabilities: [...PLUGIN_CAPABILITIES],
@@ -1138,7 +1138,7 @@ export function buildPluginRegistrationPayload(options = {}) {
     pluginId: options.pluginId || 'gardenflow-browser-data-ai',
     extensionId: chrome.runtime.id,
     displayName: manifest.name,
-    version: manifest.version,
+    version: manifest.version_name || manifest.version,
     capabilities: [...PLUGIN_CAPABILITIES],
     metadata: {
       manifestVersion: manifest.manifest_version,

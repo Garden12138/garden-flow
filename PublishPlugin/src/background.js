@@ -98,12 +98,13 @@ async function connectNative() {
       void chrome.alarms.create(RECONNECT_ALARM, { delayInMinutes: 0.08 });
     });
     await sendRequest('ping', {}, 4000);
+    const manifest = chrome.runtime.getManifest();
     await sendRequest('extension.register', {
       extensionId: chrome.runtime.id,
       extensionInstanceId: await instanceId(),
       extensionKind: EXTENSION_KIND,
       capabilities: [CAPABILITY],
-      version: chrome.runtime.getManifest().version,
+      version: manifest.version_name || manifest.version,
       browser: navigator.userAgent.includes('Edg/') ? 'edge' : navigator.userAgent.includes('Brave') ? 'brave' : 'chrome',
     }, 4000);
     nativeConnected = true;

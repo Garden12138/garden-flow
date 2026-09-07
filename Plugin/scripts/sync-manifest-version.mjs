@@ -58,13 +58,15 @@ export function toChromeManifestVersion(packageVersion) {
 
 export async function syncManifestVersion({ cwd = pluginRoot } = {}) {
   const packageJsonPath = path.join(cwd, 'package.json');
+  const desktopPackageJsonPath = path.join(cwd, '..', 'desktop', 'package.json');
   const manifestPath = path.join(cwd, 'src', 'manifest.json');
   const identityPath = path.join(cwd, 'browser-control.identity.json');
-  const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8'));
-  const identity = JSON.parse(await readFile(identityPath, 'utf8'));
+  const packageJsonRaw = await readFile(packageJsonPath, 'utf8');
+  const packageJson = JSON.parse(packageJsonRaw);
+  const desktopPackageJson = JSON.parse(await readFile(desktopPackageJsonPath, 'utf8'));
   const manifestRaw = await readFile(manifestPath, 'utf8');
   const manifest = JSON.parse(manifestRaw);
-  const packageVersion = String(packageJson.version || '').trim();
+  const packageVersion = String(desktopPackageJson.version || '').trim();
   const manifestVersion = toChromeManifestVersion(packageVersion);
 
   if (!Object.hasOwn(manifest, 'version')) {
@@ -86,27 +88,45 @@ export async function syncManifestVersion({ cwd = pluginRoot } = {}) {
       `$1  "version_name": "${packageVersion}",\n`,
     );
   }
-  if (!String(identity.manifestPublicKey || '').trim()) {
-    throw new Error('browser-control.identity.json is missing manifestPublicKey');
+  let identity = null;
+  try {
+    identity = JSON.parse(await readFile(identityPath, 'utf8'));
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
   }
-  if (Object.hasOwn(manifest, 'key')) {
-    nextManifestRaw = nextManifestRaw.replace(
-      /("key"\s*:\s*)"[^"]*"/,
-      `$1"${identity.manifestPublicKey}"`,
-    );
-  } else {
-    nextManifestRaw = nextManifestRaw.replace(
-      /("version_name"\s*:\s*"[^"]*",\r?\n)/,
-      `$1  "key": "${identity.manifestPublicKey}",\n`,
-    );
+  if (identity) {
+    if (!String(identity.manifestPublicKey || '').trim()) {
+      throw new Error('browser-control.identity.json is missing manifestPublicKey');
+    }
+    if (Object.hasOwn(manifest, 'key')) {
+      nextManifestRaw = nextManifestRaw.replace(
+        /("key"\s*:\s*)"[^"]*"/,
+        `$1"${identity.manifestPublicKey}"`,
+      );
+    } else {
+      nextManifestRaw = nextManifestRaw.replace(
+        /("version_name"\s*:\s*"[^"]*",\r?\n)/,
+        `$1  "key": "${identity.manifestPublicKey}",\n`,
+      );
+    }
   }
-  const changed = nextManifestRaw !== manifestRaw;
-  if (changed) {
+  const nextPackageJsonRaw = packageJson.version === packageVersion
+    ? packageJsonRaw
+    : packageJsonRaw.replace(
+      /("version"\s*:\s*)"[^"]*"/,
+      `$1"${packageVersion}"`,
+    );
+  const manifestChanged = nextManifestRaw !== manifestRaw;
+  const packageChanged = nextPackageJsonRaw !== packageJsonRaw;
+  if (manifestChanged) {
     await writeFile(manifestPath, nextManifestRaw, 'utf8');
-    console.log(`[sync-manifest-version] Synced ${packageVersion} as Chrome version ${manifestVersion}`);
+  }
+  if (packageChanged) await writeFile(packageJsonPath, nextPackageJsonRaw, 'utf8');
+  if (manifestChanged || packageChanged) {
+    console.log(`[sync-manifest-version] Synced desktop ${packageVersion} as Chrome version ${manifestVersion}`);
   }
 
-  return { packageVersion, manifestVersion, changed };
+  return { packageVersion, manifestVersion, changed: manifestChanged || packageChanged };
 }
 
 const isDirectRun = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
