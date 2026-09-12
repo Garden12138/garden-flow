@@ -16,7 +16,6 @@ import {
     Check,
     ChevronDown,
     Clapperboard,
-    Download,
     FolderOpen,
     Grid2X2,
     ImagePlus,
@@ -50,11 +49,8 @@ import { type AiSourceConfig } from '../config/aiSources';
 import {
     ECOMMERCE_PLATFORM_GROUPS,
     ecommercePlatformIconPath,
-    normalizeEcommercePlatformsSettings,
-    type EcommercePlatformRecord,
 } from '../features/ecommerce-platforms/catalog';
 import type { GenerationAssetPickerRequest, GenerationAssetReference } from '../features/app-shell/types';
-import { dispatchAppIntent } from '../features/app-shell/appIntent';
 
 interface SubjectCategory {
     id: string;
@@ -154,24 +150,11 @@ interface BrandWorkspaceSourceSnapshot extends ProductPreviewSnapshot {
     imageAssetIds: string[];
 }
 
-interface BrandWorkspaceProductDetailPage {
-    id: string;
-    productId: string;
-    platform: string;
-    market: string;
-    locale: string;
-    title?: string;
-    createdAt: string;
-    updatedAt: string;
-}
-
 interface BrandWorkspaceProductBundle {
     product: BrandWorkspaceProduct;
     skus: BrandWorkspaceSku[];
     assets: BrandWorkspaceAssetRef[];
     skuAssets?: Record<string, BrandWorkspaceAssetRef[]>;
-    detailPages?: BrandWorkspaceProductDetailPage[];
-    detailPageAssets?: Record<string, BrandWorkspaceAssetRef[]>;
     sourceSnapshots?: BrandWorkspaceSourceSnapshot[];
 }
 
@@ -195,7 +178,6 @@ interface BrandWorkspaceBridge {
     upsertBrand: (payload: unknown) => Promise<BrandWorkspaceResult>;
     upsertProduct: (payload: unknown) => Promise<BrandWorkspaceResult>;
     upsertSku: (payload: unknown) => Promise<BrandWorkspaceResult>;
-    upsertProductDetailPage?: (payload: unknown) => Promise<BrandWorkspaceResult>;
     rebuildAiIndex: () => Promise<BrandWorkspaceResult>;
 }
 
@@ -236,64 +218,6 @@ interface BrandWorkspaceImageDraft {
 interface ProductDetailContext {
     brandId: string;
     productId: string;
-}
-
-interface ProductDetailVersionDraft {
-    market: string;
-    locale: string;
-    title: string;
-}
-
-interface ProductDetailVersionOption extends ProductDetailVersionDraft {
-    key: string;
-    page?: BrandWorkspaceProductDetailPage;
-    builtIn: boolean;
-}
-
-interface ProductDetailPageImageSaveTarget {
-    id?: string;
-    productId: string;
-    platform: string;
-    version: ProductDetailVersionDraft;
-}
-
-interface ProductDetailGenerationTask {
-    key: string;
-    target: ProductDetailPageImageSaveTarget;
-    productName: string;
-    platformName: string;
-    versionLabel: string;
-}
-
-interface GeneratedImageAsset {
-    id: string;
-    title?: string;
-    previewUrl?: string;
-    absolutePath?: string;
-    relativePath?: string;
-    exists?: boolean;
-}
-
-interface ProductDetailGenerationJob {
-    jobId?: string;
-    status?: string;
-    projectId?: string;
-    request?: Record<string, unknown>;
-    artifacts?: Array<Record<string, unknown>>;
-}
-
-interface ProductDetailToolResultItem {
-    id?: string;
-    toolName?: string;
-    command?: string;
-    success?: boolean;
-    resultText?: string;
-    payload?: unknown;
-}
-
-interface ProductDetailFollowUpJob {
-    jobId: string;
-    expectedCount?: number;
 }
 
 interface SubjectImageDraft {
@@ -378,9 +302,6 @@ const HIDDEN_SUBJECT_CATEGORY_NAMES = new Set(['商品', '人物']);
 const SUBJECT_VOICE_SAMPLE_TEXT = '君不见黄河之水天上来，奔流到海不复回。请用自然稳定的语速朗读这段文字，保持音量一致、停顿清晰，让系统更好地学习你的声音特点和语气节奏。';
 const SUBJECT_VOICE_MIN_RECORDING_SECONDS = 30;
 const SUBJECT_AUTOSAVE_DELAY_MS = 600;
-const PRODUCT_DETAIL_IMAGE_MIN_COUNT = 5;
-const PRODUCT_DETAIL_IMAGE_MAX_COUNT = 10;
-const PRODUCT_DETAIL_IMAGE_DEFAULT_COUNT = 6;
 const DEFAULT_VOICE_TTS_MODEL = 'cosyvoice-v3.5-plus';
 const DEFAULT_VOICE_CLONE_MODEL = 'cosyvoice-v3.5-plus-voice-clone';
 const MINIMAX_VOICE_CLONE_MODEL = 'minimax-voice-clone';
@@ -1108,573 +1029,6 @@ function imageDraftPayload(images: BrandWorkspaceImageDraft[]) {
 
 const ALL_ECOMMERCE_PLATFORMS = ECOMMERCE_PLATFORM_GROUPS.flatMap((group) => group.platforms);
 
-function enabledEcommercePlatformsFromSettings(settings: Record<string, unknown>): EcommercePlatformRecord[] {
-    const normalized = normalizeEcommercePlatformsSettings(settings.ecommerce_platforms_json);
-    return ALL_ECOMMERCE_PLATFORMS.filter((platform) => normalized.enabledById[platform.id] !== false);
-}
-
-function isMainlandChinaPlatform(platform?: Pick<EcommercePlatformRecord, 'market'> | null): boolean {
-    return platform?.market.trim() === '中国大陆';
-}
-
-function productDetailVersionForPlatform(
-    version: ProductDetailVersionDraft,
-    platform?: EcommercePlatformRecord | null,
-): ProductDetailVersionDraft {
-    return isMainlandChinaPlatform(platform)
-        ? { ...version, market: '', locale: '' }
-        : version;
-}
-
-function buildProductDetailVersionOptions(
-    platform: EcommercePlatformRecord | null,
-    pages: BrandWorkspaceProductDetailPage[],
-): ProductDetailVersionOption[] {
-    if (!platform || isMainlandChinaPlatform(platform)) {
-        const page = pages.find((item) => detailVersionKey(item.market, item.locale) === '__default__') || pages[0];
-        return [{
-            key: '__default__',
-            market: '',
-            locale: '',
-            title: page?.title || '',
-            page,
-            builtIn: true,
-        }];
-    }
-
-    const options = (platform.detailPageLocales || []).map((item) => {
-        const key = detailVersionKey(item.market, item.locale);
-        const page = pages.find((candidate) => detailVersionKey(candidate.market, candidate.locale) === key);
-        return {
-            key,
-            market: item.market,
-            locale: item.locale,
-            title: page?.title || '',
-            page,
-            builtIn: true,
-        };
-    });
-    const knownKeys = new Set(options.map((item) => item.key));
-    const customOptions = pages
-        .filter((page) => {
-            const key = detailVersionKey(page.market, page.locale);
-            return key !== '__default__' && !knownKeys.has(key);
-        })
-        .map((page) => ({
-            key: detailVersionKey(page.market, page.locale),
-            market: page.market,
-            locale: page.locale,
-            title: page.title || '',
-            page,
-            builtIn: false,
-        }));
-
-    return [...options, ...customOptions];
-}
-
-function detailVersionKey(market = '', locale = ''): string {
-    const cleanMarket = market.trim();
-    const cleanLocale = locale.trim();
-    return cleanMarket || cleanLocale ? `${cleanMarket}__${cleanLocale}` : '__default__';
-}
-
-function productDetailGenerationKey(productId: string, platformId: string, version: ProductDetailVersionDraft): string {
-    return [productId, platformId, detailVersionKey(version.market, version.locale)].join('__');
-}
-
-function detailVersionLabel(page?: Pick<ProductDetailVersionDraft, 'market' | 'locale'>): string {
-    if (!page) return '默认版本';
-    const parts = [page.market, page.locale].map((value) => value.trim()).filter(Boolean);
-    return parts.length ? parts.join('-') : '默认版本';
-}
-
-function generatedAssetToImageDraft(asset: Partial<GeneratedImageAsset> & Record<string, unknown>): BrandWorkspaceImageDraft | null {
-    const path = asset.absolutePath || asset.previewUrl || asset.relativePath || '';
-    if (!path.trim()) return null;
-    return {
-        name: asset.title || path.split(/[\\/]/).pop() || String(asset.id || 'image'),
-        previewUrl: asset.previewUrl || path,
-        path,
-    };
-}
-
-function optionalText(value: unknown): string {
-    return typeof value === 'string' ? value : '';
-}
-
-function sanitizeDownloadFileName(value: string, fallback: string): string {
-    const sanitized = value
-        .trim()
-        .replace(/[\\/:*?"<>|]+/g, '-')
-        .replace(/\s+/g, '-')
-        .replace(/-+/g, '-')
-        .replace(/^-+|-+$/g, '');
-    return sanitized || fallback;
-}
-
-function imageExtensionFromPath(value: string): string {
-    const cleanValue = value.split(/[?#]/)[0] || '';
-    const match = cleanValue.match(/\.([a-z0-9]+)$/i);
-    return match?.[1]?.toLowerCase() || 'png';
-}
-
-function generatedArtifactToImageDraft(artifact: Record<string, unknown>): BrandWorkspaceImageDraft | null {
-    const parsedMetadata = typeof artifact.metadata === 'string'
-        ? parseJsonRecord(artifact.metadata)
-        : null;
-    const metadata = artifact.metadata && typeof artifact.metadata === 'object'
-        ? artifact.metadata as Record<string, unknown>
-        : parsedMetadata || {};
-    const asset = {
-        id: String(metadata.id || artifact.artifactId || artifact.jobId || 'image'),
-        title: optionalText(metadata.title || artifact.title),
-        previewUrl: optionalText(metadata.previewUrl || artifact.previewUrl),
-        absolutePath: optionalText(metadata.absolutePath || artifact.absolutePath),
-        relativePath: optionalText(metadata.relativePath || artifact.relativePath),
-    };
-    return generatedAssetToImageDraft(asset);
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-    return value && typeof value === 'object' ? value as Record<string, unknown> : null;
-}
-
-function parseJsonRecord(value: unknown): Record<string, unknown> | null {
-    if (typeof value !== 'string' || !value.trim()) return null;
-    try {
-        return asRecord(JSON.parse(value));
-    } catch {
-        return null;
-    }
-}
-
-function generatedImagesFromToolResultValue(value: unknown): BrandWorkspaceImageDraft[] {
-    const record = asRecord(value);
-    if (!record) return [];
-    const nestedResult = asRecord(record.result);
-    const data = asRecord(record.data) || asRecord(nestedResult?.data);
-    const assets = Array.isArray(data?.assets) ? data.assets : [];
-    return assets
-        .map((asset) => asRecord(asset))
-        .filter((asset): asset is Record<string, unknown> => Boolean(asset))
-        .map(generatedAssetToImageDraft)
-        .filter((image): image is BrandWorkspaceImageDraft => Boolean(image));
-}
-
-function optionalNumber(value: unknown): number | undefined {
-    if (typeof value === 'number' && Number.isFinite(value)) return value;
-    if (typeof value === 'string' && value.trim()) {
-        const parsed = Number(value);
-        return Number.isFinite(parsed) ? parsed : undefined;
-    }
-    return undefined;
-}
-
-function collectProductDetailFollowUpJob(value: unknown, jobs: ProductDetailFollowUpJob[]): void {
-    const record = asRecord(value);
-    if (!record) return;
-    const jobId = optionalText(record.jobId);
-    const kind = optionalText(record.kind);
-    if (!jobId || (kind && kind !== 'image')) return;
-    jobs.push({
-        jobId,
-        expectedCount: optionalNumber(record.expectedCount),
-    });
-}
-
-function productDetailFollowUpJobsFromToolResultValue(value: unknown): ProductDetailFollowUpJob[] {
-    const record = asRecord(value);
-    if (!record) return [];
-    const nestedResult = asRecord(record.result);
-    const data = asRecord(record.data) || asRecord(nestedResult?.data);
-    const jobs: ProductDetailFollowUpJob[] = [];
-    collectProductDetailFollowUpJob(data?.followUp, jobs);
-    collectProductDetailFollowUpJob(data?.submitted, jobs);
-    collectProductDetailFollowUpJob(record.followUp, jobs);
-    collectProductDetailFollowUpJob(record.submitted, jobs);
-    return jobs;
-}
-
-function normalizeGenerationAgentScope(value: string): string {
-    const normalized = String(value || '')
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '');
-    return normalized || 'default';
-}
-
-function buildProductDetailGenerationAgentContextId(productId: string, platformId: string, version: ProductDetailVersionDraft): string {
-    const scope = normalizeGenerationAgentScope([
-        'brand-workspace',
-        'product-detail',
-        productId,
-        platformId,
-        detailVersionKey(version.market, version.locale),
-    ].join(':'));
-    return `generation-studio:agent:${scope}`;
-}
-
-function buildProductDetailGenerationAgentInitialContext(productBundle: BrandWorkspaceProductBundle): string {
-    return [
-        '你当前位于资产库的商品详情图生成页面。',
-        '这是后台自动执行的 Agent 任务，用户不会在执行过程中看到你的规划，也不会中途给你反馈或确认。',
-        `这里的任务是为当前商品生成一组电商详情页图片，不是单张长图。默认生成 ${PRODUCT_DETAIL_IMAGE_DEFAULT_COUNT} 张，合理范围是 ${PRODUCT_DETAIL_IMAGE_MIN_COUNT}-${PRODUCT_DETAIL_IMAGE_MAX_COUNT} 张。`,
-        '你要像图片导演一样工作：判断转化目标、规划套图顺序、锁定商品身份和统一视觉、写清每张图的文案位置与画面细节，然后直接调用图片生成工具。',
-        '与普通图片导演流程最大的区别：这里不能把方案发给用户确认，也不能等待用户建议或调整方向；所有规划、取舍、自检和执行都必须由你一次性完成。',
-        '不要要求用户二次确认；不要停在方案输出；只有缺少商品名称这类完全不可推断的硬性必填项时才停止并说明缺口。',
-        `当前项目ID: brand-workspace:${productBundle.product.id}`,
-        `当前商品: ${productBundle.product.name}`,
-    ].join('\n');
-}
-
-function buildProductDetailReferenceItems(productBundle: BrandWorkspaceProductBundle): Array<Record<string, string>> {
-    const items: Array<Record<string, string>> = [];
-    for (const asset of productBundle.assets || []) {
-        if (asset.role !== 'image') continue;
-        items.push({
-            type: 'product-image',
-            path: asset.path,
-            title: `${productBundle.product.name} 商品图`,
-        });
-    }
-    const skuAssets = productBundle.skuAssets || {};
-    for (const sku of productBundle.skus || []) {
-        const assets = skuAssets[sku.id] || [];
-        for (const asset of assets) {
-            if (asset.role !== 'image') continue;
-            items.push({
-                type: 'sku-image',
-                skuId: sku.id,
-                skuName: sku.name,
-                path: asset.path,
-                title: `${sku.name} SKU 图`,
-            });
-        }
-    }
-    return items;
-}
-
-function buildProductDetailGenerationAgentMessage(
-    prompt: string,
-    brand: BrandWorkspaceBrand,
-    productBundle: BrandWorkspaceProductBundle,
-    platform: EcommercePlatformRecord,
-    version: ProductDetailVersionDraft,
-): string {
-    const effectiveVersion = productDetailVersionForPlatform(version, platform);
-    const title = effectiveVersion.title.trim() || `${productBundle.product.name} ${platform.name} 详情页`;
-    const referenceItems = buildProductDetailReferenceItems(productBundle);
-    return [
-        prompt,
-        '[GenerationAgentContext]',
-        JSON.stringify({
-            executionMode: 'auto',
-            noSecondConfirmation: true,
-            backgroundExecution: true,
-            currentMode: 'image',
-            preferredRole: 'image-director',
-            source: 'brand-workspace-product-detail',
-            sourceTitle: `${brand.name} / ${productBundle.product.name}`,
-            autonomousDirectorPolicy: {
-                userCannotReviewPlan: true,
-                mustNotAskForConfirmation: true,
-                mustNotStopAfterPlanning: true,
-                mustPlanSilentlyThenGenerate: true,
-                mustSelfCritiqueBeforeToolCall: true,
-                normalImageDirectorDifference: '普通 image-director 需要先给用户看方案并等待确认；本任务是后台自动任务，必须内部完成同等质量的方案、自检和修正，然后直接生成。',
-            },
-            currentRequest: {
-                type: 'image',
-                prompt,
-                title,
-                projectId: `brand-workspace:${productBundle.product.id}`,
-                generationMode: 'text-to-image',
-                referenceItems,
-                referenceImages: referenceItems.map((item) => item.path),
-                count: PRODUCT_DETAIL_IMAGE_DEFAULT_COUNT,
-                aspectRatio: '3:4',
-                quality: 'high',
-                resolution: '2K',
-            },
-            productDetailBinding: {
-                productId: productBundle.product.id,
-                brandId: brand.id,
-                platformId: platform.id,
-                market: effectiveVersion.market.trim(),
-                locale: effectiveVersion.locale.trim(),
-            },
-            creativeWorkflow: [
-                '先在内部完成套图结构规划，再调用 image.generate；不要把规划输出给用户后等待确认。',
-                '规划时先判断这套图的商业目标：展示产品、建立信任、解释规格、增强场景想象、促进购买。',
-                '按目标决定顺序，不要随机排列，也不要把同一卖点重复成多张相似图。',
-                '锁定商品身份：优先依据 referenceImages / referenceItems 中的商品图和 SKU 图；没有图片时，依据商品名称、描述和 SKU 文本保持一致。',
-                '锁定统一视觉：同一商品外观、材质、比例、颜色系统、品牌气质、字体层级、按钮/标签样式要贯穿全套。',
-                `必须生成一组 ${PRODUCT_DETAIL_IMAGE_MIN_COUNT}-${PRODUCT_DETAIL_IMAGE_MAX_COUNT} 张图片，默认 ${PRODUCT_DETAIL_IMAGE_DEFAULT_COUNT} 张。`,
-                '每张图都是一个可独立查看的详情页模块，图与图之间保持同一品牌视觉、同一商品身份和统一排版语言。',
-                '不要生成单张超长图，不要做成海报封面，不要只做一张总览图。',
-                '建议结构：首屏主视觉、核心卖点、规格/参数、SKU/颜色容量、使用场景、材质/细节、服务保障/购买理由。',
-                '如果商品资料不足，用行业常识补全基础卖点，但不要编造具体认证、价格、促销、库存或无法确认的参数。',
-                '文案语言必须匹配目标市场/语言；中国大陆平台默认中文，不要展示国家/语言字段。',
-            ],
-            requiredInternalPlan: {
-                sequenceGoal: '按电商详情页转化逻辑组织：先吸引注意，再解释卖点，再建立信任，最后收束购买理由。',
-                sharedStyleGuideMustCover: [
-                    '商品外观和关键识别点',
-                    '品牌视觉和色彩系统',
-                    '文字层级与位置规则',
-                    '背景密度、光线和商品摆放方式',
-                    '全套重复出现的视觉元素',
-                ],
-                imagePlanItemSchema: {
-                    title: '内部资产标签，不能作为画面可见文字',
-                    visibleText: '消费者能看到的文案，只能放最终要渲染的标题、短句、标签或按钮',
-                    layout: '说明文字位置、商品位置、背景元素、构图重点',
-                    mustKeep: '说明必须保持一致的商品细节、颜色、材质、品牌识别点',
-                    negativePrompt: '禁止页码、卡片编号、规划标签、表格字段名、思考过程、虚构价格或促销信息',
-                },
-            },
-            selfCheckBeforeGenerate: [
-                `图片数量是否在 ${PRODUCT_DETAIL_IMAGE_MIN_COUNT}-${PRODUCT_DETAIL_IMAGE_MAX_COUNT} 张之间，且默认接近 ${PRODUCT_DETAIL_IMAGE_DEFAULT_COUNT} 张。`,
-                '是否每张图只承担一个明确详情页模块。',
-                '是否所有图片都绑定同一个商品，而不是泛化成同类商品。',
-                '是否所有可见文字都是消费者可读的最终文案，没有页码、规划标签或内部字段。',
-                '是否避免了无法确认的价格、促销、认证、库存、保修承诺。',
-                '是否已经给每张图写清楚商品位置、文字位置、画面重点和必须保持的细节。',
-            ],
-            toolRequirement: {
-                tool: 'image.generate',
-                callStrategy: 'prefer_single_call_with_count',
-                count: PRODUCT_DETAIL_IMAGE_DEFAULT_COUNT,
-                minCount: PRODUCT_DETAIL_IMAGE_MIN_COUNT,
-                maxCount: PRODUCT_DETAIL_IMAGE_MAX_COUNT,
-                aspectRatio: '3:4',
-                quality: 'high',
-                resolution: '2K',
-                requiredPayloadShape: {
-                    prompt: '整套详情页套图的总体 brief',
-                    count: PRODUCT_DETAIL_IMAGE_DEFAULT_COUNT,
-                    sequenceGoal: '套图顺序和转化逻辑',
-                    sharedStyleGuide: '全套统一视觉锚点',
-                    imagePlanItems: '每张图的 visibleText、layout、mustKeep、negativePrompt',
-                    referenceImages: '商品图和 SKU 图路径，如果 currentRequest.referenceImages 非空则必须传入',
-                },
-            },
-            executionExpectation: '请直接调用 image.generate 生成详情页套图。生成完成后不需要保存到资产库，宿主页面会从本次图片生成任务的 artifacts 或 tool result 中取回图片并保存到当前商品的当前平台版本。',
-        }, null, 2),
-        '[/GenerationAgentContext]',
-    ].join('\n\n');
-}
-
-async function listProductDetailGenerationJobs(sessionId: string): Promise<ProductDetailGenerationJob[]> {
-    try {
-        const result = await window.ipcRenderer.generation.listJobs({
-            kind: 'image',
-            ownerSessionId: sessionId,
-            includeArchived: true,
-            limit: 50,
-        });
-        return Array.isArray(result?.items) ? result.items as ProductDetailGenerationJob[] : [];
-    } catch (error) {
-        console.warn('Failed to list product detail generation jobs:', error);
-        return [];
-    }
-}
-
-async function listProductDetailToolResults(sessionId: string): Promise<ProductDetailToolResultItem[]> {
-    try {
-        const result = await window.ipcRenderer.runtime.getToolResults({ sessionId, limit: 120 });
-        return Array.isArray(result) ? result as ProductDetailToolResultItem[] : [];
-    } catch (error) {
-        console.warn('Failed to list product detail tool results:', error);
-        return [];
-    }
-}
-
-function productDetailJobMatchesProject(job: ProductDetailGenerationJob, projectId: string): boolean {
-    const request = job.request && typeof job.request === 'object' ? job.request : {};
-    return job.projectId === projectId || request.projectId === projectId;
-}
-
-function generatedImagesFromJobs(jobs: ProductDetailGenerationJob[], knownJobIds: Set<string>, projectId: string): BrandWorkspaceImageDraft[] {
-    const completedNewJobs = jobs
-        .filter((job) => job.jobId && !knownJobIds.has(job.jobId))
-        .filter((job) => job.status === 'completed');
-    const projectMatchedJobs = completedNewJobs.filter((job) => productDetailJobMatchesProject(job, projectId));
-    return (projectMatchedJobs.length > 0 ? projectMatchedJobs : completedNewJobs)
-        .flatMap((job) => job.artifacts || [])
-        .map(generatedArtifactToImageDraft)
-        .filter((image): image is BrandWorkspaceImageDraft => Boolean(image));
-}
-
-function generatedImagesFromToolResults(
-    toolResults: ProductDetailToolResultItem[],
-    knownToolResultIds: Set<string>,
-): BrandWorkspaceImageDraft[] {
-    const seenPaths = new Set<string>();
-    return toolResults
-        .filter((item) => !item.id || !knownToolResultIds.has(item.id))
-        .filter((item) => item.success !== false)
-        .flatMap((item) => [
-            ...generatedImagesFromToolResultValue(item.payload),
-            ...generatedImagesFromToolResultValue(parseJsonRecord(item.resultText)),
-        ])
-        .filter((image) => {
-            const key = image.path || image.previewUrl || image.name;
-            if (!key || seenPaths.has(key)) return false;
-            seenPaths.add(key);
-            return true;
-        });
-}
-
-function productDetailFollowUpJobsFromToolResults(
-    toolResults: ProductDetailToolResultItem[],
-    knownToolResultIds: Set<string>,
-): ProductDetailFollowUpJob[] {
-    const seenJobIds = new Set<string>();
-    return toolResults
-        .filter((item) => !item.id || !knownToolResultIds.has(item.id))
-        .filter((item) => item.success !== false)
-        .flatMap((item) => [
-            ...productDetailFollowUpJobsFromToolResultValue(item.payload),
-            ...productDetailFollowUpJobsFromToolResultValue(parseJsonRecord(item.resultText)),
-        ])
-        .filter((job) => {
-            if (!job.jobId || seenJobIds.has(job.jobId)) return false;
-            seenJobIds.add(job.jobId);
-            return true;
-        });
-}
-
-async function generatedImagesFromJobArtifacts(jobId: string): Promise<BrandWorkspaceImageDraft[]> {
-    try {
-        const result = await window.ipcRenderer.generation.getJobArtifacts(jobId);
-        const artifacts = Array.isArray(result?.items) ? result.items : [];
-        return artifacts
-            .map(generatedArtifactToImageDraft)
-            .filter((image): image is BrandWorkspaceImageDraft => Boolean(image));
-    } catch (error) {
-        console.warn('Failed to get product detail generation job artifacts:', error);
-        return [];
-    }
-}
-
-function generatedImagesFromJobRecord(value: unknown): BrandWorkspaceImageDraft[] {
-    const record = asRecord(value);
-    if (!record) return [];
-    const artifacts = Array.isArray(record.artifacts) ? record.artifacts : [];
-    const result = asRecord(record.result);
-    const resultAssets = Array.isArray(result?.assets) ? result.assets : [];
-    return [...artifacts, ...resultAssets]
-        .map((item) => asRecord(item))
-        .filter((item): item is Record<string, unknown> => Boolean(item))
-        .map(generatedArtifactToImageDraft)
-        .filter((image): image is BrandWorkspaceImageDraft => Boolean(image));
-}
-
-function dedupeGeneratedImageDrafts(images: BrandWorkspaceImageDraft[]): BrandWorkspaceImageDraft[] {
-    const seenPaths = new Set<string>();
-    return images.filter((image) => {
-        const key = image.path || image.previewUrl || image.name;
-        if (!key || seenPaths.has(key)) return false;
-        seenPaths.add(key);
-        return true;
-    });
-}
-
-async function waitForProductDetailFollowUpJob(
-    job: ProductDetailFollowUpJob,
-    timeoutMs: number,
-): Promise<BrandWorkspaceImageDraft[]> {
-    let awaitedJob: Record<string, unknown> | null = null;
-    try {
-        awaitedJob = asRecord(await window.ipcRenderer.generation.awaitJob({ jobId: job.jobId, timeoutMs }));
-    } catch (error) {
-        console.warn('Failed to await product detail generation job:', error);
-    }
-    const images = dedupeGeneratedImageDrafts([
-        ...generatedImagesFromJobRecord(awaitedJob),
-        ...(await generatedImagesFromJobArtifacts(job.jobId)),
-    ]);
-    if (job.expectedCount && images.length < job.expectedCount) {
-        const status = optionalText(awaitedJob?.status);
-        if (status && status !== 'completed') return [];
-    }
-    return images;
-}
-
-async function waitForGeneratedProductDetailImages(
-    sessionId: string,
-    knownJobIds: Set<string>,
-    knownToolResultIds: Set<string>,
-    projectId: string,
-): Promise<BrandWorkspaceImageDraft[]> {
-    const startedAt = Date.now();
-    const timeoutMs = 600_000;
-    const followUpJobs = new Map<string, ProductDetailFollowUpJob>();
-    let bestPartialImages: BrandWorkspaceImageDraft[] = [];
-    while (Date.now() - startedAt < timeoutMs) {
-        const jobs = await listProductDetailGenerationJobs(sessionId);
-        const images = generatedImagesFromJobs(jobs, knownJobIds, projectId);
-        if (images.length > 0) return images;
-        const toolResults = await listProductDetailToolResults(sessionId);
-        const toolResultImages = generatedImagesFromToolResults(toolResults, knownToolResultIds);
-        if (toolResultImages.length > 0) return toolResultImages;
-        for (const job of productDetailFollowUpJobsFromToolResults(toolResults, knownToolResultIds)) {
-            followUpJobs.set(job.jobId, job);
-        }
-        for (const followUpJob of followUpJobs.values()) {
-            const remainingMs = Math.max(1000, timeoutMs - (Date.now() - startedAt));
-            const followUpImages = await waitForProductDetailFollowUpJob(followUpJob, remainingMs);
-            if (followUpImages.length >= PRODUCT_DETAIL_IMAGE_MIN_COUNT) return followUpImages;
-            if (followUpImages.length > bestPartialImages.length) bestPartialImages = followUpImages;
-        }
-        await new Promise((resolve) => window.setTimeout(resolve, 1000));
-    }
-    return bestPartialImages.length >= PRODUCT_DETAIL_IMAGE_MIN_COUNT ? bestPartialImages : [];
-}
-
-function buildProductDetailGenerationPrompt(
-    brand: BrandWorkspaceBrand,
-    productBundle: BrandWorkspaceProductBundle,
-    platform: EcommercePlatformRecord,
-    version: ProductDetailVersionDraft,
-): string {
-    const skuText = productBundle.skus
-        .map((sku) => {
-            const variant = (sku.variantText || '').trim();
-            return variant ? `${sku.name}: ${variant}` : sku.name;
-        })
-        .filter(Boolean)
-        .join('；') || '未填写';
-    const effectiveVersion = productDetailVersionForPlatform(version, platform);
-    const marketText = isMainlandChinaPlatform(platform)
-        ? '中国大陆 / 汉语'
-        : ([effectiveVersion.market.trim(), effectiveVersion.locale.trim()].filter(Boolean).join(' / ') || '默认市场');
-    const referenceItems = buildProductDetailReferenceItems(productBundle);
-    const referenceText = referenceItems.length
-        ? referenceItems.map((item, index) => `${index + 1}. ${item.title}：${item.path}`).join('\n')
-        : '未提供商品图片；请严格依据商品名称、品牌描述、商品描述和 SKU 文本保持商品身份一致，不要虚构具体外观细节。';
-    return [
-        `为电商平台 ${platform.name} 生成一组商品详情页套图。`,
-        '这是后台自动任务，用户无法中途查看方案、确认方案或给你修改建议；你必须自己完成图片导演式规划、自检、修正并直接生成。',
-        `品牌：${brand.name}`,
-        `品牌描述：${brand.description || '未填写'}`,
-        `商品：${productBundle.product.name}`,
-        `商品描述：${productBundle.product.description || '未填写'}`,
-        `SKU：${skuText}`,
-        `目标市场/语言：${marketText}`,
-        `商品参考图：\n${referenceText}`,
-        `数量要求：生成 ${PRODUCT_DETAIL_IMAGE_MIN_COUNT}-${PRODUCT_DETAIL_IMAGE_MAX_COUNT} 张图片，默认 ${PRODUCT_DETAIL_IMAGE_DEFAULT_COUNT} 张；不要生成单张长图。`,
-        '套图结构：每张图承担一个明确模块，建议覆盖首屏主视觉、核心卖点、规格/参数、SKU/颜色容量、材质/细节、使用场景、服务保障/购买理由。',
-        '创作流程：先在内部规划整套图的信息顺序、统一视觉、每张图的可见文案、文字位置、商品位置、背景元素和禁止事项；自检通过后直接调用图片生成工具，不要停下来等待用户确认。',
-        '图片导演要求：先判断这套图服务的转化目标，再锁定商品身份，再锁定共享风格，最后把细节预算用于每张图的文字、布局、商品摆放、道具、背景和必须保持的识别点。',
-        '画面要求：清晰展示商品卖点、材质/规格、使用场景和购买理由；不要做成海报封面、社媒封面或单张总览图；排版平铺清晰，信息层级明确，留白克制，适合商品详情页连续浏览。',
-        '文案要求：使用目标市场适合的语言和表达方式；只写消费者可见的最终文案，不要把页码、卡片编号、规划标签、表格字段名或思考过程放进图里。',
-        '真实性要求：不要编造具体价格、促销、认证、库存、保修承诺或无法从商品资料推断的硬参数；资料不足时用更稳妥的通用卖点表达。',
-    ].join('\n');
-}
-
 async function imageFilesToDrafts(files: FileList | null): Promise<BrandWorkspaceImageDraft[]> {
     const nextFiles = Array.from(files || []);
     const invalid = nextFiles.find((file) => !file.type.startsWith('image/'));
@@ -1774,7 +1128,6 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
     const [subjects, setSubjects] = useState<SubjectRecord[]>([]);
     const [brandWorkspaceBrands, setBrandWorkspaceBrands] = useState<BrandWorkspaceBrandBundle[]>([]);
     const [brandWorkspaceError, setBrandWorkspaceError] = useState('');
-    const [enabledEcommercePlatforms, setEnabledEcommercePlatforms] = useState<EcommercePlatformRecord[]>([]);
     const [mediaAssets, setMediaAssets] = useState<MediaAsset[]>([]);
     const [mediaNextCursor, setMediaNextCursor] = useState<string | null>(null);
     const [isLoadingMoreMedia, setIsLoadingMoreMedia] = useState(false);
@@ -1806,12 +1159,6 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
     const [expandedBrandIds, setExpandedBrandIds] = useState<Set<string>>(() => new Set());
     const [productDetailContext, setProductDetailContext] = useState<ProductDetailContext | null>(null);
     const [selectedDetailPlatformId, setSelectedDetailPlatformId] = useState('');
-    const [selectedDetailVersionKey, setSelectedDetailVersionKey] = useState('__default__');
-    const [detailVersionDraft, setDetailVersionDraft] = useState<ProductDetailVersionDraft>({ market: '', locale: '', title: '' });
-    const [detailImageDrafts, setDetailImageDrafts] = useState<BrandWorkspaceImageDraft[]>([]);
-    const [isDetailPageSubmitting, setIsDetailPageSubmitting] = useState(false);
-    const [isDetailPageDownloading, setIsDetailPageDownloading] = useState(false);
-    const [generatingDetailPageTasks, setGeneratingDetailPageTasks] = useState<ProductDetailGenerationTask[]>([]);
     const [initialVoicePresent, setInitialVoicePresent] = useState(false);
     const [initialVideoPresent, setInitialVideoPresent] = useState(false);
     const [recordingError, setRecordingError] = useState('');
@@ -2010,7 +1357,6 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
             setSubjects(Array.isArray(subjectsResult.subjects) ? subjectsResult.subjects : []);
             setBrandWorkspaceBrands(Array.isArray(brandWorkspaceResult?.brands) ? brandWorkspaceResult.brands : []);
             setBrandWorkspaceError(brandWorkspaceResult?.success === false ? (brandWorkspaceResult.error || '品牌工作区加载失败') : '');
-            setEnabledEcommercePlatforms(enabledEcommercePlatformsFromSettings(settingsSnapshot));
             setVoiceModelSettingsSnapshot(settingsSnapshot);
             setVoiceCloneModelOptions(voiceModelSettings.options);
             setSelectedVoiceCloneTtsModel((current) => (
@@ -2048,7 +1394,6 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
                 setCategories([]);
                 setSubjects([]);
                 setBrandWorkspaceBrands([]);
-                setEnabledEcommercePlatforms([]);
                 setMediaAssets([]);
             }
         } finally {
@@ -2101,13 +1446,6 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
         window.ipcRenderer.onDataChanged(listener);
         return () => window.ipcRenderer.offDataChanged(listener);
     }, [isActive, loadData]);
-
-    useEffect(() => {
-        if (!productDetailContext) return;
-        if (!selectedDetailPlatformId || !ALL_ECOMMERCE_PLATFORMS.some((platform) => platform.id === selectedDetailPlatformId)) {
-            setSelectedDetailPlatformId(enabledEcommercePlatforms[0]?.id || '');
-        }
-    }, [enabledEcommercePlatforms, productDetailContext, selectedDetailPlatformId]);
 
     const voiceJobIds = useMemo(
         () => Array.from(new Set(subjects
@@ -2170,73 +1508,14 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
     ), [activeDetailBrandBundle, productDetailContext]);
     const availableDetailPlatforms = useMemo(() => {
         const sourcePlatformIds = new Set((activeDetailProductBundle?.sourceSnapshots || []).map((snapshot) => snapshot.platform));
-        const sourcePlatforms = ALL_ECOMMERCE_PLATFORMS.filter((platform) => sourcePlatformIds.has(platform.id));
-        return [...sourcePlatforms, ...enabledEcommercePlatforms.filter((platform) => !sourcePlatformIds.has(platform.id))];
-    }, [activeDetailProductBundle, enabledEcommercePlatforms]);
+        return ALL_ECOMMERCE_PLATFORMS.filter((platform) => sourcePlatformIds.has(platform.id));
+    }, [activeDetailProductBundle]);
     const activeDetailPlatform = useMemo(() => (
         availableDetailPlatforms.find((platform) => platform.id === selectedDetailPlatformId) || availableDetailPlatforms[0] || null
     ), [availableDetailPlatforms, selectedDetailPlatformId]);
     const activeProductSourceSnapshot = activeDetailProductBundle?.sourceSnapshots?.find((snapshot) => (
         snapshot.platform === activeDetailPlatform?.id
-    )) || activeDetailProductBundle?.sourceSnapshots?.[0] || null;
-    const activeDetailPages = useMemo(() => (
-        activeDetailProductBundle && activeDetailPlatform
-            ? (activeDetailProductBundle.detailPages || []).filter((page) => page.platform === activeDetailPlatform.id)
-            : []
-    ), [activeDetailPlatform, activeDetailProductBundle]);
-    const detailVersionOptions = useMemo(() => (
-        buildProductDetailVersionOptions(activeDetailPlatform, activeDetailPages)
-    ), [activeDetailPages, activeDetailPlatform]);
-    const activeDetailVersionOption = useMemo(() => (
-        detailVersionOptions.find((option) => option.key === selectedDetailVersionKey)
-            || detailVersionOptions[0]
-            || null
-    ), [detailVersionOptions, selectedDetailVersionKey]);
-    const activeDetailPage = activeDetailVersionOption?.page || null;
-    const activeDetailGenerationKey = activeDetailProductBundle && activeDetailPlatform
-        ? productDetailGenerationKey(activeDetailProductBundle.product.id, activeDetailPlatform.id, detailVersionDraft)
-        : '';
-    const generatingDetailPageKeySet = useMemo(
-        () => new Set(generatingDetailPageTasks.map((task) => task.key)),
-        [generatingDetailPageTasks],
-    );
-    const isActiveDetailPageGenerating = Boolean(activeDetailGenerationKey && generatingDetailPageKeySet.has(activeDetailGenerationKey));
-    const activeDetailSelectionRef = useRef('');
-    useEffect(() => {
-        activeDetailSelectionRef.current = activeDetailGenerationKey;
-    }, [activeDetailGenerationKey]);
-    const productDetailThumbnailsByProductId = useMemo(() => {
-        const result = new Map<string, BrandWorkspaceAssetRef[]>();
-        for (const brandBundle of brandWorkspaceBrands) {
-            for (const productBundle of brandBundle.products) {
-                const assets = (productBundle.detailPages || []).flatMap((page) => (
-                    productBundle.detailPageAssets?.[page.id] || []
-                ));
-                if (assets.length) {
-                    result.set(productBundle.product.id, assets.slice(0, 5));
-                }
-            }
-        }
-        return result;
-    }, [brandWorkspaceBrands]);
-    useEffect(() => {
-        if (!productDetailContext) return;
-        if (activeDetailVersionOption) {
-            if (selectedDetailVersionKey !== activeDetailVersionOption.key) {
-                setSelectedDetailVersionKey(activeDetailVersionOption.key);
-            }
-            setDetailVersionDraft({
-                market: activeDetailVersionOption.market,
-                locale: activeDetailVersionOption.locale,
-                title: activeDetailVersionOption.title || '',
-            });
-            setDetailImageDrafts(assetRefsToImageDrafts(activeDetailVersionOption.page ? activeDetailProductBundle?.detailPageAssets?.[activeDetailVersionOption.page.id] : undefined));
-            return;
-        }
-        setSelectedDetailVersionKey('__default__');
-        setDetailVersionDraft({ market: '', locale: '', title: '' });
-        setDetailImageDrafts([]);
-    }, [activeDetailProductBundle, activeDetailVersionOption, productDetailContext, selectedDetailVersionKey]);
+    )) || null;
     const activeDraftSubject = useMemo(
         () => draft.id ? subjects.find((subject) => subject.id === draft.id) || null : null,
         [draft.id, subjects],
@@ -2492,335 +1771,13 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
 
     const openProductDetailPage = useCallback((brand: BrandWorkspaceBrand, productBundle: BrandWorkspaceProductBundle) => {
         setProductDetailContext({ brandId: brand.id, productId: productBundle.product.id });
-        setSelectedDetailPlatformId(productBundle.sourceSnapshots?.[0]?.platform || enabledEcommercePlatforms[0]?.id || '');
-        setSelectedDetailVersionKey('__default__');
-        setDetailVersionDraft({ market: '', locale: '', title: '' });
-        setDetailImageDrafts([]);
+        setSelectedDetailPlatformId(productBundle.sourceSnapshots?.[0]?.platform || '');
         setError('');
-    }, [enabledEcommercePlatforms]);
-
-    const handleCreateProductContent = useCallback((brand: BrandWorkspaceBrand, productBundle: BrandWorkspaceProductBundle) => {
-        const product = productBundle.product;
-        const sourceSnapshot = productBundle.sourceSnapshots?.[0];
-        const capturedFacts = (product.facts || []).map((fact) => `- ${fact.key}：${fact.value}（${fact.origin === 'captured' ? '采集事实' : fact.origin === 'user-confirmed' ? '用户确认' : 'AI 提炼'}）`);
-        const skuLines = productBundle.skus.map((sku) => `- ${sku.name}${sku.variantText ? `：${sku.variantText}` : ''}`);
-        const content = [
-            `请基于商品资产「${product.name}」创建一篇可编辑的小红书图文推广作品。`,
-            '',
-            '请先从以下创作起点中选择，也可以直接改写这一段提出自由需求：',
-            '1. 商品介绍：讲清核心功能、规格和适合谁。',
-            '2. 场景种草：围绕一个真实使用场景组织体验和卖点。',
-            '3. 选购说明：用对比、参数和选择建议帮助决策。',
-            '',
-            '制作要求：逐页规划封面和内页；优先使用附带的原始商品图保留外观、包装和标识；标题、参数、价格等信息使用可编辑文字；背景或辅助场景可以按需生成；缺少生图模型时也要用现有商品图完成基础套图。只能把采集事实和用户确认信息当作商品事实，AI 推断必须明确标注，不能把生成文案反写成商品事实。',
-            '',
-            '## 商品资料',
-            `- 商品 ID：${product.id}`,
-            `- 品牌：${brand.id === UNASSIGNED_BRAND_ID ? (sourceSnapshot?.brandName || '待整理') : brand.name}`,
-            product.description ? `- 描述：${product.description}` : '',
-            product.audience ? `- 目标受众：${product.audience}` : '',
-            product.usageScenarios?.length ? `- 使用场景：${product.usageScenarios.join('、')}` : '',
-            product.brandStyle ? `- 品牌风格：${product.brandStyle}` : '',
-            sourceSnapshot?.price?.text ? `- 价格快照：${sourceSnapshot.price.text}（采集于 ${new Date(sourceSnapshot.capturedAt).toLocaleString()}）` : '',
-            sourceSnapshot?.sourceUrl ? `- 来源：${sourceSnapshot.sourceUrl}` : '',
-            '',
-            capturedFacts.length ? `## 已确认与采集事实\n${capturedFacts.join('\n')}` : '',
-            skuLines.length ? `## 已采集规格\n${skuLines.join('\n')}` : '',
-            sourceSnapshot?.missingFields?.length ? `## 待补充信息\n${sourceSnapshot.missingFields.join('、')}` : '',
-        ].filter(Boolean).join('\n');
-        const attachments = productBundle.assets
-            .filter((asset) => asset.absolutePath)
-            .slice(0, 12)
-            .map((asset, index) => ({
-                type: 'uploaded-file' as const,
-                name: `商品图-${index + 1}${asset.absolutePath?.match(/\.[a-z0-9]+$/i)?.[0] || '.jpg'}`,
-                absolutePath: asset.absolutePath,
-                originalAbsolutePath: asset.absolutePath,
-                toolPath: asset.absolutePath,
-                localUrl: asset.path,
-                kind: 'image',
-                mimeType: 'image/*',
-                storageMode: 'staged',
-                processingStrategy: 'tool-read',
-                deliveryMode: 'tool-read',
-                intakeStatus: 'ready',
-                summary: `${product.name} 原始商品图`,
-            }));
-        dispatchAppIntent({
-            type: 'flow.open',
-            stage: 'compose',
-            handoff: {
-                kind: 'chat-draft',
-                message: {
-                    content,
-                    displayContent: `基于「${product.name}」创作小红书商品推广`,
-                    sessionRouting: 'new',
-                    deliveryMode: 'draft',
-                    taskHints: {
-                        intent: 'manuscript_creation',
-                        executionProfile: 'artifact-authoring',
-                        artifactType: 'xiaohongshu-note',
-                        platform: 'xiaohongshu',
-                        taskType: 'direct_write',
-                        sourceMode: 'product',
-                        sourceTitle: product.name,
-                        xhsNoteType: 'image',
-                        requireSave: true,
-                        deferredDiscovery: false,
-                        teamEscalation: 'disabled',
-                    },
-                    attachments,
-                },
-            },
-        });
     }, []);
 
     const closeProductDetailPage = useCallback(() => {
-        if (isDetailPageSubmitting) return;
         setProductDetailContext(null);
-        setSelectedDetailVersionKey('__default__');
-        setDetailVersionDraft({ market: '', locale: '', title: '' });
-        setDetailImageDrafts([]);
-    }, [isDetailPageSubmitting]);
-
-    const handleRemoveDetailImage = useCallback((index: number) => {
-        setDetailImageDrafts((current) => current.filter((_, itemIndex) => itemIndex !== index));
     }, []);
-
-    const handleSelectDetailVersion = useCallback((option: ProductDetailVersionOption) => {
-        setSelectedDetailVersionKey(option.key);
-        setDetailVersionDraft({
-            market: option.market,
-            locale: option.locale,
-            title: option.title || '',
-        });
-        setDetailImageDrafts(assetRefsToImageDrafts(option.page ? activeDetailProductBundle?.detailPageAssets?.[option.page.id] : undefined));
-    }, [activeDetailProductBundle]);
-
-    const handleSaveDetailPage = useCallback(async () => {
-        if (!activeDetailProductBundle || !activeDetailPlatform) {
-            void appAlert('请选择商品和电商平台');
-            return;
-        }
-        const brandWorkspaceBridge = getBrandWorkspaceBridge();
-        if (!brandWorkspaceBridge?.upsertProductDetailPage) {
-            void appAlert('商品详情图保存接口不可用');
-            return;
-        }
-        setIsDetailPageSubmitting(true);
-        setError('');
-        try {
-            const effectiveVersion = productDetailVersionForPlatform(detailVersionDraft, activeDetailPlatform);
-            const result = await brandWorkspaceBridge.upsertProductDetailPage({
-                id: activeDetailPage?.id,
-                productId: activeDetailProductBundle.product.id,
-                platform: activeDetailPlatform.id,
-                market: effectiveVersion.market.trim(),
-                locale: effectiveVersion.locale.trim(),
-                title: effectiveVersion.title.trim() || undefined,
-                images: imageDraftPayload(detailImageDrafts),
-            });
-            if (!result?.success) {
-                throw new Error(result?.error || '保存商品详情图失败');
-            }
-            await loadData();
-            setSelectedDetailVersionKey(detailVersionKey(effectiveVersion.market, effectiveVersion.locale));
-        } catch (e) {
-            console.error('Failed to save product detail page:', e);
-            setError(e instanceof Error ? e.message : '保存商品详情图失败');
-        } finally {
-            setIsDetailPageSubmitting(false);
-        }
-    }, [activeDetailPage, activeDetailPlatform, activeDetailProductBundle, detailImageDrafts, detailVersionDraft, loadData]);
-
-    const handleDownloadDetailPage = useCallback(async () => {
-        if (!activeDetailBrandBundle || !activeDetailProductBundle || !activeDetailPlatform) {
-            void appAlert('请选择商品和电商平台');
-            return;
-        }
-        if (detailImageDrafts.length === 0) {
-            void appAlert('当前版本没有可下载的详情图');
-            return;
-        }
-        const effectiveVersion = productDetailVersionForPlatform(detailVersionDraft, activeDetailPlatform);
-        const versionName = detailVersionLabel(effectiveVersion);
-        const baseName = sanitizeDownloadFileName([
-            activeDetailBrandBundle.brand.name,
-            activeDetailProductBundle.product.name,
-            activeDetailPlatform.name,
-            versionName,
-            '商品详情页',
-        ].filter(Boolean).join('-'), '商品详情页');
-        const files = detailImageDrafts
-            .map((image, index) => {
-                const source = image.path || image.previewUrl;
-                if (!source) return null;
-                const extension = imageExtensionFromPath(source);
-                return {
-                    source,
-                    name: `${String(index + 1).padStart(2, '0')}-${baseName}.${extension}`,
-                };
-            })
-            .filter((item): item is { source: string; name: string } => Boolean(item));
-        if (files.length === 0) {
-            void appAlert('当前版本没有可下载的本地图片');
-            return;
-        }
-        setIsDetailPageDownloading(true);
-        setError('');
-        try {
-            const result = await window.ipcRenderer.files.saveZip({
-                defaultName: `${baseName}.zip`,
-                files,
-            });
-            if (!result?.success && !result?.canceled) {
-                throw new Error(result?.error || '下载详情页失败');
-            }
-        } catch (e) {
-            console.error('Failed to download product detail page:', e);
-            setError(e instanceof Error ? e.message : '下载详情页失败');
-        } finally {
-            setIsDetailPageDownloading(false);
-        }
-    }, [activeDetailBrandBundle, activeDetailPlatform, activeDetailProductBundle, detailImageDrafts, detailVersionDraft]);
-
-    const persistDetailPageImagesForTarget = useCallback(async (
-        images: BrandWorkspaceImageDraft[],
-        target: ProductDetailPageImageSaveTarget,
-    ) => {
-        const brandWorkspaceBridge = getBrandWorkspaceBridge();
-        if (!brandWorkspaceBridge?.upsertProductDetailPage) {
-            throw new Error('商品详情图保存接口不可用');
-        }
-        const result = await brandWorkspaceBridge.upsertProductDetailPage({
-            id: target.id,
-            productId: target.productId,
-            platform: target.platform,
-            market: target.version.market.trim(),
-            locale: target.version.locale.trim(),
-            title: target.version.title.trim() || undefined,
-            images: imageDraftPayload(images),
-        });
-        if (!result?.success) {
-            throw new Error(result?.error || '保存商品详情图失败');
-        }
-    }, []);
-
-    const handleGenerateDetailPage = useCallback(async () => {
-        if (!activeDetailBrandBundle || !activeDetailProductBundle || !activeDetailPlatform) {
-            void appAlert('请选择商品和电商平台');
-            return;
-        }
-        const taskVersion = productDetailVersionForPlatform(detailVersionDraft, activeDetailPlatform);
-        const taskKey = productDetailGenerationKey(activeDetailProductBundle.product.id, activeDetailPlatform.id, taskVersion);
-        if (generatingDetailPageKeySet.has(taskKey)) return;
-        const taskProductId = activeDetailProductBundle.product.id;
-        const taskPlatformId = activeDetailPlatform.id;
-        const taskPageId = activeDetailPage?.id;
-        const taskInitialImages = detailImageDrafts;
-        const task: ProductDetailGenerationTask = {
-            key: taskKey,
-            target: {
-                id: taskPageId,
-                productId: taskProductId,
-                platform: taskPlatformId,
-                version: taskVersion,
-            },
-            productName: activeDetailProductBundle.product.name,
-            platformName: activeDetailPlatform.name,
-            versionLabel: detailVersionLabel(taskVersion),
-        };
-        setGeneratingDetailPageTasks((current) => (
-            current.some((item) => item.key === task.key) ? current : [...current, task]
-        ));
-        setError('');
-        try {
-            const prompt = buildProductDetailGenerationPrompt(
-                activeDetailBrandBundle.brand,
-                activeDetailProductBundle,
-                activeDetailPlatform,
-                taskVersion,
-            );
-            const projectId = `brand-workspace:${activeDetailProductBundle.product.id}`;
-            const contextId = buildProductDetailGenerationAgentContextId(
-                activeDetailProductBundle.product.id,
-                activeDetailPlatform.id,
-                taskVersion,
-            );
-            const session = await window.ipcRenderer.chat.getOrCreateContextSession({
-                contextId,
-                contextType: 'generation-agent',
-                title: `${activeDetailProductBundle.product.name} 详情页生成`,
-                initialContext: buildProductDetailGenerationAgentInitialContext(activeDetailProductBundle),
-                metadata: {
-                    contextType: 'generation-agent',
-                    intent: 'image_creation',
-                    preferredRole: 'image-director',
-                    generationTarget: 'image',
-                    executionMode: 'auto',
-                    requiresHumanApproval: false,
-                    projectId,
-                    source: 'brand-workspace-product-detail',
-                    sourceTitle: `${activeDetailBrandBundle.brand.name} / ${activeDetailProductBundle.product.name}`,
-                    productId: activeDetailProductBundle.product.id,
-                    brandId: activeDetailBrandBundle.brand.id,
-                    platformId: activeDetailPlatform.id,
-                },
-            });
-            if (!session?.id) {
-                throw new Error('Agent 会话初始化失败');
-            }
-            const knownJobIds = new Set(
-                (await listProductDetailGenerationJobs(session.id))
-                    .map((job) => job.jobId)
-                    .filter((jobId): jobId is string => Boolean(jobId)),
-            );
-            const knownToolResultIds = new Set(
-                (await listProductDetailToolResults(session.id))
-                    .map((item) => item.id)
-                    .filter((id): id is string => Boolean(id)),
-            );
-            const message = buildProductDetailGenerationAgentMessage(
-                prompt,
-                activeDetailBrandBundle.brand,
-                activeDetailProductBundle,
-                activeDetailPlatform,
-                taskVersion,
-            );
-            const agentResult = await window.ipcRenderer.runtime.query({
-                sessionId: session.id,
-                message,
-                metadata: {
-                    contextType: 'generation-agent',
-                    source: 'brand-workspace-product-detail',
-                    projectId,
-                    preferredRole: 'image-director',
-                    generationTarget: 'image',
-                },
-            } as Parameters<typeof window.ipcRenderer.runtime.query>[0] & { metadata: Record<string, unknown> });
-            if (!agentResult?.success) {
-                throw new Error(agentResult?.error || 'Agent 生成商品详情页失败');
-            }
-            const generatedImages = await waitForGeneratedProductDetailImages(session.id, knownJobIds, knownToolResultIds, projectId);
-            if (!generatedImages.length) {
-                throw new Error('Agent 已执行完成，但没有找到可保存的商品详情图');
-            }
-            const nextImages = [...taskInitialImages, ...generatedImages];
-            await persistDetailPageImagesForTarget(nextImages, task.target);
-            await loadData();
-            if (activeDetailSelectionRef.current === taskKey) {
-                setDetailImageDrafts(nextImages);
-                setSelectedDetailVersionKey(detailVersionKey(task.target.version.market, task.target.version.locale));
-            }
-        } catch (e) {
-            console.error('Failed to generate product detail page:', e);
-            if (activeDetailSelectionRef.current === taskKey) {
-                setError(e instanceof Error ? e.message : 'AI 生成商品详情页失败');
-            }
-        } finally {
-            setGeneratingDetailPageTasks((current) => current.filter((item) => item.key !== taskKey));
-        }
-    }, [activeDetailBrandBundle, activeDetailPage, activeDetailPlatform, activeDetailProductBundle, detailImageDrafts, detailVersionDraft, generatingDetailPageKeySet, loadData, persistDetailPageImagesForTarget]);
 
     const closeProductModal = useCallback(() => {
         if (isProductModalSubmitting) return;
@@ -3726,8 +2683,6 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
             : activeDetailProductBundle.assets
         ).filter((asset) => asset.path).slice(0, 4);
         const hasPlatforms = availableDetailPlatforms.length > 0;
-        const displayDetailVersion = productDetailVersionForPlatform(detailVersionDraft, activeDetailPlatform);
-        const activeDetailPlatformIcon = activeDetailPlatform ? ecommercePlatformIconPath(activeDetailPlatform.id) : '';
         return (
             <div className="fixed inset-0 z-[10020] flex min-h-0 flex-col bg-white">
                 <div className={clsx('shrink-0 border-b border-[rgb(var(--color-border))] bg-white', isModalVariant ? 'px-5 pb-4 pt-14' : 'px-8 pb-5 pt-14')}>
@@ -3735,8 +2690,7 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
                         <button
                             type="button"
                             onClick={closeProductDetailPage}
-                            disabled={isDetailPageSubmitting}
-                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[rgb(var(--color-border))] bg-white text-[rgb(var(--color-text-primary))] shadow-sm transition hover:bg-[rgb(var(--color-surface-primary))] disabled:opacity-50"
+                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[rgb(var(--color-border))] bg-white text-[rgb(var(--color-text-primary))] shadow-sm transition hover:bg-[rgb(var(--color-surface-primary))]"
                             aria-label="返回资产库"
                             title="返回"
                         >
@@ -3759,51 +2713,17 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
                                 {activeDetailProductBundle.product.name}
                             </h2>
                         </div>
-                        {activeDetailPlatform && (
-                            <div className="absolute left-1/2 hidden min-w-0 max-w-[320px] -translate-x-1/2 items-center gap-2 lg:flex">
-                                <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg">
-                                    {activeDetailPlatformIcon ? (
-                                        <img src={activeDetailPlatformIcon} alt="" className="h-5 w-5 object-contain" />
-                                    ) : (
-                                        <Box className="h-4 w-4 text-[rgb(var(--color-text-tertiary))]" />
-                                    )}
-                                </span>
-                                <div className="min-w-0">
-                                    <div className="truncate text-[11px] font-semibold text-[rgb(var(--color-text-secondary))]">
-                                        {detailVersionLabel(displayDetailVersion)}
-                                    </div>
-                                    <div className="mt-0.5 truncate text-sm font-semibold leading-none text-[rgb(var(--color-text-primary))]">
-                                        {activeDetailPlatform.name}
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                        <div className="flex items-center gap-2">
+                        <div className="flex shrink-0 items-center gap-2">
                             <button
                                 type="button"
-                                onClick={() => handleCreateProductContent(activeDetailBrandBundle.brand, activeDetailProductBundle)}
-                                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-sm font-semibold text-white transition hover:bg-violet-700"
+                                onClick={() => {
+                                    openEditProductModal(activeDetailBrandBundle.brand, activeDetailProductBundle);
+                                    setProductDetailContext(null);
+                                }}
+                                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-black px-3 text-sm font-semibold text-white transition hover:bg-black/85"
                             >
-                                <Sparkles className="h-4 w-4" />
-                                小红书创作
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => void handleDownloadDetailPage()}
-                                disabled={isDetailPageDownloading || isDetailPageSubmitting || !hasPlatforms || detailImageDrafts.length === 0}
-                                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[rgb(var(--color-surface-secondary))] px-3 text-sm font-semibold text-[rgb(var(--color-text-primary))] transition hover:bg-[rgb(var(--color-surface-tertiary))] disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                                <Download className="h-4 w-4" />
-                                {isDetailPageDownloading ? '打包中' : '下载'}
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => void handleSaveDetailPage()}
-                                disabled={isDetailPageSubmitting || !hasPlatforms}
-                                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-black px-3 text-sm font-semibold text-white transition hover:bg-black/85 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                                <Save className="h-4 w-4" />
-                                {isDetailPageSubmitting ? '保存中' : '保存'}
+                                <Pencil className="h-4 w-4" />
+                                编辑商品资料
                             </button>
                         </div>
                     </div>
@@ -3811,7 +2731,7 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
 
                 <div className="flex min-h-0 flex-1 bg-[rgb(var(--color-surface-primary))]">
                     <aside className={clsx('hidden min-h-0 w-[250px] shrink-0 overflow-y-auto border-r border-[rgb(var(--color-border))] bg-[rgb(var(--color-surface-primary))] p-4 lg:block', isModalVariant && 'w-[220px]')}>
-                        <div className="mb-3 text-xs font-semibold text-[rgb(var(--color-text-secondary))]">电商平台</div>
+                        <div className="mb-3 text-xs font-semibold text-[rgb(var(--color-text-secondary))]">采集来源</div>
                         {hasPlatforms ? (
                             <div className="space-y-1">
                                 {availableDetailPlatforms.map((platform) => {
@@ -3821,10 +2741,7 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
                                         <button
                                             key={platform.id}
                                             type="button"
-                                            onClick={() => {
-                                                setSelectedDetailPlatformId(platform.id);
-                                                setSelectedDetailVersionKey('__default__');
-                                            }}
+                                            onClick={() => setSelectedDetailPlatformId(platform.id)}
                                             className={clsx(
                                                 'relative flex h-11 w-full items-center gap-2 rounded-xl border px-2.5 text-left text-xs font-semibold transition',
                                                 active
@@ -3847,7 +2764,7 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
                             </div>
                         ) : (
                             <div className="rounded-lg border border-dashed border-[rgb(var(--color-border))] bg-white px-3 py-3 text-xs leading-5 text-[rgb(var(--color-text-secondary))]">
-                                先在设置里开启电商平台。
+                                这个商品暂无采集来源。
                             </div>
                         )}
                     </aside>
@@ -3862,10 +2779,7 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
                                         <button
                                             key={platform.id}
                                             type="button"
-                                            onClick={() => {
-                                                setSelectedDetailPlatformId(platform.id);
-                                                setSelectedDetailVersionKey('__default__');
-                                            }}
+                                            onClick={() => setSelectedDetailPlatformId(platform.id)}
                                             className={clsx(
                                                 'inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-semibold transition',
                                                 active
@@ -3916,195 +2830,55 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
                                 </section>
                             )}
 
-                            {hasPlatforms && activeDetailPlatform ? (
-                                <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
-                                    <div className="min-w-0 space-y-5">
-                                        <div className="flex flex-wrap items-center gap-2">
-                                            {detailVersionOptions.map((option) => {
-                                                const active = selectedDetailVersionKey === option.key
-                                                    || (!detailVersionOptions.some((item) => item.key === selectedDetailVersionKey) && activeDetailVersionOption?.key === option.key);
-                                                return (
-                                                    <button
-                                                        key={option.key}
-                                                        type="button"
-                                                        onClick={() => handleSelectDetailVersion(option)}
-                                                        className={clsx(
-                                                            'inline-flex h-8 items-center rounded-lg px-3 text-xs font-semibold transition',
-                                                            active
-                                                                ? 'bg-black text-white'
-                                                                : 'bg-[rgb(var(--color-surface-secondary))] text-[rgb(var(--color-text-primary))] hover:bg-[rgb(var(--color-surface-tertiary))]'
-                                                        )}
-                                                    >
-                                                        {detailVersionLabel(option)}
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-
-                                        <div className="grid grid-cols-1 gap-3">
-                                            <label className="block">
-                                                <div className="mb-1.5 text-xs font-semibold text-[rgb(var(--color-text-secondary))]">标题</div>
-                                                <input
-                                                    value={detailVersionDraft.title}
-                                                    onChange={(event) => setDetailVersionDraft((current) => ({ ...current, title: event.target.value }))}
-                                                    placeholder={`${activeDetailPlatform.name} 商品详情`}
-                                                    className="h-10 w-full rounded-lg border-0 bg-[rgb(var(--color-surface-secondary))] px-3 text-sm text-[rgb(var(--color-text-primary))] outline-none focus:ring-2 focus:ring-violet-500"
-                                                />
-                                            </label>
-                                        </div>
-
-                                        <section className="space-y-3">
-                                            <div className="flex items-center justify-between gap-3">
-                                                <div>
-                                                    <div className="text-sm font-semibold text-[rgb(var(--color-text-primary))]">商品详情页</div>
-                                                    <div className="mt-0.5 text-xs text-[rgb(var(--color-text-secondary))]">由 AI 根据商品资料生成</div>
-                                                </div>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => void handleGenerateDetailPage()}
-                                                    disabled={isActiveDetailPageGenerating || isDetailPageSubmitting}
-                                                    className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-black px-3 text-xs font-semibold text-white transition hover:bg-black/85 disabled:cursor-not-allowed disabled:opacity-50"
-                                                >
-                                                    <Sparkles className={clsx('h-3.5 w-3.5', isActiveDetailPageGenerating && 'animate-pulse')} />
-                                                    {isActiveDetailPageGenerating ? '生成中' : 'AI生成详情页'}
-                                                </button>
-                                            </div>
-
-                                            {detailImageDrafts.length === 0 && isActiveDetailPageGenerating ? (
-                                                <div className="space-y-4">
-                                                    {Array.from({ length: 3 }).map((_, index) => (
-                                                        <div key={`detail-page-loading-${index}`} className="relative aspect-[3/4] overflow-hidden bg-[rgb(var(--color-surface-secondary))]">
-                                                            <div className="absolute inset-0 animate-pulse bg-gradient-to-b from-[rgb(var(--color-surface-secondary))] via-white to-[rgb(var(--color-surface-secondary))]" />
-                                                            <div className="absolute left-4 top-4 h-3 w-24 animate-pulse bg-white/80" />
-                                                            <div className="absolute left-4 top-10 h-2 w-36 animate-pulse bg-white/70" />
-                                                            <div className="absolute bottom-5 left-4 right-4 h-24 animate-pulse bg-white/65" />
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            ) : detailImageDrafts.length === 0 ? (
-                                                <div className="flex min-h-[360px] flex-col items-center justify-center rounded-xl border border-dashed border-[rgb(var(--color-border))] bg-[rgb(var(--color-surface-primary))] text-center text-[rgb(var(--color-text-secondary))]">
-                                                    <Sparkles className="mb-3 h-10 w-10 stroke-[1.6]" />
-                                                    <div className="text-sm font-semibold">还没有生成详情页</div>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => void handleGenerateDetailPage()}
-                                                        disabled={isActiveDetailPageGenerating || isDetailPageSubmitting}
-                                                        className="mt-4 inline-flex h-9 items-center gap-1.5 rounded-lg bg-black px-3 text-xs font-semibold text-white transition hover:bg-black/85 disabled:cursor-not-allowed disabled:opacity-50"
-                                                    >
-                                                        <Sparkles className={clsx('h-3.5 w-3.5', isActiveDetailPageGenerating && 'animate-pulse')} />
-                                                        {isActiveDetailPageGenerating ? '生成中' : 'AI生成详情页'}
-                                                    </button>
-                                                </div>
-                                            ) : (
-                                                <div className="space-y-4">
-                                                    {detailImageDrafts.map((image, index) => (
-                                                        <div key={`${image.path || image.name}-${index}`} className="group relative overflow-hidden bg-[rgb(var(--color-surface-secondary))] shadow-sm">
-                                                            <img
-                                                                src={resolveAssetUrl(image.previewUrl)}
-                                                                alt={image.name}
-                                                                className="block h-auto w-full object-contain"
-                                                            />
-                                                            <div className="absolute left-2 top-2 rounded-md bg-black/60 px-2 py-1 text-[10px] font-semibold text-white">
-                                                                {index + 1}
-                                                            </div>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleRemoveDetailImage(index)}
-                                                                className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-black/65 text-white opacity-0 transition group-hover:opacity-100"
-                                                                aria-label="删除详情页"
-                                                            >
-                                                                <X className="h-4 w-4" />
-                                                            </button>
-                                                        </div>
-                                                    ))}
-                                                    {isActiveDetailPageGenerating && (
-                                                        <>
-                                                            {Array.from({ length: 2 }).map((_, index) => (
-                                                                <div key={`detail-page-loading-more-${index}`} className="relative aspect-[3/4] overflow-hidden bg-[rgb(var(--color-surface-secondary))]">
-                                                                    <div className="absolute inset-0 animate-pulse bg-gradient-to-b from-[rgb(var(--color-surface-secondary))] via-white to-[rgb(var(--color-surface-secondary))]" />
-                                                                    <div className="absolute left-4 top-4 h-3 w-24 animate-pulse bg-white/80" />
-                                                                    <div className="absolute left-4 top-10 h-2 w-36 animate-pulse bg-white/70" />
-                                                                    <div className="absolute bottom-5 left-4 right-4 h-24 animate-pulse bg-white/65" />
-                                                                </div>
-                                                            ))}
-                                                        </>
-                                                    )}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => void handleGenerateDetailPage()}
-                                                        disabled={isActiveDetailPageGenerating || isDetailPageSubmitting}
-                                                        className="flex min-h-[88px] w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-[rgb(var(--color-border))] bg-[rgb(var(--color-surface-primary))] text-xs font-semibold text-[rgb(var(--color-text-secondary))] transition hover:bg-[rgb(var(--color-surface-secondary))] hover:text-[rgb(var(--color-text-primary))] disabled:cursor-not-allowed disabled:opacity-50"
-                                                    >
-                                                        <Sparkles className={clsx('h-4 w-4', isActiveDetailPageGenerating && 'animate-pulse')} />
-                                                        {isActiveDetailPageGenerating ? '生成中' : '再生成一版'}
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </section>
+                            {!activeProductSourceSnapshot && (
+                                <section className="rounded-xl border border-[rgb(var(--color-border))] bg-white p-5">
+                                    <div className="text-sm font-semibold text-[rgb(var(--color-text-primary))]">商品资料</div>
+                                    <div className="mt-1 text-xs leading-5 text-[rgb(var(--color-text-secondary))]">
+                                        这个商品暂无网页采集快照，以下是资产库中保存的人工资料。
                                     </div>
-
-                                    <aside className="h-fit rounded-xl border border-[rgb(var(--color-border))] bg-[rgb(var(--color-surface-primary))] p-3 xl:sticky xl:top-5">
-                                        <div className="mb-3 text-xs font-semibold text-[rgb(var(--color-text-secondary))]">商品资料</div>
-                                        <div className="grid grid-cols-4 gap-1.5">
+                                    <div className="mt-5 grid gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
+                                        <div className="grid grid-cols-2 gap-2">
                                             {productInfoImages.map((asset) => (
-                                                <div key={asset.id} className="aspect-square overflow-hidden rounded-lg bg-white">
+                                                <div key={asset.id} className="aspect-square overflow-hidden rounded-lg bg-[rgb(var(--color-surface-secondary))]">
                                                     <img src={resolveAssetUrl(asset.path)} alt="" className="h-full w-full object-cover" />
                                                 </div>
                                             ))}
                                             {productInfoImages.length === 0 && (
-                                                <div className="col-span-4 flex aspect-[4/3] items-center justify-center rounded-lg bg-white text-[rgb(var(--color-text-tertiary))]">
-                                                    <Package className="h-6 w-6" />
+                                                <div className="col-span-2 flex aspect-[4/3] items-center justify-center rounded-lg bg-[rgb(var(--color-surface-secondary))] text-[rgb(var(--color-text-tertiary))]">
+                                                    <Package className="h-7 w-7" />
                                                 </div>
                                             )}
                                         </div>
-                                        <div className="mt-3 space-y-2">
-                                            <div>
-                                                <div className="text-[11px] text-[rgb(var(--color-text-secondary))]">品牌</div>
-                                                <div className="truncate text-sm font-semibold text-[rgb(var(--color-text-primary))]">{activeDetailBrandBundle.brand.name}</div>
-                                            </div>
-                                            <div>
-                                                <div className="text-[11px] text-[rgb(var(--color-text-secondary))]">商品</div>
-                                                <div className="text-sm font-semibold text-[rgb(var(--color-text-primary))]">{activeDetailProductBundle.product.name}</div>
-                                            </div>
+                                        <div className="space-y-4">
                                             {activeDetailProductBundle.product.description && (
-                                                <div className="text-xs leading-5 text-[rgb(var(--color-text-secondary))]">
+                                                <p className="text-sm leading-7 text-[rgb(var(--color-text-secondary))]">
                                                     {activeDetailProductBundle.product.description}
-                                                </div>
+                                                </p>
                                             )}
                                             {(activeDetailProductBundle.product.facts || []).length > 0 && (
-                                                <div className="space-y-1 rounded-lg bg-white px-2.5 py-2">
-                                                    {(activeDetailProductBundle.product.facts || []).slice(0, 12).map((fact) => (
-                                                        <div key={`${fact.key}-${fact.value}`} className="text-[11px] leading-5 text-[rgb(var(--color-text-secondary))]">
-                                                            <span className="font-semibold text-[rgb(var(--color-text-primary))]">{fact.key}：</span>
-                                                            {fact.value}
-                                                            <span className="ml-1 text-[10px] text-[rgb(var(--color-text-tertiary))]">
-                                                                {fact.origin === 'captured' ? '采集' : fact.origin === 'user-confirmed' ? '已确认' : 'AI 提炼'}
-                                                            </span>
+                                                <dl className="grid gap-x-6 rounded-xl border border-[rgb(var(--color-border))] px-4 md:grid-cols-2">
+                                                    {(activeDetailProductBundle.product.facts || []).map((fact) => (
+                                                        <div key={`${fact.key}-${fact.value}`} className="grid grid-cols-[96px_minmax(0,1fr)] gap-3 border-b border-black/[0.04] py-3 text-sm leading-6">
+                                                            <dt className="text-[rgb(var(--color-text-tertiary))]">{fact.key}</dt>
+                                                            <dd className="break-words">{fact.value}</dd>
                                                         </div>
                                                     ))}
-                                                </div>
+                                                </dl>
                                             )}
-                                            <div className="flex flex-wrap gap-1">
+                                            <div className="flex flex-wrap gap-2">
                                                 {activeDetailProductBundle.skus.length === 0 ? (
-                                                    <span className="rounded-md bg-white px-2 py-1 text-[11px] font-medium text-[rgb(var(--color-text-secondary))]">暂无 SKU</span>
-                                                ) : activeDetailProductBundle.skus.slice(0, 6).map((sku) => (
-                                                    <span key={sku.id} className="rounded-md bg-white px-2 py-1 text-[11px] font-medium text-[rgb(var(--color-text-secondary))]">
-                                                        {sku.name}
+                                                    <span className="rounded-md bg-[rgb(var(--color-surface-secondary))] px-2 py-1 text-xs text-[rgb(var(--color-text-secondary))]">暂无 SKU</span>
+                                                ) : activeDetailProductBundle.skus.map((sku) => (
+                                                    <span key={sku.id} className="rounded-md bg-[rgb(var(--color-surface-secondary))] px-2 py-1 text-xs text-[rgb(var(--color-text-secondary))]">
+                                                        {sku.name}{sku.variantText ? ` · ${sku.variantText}` : ''}
                                                     </span>
                                                 ))}
                                             </div>
-                                            <div className="rounded-lg bg-white px-2.5 py-2 text-[11px] leading-5 text-[rgb(var(--color-text-secondary))]">
-                                                {activeDetailPlatform.name} · {detailVersionLabel(displayDetailVersion)}
-                                            </div>
                                         </div>
-                                    </aside>
-                                </div>
-                            ) : (
-                                <div className="flex min-h-[54vh] flex-col items-center justify-center text-center text-[rgb(var(--color-text-secondary))]">
-                                    <Box className="mb-4 h-12 w-12 stroke-[1.8]" />
-                                    <div className="text-sm font-semibold">没有启用的电商平台</div>
-                                </div>
+                                    </div>
+                                </section>
                             )}
+
                         </div>
                     </main>
                 </div>
@@ -4521,7 +3295,7 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
                                                         {products.map((productBundle) => {
                                                             const { product, skus, assets } = productBundle;
                                                             const productImage = assets.find((asset) => asset.role === 'primary') || assets.find((asset) => asset.role === 'image') || assets[0];
-                                                            const detailThumbnails = productDetailThumbnailsByProductId.get(product.id) || [];
+                                                            const sourceCount = productBundle.sourceSnapshots?.length || 0;
                                                             return (
                                                             <div
                                                                 key={product.id}
@@ -4552,11 +3326,9 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
                                                                     </div>
                                                                 </div>
                                                                 <div className="hidden min-w-0 shrink-0 items-center gap-1 sm:flex">
-                                                                    {detailThumbnails.slice(0, 4).map((asset) => (
-                                                                        <div key={asset.id} className="h-8 w-8 overflow-hidden rounded-md bg-[rgb(var(--color-surface-secondary))]">
-                                                                            <img src={resolveAssetUrl(asset.path)} alt="" className="h-full w-full object-cover" />
-                                                                        </div>
-                                                                    ))}
+                                                                    <span className="rounded-md bg-[rgb(var(--color-surface-secondary))] px-2 py-1 text-[11px] text-[rgb(var(--color-text-secondary))]">
+                                                                        {sourceCount > 0 ? `${sourceCount} 个采集来源` : '人工资料'}
+                                                                    </span>
                                                                     <button
                                                                         type="button"
                                                                         onClick={(event) => {
@@ -4565,8 +3337,8 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
                                                                         }}
                                                                         className="inline-flex h-8 items-center gap-1 rounded-md border border-dashed border-[rgb(var(--color-border))] px-2 text-[11px] font-semibold text-[rgb(var(--color-text-secondary))] transition hover:bg-[rgb(var(--color-surface-primary))] hover:text-[rgb(var(--color-text-primary))]"
                                                                     >
-                                                                        <ImagePlus className="h-3.5 w-3.5" />
-                                                                        详情图
+                                                                        <FolderOpen className="h-3.5 w-3.5" />
+                                                                        查看资料
                                                                     </button>
                                                                 </div>
                                                                 <div className="hidden text-xs text-[rgb(var(--color-text-tertiary))] md:block">
