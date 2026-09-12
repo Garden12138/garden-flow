@@ -1,3 +1,4 @@
+import { ProductSourcePreview, type ProductPreviewSnapshot } from '../components/products/ProductSourcePreview';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import { appAlert, appConfirm } from '../utils/appDialogs';
@@ -53,6 +54,7 @@ import {
     type EcommercePlatformRecord,
 } from '../features/ecommerce-platforms/catalog';
 import type { GenerationAssetPickerRequest, GenerationAssetReference } from '../features/app-shell/types';
+import { dispatchAppIntent } from '../features/app-shell/appIntent';
 
 interface SubjectCategory {
     id: string;
@@ -107,11 +109,23 @@ interface BrandWorkspaceBrand {
 
 interface BrandWorkspaceProduct {
     id: string;
-    brandId: string;
+    brandId?: string;
     name: string;
     description?: string;
+    audience?: string;
+    usageScenarios?: string[];
+    brandStyle?: string;
+    facts?: BrandWorkspaceFact[];
     updatedAt: string;
     createdAt: string;
+}
+
+interface BrandWorkspaceFact {
+    key: string;
+    value: string;
+    origin: 'captured' | 'user-confirmed' | 'ai-derived';
+    sourceSnapshotId?: string;
+    updatedAt: string;
 }
 
 interface BrandWorkspaceSku {
@@ -126,8 +140,18 @@ interface BrandWorkspaceAssetRef {
     ownerType: string;
     ownerId: string;
     path: string;
+    absolutePath?: string;
+    sourceUrl?: string;
     role: string;
+    origin?: 'user' | 'capture' | 'generated';
     createdAt: string;
+}
+
+interface BrandWorkspaceSourceSnapshot extends ProductPreviewSnapshot {
+    id: string;
+    productId: string;
+    platform: string;
+    imageAssetIds: string[];
 }
 
 interface BrandWorkspaceProductDetailPage {
@@ -148,6 +172,7 @@ interface BrandWorkspaceProductBundle {
     skuAssets?: Record<string, BrandWorkspaceAssetRef[]>;
     detailPages?: BrandWorkspaceProductDetailPage[];
     detailPageAssets?: Record<string, BrandWorkspaceAssetRef[]>;
+    sourceSnapshots?: BrandWorkspaceSourceSnapshot[];
 }
 
 interface BrandWorkspaceBrandBundle {
@@ -179,6 +204,9 @@ interface BrandWorkspaceProductDraft {
     brandId: string;
     name: string;
     description: string;
+    audience: string;
+    usageScenariosText: string;
+    brandStyle: string;
     images: BrandWorkspaceImageDraft[];
     skus: BrandWorkspaceSkuDraft[];
 }
@@ -343,6 +371,7 @@ interface MediaAssetContextMenuState {
 }
 
 const UNCATEGORIZED_FILTER = '__uncategorized__';
+const UNASSIGNED_BRAND_ID = 'brand_unassigned';
 const DEFAULT_SUBJECT_CATEGORY_NAMES = ['品牌', '角色', '物品', '商品', '场景'];
 const VISIBLE_SUBJECT_CATEGORY_NAMES = DEFAULT_SUBJECT_CATEGORY_NAMES.filter((name) => name !== '商品');
 const HIDDEN_SUBJECT_CATEGORY_NAMES = new Set(['商品', '人物']);
@@ -1049,6 +1078,9 @@ function createEmptyProductDraft(brandId = ''): BrandWorkspaceProductDraft {
         brandId,
         name: '',
         description: '',
+        audience: '',
+        usageScenariosText: '',
+        brandStyle: '',
         images: [],
         skus: [],
     };
@@ -1056,7 +1088,6 @@ function createEmptyProductDraft(brandId = ''): BrandWorkspaceProductDraft {
 
 function assetRefsToImageDrafts(assets?: BrandWorkspaceAssetRef[]): BrandWorkspaceImageDraft[] {
     return (assets || [])
-        .filter((asset) => asset.role === 'image')
         .map((asset) => ({
             id: asset.id,
             name: asset.path.split(/[\\/]/).pop() || 'image',
@@ -1703,9 +1734,12 @@ function BrandWorkspaceImageGrid({ images, onAdd, onRemove, label }: BrandWorksp
 function productBundleToDraft(bundle: BrandWorkspaceProductBundle): BrandWorkspaceProductDraft {
     return {
         id: bundle.product.id,
-        brandId: bundle.product.brandId,
+        brandId: bundle.product.brandId || '',
         name: bundle.product.name,
         description: bundle.product.description || '',
+        audience: bundle.product.audience || '',
+        usageScenariosText: (bundle.product.usageScenarios || []).join('、'),
+        brandStyle: bundle.product.brandStyle || '',
         images: assetRefsToImageDrafts(bundle.assets),
         skus: bundle.skus.map((sku) => ({
             id: sku.id,
@@ -2060,13 +2094,18 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
     }, [isActive, loadData]);
 
     useEffect(() => {
+        if (!isActive) return;
+        const listener = (_event: unknown, payload?: { scope?: string }) => {
+            if (payload?.scope === 'subjects') void loadData();
+        };
+        window.ipcRenderer.onDataChanged(listener);
+        return () => window.ipcRenderer.offDataChanged(listener);
+    }, [isActive, loadData]);
+
+    useEffect(() => {
         if (!productDetailContext) return;
-        if (enabledEcommercePlatforms.length === 0) {
-            setSelectedDetailPlatformId('');
-            return;
-        }
-        if (!selectedDetailPlatformId || !enabledEcommercePlatforms.some((platform) => platform.id === selectedDetailPlatformId)) {
-            setSelectedDetailPlatformId(enabledEcommercePlatforms[0].id);
+        if (!selectedDetailPlatformId || !ALL_ECOMMERCE_PLATFORMS.some((platform) => platform.id === selectedDetailPlatformId)) {
+            setSelectedDetailPlatformId(enabledEcommercePlatforms[0]?.id || '');
         }
     }, [enabledEcommercePlatforms, productDetailContext, selectedDetailPlatformId]);
 
@@ -2129,9 +2168,17 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
             ? activeDetailBrandBundle.products.find((bundle) => bundle.product.id === productDetailContext.productId) || null
             : null
     ), [activeDetailBrandBundle, productDetailContext]);
+    const availableDetailPlatforms = useMemo(() => {
+        const sourcePlatformIds = new Set((activeDetailProductBundle?.sourceSnapshots || []).map((snapshot) => snapshot.platform));
+        const sourcePlatforms = ALL_ECOMMERCE_PLATFORMS.filter((platform) => sourcePlatformIds.has(platform.id));
+        return [...sourcePlatforms, ...enabledEcommercePlatforms.filter((platform) => !sourcePlatformIds.has(platform.id))];
+    }, [activeDetailProductBundle, enabledEcommercePlatforms]);
     const activeDetailPlatform = useMemo(() => (
-        enabledEcommercePlatforms.find((platform) => platform.id === selectedDetailPlatformId) || enabledEcommercePlatforms[0] || null
-    ), [enabledEcommercePlatforms, selectedDetailPlatformId]);
+        availableDetailPlatforms.find((platform) => platform.id === selectedDetailPlatformId) || availableDetailPlatforms[0] || null
+    ), [availableDetailPlatforms, selectedDetailPlatformId]);
+    const activeProductSourceSnapshot = activeDetailProductBundle?.sourceSnapshots?.find((snapshot) => (
+        snapshot.platform === activeDetailPlatform?.id
+    )) || activeDetailProductBundle?.sourceSnapshots?.[0] || null;
     const activeDetailPages = useMemo(() => (
         activeDetailProductBundle && activeDetailPlatform
             ? (activeDetailProductBundle.detailPages || []).filter((page) => page.platform === activeDetailPlatform.id)
@@ -2262,6 +2309,17 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
             return haystack.includes(keyword);
         });
     }, [brandWorkspaceBrands, query]);
+    const assetLibraryCount = useMemo(() => {
+        const subjectCount = subjects.filter((subject) => (
+            !['品牌', '商品'].includes(subjectCategoryName(subject))
+        )).length;
+        const brandWorkspaceCount = brandWorkspaceBrands.reduce((total, bundle) => (
+            total
+            + bundle.products.length
+            + (bundle.brand.id === UNASSIGNED_BRAND_ID ? 0 : 1)
+        ), 0);
+        return subjectCount + brandWorkspaceCount;
+    }, [brandWorkspaceBrands, subjectCategoryName, subjects]);
     useEffect(() => {
         if (hasInitializedBrandExpansionRef.current) return;
         if (brandWorkspaceBrands.length !== 1 || brandWorkspaceBrands[0].products.length === 0) return;
@@ -2434,12 +2492,88 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
 
     const openProductDetailPage = useCallback((brand: BrandWorkspaceBrand, productBundle: BrandWorkspaceProductBundle) => {
         setProductDetailContext({ brandId: brand.id, productId: productBundle.product.id });
-        setSelectedDetailPlatformId((current) => current || enabledEcommercePlatforms[0]?.id || '');
+        setSelectedDetailPlatformId(productBundle.sourceSnapshots?.[0]?.platform || enabledEcommercePlatforms[0]?.id || '');
         setSelectedDetailVersionKey('__default__');
         setDetailVersionDraft({ market: '', locale: '', title: '' });
         setDetailImageDrafts([]);
         setError('');
     }, [enabledEcommercePlatforms]);
+
+    const handleCreateProductContent = useCallback((brand: BrandWorkspaceBrand, productBundle: BrandWorkspaceProductBundle) => {
+        const product = productBundle.product;
+        const sourceSnapshot = productBundle.sourceSnapshots?.[0];
+        const capturedFacts = (product.facts || []).map((fact) => `- ${fact.key}：${fact.value}（${fact.origin === 'captured' ? '采集事实' : fact.origin === 'user-confirmed' ? '用户确认' : 'AI 提炼'}）`);
+        const skuLines = productBundle.skus.map((sku) => `- ${sku.name}${sku.variantText ? `：${sku.variantText}` : ''}`);
+        const content = [
+            `请基于商品资产「${product.name}」创建一篇可编辑的小红书图文推广作品。`,
+            '',
+            '请先从以下创作起点中选择，也可以直接改写这一段提出自由需求：',
+            '1. 商品介绍：讲清核心功能、规格和适合谁。',
+            '2. 场景种草：围绕一个真实使用场景组织体验和卖点。',
+            '3. 选购说明：用对比、参数和选择建议帮助决策。',
+            '',
+            '制作要求：逐页规划封面和内页；优先使用附带的原始商品图保留外观、包装和标识；标题、参数、价格等信息使用可编辑文字；背景或辅助场景可以按需生成；缺少生图模型时也要用现有商品图完成基础套图。只能把采集事实和用户确认信息当作商品事实，AI 推断必须明确标注，不能把生成文案反写成商品事实。',
+            '',
+            '## 商品资料',
+            `- 商品 ID：${product.id}`,
+            `- 品牌：${brand.id === UNASSIGNED_BRAND_ID ? (sourceSnapshot?.brandName || '待整理') : brand.name}`,
+            product.description ? `- 描述：${product.description}` : '',
+            product.audience ? `- 目标受众：${product.audience}` : '',
+            product.usageScenarios?.length ? `- 使用场景：${product.usageScenarios.join('、')}` : '',
+            product.brandStyle ? `- 品牌风格：${product.brandStyle}` : '',
+            sourceSnapshot?.price?.text ? `- 价格快照：${sourceSnapshot.price.text}（采集于 ${new Date(sourceSnapshot.capturedAt).toLocaleString()}）` : '',
+            sourceSnapshot?.sourceUrl ? `- 来源：${sourceSnapshot.sourceUrl}` : '',
+            '',
+            capturedFacts.length ? `## 已确认与采集事实\n${capturedFacts.join('\n')}` : '',
+            skuLines.length ? `## 已采集规格\n${skuLines.join('\n')}` : '',
+            sourceSnapshot?.missingFields?.length ? `## 待补充信息\n${sourceSnapshot.missingFields.join('、')}` : '',
+        ].filter(Boolean).join('\n');
+        const attachments = productBundle.assets
+            .filter((asset) => asset.absolutePath)
+            .slice(0, 12)
+            .map((asset, index) => ({
+                type: 'uploaded-file' as const,
+                name: `商品图-${index + 1}${asset.absolutePath?.match(/\.[a-z0-9]+$/i)?.[0] || '.jpg'}`,
+                absolutePath: asset.absolutePath,
+                originalAbsolutePath: asset.absolutePath,
+                toolPath: asset.absolutePath,
+                localUrl: asset.path,
+                kind: 'image',
+                mimeType: 'image/*',
+                storageMode: 'staged',
+                processingStrategy: 'tool-read',
+                deliveryMode: 'tool-read',
+                intakeStatus: 'ready',
+                summary: `${product.name} 原始商品图`,
+            }));
+        dispatchAppIntent({
+            type: 'flow.open',
+            stage: 'compose',
+            handoff: {
+                kind: 'chat-draft',
+                message: {
+                    content,
+                    displayContent: `基于「${product.name}」创作小红书商品推广`,
+                    sessionRouting: 'new',
+                    deliveryMode: 'draft',
+                    taskHints: {
+                        intent: 'manuscript_creation',
+                        executionProfile: 'artifact-authoring',
+                        artifactType: 'xiaohongshu-note',
+                        platform: 'xiaohongshu',
+                        taskType: 'direct_write',
+                        sourceMode: 'product',
+                        sourceTitle: product.name,
+                        xhsNoteType: 'image',
+                        requireSave: true,
+                        deferredDiscovery: false,
+                        teamEscalation: 'disabled',
+                    },
+                    attachments,
+                },
+            },
+        });
+    }, []);
 
     const closeProductDetailPage = useCallback(() => {
         if (isDetailPageSubmitting) return;
@@ -2785,6 +2919,9 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
                 brandId: productDraft.brandId,
                 name,
                 description: productDraft.description.trim() || undefined,
+                audience: productDraft.audience.trim() || undefined,
+                usageScenarios: productDraft.usageScenariosText.split(/[、,，\n]/).map((item) => item.trim()).filter(Boolean),
+                brandStyle: productDraft.brandStyle.trim() || undefined,
                 images: imageDraftPayload(productDraft.images),
                 skus: productDraft.skus
                     .filter((sku) => sku.name.trim())
@@ -3581,12 +3718,14 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
     const showAssetControls = activeLibraryTab === 'assets';
 
     if (productDetailContext && activeDetailBrandBundle && activeDetailProductBundle) {
-        const productCover = activeDetailProductBundle.assets.find((asset) => asset.role === 'image');
+        const productCover = activeDetailProductBundle.assets.find((asset) => asset.role === 'primary')
+            || activeDetailProductBundle.assets.find((asset) => asset.role === 'image')
+            || activeDetailProductBundle.assets[0];
         const productInfoImages = (productCover
             ? [productCover, ...activeDetailProductBundle.assets.filter((asset) => asset.id !== productCover.id)]
             : activeDetailProductBundle.assets
         ).filter((asset) => asset.path).slice(0, 4);
-        const hasPlatforms = enabledEcommercePlatforms.length > 0;
+        const hasPlatforms = availableDetailPlatforms.length > 0;
         const displayDetailVersion = productDetailVersionForPlatform(detailVersionDraft, activeDetailPlatform);
         const activeDetailPlatformIcon = activeDetailPlatform ? ecommercePlatformIconPath(activeDetailPlatform.id) : '';
         return (
@@ -3642,6 +3781,14 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
                         <div className="flex items-center gap-2">
                             <button
                                 type="button"
+                                onClick={() => handleCreateProductContent(activeDetailBrandBundle.brand, activeDetailProductBundle)}
+                                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-sm font-semibold text-white transition hover:bg-violet-700"
+                            >
+                                <Sparkles className="h-4 w-4" />
+                                小红书创作
+                            </button>
+                            <button
+                                type="button"
                                 onClick={() => void handleDownloadDetailPage()}
                                 disabled={isDetailPageDownloading || isDetailPageSubmitting || !hasPlatforms || detailImageDrafts.length === 0}
                                 className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[rgb(var(--color-surface-secondary))] px-3 text-sm font-semibold text-[rgb(var(--color-text-primary))] transition hover:bg-[rgb(var(--color-surface-tertiary))] disabled:cursor-not-allowed disabled:opacity-50"
@@ -3667,7 +3814,7 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
                         <div className="mb-3 text-xs font-semibold text-[rgb(var(--color-text-secondary))]">电商平台</div>
                         {hasPlatforms ? (
                             <div className="space-y-1">
-                                {enabledEcommercePlatforms.map((platform) => {
+                                {availableDetailPlatforms.map((platform) => {
                                     const active = activeDetailPlatform?.id === platform.id;
                                     const iconPath = ecommercePlatformIconPath(platform.id);
                                     return (
@@ -3708,7 +3855,7 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
                     <main className="min-w-0 flex-1 overflow-y-auto bg-white">
                         <div className={clsx('mx-auto min-h-full w-full max-w-[1180px] space-y-5 bg-white py-5 pb-10', isModalVariant ? 'px-5' : 'px-8')}>
                             <div className="flex gap-2 overflow-x-auto pb-1 lg:hidden">
-                                {enabledEcommercePlatforms.map((platform) => {
+                                {availableDetailPlatforms.map((platform) => {
                                     const active = activeDetailPlatform?.id === platform.id;
                                     const iconPath = ecommercePlatformIconPath(platform.id);
                                     return (
@@ -3737,6 +3884,36 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
                                 <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                                     {error}
                                 </div>
+                            )}
+
+                            {activeProductSourceSnapshot && (
+                                <section className="rounded-xl border border-[rgb(var(--color-border))] bg-white p-4">
+                                    <div className="flex flex-wrap items-start justify-between gap-3">
+                                        <div>
+                                            <div className="text-sm font-semibold text-[rgb(var(--color-text-primary))]">
+                                                {activeDetailPlatform?.name || activeProductSourceSnapshot.platform}来源快照
+                                            </div>
+                                            <div className="mt-1 text-xs text-[rgb(var(--color-text-secondary))]">
+                                                采集于 {new Date(activeProductSourceSnapshot.capturedAt).toLocaleString()} · 商品 ID {activeProductSourceSnapshot.externalId}
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => void window.ipcRenderer.openExternalUrl(activeProductSourceSnapshot.sourceUrl)}
+                                            className="inline-flex h-8 items-center rounded-lg bg-[rgb(var(--color-surface-secondary))] px-3 text-xs font-semibold text-[rgb(var(--color-text-primary))] transition hover:bg-[rgb(var(--color-surface-tertiary))]"
+                                        >
+                                            查看原页面
+                                        </button>
+                                    </div>
+                                    <div className="mt-4">
+                                        <ProductSourcePreview
+                                            snapshot={activeProductSourceSnapshot}
+                                            images={activeProductSourceSnapshot.imageAssetIds.flatMap((id) => (
+                                                activeDetailProductBundle?.assets.find((asset) => asset.id === id) || []
+                                            ))}
+                                        />
+                                    </div>
+                                </section>
                             )}
 
                             {hasPlatforms && activeDetailPlatform ? (
@@ -3894,6 +4071,19 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
                                                     {activeDetailProductBundle.product.description}
                                                 </div>
                                             )}
+                                            {(activeDetailProductBundle.product.facts || []).length > 0 && (
+                                                <div className="space-y-1 rounded-lg bg-white px-2.5 py-2">
+                                                    {(activeDetailProductBundle.product.facts || []).slice(0, 12).map((fact) => (
+                                                        <div key={`${fact.key}-${fact.value}`} className="text-[11px] leading-5 text-[rgb(var(--color-text-secondary))]">
+                                                            <span className="font-semibold text-[rgb(var(--color-text-primary))]">{fact.key}：</span>
+                                                            {fact.value}
+                                                            <span className="ml-1 text-[10px] text-[rgb(var(--color-text-tertiary))]">
+                                                                {fact.origin === 'captured' ? '采集' : fact.origin === 'user-confirmed' ? '已确认' : 'AI 提炼'}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
                                             <div className="flex flex-wrap gap-1">
                                                 {activeDetailProductBundle.skus.length === 0 ? (
                                                     <span className="rounded-md bg-white px-2 py-1 text-[11px] font-medium text-[rgb(var(--color-text-secondary))]">暂无 SKU</span>
@@ -4020,7 +4210,7 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
             <div className={clsx('flex items-center gap-1 border-b border-[rgb(var(--color-border))] pb-2', isModalVariant ? 'mx-5' : 'mx-8')}>
                     {([
                         { id: 'media' as const, label: '媒体', icon: Clapperboard, count: mediaAssets.length },
-                        { id: 'assets' as const, label: '资产', icon: Package, count: subjects.length },
+                        { id: 'assets' as const, label: '资产', icon: Package, count: assetLibraryCount },
                     ]).filter((item) => referencePicker?.mediaKind !== 'audio' || item.id === 'media').map((item) => {
                         const Icon = item.icon;
                         const active = activeLibraryTab === item.id;
@@ -4298,23 +4488,27 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
                                                     {brand.description ? ` · ${brand.description}` : ''}
                                                 </div>
                                             </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => openEditBrandModal(brand, assets)}
-                                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[rgb(var(--color-text-secondary))] transition hover:bg-[rgb(var(--color-surface-secondary))] hover:text-[rgb(var(--color-text-primary))]"
-                                                aria-label="编辑品牌"
-                                                title="编辑品牌"
-                                            >
-                                                <Pencil className="h-4 w-4" />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => openCreateProductModal(brand)}
-                                                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-black px-3 text-xs font-semibold text-white transition hover:bg-black/85"
-                                            >
-                                                <Plus className="h-3.5 w-3.5" />
-                                                商品
-                                            </button>
+                                            {brand.id !== UNASSIGNED_BRAND_ID && (
+                                                <>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => openEditBrandModal(brand, assets)}
+                                                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[rgb(var(--color-text-secondary))] transition hover:bg-[rgb(var(--color-surface-secondary))] hover:text-[rgb(var(--color-text-primary))]"
+                                                        aria-label="编辑品牌"
+                                                        title="编辑品牌"
+                                                    >
+                                                        <Pencil className="h-4 w-4" />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => openCreateProductModal(brand)}
+                                                        className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-black px-3 text-xs font-semibold text-white transition hover:bg-black/85"
+                                                    >
+                                                        <Plus className="h-3.5 w-3.5" />
+                                                        商品
+                                                    </button>
+                                                </>
+                                            )}
                                         </div>
                                         {expanded && (
                                             <div className="border-t border-[rgb(var(--color-border))] bg-[rgb(var(--color-surface-primary))] px-3 py-2">
@@ -4326,7 +4520,7 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
                                                     <div className="space-y-1.5">
                                                         {products.map((productBundle) => {
                                                             const { product, skus, assets } = productBundle;
-                                                            const productImage = assets.find((asset) => asset.role === 'image');
+                                                            const productImage = assets.find((asset) => asset.role === 'primary') || assets.find((asset) => asset.role === 'image') || assets[0];
                                                             const detailThumbnails = productDetailThumbnailsByProductId.get(product.id) || [];
                                                             return (
                                                             <div
@@ -4678,6 +4872,23 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
                                 </div>
                             )}
                             <label className="block">
+                                <div className="mb-1.5 text-sm font-semibold text-[rgb(var(--color-text-primary))]">所属品牌</div>
+                                <select
+                                    value={productDraft.brandId}
+                                    onChange={(event) => {
+                                        const brandId = event.target.value;
+                                        updateProductDraft({ brandId });
+                                        setProductDraftBrand(brandWorkspaceBrands.find((bundle) => bundle.brand.id === brandId)?.brand || null);
+                                    }}
+                                    className="h-10 w-full rounded-lg border-0 bg-[rgb(var(--color-surface-secondary))] px-3 text-sm text-[rgb(var(--color-text-primary))] outline-none focus:ring-2 focus:ring-violet-500"
+                                >
+                                    <option value="">待整理商品</option>
+                                    {brandWorkspaceBrands.filter((bundle) => bundle.brand.id !== UNASSIGNED_BRAND_ID).map((bundle) => (
+                                        <option key={bundle.brand.id} value={bundle.brand.id}>{bundle.brand.name}</option>
+                                    ))}
+                                </select>
+                            </label>
+                            <label className="block">
                                 <div className="mb-1.5 text-sm font-semibold text-[rgb(var(--color-text-primary))]">商品名称 <span className="text-red-500">*</span></div>
                                 <input
                                     value={productDraft.name}
@@ -4695,6 +4906,35 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
                                     maxLength={200}
                                     placeholder="商品卖点、材质、适用场景"
                                     className="min-h-[88px] w-full resize-y rounded-lg border-0 bg-[rgb(var(--color-surface-secondary))] px-3 py-2.5 text-sm leading-5 text-[rgb(var(--color-text-primary))] outline-none placeholder:text-[rgb(var(--color-text-tertiary))] focus:ring-2 focus:ring-violet-500"
+                                />
+                            </label>
+                            <div className="grid gap-3 md:grid-cols-2">
+                                <label className="block">
+                                    <div className="mb-1.5 text-sm font-semibold text-[rgb(var(--color-text-primary))]">目标受众</div>
+                                    <input
+                                        value={productDraft.audience}
+                                        onChange={(event) => updateProductDraft({ audience: event.target.value.slice(0, 500) })}
+                                        placeholder="例如：需要轻量通勤杯的上班族"
+                                        className="h-10 w-full rounded-lg border-0 bg-[rgb(var(--color-surface-secondary))] px-3 text-sm text-[rgb(var(--color-text-primary))] outline-none focus:ring-2 focus:ring-violet-500"
+                                    />
+                                </label>
+                                <label className="block">
+                                    <div className="mb-1.5 text-sm font-semibold text-[rgb(var(--color-text-primary))]">品牌风格</div>
+                                    <input
+                                        value={productDraft.brandStyle}
+                                        onChange={(event) => updateProductDraft({ brandStyle: event.target.value.slice(0, 500) })}
+                                        placeholder="例如：克制、简洁、生活化"
+                                        className="h-10 w-full rounded-lg border-0 bg-[rgb(var(--color-surface-secondary))] px-3 text-sm text-[rgb(var(--color-text-primary))] outline-none focus:ring-2 focus:ring-violet-500"
+                                    />
+                                </label>
+                            </div>
+                            <label className="block">
+                                <div className="mb-1.5 text-sm font-semibold text-[rgb(var(--color-text-primary))]">使用场景</div>
+                                <input
+                                    value={productDraft.usageScenariosText}
+                                    onChange={(event) => updateProductDraft({ usageScenariosText: event.target.value.slice(0, 1_000) })}
+                                    placeholder="多个场景用逗号分隔，例如：通勤、健身、短途旅行"
+                                    className="h-10 w-full rounded-lg border-0 bg-[rgb(var(--color-surface-secondary))] px-3 text-sm text-[rgb(var(--color-text-primary))] outline-none focus:ring-2 focus:ring-violet-500"
                                 />
                             </label>
                             <div className="space-y-2">

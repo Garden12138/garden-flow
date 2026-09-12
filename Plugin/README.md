@@ -24,10 +24,13 @@ pnpm --dir Plugin check
 ## 采集能力
 
 - 小红书列表、笔记详情、图片、视频元数据和评论的结构化采集；
+- 京东当前商品和已选规格的预览、商品图片本地化、来源快照与重复采集更新；
 - 通用网页正文提取和可读性清洗；
 - 图片与 YouTube 页面保存入口；
 - typed browser capabilities，用于打开、检查、点击、输入和结束受控标签页；
 - operation ID 去重与连接恢复。
+
+京东采集兼容旧版和新版商品组件，按商品区域提取名称、品牌、店铺、当前规格、价格及参数，并区分主图和详情图。详情内容尚未加载时，先在京东展开商品详情，再点“重新识别”。旧资料库条目会显示商品预览；重新采集后可读取对应的新版商品快照。
 
 扩展不申请 `cookies` 权限，不读取 `document.cookie`。页面内容只在用户明确采集时发送给本机 GardenFlow。
 
@@ -46,6 +49,8 @@ pnpm --dir Plugin check
 | 命令 | 用途 |
 | --- | --- |
 | `pnpm --dir Plugin check` | 构建、校验、类型检查和回归测试 |
+| `pnpm --dir Plugin test:jd-product` | 京东新旧布局、字段回退、图片去重及保存入口回归 |
+| `pnpm --dir desktop exec node --test tests/brandWorkspaceStore.test.ts` | 商品快照持久化、部分重采集及用户编辑保护回归 |
 | `pnpm --dir Plugin diagnose:browser-control` | 检查扩展、Host 与 Desktop Bridge 状态 |
 | `pnpm --dir Plugin smoke:browser-control` | 执行本机浏览器控制冒烟测试 |
 | `pnpm --dir Plugin mcp:server` | 启动 stdio MCP server |

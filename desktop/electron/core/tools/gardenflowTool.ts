@@ -16,7 +16,7 @@ import {
 
 const PlatformSchema = z.enum(['xiaohongshu', 'wechat_official_account']);
 const TaskTypeSchema = z.enum(['direct_write', 'expand_from_xhs']);
-const SourceModeSchema = z.enum(['manual', 'knowledge', 'manuscript']);
+const SourceModeSchema = z.enum(['manual', 'knowledge', 'manuscript', 'product']);
 
 const GardenFlowProjectCreateParamsSchema = z.object({
   goal: z.string().min(1).describe('User goal for this self-media content project.'),
@@ -27,7 +27,7 @@ const GardenFlowProjectCreateParamsSchema = z.object({
   successCriteria: z.string().optional().describe('How success should be measured.'),
   sourcePlatform: PlatformSchema.optional().describe('Original source platform when expanding from an existing draft/note.'),
   sourceNoteId: z.string().optional().describe('Source note/document id for traceability.'),
-  sourceMode: SourceModeSchema.optional().describe('Where the source comes from: manual, knowledge, or manuscript.'),
+  sourceMode: SourceModeSchema.optional().describe('Where the source comes from: manual, knowledge, manuscript, or product.'),
   sourceTitle: z.string().optional().describe('Source note/manuscript title.'),
   sourceManuscriptPath: z.string().optional().describe('Source manuscript path, if expanding from an existing draft.'),
   tags: z.array(z.string()).optional().describe('Project tags for later retrieval.'),
@@ -50,7 +50,7 @@ const GardenFlowCopyPackParamsSchema = z.object({
   cta: z.string().optional().describe('Closing CTA for WeChat articles.'),
   sourcePlatform: PlatformSchema.optional().describe('Original source platform for expansion tasks.'),
   sourceNoteId: z.string().optional().describe('Source note/document id.'),
-  sourceMode: SourceModeSchema.optional().describe('Source mode: manual, knowledge, or manuscript.'),
+  sourceMode: SourceModeSchema.optional().describe('Source mode: manual, knowledge, manuscript, or product.'),
   sourceTitle: z.string().optional().describe('Source title.'),
   sourceManuscriptPath: z.string().optional().describe('Source manuscript path, if any.'),
   publishPlan: z.string().optional().describe('Publishing timing and action plan.'),

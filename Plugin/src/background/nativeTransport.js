@@ -203,16 +203,21 @@ export function assertNativeHostVersionCompatibility(handshake = {}) {
   const captureProtocolVersion = Number(
     desktopBridge.captureProtocolVersion ?? handshake.captureProtocolVersion ?? 0,
   );
-  const capabilities = Array.isArray(desktopBridge.capabilities)
-    ? desktopBridge.capabilities
-    : Array.isArray(handshake.capabilities)
-      ? handshake.capabilities
-      : [];
+  const hostCapabilities = Array.isArray(handshake.capabilities) ? handshake.capabilities : [];
+  const desktopCapabilities = Array.isArray(desktopBridge.capabilities) ? desktopBridge.capabilities : [];
+  const hostSupportsCapture = [
+    'knowledge.ingest',
+    'assets.ingestProduct',
+    'extension.register',
+  ].every((capability) => hostCapabilities.includes(capability));
+  const desktopSupportsCapture = desktopBridge.connected !== true
+    || ['knowledge.ingest', 'assets.ingestProduct', 'extension.register']
+      .every((capability) => desktopCapabilities.includes(capability));
   if (
     bridgeProtocolVersion !== NATIVE_BRIDGE_PROTOCOL_VERSION
     || captureProtocolVersion !== NATIVE_CAPTURE_PROTOCOL_VERSION
-    || !capabilities.includes('knowledge.ingest')
-    || !capabilities.includes('extension.register')
+    || !hostSupportsCapture
+    || !desktopSupportsCapture
   ) {
     throw new Error(
       `Native host protocol mismatch: bridge ${bridgeProtocolVersion || 'unknown'}, capture ${captureProtocolVersion || 'unknown'}. Restart GardenFlow and reload the extension.`,

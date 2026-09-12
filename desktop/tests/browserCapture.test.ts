@@ -333,6 +333,8 @@ test('Desktop Bridge authenticates token and origin, enforces registration and a
         assert.equal(secondAttempt.result?.ok, true);
         const replay = await client.request('knowledge.ingestEntry', { operationId: 'op-2', payload: {} });
         assert.equal(replay.result?.ok, true);
+        const productIngest = await client.request('assets.ingestProduct', { operationId: 'product-op', payload: {} });
+        assert.equal(productIngest.result?.ok, true);
         await assert.rejects(
             service.invokeBrowserControl('publisher.publish', {}, { extensionInstanceId: 'test-extension-instance' }),
             (error: unknown) => (error as { code?: string }).code === 'CAPABILITY_NOT_ALLOWED',
@@ -341,6 +343,7 @@ test('Desktop Bridge authenticates token and origin, enforces registration and a
             'knowledge.ingestEntry',
             'knowledge.ingestEntry',
             'knowledge.ingestEntry',
+            'assets.ingestProduct',
         ]);
         client.close();
 

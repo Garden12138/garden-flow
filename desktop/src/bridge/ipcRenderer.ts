@@ -7,6 +7,7 @@ import { createAppBridge } from './domains/appBridge';
 import { createArchivesBridge } from './domains/archivesBridge';
 import { createAssistantControlBridge } from './domains/assistantControlBridge';
 import { createAudioVoiceBridge } from './domains/audioVoiceBridge';
+import { createBrandWorkspaceBridge } from './domains/brandWorkspaceBridge';
 import { createCaptureBridge } from './domains/captureBridge';
 import { createChatBridge } from './domains/chatBridge';
 import { createCliRuntimeBridge } from './domains/cliRuntimeBridge';
@@ -60,6 +61,7 @@ function createIpcRenderer() {
     ...createAccountsBridge(core),
     ...createAiConfigBridge(core),
     ...createAudioVoiceBridge(core),
+    ...createBrandWorkspaceBridge(core),
     ...createAssistantControlBridge(core),
     ...createCliRuntimeBridge(core),
     ...createRuntimeBridge(core),

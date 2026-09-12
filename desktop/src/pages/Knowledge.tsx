@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState, useCallback, useRef, type ReactNode } from 'react';
+import { JdProductNoteDetail } from '../components/products/JdProductNoteDetail';
+import { jdProductNoteSource } from '../features/knowledge/jdProductNote';
 import { Search, Trash2, Image, Heart, MessageCircle, X, ChevronLeft, ChevronRight, Play, FileText, ExternalLink, Download, RefreshCw, Sparkles, Star, BookmarkPlus, FolderPlus, FolderOpen, Plus, Loader2, Users, ArrowDownUp, CheckSquare2, Square, Info } from 'lucide-react';
 import { clsx } from 'clsx';
 import ReactMarkdown from 'react-markdown';
@@ -3132,7 +3134,15 @@ export function Knowledge({ onNavigateToGardenFlow, isEmbedded = false, isActive
 
             {/* Xiaohongshu Note Detail Modal */}
             {selectedNote && (
-                isXiaohongshuNoteDetail(selectedNote) ? renderXhsNoteDetail(selectedNote) : (
+                jdProductNoteSource(selectedNote) ? (
+                    <JdProductNoteDetail
+                        key={selectedNote.id}
+                        note={selectedNote}
+                        onClose={() => setSelectedNote(null)}
+                        onChat={() => openNoteInGardenFlow(selectedNote)}
+                        onRemove={() => void handleDeleteNote(selectedNote.id)}
+                    />
+                ) : isXiaohongshuNoteDetail(selectedNote) ? renderXhsNoteDetail(selectedNote) : (
                 <div
                     className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[6px] animate-in fade-in duration-300"
                     onClick={() => setSelectedNote(null)}

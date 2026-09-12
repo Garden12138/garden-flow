@@ -7,6 +7,7 @@ import {
   buildKnowledgeEntryFromCaptureDocument,
   buildKnowledgeEntryFromPagePayload,
 } from './capture/knowledgeEntryMapper.js';
+import { extractJdProductPayload, isJdProductUrl } from './capture/jdProduct.js';
 
 const NATIVE_KNOWLEDGE_ENDPOINT = Object.freeze({
   baseUrl: 'native://gardenflow',
@@ -40,6 +41,8 @@ const MENU_LINK_ID = 'gardenflow-save-link';
 const MENU_IMAGE_ID = 'gardenflow-save-image';
 const MENU_VIDEO_ID = 'gardenflow-save-video';
 const PLUGIN_CAPTURE_MESSAGE_TYPES = new Set([
+  'preview-jd-product',
+  'save-jd-product',
   'save-xhs',
   'xhs:download-current-note',
   'xhs:download-current-note-zip',
@@ -447,6 +450,10 @@ async function handleMessage(message, sender) {
       return await checkDesktopServer(true);
     case 'inspect-page':
       return await inspectPage(tabId);
+    case 'preview-jd-product':
+      return await previewJdProductFromTab(tabId);
+    case 'save-jd-product':
+      return await saveJdProductFromTab(tabId);
     case 'save-xhs':
       return await enqueueXhsTask({
         type: message.type,
@@ -638,6 +645,17 @@ function detectCaptureTargetFromUrl(rawUrl) {
     pathname = String(parsed.pathname || '');
   } catch {
     return null;
+  }
+
+  if ((hostname === 'jd.com' || hostname.endsWith('.jd.com') || hostname === 'jd.hk' || hostname.endsWith('.jd.hk')) && /\/\d+\.html/i.test(pathname)) {
+    return {
+      kind: 'jd-product',
+      platform: 'jd',
+      action: 'preview-jd-product',
+      label: '预览京东商品',
+      description: '当前页面已识别为京东商品详情页，确认后保存到商品资产库。',
+      detected: true,
+    };
   }
 
   if (hostname === 'mp.weixin.qq.com') {
@@ -4271,6 +4289,9 @@ async function saveSelectedTextFromTab(tabId) {
 async function saveCurrentPageFromTab(tabId) {
   const inspection = await inspectPage(tabId);
   const action = normalizeText(inspection?.pageInfo?.action) || 'save-page-link';
+  if (action === 'preview-jd-product' || action === 'save-jd-product') {
+    return await saveJdProductFromTab(tabId);
+  }
   if (action === 'save-xhs') {
     return await saveXhsNoteFromTab(tabId);
   }
@@ -4292,7 +4313,41 @@ async function saveCurrentPageFromTab(tabId) {
   return await saveCurrentPageLinkFromTab(tabId);
 }
 
+async function previewJdProductFromTab(tabId) {
+  const product = await runExtraction(tabId, extractJdProductPayload, { world: 'MAIN' });
+  if (!product?.externalId || !product?.title) {
+    throw new Error('当前页面未识别到完整的京东商品名称或商品标识');
+  }
+  return {
+    success: true,
+    preview: true,
+    mode: 'jd-product-preview',
+    product,
+  };
+}
+
+async function saveJdProductFromTab(tabId) {
+  const preview = await previewJdProductFromTab(tabId);
+  const payload = preview.product;
+  const operationId = createBridgeOperationId('assets.ingestProduct', payload);
+  const result = await requestNativeHost('assets.ingestProduct', { operationId, payload }, 60_000);
+  return {
+    success: true,
+    mode: 'jd-product',
+    title: payload.title,
+    productId: result?.productId || '',
+    snapshotId: result?.snapshotId || '',
+    duplicate: Boolean(result?.duplicate),
+    importedImages: Number(result?.importedImages || 0),
+    missingFields: Array.isArray(result?.missingFields) ? result.missingFields : payload.missingFields || [],
+  };
+}
+
 async function saveCurrentPageLinkFromTab(tabId) {
+  // This action is also called directly by older side panels and browser tools.
+  // Always route product pages before the generic article extractor can collect page chrome.
+  const tab = await chrome.tabs.get(tabId);
+  if (isJdProductUrl(tab?.url)) return await saveJdProductFromTab(tabId);
   const genericResult = await genericCaptureCoordinator.extract(tabId);
   let entry;
   if (genericResult.capture) {
@@ -9427,6 +9482,17 @@ function detectCaptureTarget() {
   }
 
   const hostname = String(location.hostname || '').toLowerCase();
+
+  if ((hostname === 'jd.com' || hostname.endsWith('.jd.com') || hostname === 'jd.hk' || hostname.endsWith('.jd.hk')) && /\/\d+\.html/i.test(String(location.pathname || ''))) {
+    return {
+      kind: 'jd-product',
+      platform: 'jd',
+      action: 'preview-jd-product',
+      label: '预览京东商品',
+      description: '当前页面已识别为京东商品详情页，确认后保存到商品资产库。',
+      detected: true,
+    };
+  }
 
   if (hostname === 'youtube.com' || hostname.endsWith('.youtube.com') || hostname === 'youtu.be') {
     const url = new URL(location.href);

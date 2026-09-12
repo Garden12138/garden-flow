@@ -48,7 +48,7 @@ function testNativeHostVersionCompatibility() {
   const compatibleHandshake = {
     bridgeProtocolVersion: 1,
     captureProtocolVersion: 1,
-    capabilities: ['knowledge.ingest', 'extension.register'],
+    capabilities: ['knowledge.ingest', 'assets.ingestProduct', 'extension.register'],
   };
   assert.equal(normalizeProductVersion('2.6.11.65535'), '2.6.11');
   assert.equal(
@@ -66,6 +66,30 @@ function testNativeHostVersionCompatibility() {
   assert.throws(
     () => assertNativeHostVersionCompatibility({ ...compatibleHandshake, capabilities: ['knowledge.ingest'] }),
     /Native host protocol mismatch/,
+  );
+  assert.throws(
+    () => assertNativeHostVersionCompatibility({
+      ...compatibleHandshake,
+      desktopBridge: {
+        connected: true,
+        bridgeProtocolVersion: 1,
+        captureProtocolVersion: 1,
+        capabilities: ['knowledge.ingest', 'extension.register'],
+      },
+    }),
+    /Native host protocol mismatch/,
+  );
+  assert.equal(
+    assertNativeHostVersionCompatibility({
+      ...compatibleHandshake,
+      desktopBridge: {
+        connected: true,
+        bridgeProtocolVersion: 1,
+        captureProtocolVersion: 1,
+        capabilities: ['knowledge.ingest', 'assets.ingestProduct', 'extension.register'],
+      },
+    }),
+    true,
   );
 }
 

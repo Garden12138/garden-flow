@@ -24,9 +24,10 @@ export const BROWSER_CAPTURE_ALLOWED_METHODS = new Set([
     'knowledge.ingestZhihuAnswer',
     'knowledge.ingestZhihuArticle',
     'knowledge.ingestMediaAssets',
+    'assets.ingestProduct',
 ]);
 
-export const BROWSER_CAPTURE_CAPABILITIES = ['knowledge.ingest', 'extension.register'] as const;
+export const BROWSER_CAPTURE_CAPABILITIES = ['knowledge.ingest', 'assets.ingestProduct', 'extension.register'] as const;
 export const XHS_PUBLISHER_CAPABILITIES = [XHS_PUBLISHER_CAPABILITY, 'extension.register'] as const;
 
 /**

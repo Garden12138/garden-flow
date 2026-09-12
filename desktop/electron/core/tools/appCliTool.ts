@@ -271,7 +271,7 @@ const normalizeGardenFlowTaskType = (value: unknown): GardenFlowAuthoringTaskTyp
 
 const normalizeGardenFlowSourceMode = (value: unknown): GardenFlowSourceMode | undefined => {
     const normalized = String(value || '').trim();
-    if (normalized === 'manual' || normalized === 'knowledge' || normalized === 'manuscript') {
+    if (normalized === 'manual' || normalized === 'knowledge' || normalized === 'manuscript' || normalized === 'product') {
         return normalized;
     }
     return undefined;

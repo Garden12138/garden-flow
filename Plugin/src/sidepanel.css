@@ -683,3 +683,43 @@ h1 {
   font-size: 16px;
   line-height: 1;
 }
+
+.jd-product-preview {
+  width: 100%;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.jd-product-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.jd-product-heading img {
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+  object-fit: contain;
+  border-radius: 8px;
+  background: white;
+}
+
+.jd-product-heading strong {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.jd-product-preview dl {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 6px 8px;
+  margin: 0;
+}
+
+.jd-product-preview dt { opacity: 0.7; }
+.jd-product-preview dd { margin: 0; overflow-wrap: anywhere; }
+.jd-product-preview details { margin-top: 10px; }
+.jd-product-preview summary { cursor: pointer; }
+.jd-product-preview details > div { margin-top: 4px; }

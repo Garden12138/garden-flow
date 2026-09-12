@@ -8,7 +8,7 @@ import { getWorkItemStore } from './workItemStore';
 type GardenFlowProjectStatus = 'planning' | 'drafted' | 'reviewed';
 export type GardenFlowContentPlatform = 'xiaohongshu' | 'wechat_official_account';
 export type GardenFlowAuthoringTaskType = 'direct_write' | 'expand_from_xhs';
-export type GardenFlowSourceMode = 'manual' | 'knowledge' | 'manuscript';
+export type GardenFlowSourceMode = 'manual' | 'knowledge' | 'manuscript' | 'product';
 
 export interface GardenFlowProject {
   id: string;

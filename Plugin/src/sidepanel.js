@@ -48,6 +48,7 @@ let refreshing = false;
 let capturePendingAction = '';
 let captureFeedback = null;
 let captureSignature = '';
+let jdProductPreview = null;
 let currentSettings = {
   xhsBloggerNoteLimit: 50,
   xhsIntervalMaxSeconds: 6,
@@ -242,7 +243,7 @@ function resolvePageIdentity(nextContext) {
     };
   }
 
-  if (pageType === 'note' || pageType === 'video' || pageType === 'article') {
+  if (pageType === 'note' || pageType === 'video' || pageType === 'article' || pageType === 'product') {
     const detailParts = [platformMeta.name, getPageTypeLabel(pageType)];
     if (identity.author) detailParts.push(`作者：${identity.author}`);
     return {
@@ -283,6 +284,7 @@ function renderCaptureActions(nextContext) {
   const nextSignature = `${config.variant}:${nextContext?.tab?.id || 0}:${nextContext?.tab?.url || ''}`;
   if (captureSignature !== nextSignature) {
     captureFeedback = null;
+    jdProductPreview = null;
     captureSignature = nextSignature;
   }
 
@@ -320,6 +322,65 @@ function renderCaptureActions(nextContext) {
     text.textContent = '保存评论区';
     label.append(checkbox, text);
     elements.captureOptions.appendChild(label);
+    elements.captureOptions.classList.remove('hidden');
+  }
+
+  if (config.variant === 'jd-product' && jdProductPreview) {
+    const product = jdProductPreview;
+    const summary = document.createElement('div');
+    summary.className = 'jd-product-preview';
+    const heading = document.createElement('div');
+    heading.className = 'jd-product-heading';
+    const cover = product.images?.find((image) => image.role === 'primary' || image.role === 'gallery');
+    if (cover) {
+      const image = document.createElement('img');
+      image.src = cover.sourceUrl;
+      image.alt = '商品主图';
+      image.referrerPolicy = 'no-referrer';
+      image.addEventListener('error', () => image.remove());
+      heading.appendChild(image);
+    }
+    const name = document.createElement('strong');
+    name.textContent = product.title || '京东商品';
+    heading.appendChild(name);
+    summary.appendChild(heading);
+    const fields = [
+      ['店铺', product.shopName],
+      ['品牌', product.brandName],
+      ['当前规格', product.selectedSku?.variantText || '未识别'],
+      [product.price?.label || '价格快照', product.price?.text || '未识别'],
+      ['商品编号', product.selectedSku?.externalId || product.externalId],
+      ['已识别资料', `${product.images?.length || 0} 张图片 · ${product.parameters?.length || 0} 项参数`],
+    ];
+    const details = document.createElement('dl');
+    for (const [label, value] of fields) {
+      if (!value) continue;
+      const term = document.createElement('dt');
+      term.textContent = label;
+      const detail = document.createElement('dd');
+      detail.textContent = value;
+      details.append(term, detail);
+    }
+    summary.appendChild(details);
+    if (product.parameters?.length) {
+      const disclosure = document.createElement('details');
+      const label = document.createElement('summary');
+      label.textContent = `查看商品参数（${product.parameters.length}）`;
+      disclosure.appendChild(label);
+      for (const parameter of product.parameters) {
+        const row = document.createElement('div');
+        row.textContent = `${parameter.key}：${parameter.value}`;
+        disclosure.appendChild(row);
+      }
+      summary.appendChild(disclosure);
+    }
+    elements.captureOptions.appendChild(summary);
+    if (Array.isArray(product.missingFields) && product.missingFields.length > 0) {
+      const missing = document.createElement('div');
+      missing.className = 'capture-switch-row';
+      missing.textContent = `待补充：${product.missingFields.join('、')}`;
+      elements.captureOptions.appendChild(missing);
+    }
     elements.captureOptions.classList.remove('hidden');
   }
 
@@ -404,6 +465,9 @@ async function runCaptureAction(action) {
       action,
       response,
     });
+    if (response?.preview && response?.product) {
+      jdProductPreview = response.product;
+    }
     captureFeedback = {
       status: 'success',
       message: summarizeActionResponse(response, meta.done),
@@ -657,6 +721,21 @@ function getCaptureActionConfig(nextContext) {
       ],
     };
   }
+  if (platform === 'jd' && pageType === 'product') {
+    const hasCurrentPreview = jdProductPreview?.sourceUrl === tab.url;
+    return {
+      variant: 'jd-product',
+      title: 'GardenFlow 商品采集',
+      subtitle: '京东商品详情页',
+      hint: hasCurrentPreview ? '核对商品资料后保存到资产库' : '先预览当前规格和可采集素材',
+      actions: [
+        hasCurrentPreview
+          ? { label: '确认保存到资产库', action: 'saveJdProduct', primary: true, title: '保存当前商品及来源快照' }
+          : { label: '预览商品资料', action: 'previewJdProduct', primary: true, title: '读取当前商品和所选规格' },
+        ...(hasCurrentPreview ? [{ label: '重新识别', action: 'previewJdProduct', title: '更新当前价格、规格和已加载的商品详情' }] : []),
+      ],
+    };
+  }
   if (platform === 'xhs' && pageType === 'note') {
     return {
       variant: 'xhs-note',
@@ -758,6 +837,8 @@ function getCaptureActionConfig(nextContext) {
 
 function getCaptureActionMeta(action) {
   const map = {
+    previewJdProduct: { type: 'preview-jd-product', pending: '识别中...', done: '商品资料已识别，请核对后保存' },
+    saveJdProduct: { type: 'save-jd-product', pending: '保存中...', done: '商品已保存到资产库' },
     save: { type: 'save-xhs', pending: '保存中...', done: '已保存到 GardenFlow' },
     download: { type: 'xhs:download-current-note', pending: '下载中...', done: '已创建下载任务' },
     comments: { type: 'xhs:collect-current-comments', pending: '采集中...', done: '评论已写入知识库' },
@@ -780,6 +861,16 @@ function getCaptureActionMeta(action) {
 }
 
 function summarizeActionResponse(response, fallback) {
+  if (response?.mode === 'jd-product-preview') {
+    return `已识别「${response.product?.title || '京东商品'}」，请核对后保存`;
+  }
+  if (response?.mode === 'jd-product') {
+    const imageText = `，已保存 ${Number(response.importedImages || 0)} 张图片`;
+    const missingText = Array.isArray(response.missingFields) && response.missingFields.length > 0
+      ? `；待补充：${response.missingFields.join('、')}`
+      : '';
+    return response.duplicate ? `商品来源快照已更新${imageText}${missingText}` : `商品已保存到资产库${imageText}${missingText}`;
+  }
   if (response?.noteId) {
     const identity = String(response.title || response.noteId || '').trim();
     if (response.duplicate) return `知识库中已存在${identity ? `（${identity}）` : ''}`;
@@ -932,6 +1023,7 @@ function getFallbackLogMessage(status) {
 function normalizePlatform(value) {
   const text = String(value || '').toLowerCase().trim();
   const hostname = getPlatformHostname(text);
+  if (hostname === 'jd.com' || hostname.endsWith('.jd.com') || hostname === 'jd.hk' || hostname.endsWith('.jd.hk')) return 'jd';
   if (hostname === 'x.com' || hostname.endsWith('.x.com') || hostname === 'twitter.com' || hostname.endsWith('.twitter.com') || text === 'x') return 'x';
   if (hostname === 'instagram.com' || hostname.endsWith('.instagram.com') || hostname === 'instagr.am' || hostname.endsWith('.instagr.am')) return 'instagram';
   if (hostname === 'reddit.com' || hostname.endsWith('.reddit.com')) return 'reddit';
@@ -954,6 +1046,7 @@ function normalizePlatform(value) {
   if (/^x$|(^|[^a-z])x\.com|twitter|platform-x|[^a-z]x[^a-z]/.test(text)) return 'x';
   if (/zhihu|知乎/.test(text)) return 'zhihu';
   if (/weixin|wechat|mp\.weixin|公众号/.test(text)) return 'wechat';
+  if (/jingdong|京东|(^|[^a-z])jd([^a-z]|$)/.test(text)) return 'jd';
   if (/gardenflow|gardenflow|gardenflow|gardenflow/.test(text)) return 'gardenflow';
   return 'web';
 }
@@ -971,6 +1064,7 @@ function getPlatformHostname(value) {
 
 function getPlatformMeta(platform) {
   const map = {
+    jd: { platform: 'jd', name: '京东', logo: '京' },
     xhs: { platform: 'xhs', name: '小红书', logo: '小', icon: 'assets/platforms/xiaohongshu.svg' },
     youtube: { platform: 'youtube', name: 'YouTube', logo: '▶' },
     douyin: { platform: 'douyin', name: '抖音', logo: '抖', icon: 'assets/platforms/douyin.svg' },
@@ -991,6 +1085,7 @@ function getPlatformMeta(platform) {
 function inferPageType(pageInfo, tab) {
   const kind = String(pageInfo?.kind || '').toLowerCase();
   const url = String(tab?.url || '').toLowerCase();
+  if (/jd-product|商品/.test(kind) || /(?:^|\.)jd\.(?:com|hk)\/.*\/\d+\.html/.test(url)) return 'product';
   if (/profile|author|博主|主页/.test(kind) || /\/user\/profile\//.test(url)) return 'profile';
   if (/note|image|小红书/.test(kind) || /\/explore\/|\/discovery\/item\//.test(url)) return 'note';
   if (/post|tweet|帖子|推文/.test(kind) || /\/comments\/|\/status\/|instagram\.com\/(p|reel)\//.test(url)) return 'post';
@@ -1013,6 +1108,8 @@ function getPageTypeLabel(pageType) {
       return '文章';
     case 'post':
       return '帖子';
+    case 'product':
+      return '商品详情';
     default:
       return '页面';
   }

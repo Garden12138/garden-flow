@@ -1,6 +1,6 @@
 export type AuthoringPlatform = 'xiaohongshu' | 'wechat_official_account';
 export type AuthoringTaskType = 'direct_write' | 'expand_from_xhs';
-export type AuthoringSourceMode = 'manual' | 'knowledge' | 'manuscript';
+export type AuthoringSourceMode = 'manual' | 'knowledge' | 'manuscript' | 'product';
 export type AuthoringFormatTarget = 'markdown' | 'wechat_rich_text';
 
 export interface AuthoringTaskHints {

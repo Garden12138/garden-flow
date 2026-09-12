@@ -302,6 +302,10 @@ import {
   searchSubjects,
 } from './core/subjectsLibraryStore';
 import {
+  createBrandWorkspaceStore,
+  type CapturedProductInput,
+} from './core/brandWorkspaceStore';
+import {
   getRandomWanderItems,
   listWanderCommentCandidates,
   runWanderBrainstorm,
@@ -909,13 +913,14 @@ const browserCaptureBridgeService = createBrowserCaptureBridgeService({
   appVersion: app.getVersion(),
   handleRequest: handleBrowserCaptureBridgeRequest,
 });
+const brandWorkspaceStore = createBrandWorkspaceStore(() => path.join(getWorkspacePaths().subjects, 'brand-workspace'));
 type GardenFlowAuthoringHints = {
   platform: 'xiaohongshu' | 'wechat_official_account';
   taskType: 'direct_write' | 'expand_from_xhs';
   formatTarget?: 'markdown' | 'wechat_rich_text';
   sourcePlatform?: 'xiaohongshu' | 'wechat_official_account';
   sourceNoteId?: string;
-  sourceMode?: 'manual' | 'knowledge' | 'manuscript';
+  sourceMode?: 'manual' | 'knowledge' | 'manuscript' | 'product';
   sourceTitle?: string;
   sourceManuscriptPath?: string;
   xhsNoteType?: 'image' | 'video';
@@ -947,7 +952,7 @@ function normalizeGardenFlowAuthoringHints(raw: unknown): GardenFlowAuthoringHin
     formatTarget: String(record.formatTarget || '').trim() === 'wechat_rich_text' ? 'wechat_rich_text' : 'markdown',
     sourcePlatform: (sourcePlatform === 'xiaohongshu' || sourcePlatform === 'wechat_official_account') ? sourcePlatform : undefined,
     sourceNoteId: String(record.sourceNoteId || '').trim() || undefined,
-    sourceMode: (sourceMode === 'manual' || sourceMode === 'knowledge' || sourceMode === 'manuscript') ? sourceMode : undefined,
+    sourceMode: (sourceMode === 'manual' || sourceMode === 'knowledge' || sourceMode === 'manuscript' || sourceMode === 'product') ? sourceMode : undefined,
     sourceTitle: String(record.sourceTitle || '').trim() || undefined,
     sourceManuscriptPath: String(record.sourceManuscriptPath || '').trim() || undefined,
     xhsNoteType: String(record.xhsNoteType || '').trim() === 'video'
@@ -6859,6 +6864,82 @@ ipcMain.handle('subjects:list', async (_, { limit }: { limit?: number } = {}) =>
   } catch (error) {
     console.error('Failed to list subjects:', error);
     return { success: false, error: String(error), subjects: [] };
+  }
+});
+
+ipcMain.handle('brand-workspace:list', async () => {
+  try {
+    return { success: true, brands: await brandWorkspaceStore.list() };
+  } catch (error) {
+    console.error('Failed to list brand workspace:', error);
+    return { success: false, error: String(error), brands: [] };
+  }
+});
+
+ipcMain.handle('brand-workspace:get', async (_, payload?: { id?: string }) => {
+  try {
+    const id = String(payload?.id || '').trim();
+    if (!id) return { success: false, error: 'id is required' };
+    return { success: true, ...(await brandWorkspaceStore.get(id)) };
+  } catch (error) {
+    console.error('Failed to get brand workspace item:', error);
+    return { success: false, error: String(error) };
+  }
+});
+
+ipcMain.handle('brand-workspace:upsert-brand', async (_, payload?: Record<string, unknown>) => {
+  try {
+    const brand = await brandWorkspaceStore.upsertBrand(payload || {});
+    await brandWorkspaceStore.rebuildAiIndex();
+    emitRendererDataChanged('subjects', { action: 'brand-upsert', entityId: brand.brand.id });
+    return { success: true, brand };
+  } catch (error) {
+    console.error('Failed to save brand:', error);
+    return { success: false, error: String(error) };
+  }
+});
+
+ipcMain.handle('brand-workspace:upsert-product', async (_, payload?: Record<string, unknown>) => {
+  try {
+    const product = await brandWorkspaceStore.upsertProduct(payload || {});
+    await brandWorkspaceStore.rebuildAiIndex();
+    emitRendererDataChanged('subjects', { action: 'product-upsert', entityId: product.product.id });
+    return { success: true, product };
+  } catch (error) {
+    console.error('Failed to save product:', error);
+    return { success: false, error: String(error) };
+  }
+});
+
+ipcMain.handle('brand-workspace:upsert-sku', async (_, payload?: Record<string, unknown>) => {
+  try {
+    const sku = await brandWorkspaceStore.upsertSku(payload || {});
+    await brandWorkspaceStore.rebuildAiIndex();
+    emitRendererDataChanged('subjects', { action: 'sku-upsert', entityId: sku.id });
+    return { success: true, sku };
+  } catch (error) {
+    console.error('Failed to save SKU:', error);
+    return { success: false, error: String(error) };
+  }
+});
+
+ipcMain.handle('brand-workspace:upsert-product-detail-page', async (_, payload?: Record<string, unknown>) => {
+  try {
+    const page = await brandWorkspaceStore.upsertProductDetailPage(payload || {});
+    emitRendererDataChanged('subjects', { action: 'product-detail-upsert', entityId: page.productId });
+    return { success: true, page };
+  } catch (error) {
+    console.error('Failed to save product detail page:', error);
+    return { success: false, error: String(error) };
+  }
+});
+
+ipcMain.handle('brand-workspace:rebuild-ai-index', async () => {
+  try {
+    return { success: true, ...(await brandWorkspaceStore.rebuildAiIndex()) };
+  } catch (error) {
+    console.error('Failed to rebuild brand workspace AI index:', error);
+    return { success: false, error: String(error) };
   }
 });
 
@@ -14435,12 +14516,133 @@ async function handleBrowserCaptureBridgeRequest(
       const imported = await importMediaSources(items);
       emitRendererDataChanged('media', { action: 'import', count: imported.length });
       result = { imported: imported.length, assetIds: imported.map((item) => item.id) };
+    } else if (method === 'assets.ingestProduct') {
+      const normalized = validateCapturedJdProduct(payload);
+      const localized = await localizeCapturedProductImages(normalized);
+      const persisted = await brandWorkspaceStore.ingestProduct({
+        ...normalized,
+        images: localized.images,
+        sourceImages: (normalized.images || []).map((image) => ({ sourceUrl: image.sourceUrl!, role: image.role || 'gallery' })),
+        missingFields: [
+          ...(normalized.missingFields || []),
+          ...(localized.failedImages > 0 ? [`商品图片下载失败（${localized.failedImages} 张）`] : []),
+        ],
+      });
+      await brandWorkspaceStore.rebuildAiIndex();
+      emitRendererDataChanged('subjects', {
+        action: persisted.duplicate ? 'product-recapture' : 'product-capture',
+        entityId: persisted.product.product.id,
+      });
+      result = {
+        productId: persisted.product.product.id,
+        snapshotId: persisted.sourceSnapshot.id,
+        duplicate: persisted.duplicate,
+        importedImages: persisted.sourceSnapshot.imageAssetIds.length,
+        missingFields: persisted.sourceSnapshot.missingFields,
+      };
     } else {
       throw bridgePayloadError('METHOD_NOT_ALLOWED', `未开放的采集方法：${method}`);
     }
 
     return result;
   });
+}
+
+function validateCapturedJdProduct(payload: object): CapturedProductInput {
+  const record = payload as Record<string, unknown>;
+  const platform = String(record.platform || '').trim().toLowerCase();
+  const externalId = String(record.externalId || '').trim().slice(0, 500);
+  const sourceUrl = String(record.sourceUrl || '').trim().slice(0, 8_000);
+  const title = String(record.title || '').replace(/\s+/g, ' ').trim().slice(0, 1_000);
+  let hostname = '';
+  try {
+    hostname = new URL(sourceUrl).hostname.toLowerCase();
+  } catch {
+    // Validation below returns a stable bridge error.
+  }
+  if (platform !== 'jd' || !externalId || !title || !(hostname === 'jd.com' || hostname.endsWith('.jd.com') || hostname === 'jd.hk' || hostname.endsWith('.jd.hk'))) {
+    throw bridgePayloadError('INVALID_CAPTURE_PAYLOAD', '当前页面不是可保存的京东商品详情页');
+  }
+
+  const source = record as unknown as CapturedProductInput;
+  let rejectedImages = 0;
+  const images = (Array.isArray(source.images) ? source.images : [])
+    .slice(0, 24)
+    .flatMap((image) => {
+      try {
+        return [{
+          name: String(image?.name || '').trim().slice(0, 500) || undefined,
+          sourceUrl: validateCapturedJdImageSource(image?.sourceUrl),
+          role: String(image?.role || '').trim().slice(0, 100) || 'image',
+          origin: 'capture' as const,
+        }];
+      } catch {
+        rejectedImages += 1;
+        return [];
+      }
+    });
+  return {
+    ...source,
+    platform: 'jd',
+    externalId,
+    sourceUrl,
+    title,
+    images,
+    missingFields: [
+      ...(Array.isArray(source.missingFields) ? source.missingFields : []),
+      ...(rejectedImages > 0 ? [`已忽略非京东来源图片（${rejectedImages} 张）`] : []),
+    ],
+  };
+}
+
+function validateCapturedJdImageSource(value: unknown): string {
+  const source = validateRemoteMediaSource(value);
+  let hostname = '';
+  try {
+    hostname = new URL(source).hostname.toLowerCase();
+  } catch {
+    throw bridgePayloadError('INVALID_MEDIA_SOURCE', '京东商品图片链接无效');
+  }
+  const allowedSuffixes = ['jd.com', 'jd.hk', 'jdimg.com', '360buyimg.com', 'jcloudcs.com'];
+  if (!allowedSuffixes.some((suffix) => hostname === suffix || hostname.endsWith(`.${suffix}`))) {
+    throw bridgePayloadError('INVALID_MEDIA_SOURCE', '京东商品图片必须来自京东或其图片服务');
+  }
+  return source;
+}
+
+async function localizeCapturedProductImages(input: CapturedProductInput) {
+  const settled = await Promise.allSettled((input.images || []).slice(0, 24).map(async (image, index) => {
+    const sourceUrl = validateCapturedJdImageSource(image.sourceUrl);
+    const response = await fetchWithRetries(sourceUrl, {
+      headers: {
+        'User-Agent': XHS_ASSET_REQUEST_HEADERS['User-Agent'],
+        'Referer': input.sourceUrl,
+        'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+        'Accept-Language': XHS_ASSET_REQUEST_HEADERS['Accept-Language'],
+      },
+      timeoutMs: 15_000,
+    });
+    validateCapturedJdImageSource(response.url);
+    const contentType = String(response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+    if (!['image/jpeg', 'image/jpg', 'image/pjpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif'].includes(contentType)) {
+      throw new Error('商品图片响应类型无效');
+    }
+    const declaredSize = Number(response.headers.get('content-length') || 0);
+    if (declaredSize > 12 * 1024 * 1024) throw new Error('商品图片超过 12MB');
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (!buffer.length || buffer.length > 12 * 1024 * 1024) throw new Error('商品图片为空或超过 12MB');
+    return {
+      name: image.name || `jd-product-${index + 1}`,
+      sourceUrl,
+      role: image.role || (index === 0 ? 'primary' : 'image'),
+      origin: 'capture' as const,
+      dataUrl: `data:${contentType};base64,${buffer.toString('base64')}`,
+    };
+  }));
+  return {
+    images: settled.flatMap((item) => item.status === 'fulfilled' ? [item.value] : []),
+    failedImages: settled.filter((item) => item.status === 'rejected').length,
+  };
 }
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

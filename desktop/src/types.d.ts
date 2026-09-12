@@ -1965,7 +1965,7 @@ declare global {
           formatTarget?: 'markdown' | 'wechat_rich_text';
           sourcePlatform?: 'xiaohongshu' | 'wechat_official_account';
           sourceNoteId?: string;
-          sourceMode?: 'manual' | 'knowledge' | 'manuscript';
+          sourceMode?: 'manual' | 'knowledge' | 'manuscript' | 'product';
           sourceTitle?: string;
           sourceManuscriptPath?: string;
           xhsNoteType?: 'image' | 'video';

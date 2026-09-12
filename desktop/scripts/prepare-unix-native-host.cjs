@@ -7,13 +7,12 @@ const esbuild = require('esbuild');
 const BROWSER_EXTENSION_ORIGIN = 'chrome-extension://dhfphfekcjahljnefpdjoidehnhhoeie/';
 
 function verifyNativeMessagingHandshake(electronPath, bundledEntry, stateRoot) {
-    const payload = Buffer.from(JSON.stringify({
-        jsonrpc: '2.0',
-        id: 'build-smoke-test',
-        method: 'ping',
-    }), 'utf8');
-    const header = Buffer.allocUnsafe(4);
-    header.writeUInt32LE(payload.length, 0);
+    const encodeMessage = (message) => {
+        const payload = Buffer.from(JSON.stringify(message), 'utf8');
+        const header = Buffer.allocUnsafe(4);
+        header.writeUInt32LE(payload.length, 0);
+        return Buffer.concat([header, payload]);
+    };
     const result = spawnSync(electronPath, [bundledEntry, BROWSER_EXTENSION_ORIGIN], {
         env: {
             ...process.env,
@@ -21,7 +20,15 @@ function verifyNativeMessagingHandshake(electronPath, bundledEntry, stateRoot) {
             GARDENFLOW_BROWSER_CONTROL_STATE_DIR: stateRoot,
             GARDENFLOW_NATIVE_HOST_NODE_MODE: '1',
         },
-        input: Buffer.concat([header, payload]),
+        input: Buffer.concat([
+            encodeMessage({ jsonrpc: '2.0', id: 'build-smoke-test', method: 'ping' }),
+            encodeMessage({
+                jsonrpc: '2.0',
+                id: 'product-method-smoke-test',
+                method: 'assets.ingestProduct',
+                params: { operationId: 'build-smoke-test', payload: {} },
+            }),
+        ]),
         timeout: 10_000,
     });
     if (result.error) throw result.error;
@@ -31,10 +38,20 @@ function verifyNativeMessagingHandshake(electronPath, bundledEntry, stateRoot) {
     if (!result.stdout || result.stdout.length < 4) {
         throw new Error('Unix Native Host smoke test did not return a framed response');
     }
-    const frameLength = result.stdout.readUInt32LE(0);
-    const response = JSON.parse(result.stdout.subarray(4, frameLength + 4).toString('utf8'));
-    if (response?.id !== 'build-smoke-test' || response?.result?.ok !== true) {
+    const responses = [];
+    for (let offset = 0; offset + 4 <= result.stdout.length;) {
+        const frameLength = result.stdout.readUInt32LE(offset);
+        if (offset + frameLength + 4 > result.stdout.length) break;
+        responses.push(JSON.parse(result.stdout.subarray(offset + 4, offset + frameLength + 4).toString('utf8')));
+        offset += frameLength + 4;
+    }
+    const handshake = responses.find((response) => response?.id === 'build-smoke-test');
+    if (handshake?.result?.ok !== true || !handshake.result.capabilities?.includes('assets.ingestProduct')) {
         throw new Error('Unix Native Host smoke test returned an invalid response');
+    }
+    const productMethod = responses.find((response) => response?.id === 'product-method-smoke-test');
+    if (productMethod?.error?.data?.code === 'METHOD_NOT_ALLOWED' || productMethod?.error?.data?.code !== 'APP_NOT_RUNNING') {
+        throw new Error('Unix Native Host does not forward assets.ingestProduct');
     }
 }
 
