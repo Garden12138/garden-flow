@@ -1,5 +1,5 @@
-import { toGardenFlowAssetUrl } from './localAsset';
-import type { VideoEditorV2Project, VideoTimelineClip } from './videoAutoEdit';
+import { toGardenFlowAssetUrl } from './localAsset.ts';
+import type { VideoEditorV2Project, VideoTimelineClip } from './videoAutoEdit.ts';
 
 export const VIDEO_EDITOR_V2_REMOTION_COMPOSITION_ID = 'GardenFlowVideoMotion';
 
@@ -26,6 +26,11 @@ export interface VideoEditorV2RemotionScene {
   durationInFrames: number;
   trimInFrames?: number;
   motionPreset?: 'static' | 'slow-zoom-in' | 'slow-zoom-out' | 'pan-left' | 'pan-right' | 'slide-up' | 'slide-down';
+  fitMode?: 'contain-blur' | 'cover';
+  volume?: number;
+  fadeInFrames?: number;
+  fadeOutFrames?: number;
+  muted?: boolean;
   overlayTitle?: string;
   overlayBody?: string;
   overlays?: VideoEditorV2RemotionOverlay[];
@@ -138,10 +143,33 @@ export function buildVideoEditorV2RemotionComposition(project: VideoEditorV2Proj
       startFrame: msToFrames(clip.timelineStartMs, fps),
       durationInFrames: clipDurationFrames(clip, fps),
       trimInFrames: msToFrames(clip.sourceStartMs, fps),
-      motionPreset: index % 2 === 0 ? 'static' : 'slow-zoom-in',
+      motionPreset: clip.motionPreset || (index % 2 === 0 ? 'static' : 'slow-zoom-in'),
+      fitMode: clip.fitMode || 'cover',
+      muted: project.projectKind === 'product-video',
       overlays,
     };
   });
+  const musicScenes: VideoEditorV2RemotionScene[] = timeline.tracks
+    .filter((track) => track.kind === 'music' && !track.muted)
+    .flatMap((track) => track.clips)
+    .filter((clip) => !clip.disabled && clip.assetId)
+    .map((clip) => {
+      const asset = project.assets.find((item) => item.id === clip.assetId);
+      return {
+        id: `music_${clip.id}`,
+        clipId: clip.id,
+        assetId: clip.assetId,
+        assetKind: 'audio' as const,
+        src: toGardenFlowAssetUrl(asset?.projectPath || asset?.sourcePath || ''),
+        startFrame: msToFrames(clip.timelineStartMs, fps),
+        durationInFrames: clipDurationFrames(clip, fps),
+        trimInFrames: msToFrames(clip.sourceStartMs, fps),
+        motionPreset: 'static' as const,
+        volume: Math.max(0, Math.min(1, Number(clip.volume ?? 0.2))),
+        fadeInFrames: msToFrames(Number(clip.fadeInMs || 0), fps),
+        fadeOutFrames: msToFrames(Number(clip.fadeOutMs || 0), fps),
+      };
+    });
 
   return {
     version: 1,
@@ -153,7 +181,7 @@ export function buildVideoEditorV2RemotionComposition(project: VideoEditorV2Proj
     durationInFrames: Math.max(1, msToFrames(timeline.durationMs, fps)),
     backgroundColor: '#0d1117',
     renderMode: 'full',
-    scenes,
+    scenes: [...scenes, ...musicScenes],
     transitions: [],
     baseMedia: {
       sourceAssetIds: project.assets.map((asset) => asset.id),

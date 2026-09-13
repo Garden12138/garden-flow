@@ -255,9 +255,11 @@ export interface ThrivePluginHomeResponse {
 export interface VideoEditorV2ProjectSummary {
   id: string;
   title: string;
+  projectKind?: 'subtitle-edit' | 'product-video';
   projectDir: string;
   status: string;
   updatedAt: string;
+  canvas?: { width: number; height: number; fps: number; aspectRatio: string };
   assets: Array<{
     id: string;
     kind: 'video' | 'audio' | 'image';
@@ -269,6 +271,7 @@ export interface VideoEditorV2ProjectSummary {
     width?: number;
     height?: number;
     fps?: number;
+    provenance?: { kind: string; productId?: string; sourceAssetId?: string; generationJobId?: string; prompt?: string };
   }>;
   transcriptTracks: Array<{
     id: string;
@@ -300,6 +303,12 @@ export interface VideoEditorV2ProjectSummary {
         timelineStartMs: number;
         timelineEndMs: number;
         text?: string;
+        sceneId?: string;
+        fitMode?: 'contain-blur' | 'cover';
+        motionPreset?: 'static' | 'slow-zoom-in' | 'slow-zoom-out' | 'pan-left' | 'pan-right';
+        volume?: number;
+        fadeInMs?: number;
+        fadeOutMs?: number;
       }>;
     }>;
   };
@@ -335,6 +344,24 @@ export interface VideoEditorV2ProjectSummary {
     durationMs?: number;
   }>;
   lastError?: string | null;
+  productVideo?: {
+    proposal: { proposalId: string; productId: string; productName: string; title: string; durationMs: number };
+    productSnapshot: { id: string; name: string; updatedAt: string; brandName?: string; facts: Array<{ key: string; value: string; origin: string }> };
+    scenes: Array<{
+      id: string;
+      title: string;
+      durationMs: number;
+      source: 'product-asset' | 'ai-motion';
+      productAssetIds: string[];
+      overlayText?: string;
+      generationPrompt?: string;
+      fitMode: 'contain-blur' | 'cover';
+      motionPreset: 'static' | 'slow-zoom-in' | 'slow-zoom-out' | 'pan-left' | 'pan-right';
+      generationStatus: 'not-required' | 'pending' | 'generating' | 'ready' | 'failed';
+      generatedAssetId?: string;
+      error?: string;
+    }>;
+  } | null;
 }
 
 export interface AgentTaskNode {
@@ -1709,6 +1736,10 @@ declare global {
         getOrCreateForManuscript: (payload: { manuscriptPath: string; title?: string }) => Promise<{ success?: boolean; error?: string; project?: VideoEditorV2ProjectSummary }>;
         createProject: (payload?: Record<string, unknown>) => Promise<{ success?: boolean; error?: string; project?: VideoEditorV2ProjectSummary }>;
         getProject: (payload: { projectId: string }) => Promise<{ success?: boolean; error?: string; project?: VideoEditorV2ProjectSummary }>;
+        listProjects: () => Promise<{ success?: boolean; error?: string; projects?: VideoEditorV2ProjectSummary[] }>;
+        applyProductCommand: (payload: Record<string, unknown>) => Promise<{ success?: boolean; error?: string; project?: VideoEditorV2ProjectSummary }>;
+        setProductMusic: (payload: { projectId: string; sourcePath?: string }) => Promise<{ success?: boolean; canceled?: boolean; error?: string; project?: VideoEditorV2ProjectSummary }>;
+        retryProductScene: (payload: { projectId: string; sceneId: string }) => Promise<{ success?: boolean; error?: string; project?: VideoEditorV2ProjectSummary }>;
         importAssets: (payload: { projectId: string; sourcePaths?: string[] }) => Promise<{ success?: boolean; canceled?: boolean; error?: string; project?: VideoEditorV2ProjectSummary }>;
         importSrt: (payload: { projectId: string; assetId?: string; srtPath?: string; srtContent?: string; language?: string }) => Promise<{ success?: boolean; canceled?: boolean; error?: string; project?: VideoEditorV2ProjectSummary }>;
         runAsr: (payload: { projectId: string; assetId: string; language?: string }) => Promise<{ success?: boolean; error?: string; project?: VideoEditorV2ProjectSummary }>;
@@ -2822,6 +2853,7 @@ declare global {
   interface ToolConfirmRequest {
     callId: string;
     name: string;
+    params?: Record<string, unknown>;
     details: ToolConfirmationDetails;
   }
 }

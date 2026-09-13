@@ -8,6 +8,9 @@ import type {
   SrtSegmentTag,
   TranscriptTrack,
   AutoEditRunRecord,
+  ProductVideoEditCommand,
+  ProductVideoProposal,
+  ProductVideoProjectMetadata,
   VideoCanvasSpec,
   VideoEditorV2AssetKind,
   VideoEditorV2Project,
@@ -23,6 +26,19 @@ import { probeMediaAsset } from '../video-auto-edit/mediaProbeService';
 const PROJECTS_DIR_NAME = 'video-editor-v2';
 const PROJECT_FILE_NAME = 'project.json';
 const MAX_UNDO_RECORDS = 20;
+const productVideoCreationLocks = new Map<string, Promise<VideoEditorV2Project>>();
+const productProjectMutationQueues = new Map<string, Promise<void>>();
+
+function enqueueProductProjectMutation<T>(projectId: string, operation: () => Promise<T>): Promise<T> {
+  const prior = productProjectMutationQueues.get(projectId) || Promise.resolve();
+  const result = prior.then(operation, operation);
+  const settled = result.then(() => undefined, () => undefined);
+  productProjectMutationQueues.set(projectId, settled);
+  void settled.finally(() => {
+    if (productProjectMutationQueues.get(projectId) === settled) productProjectMutationQueues.delete(projectId);
+  });
+  return result;
+}
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -42,7 +58,11 @@ function getProjectsRootDir(): string {
 }
 
 function getProjectDir(projectId: string): string {
-  return path.join(getProjectsRootDir(), projectId);
+  const normalizedProjectId = String(projectId || '').trim();
+  if (!/^[a-zA-Z0-9_-]+$/.test(normalizedProjectId)) {
+    throw new Error('Invalid video project id');
+  }
+  return path.join(getProjectsRootDir(), normalizedProjectId);
 }
 
 function getProjectFilePath(projectId: string): string {
@@ -63,18 +83,21 @@ function defaultProject(input: {
   title: string;
   sourceManuscriptPath?: string | null;
   projectDir: string;
+  projectKind?: VideoEditorV2Project['projectKind'];
+  canvas?: VideoCanvasSpec;
 }): VideoEditorV2Project {
   const createdAt = nowIso();
   return {
-    version: 1,
+    version: 2,
     id: input.id,
     title: input.title || '未命名剪辑项目',
+    projectKind: input.projectKind || 'subtitle-edit',
     sourceManuscriptPath: input.sourceManuscriptPath || null,
     projectDir: input.projectDir,
     createdAt,
     updatedAt: createdAt,
     status: 'draft',
-    canvas: defaultCanvas(),
+    canvas: input.canvas || defaultCanvas(),
     assets: [],
     transcriptTracks: [],
     timeline: {
@@ -90,6 +113,7 @@ function defaultProject(input: {
     remotionSnapshot: null,
     renderOutputs: [],
     lastError: null,
+    productVideo: null,
   };
 }
 
@@ -125,6 +149,9 @@ function enrichProject(project: VideoEditorV2Project): VideoEditorV2Project {
   const projectDir = getProjectDir(project.id);
   return {
     ...project,
+    version: 2,
+    projectKind: project.projectKind || 'subtitle-edit',
+    productVideo: project.productVideo || null,
     projectDir,
     autoEditRuns: project.autoEditRuns || [],
     undoStack: project.undoStack || [],
@@ -154,6 +181,7 @@ function pushTimelineUndo(project: VideoEditorV2Project, label: string): VideoEd
     label,
     timeline: project.timeline,
     autoEditRuns: project.autoEditRuns || [],
+    productVideo: project.productVideo || null,
   };
   return {
     ...project,
@@ -775,7 +803,9 @@ async function quickFileHash(filePath: string): Promise<string> {
 export async function saveVideoEditorV2Project(project: VideoEditorV2Project): Promise<VideoEditorV2Project> {
   const next: VideoEditorV2Project = {
     ...project,
-    version: 1,
+    version: 2,
+    projectKind: project.projectKind || 'subtitle-edit',
+    productVideo: project.productVideo || null,
     projectDir: getProjectDir(project.id),
     autoEditRuns: project.autoEditRuns || [],
     undoStack: project.undoStack || [],
@@ -788,8 +818,9 @@ export async function saveVideoEditorV2Project(project: VideoEditorV2Project): P
 }
 
 export async function getVideoEditorV2Project(projectId: string): Promise<VideoEditorV2Project | null> {
-  const project = await readJsonIfExists<VideoEditorV2Project>(getProjectFilePath(projectId));
-  if (!project || project.version !== 1) return null;
+  const raw = await readJsonIfExists<Record<string, unknown>>(getProjectFilePath(projectId));
+  if (!raw || (raw.version !== 1 && raw.version !== 2)) return null;
+  const project = raw as unknown as VideoEditorV2Project;
   return enrichProject(project);
 }
 
@@ -807,6 +838,8 @@ export async function listVideoEditorV2Projects(): Promise<VideoEditorV2Project[
 export async function createVideoEditorV2Project(input: {
   title?: string;
   sourceManuscriptPath?: string | null;
+  projectKind?: VideoEditorV2Project['projectKind'];
+  canvas?: VideoCanvasSpec;
 }): Promise<VideoEditorV2Project> {
   const id = `video_edit_v2_${Date.now()}_${randomUUID().slice(0, 8)}`;
   await ensureProjectDirs(id);
@@ -815,6 +848,8 @@ export async function createVideoEditorV2Project(input: {
     title: String(input.title || '').trim() || '未命名剪辑项目',
     sourceManuscriptPath: input.sourceManuscriptPath || null,
     projectDir: getProjectDir(id),
+    projectKind: input.projectKind,
+    canvas: input.canvas,
   });
   return saveVideoEditorV2Project(project);
 }
@@ -893,7 +928,7 @@ export async function importAssetsToVideoEditorV2Project(projectId: string, sour
 
   if (imported.length === 0) return project;
   const firstVideo = imported.find((asset) => asset.kind === 'video' && asset.width && asset.height);
-  const nextCanvas = firstVideo
+  const nextCanvas = firstVideo && project.projectKind !== 'product-video'
     ? {
       ...project.canvas,
       width: firstVideo.width || project.canvas.width,
@@ -908,8 +943,366 @@ export async function importAssetsToVideoEditorV2Project(projectId: string, sour
     status: project.status === 'draft' ? 'ready' : project.status,
     canvas: nextCanvas,
     assets: [...project.assets, ...imported],
-    timeline: appendAssetsToBaselineTimeline(project.timeline, imported),
+    timeline: project.projectKind === 'product-video'
+      ? project.timeline
+      : appendAssetsToBaselineTimeline(project.timeline, imported),
   });
+}
+
+export type ProductVideoSourceAssetInput = {
+  assetId: string;
+  absolutePath: string;
+};
+
+export async function findProductVideoProjectByProposalId(proposalId: string): Promise<VideoEditorV2Project | null> {
+  const normalized = String(proposalId || '').trim();
+  if (!normalized) return null;
+  return (await listVideoEditorV2Projects()).find((project) => (
+    project.projectKind === 'product-video'
+    && project.productVideo?.proposal.proposalId === normalized
+  )) || null;
+}
+
+function reflowProductTimeline(project: VideoEditorV2Project, orderedSceneIds?: string[]): VideoEditorV2Project {
+  const primary = project.timeline.tracks.find((track) => track.kind === 'primary-video');
+  if (!primary) return project;
+  const order = orderedSceneIds || primary.clips.map((clip) => String(clip.sceneId || '')).filter(Boolean);
+  const rank = new Map(order.map((id, index) => [id, index]));
+  const primaryClips = [...primary.clips].sort((left, right) => (
+    (rank.get(String(left.sceneId || '')) ?? Number.MAX_SAFE_INTEGER)
+    - (rank.get(String(right.sceneId || '')) ?? Number.MAX_SAFE_INTEGER)
+  ));
+  let cursor = 0;
+  const timing = new Map<string, { start: number; end: number }>();
+  const reflowedPrimary = primaryClips.map((clip) => {
+    const duration = Math.max(500, clip.timelineEndMs - clip.timelineStartMs);
+    const next = { ...clip, timelineStartMs: cursor, timelineEndMs: cursor + duration };
+    if (clip.sceneId) timing.set(clip.sceneId, { start: next.timelineStartMs, end: next.timelineEndMs });
+    cursor += duration;
+    return next;
+  });
+  const tracks = project.timeline.tracks.map((track) => {
+    if (track.kind === 'primary-video') return { ...track, clips: reflowedPrimary };
+    if (track.kind === 'subtitle') {
+      return {
+        ...track,
+        clips: track.clips
+          .filter((clip) => clip.sceneId && timing.has(clip.sceneId))
+          .map((clip) => {
+            const range = timing.get(String(clip.sceneId))!;
+            return { ...clip, timelineStartMs: range.start, timelineEndMs: range.end, sourceStartMs: 0, sourceEndMs: range.end - range.start };
+          })
+          .sort((left, right) => left.timelineStartMs - right.timelineStartMs),
+      };
+    }
+    if (track.kind === 'music') {
+      return {
+        ...track,
+        clips: track.clips.map((clip) => ({ ...clip, timelineStartMs: 0, timelineEndMs: cursor, sourceStartMs: 0, sourceEndMs: cursor })),
+      };
+    }
+    return track;
+  });
+  const sceneOrder = reflowedPrimary.map((clip) => String(clip.sceneId || '')).filter(Boolean);
+  return {
+    ...project,
+    timeline: { ...project.timeline, durationMs: cursor, tracks },
+    productVideo: project.productVideo ? {
+      ...project.productVideo,
+      scenes: [...project.productVideo.scenes].sort((left, right) => sceneOrder.indexOf(left.id) - sceneOrder.indexOf(right.id)),
+    } : null,
+  };
+}
+
+export type CreateProductVideoProjectInput = {
+  proposal: ProductVideoProposal;
+  productSnapshot: ProductVideoProjectMetadata['productSnapshot'];
+  sourceAssets: ProductVideoSourceAssetInput[];
+};
+
+async function createProductVideoProjectUnlocked(input: CreateProductVideoProjectInput): Promise<VideoEditorV2Project> {
+  const existing = await findProductVideoProjectByProposalId(input.proposal.proposalId);
+  if (existing) return existing;
+  let project = await createVideoEditorV2Project({
+    title: input.proposal.title,
+    projectKind: 'product-video',
+    canvas: input.proposal.canvas,
+  });
+  project = await importAssetsToVideoEditorV2Project(project.id, input.sourceAssets.map((asset) => asset.absolutePath));
+  const sourceByPath = new Map(input.sourceAssets.map((asset) => [path.resolve(asset.absolutePath), asset]));
+  const assets = project.assets.map((asset) => {
+    const source = sourceByPath.get(path.resolve(asset.sourcePath));
+    return source ? {
+      ...asset,
+      provenance: {
+        kind: 'brand-product' as const,
+        productId: input.proposal.productId,
+        sourceAssetId: source.assetId,
+      },
+    } : asset;
+  });
+  const importedBySourceId = new Map(assets
+    .filter((asset) => asset.provenance?.sourceAssetId)
+    .map((asset) => [String(asset.provenance?.sourceAssetId), asset]));
+  let cursor = 0;
+  const primaryClips: VideoTimelineClip[] = [];
+  const textClips: VideoTimelineClip[] = [];
+  for (const scene of input.proposal.scenes) {
+    const duration = Math.max(500, Math.round(scene.durationMs));
+    const sourceAsset = scene.productAssetIds.map((id) => importedBySourceId.get(id)).find(Boolean);
+    if (!sourceAsset) throw new Error(`分镜 ${scene.title} 缺少有效商品素材`);
+    primaryClips.push({
+      id: `clip_${Date.now()}_${randomUUID().slice(0, 8)}`,
+      sceneId: scene.id,
+      assetId: sourceAsset.id,
+      sourceStartMs: 0,
+      sourceEndMs: duration,
+      timelineStartMs: cursor,
+      timelineEndMs: cursor + duration,
+      fitMode: scene.fitMode,
+      motionPreset: scene.motionPreset,
+      text: scene.title,
+    });
+    if (String(scene.overlayText || '').trim()) {
+      textClips.push({
+        id: `text_${Date.now()}_${randomUUID().slice(0, 8)}`,
+        sceneId: scene.id,
+        sourceStartMs: 0,
+        sourceEndMs: duration,
+        timelineStartMs: cursor,
+        timelineEndMs: cursor + duration,
+        text: String(scene.overlayText || '').trim(),
+      });
+    }
+    cursor += duration;
+  }
+  const sceneStates = input.proposal.scenes.map((scene) => ({
+    ...scene,
+    generationStatus: scene.source === 'ai-motion' ? 'pending' as const : 'not-required' as const,
+  }));
+  return saveVideoEditorV2Project({
+    ...project,
+    status: sceneStates.some((scene) => scene.generationStatus === 'pending') ? 'generating' : 'ready',
+    assets,
+    timeline: {
+      ...project.timeline,
+      durationMs: cursor,
+      tracks: [
+        { id: 'track_primary_video', kind: 'primary-video', name: '画面', clips: primaryClips },
+        { id: 'track_subtitle', kind: 'subtitle', name: '文字', clips: textClips },
+        { id: 'track_music', kind: 'music', name: 'BGM', clips: [] },
+      ],
+    },
+    productVideo: {
+      proposal: input.proposal,
+      productSnapshot: input.productSnapshot,
+      scenes: sceneStates,
+    },
+  });
+}
+
+export async function createProductVideoProject(input: CreateProductVideoProjectInput): Promise<VideoEditorV2Project> {
+  const proposalId = String(input.proposal.proposalId || '').trim();
+  if (!proposalId) throw new Error('proposalId is required');
+  const pending = productVideoCreationLocks.get(proposalId);
+  if (pending) return pending;
+  const operation = createProductVideoProjectUnlocked(input);
+  productVideoCreationLocks.set(proposalId, operation);
+  try {
+    return await operation;
+  } finally {
+    if (productVideoCreationLocks.get(proposalId) === operation) {
+      productVideoCreationLocks.delete(proposalId);
+    }
+  }
+}
+
+async function setProductVideoSceneGenerationStateUnlocked(input: {
+  projectId: string;
+  sceneId: string;
+  status: 'generating' | 'failed';
+  error?: string;
+}): Promise<VideoEditorV2Project> {
+  const project = await getVideoEditorV2Project(input.projectId);
+  if (!project?.productVideo) throw new Error('商品视频工程不存在');
+  const scenes = project.productVideo.scenes.map((scene) => scene.id === input.sceneId
+    ? { ...scene, generationStatus: input.status, error: input.error }
+    : scene);
+  const hasFailed = scenes.some((scene) => scene.generationStatus === 'failed');
+  const hasPending = scenes.some((scene) => scene.generationStatus === 'pending' || scene.generationStatus === 'generating');
+  return saveVideoEditorV2Project({
+    ...project,
+    status: hasPending ? 'generating' : hasFailed ? 'partial' : 'ready',
+    productVideo: { ...project.productVideo, scenes },
+  });
+}
+
+export function setProductVideoSceneGenerationState(input: {
+  projectId: string;
+  sceneId: string;
+  status: 'generating' | 'failed';
+  error?: string;
+}): Promise<VideoEditorV2Project> {
+  return enqueueProductProjectMutation(input.projectId, () => setProductVideoSceneGenerationStateUnlocked(input));
+}
+
+async function attachGeneratedProductVideoSceneUnlocked(input: {
+  projectId: string;
+  sceneId: string;
+  absolutePath: string;
+  generationJobId?: string;
+  prompt?: string;
+}): Promise<VideoEditorV2Project> {
+  let project = await importAssetsToVideoEditorV2Project(input.projectId, [input.absolutePath]);
+  if (!project.productVideo) throw new Error('商品视频工程不存在');
+  const generated = project.assets.find((asset) => path.resolve(asset.sourcePath) === path.resolve(input.absolutePath));
+  if (!generated) throw new Error('生成视频导入失败');
+  const assets = project.assets.map((asset) => asset.id === generated.id ? {
+    ...asset,
+    provenance: { kind: 'ai-generated' as const, productId: project.productVideo?.proposal.productId, generationJobId: input.generationJobId, prompt: input.prompt },
+  } : asset);
+  const tracks = project.timeline.tracks.map((track) => track.kind === 'primary-video' ? {
+    ...track,
+    clips: track.clips.map((clip) => clip.sceneId === input.sceneId ? { ...clip, assetId: generated.id } : clip),
+  } : track);
+  const scenes = project.productVideo.scenes.map((scene) => scene.id === input.sceneId ? {
+    ...scene,
+    generationStatus: 'ready' as const,
+    generationJobId: input.generationJobId,
+    generatedAssetId: generated.id,
+    error: undefined,
+  } : scene);
+  const hasPending = scenes.some((scene) => scene.generationStatus === 'pending' || scene.generationStatus === 'generating');
+  const hasFailed = scenes.some((scene) => scene.generationStatus === 'failed');
+  return saveVideoEditorV2Project({
+    ...project,
+    assets,
+    timeline: { ...project.timeline, tracks },
+    status: hasPending ? 'generating' : hasFailed ? 'partial' : 'ready',
+    productVideo: { ...project.productVideo, scenes },
+  });
+}
+
+export function attachGeneratedProductVideoScene(input: {
+  projectId: string;
+  sceneId: string;
+  absolutePath: string;
+  generationJobId?: string;
+  prompt?: string;
+}): Promise<VideoEditorV2Project> {
+  return enqueueProductProjectMutation(input.projectId, () => attachGeneratedProductVideoSceneUnlocked(input));
+}
+
+async function applyProductVideoEditCommandUnlocked(input: {
+  projectId: string;
+  command: ProductVideoEditCommand;
+}): Promise<VideoEditorV2Project> {
+  const current = await getVideoEditorV2Project(input.projectId);
+  if (!current?.productVideo) throw new Error('商品视频工程不存在');
+  const productVideo = current.productVideo;
+  let project = pushTimelineUndo(current, input.command.type);
+  const command = input.command;
+  if (command.type === 'music.remove') {
+    project = { ...project, timeline: { ...project.timeline, tracks: project.timeline.tracks.map((track) => track.kind === 'music' ? { ...track, clips: [] } : track) } };
+  } else if (command.type === 'scene.reorder') {
+    const order = productVideo.scenes.map((scene) => scene.id);
+    const sourceIndex = order.indexOf(command.sceneId);
+    const targetIndex = order.indexOf(command.targetSceneId);
+    if (sourceIndex < 0 || targetIndex < 0) throw new Error('分镜不存在');
+    order.splice(sourceIndex, 1);
+    const nextTarget = order.indexOf(command.targetSceneId);
+    order.splice(command.position === 'after' ? nextTarget + 1 : nextTarget, 0, command.sceneId);
+    project = reflowProductTimeline(project, order);
+  } else if (command.type === 'scene.delete') {
+    const tracks = project.timeline.tracks.map((track) => ({ ...track, clips: track.clips.filter((clip) => clip.sceneId !== command.sceneId) }));
+    project = reflowProductTimeline({ ...project, timeline: { ...project.timeline, tracks }, productVideo: { ...productVideo, scenes: productVideo.scenes.filter((scene) => scene.id !== command.sceneId) } });
+  } else {
+    const primaryTrack = project.timeline.tracks.find((track) => track.kind === 'primary-video');
+    if (!primaryTrack?.clips.some((clip) => clip.sceneId === command.sceneId)) throw new Error('分镜不存在');
+    let tracks = project.timeline.tracks.map((track) => ({
+      ...track,
+      clips: track.clips.map((clip) => {
+        if (clip.sceneId !== command.sceneId) return clip;
+        if (command.type === 'scene.duration' && track.kind === 'primary-video') return { ...clip, timelineEndMs: clip.timelineStartMs + Math.max(500, Math.min(30_000, command.durationMs)), sourceEndMs: Math.max(500, Math.min(30_000, command.durationMs)) };
+        if (command.type === 'scene.fit' && track.kind === 'primary-video') return { ...clip, fitMode: command.fitMode };
+        if (command.type === 'scene.motion' && track.kind === 'primary-video') return { ...clip, motionPreset: command.motionPreset };
+        if (command.type === 'scene.asset' && track.kind === 'primary-video') {
+          const asset = project.assets.find((item) => item.id === command.assetId);
+          if (!asset || (asset.kind !== 'image' && asset.kind !== 'video')) throw new Error('替换素材不存在');
+          return { ...clip, assetId: command.assetId };
+        }
+        if (command.type === 'scene.text' && track.kind === 'subtitle') return { ...clip, text: command.text };
+        return clip;
+      }),
+    }));
+    if (command.type === 'scene.text') {
+      tracks = tracks.map((track) => {
+        if (track.kind !== 'subtitle') return track;
+        const existing = track.clips.some((clip) => clip.sceneId === command.sceneId);
+        if (existing || !command.text.trim()) return track;
+        const visualClip = primaryTrack.clips.find((clip) => clip.sceneId === command.sceneId)!;
+        return {
+          ...track,
+          clips: [
+            ...track.clips,
+            {
+              id: `text_${Date.now()}_${randomUUID().slice(0, 8)}`,
+              sceneId: command.sceneId,
+              sourceStartMs: 0,
+              sourceEndMs: visualClip.timelineEndMs - visualClip.timelineStartMs,
+              timelineStartMs: visualClip.timelineStartMs,
+              timelineEndMs: visualClip.timelineEndMs,
+              text: command.text,
+            },
+          ],
+        };
+      });
+    }
+    const scenes = productVideo.scenes.map((scene) => scene.id === command.sceneId ? {
+      ...scene,
+      ...(command.type === 'scene.duration' ? { durationMs: Math.max(500, Math.min(30_000, command.durationMs)) } : {}),
+      ...(command.type === 'scene.fit' ? { fitMode: command.fitMode } : {}),
+      ...(command.type === 'scene.motion' ? { motionPreset: command.motionPreset } : {}),
+      ...(command.type === 'scene.text' ? { overlayText: command.text } : {}),
+    } : scene);
+    project = reflowProductTimeline({ ...project, timeline: { ...project.timeline, tracks }, productVideo: { ...productVideo, scenes } });
+  }
+  return saveVideoEditorV2Project(project);
+}
+
+export function applyProductVideoEditCommand(input: {
+  projectId: string;
+  command: ProductVideoEditCommand;
+}): Promise<VideoEditorV2Project> {
+  return enqueueProductProjectMutation(input.projectId, () => applyProductVideoEditCommandUnlocked(input));
+}
+
+async function setProductVideoMusicUnlocked(input: { projectId: string; sourcePath: string }): Promise<VideoEditorV2Project> {
+  let project = await importAssetsToVideoEditorV2Project(input.projectId, [input.sourcePath]);
+  if (!project.productVideo) throw new Error('商品视频工程不存在');
+  const asset = project.assets.find((item) => path.resolve(item.sourcePath) === path.resolve(input.sourcePath));
+  if (!asset || asset.kind !== 'audio') throw new Error('请选择音频文件');
+  project = pushTimelineUndo(project, 'music.set');
+  const tracks = project.timeline.tracks.map((track) => track.kind === 'music' ? {
+    ...track,
+    clips: [{
+      id: `music_${Date.now()}_${randomUUID().slice(0, 8)}`,
+      assetId: asset.id,
+      sourceStartMs: 0,
+      sourceEndMs: project.timeline.durationMs,
+      timelineStartMs: 0,
+      timelineEndMs: project.timeline.durationMs,
+      volume: 0.2,
+      fadeInMs: 500,
+      fadeOutMs: 500,
+      text: asset.title,
+    }],
+  } : track);
+  return saveVideoEditorV2Project({ ...project, timeline: { ...project.timeline, tracks } });
+}
+
+export function setProductVideoMusic(input: { projectId: string; sourcePath: string }): Promise<VideoEditorV2Project> {
+  return enqueueProductProjectMutation(input.projectId, () => setProductVideoMusicUnlocked(input));
 }
 
 export async function importSrtContentToVideoEditorV2Project(input: {
@@ -965,7 +1358,7 @@ export async function importSrtContentToVideoEditorV2Project(input: {
   const timelineDurationMs = Math.max(project.timeline.durationMs || 0, segments[segments.length - 1]?.endMs || 0);
   return saveVideoEditorV2Project({
     ...project,
-    status: 'ready',
+    status: project.projectKind === 'product-video' ? project.status : 'ready',
     transcriptTracks: [
       ...project.transcriptTracks.filter((item) => item.assetId !== assetId),
       track,
@@ -1382,9 +1775,10 @@ export async function undoVideoEditorV2ProjectTimeline(input: {
 
   return saveVideoEditorV2Project({
     ...project,
-    status: 'ready',
+    status: project.projectKind === 'product-video' ? project.status : 'ready',
     timeline: latest.timeline,
     autoEditRuns: latest.autoEditRuns || project.autoEditRuns || [],
+    productVideo: latest.productVideo === undefined ? project.productVideo : latest.productVideo,
     undoStack: rest,
     lastError: null,
   });

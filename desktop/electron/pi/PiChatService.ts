@@ -366,7 +366,7 @@ export class PiChatService {
     this.toolExecutor = new ToolExecutor(
       this.toolRegistry,
       options.onToolConfirmationRequest
-        || ((callId, tool, _params, details) => this.requestToolConfirmation(callId, tool.name, details)),
+        || ((callId, tool, params, details) => this.requestToolConfirmation(callId, tool.name, params, details)),
     );
   }
 
@@ -376,9 +376,13 @@ export class PiChatService {
   private requestToolConfirmation(
     callId: string,
     toolName: string,
+    params: unknown,
     details: ToolConfirmationDetails,
   ): Promise<ToolConfirmationOutcome> {
-    if (!this.interactiveToolConfirmation || details?.requiresUserAcknowledgement !== true) {
+    if (details?.requiresUserAcknowledgement === true && !this.interactiveToolConfirmation) {
+      return Promise.resolve(ToolConfirmationOutcome.Cancel);
+    }
+    if (details?.requiresUserAcknowledgement !== true) {
       return Promise.resolve(ToolConfirmationOutcome.ProceedOnce);
     }
 
@@ -391,6 +395,7 @@ export class PiChatService {
       this.sendToUI('chat:tool-confirm-request', {
         callId,
         name: toolName,
+        params,
         details,
       });
     });
@@ -402,7 +407,7 @@ export class PiChatService {
     if (!pending) return false;
     clearTimeout(pending.timeoutId);
     this.pendingToolConfirmations.delete(callId);
-    pending.resolve(confirmed ? ToolConfirmationOutcome.ProceedOnce : ToolConfirmationOutcome.Cancel);
+    pending.resolve(confirmed ? ToolConfirmationOutcome.ProceedAfterUserAcknowledgement : ToolConfirmationOutcome.Cancel);
     return true;
   }
 
@@ -4029,7 +4034,7 @@ export class PiChatService {
         '- 用户上传的图片即使当前聊天模型不支持图片直传，只要系统提供了“工作暂存路径”，仍必须把该路径作为 `referenceImages` 交给 `image_generate` / `video_generate`；不得声称无法读取、无法上传或要求用户换聊天模型。',
         '- 若任务是在已有图片上加标题、加字、补局部元素、替换局部内容或延续上一张图做修改，必须优先使用 `image-to-image` 模式，并先确认上一张图的真实路径，再把该图片作为 `referenceImages` 传入。',
         '- 在 `image-to-image` 模式下，提示词只写“本次要修改的部分”；不要重新长篇描述整张图的风格、构图、氛围和主体，否则容易过拟合并破坏原图。',
-        '- 当用户要求生成短视频、动态镜头、运镜片段、首尾帧过渡时，先加载 `gardenflow-video-director` 技能，再使用独立工具 `video_generate`，不要把视频需求错误降级成静态图片。',
+        '- 当用户要求生成短视频、动态镜头、运镜片段、首尾帧过渡时，先加载 `video-director` 技能，再使用对应的视频工具，不要把视频需求错误降级成静态图片。',
         '- 当用户要求生成语音、旁白、配音或音频时，使用独立工具 `audio_generate`；音频任务必须拿到真实音频路径后才算完成。',
         '- 正式调用生视频工具前，必须先给用户一版视频脚本并等待确认；不要一上来直接生成视频。',
         '- 在脚本确认阶段，必须明确回显 `视频时长` 和 `视频比例`，让用户一起确认。',

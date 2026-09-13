@@ -7,6 +7,7 @@ interface UseGardenFlowShellNavigationParams {
   currentView: ViewType;
   setCurrentView: Dispatch<SetStateAction<ViewType>>;
   setActiveManuscriptEditorFile: Dispatch<SetStateAction<string | null>>;
+  setActiveVideoProjectId: Dispatch<SetStateAction<string | null>>;
   setImmersiveMode: Dispatch<SetStateAction<ImmersiveMode>>;
 }
 
@@ -14,6 +15,7 @@ export function useGardenFlowShellNavigation({
   currentView,
   setCurrentView,
   setActiveManuscriptEditorFile,
+  setActiveVideoProjectId,
   setImmersiveMode,
 }: UseGardenFlowShellNavigationParams) {
   const [gardenflowOnboardingVersion, setGardenFlowOnboardingVersion] = useState(0);
@@ -24,9 +26,10 @@ export function useGardenFlowShellNavigation({
     uiTraceInteraction('app', 'nav_to_gardenflow', { to: 'gardenflow' });
     setPendingGardenFlowMessage(message);
     setActiveManuscriptEditorFile(null);
+    setActiveVideoProjectId(null);
     setImmersiveMode(false);
     setCurrentView('gardenflow');
-  }, [setActiveManuscriptEditorFile, setCurrentView, setImmersiveMode]);
+  }, [setActiveManuscriptEditorFile, setActiveVideoProjectId, setCurrentView, setImmersiveMode]);
 
   const openGardenFlowOnboarding = useCallback(() => {
     void (async () => {
@@ -70,8 +73,9 @@ export function useGardenFlowShellNavigation({
   const navigateToManuscript = useCallback((filePath: string) => {
     uiTraceInteraction('app', 'open_manuscript_editor', { sourceView: currentView });
     setActiveManuscriptEditorFile(filePath);
+    setActiveVideoProjectId(null);
     setCurrentView('gardenflow');
-  }, [currentView, setActiveManuscriptEditorFile, setCurrentView]);
+  }, [currentView, setActiveManuscriptEditorFile, setActiveVideoProjectId, setCurrentView]);
 
   const closeManuscriptEditor = useCallback(() => {
     setActiveManuscriptEditorFile(null);
@@ -80,14 +84,16 @@ export function useGardenFlowShellNavigation({
 
   const openGardenFlowChatSurface = useCallback(() => {
     setActiveManuscriptEditorFile(null);
+    setActiveVideoProjectId(null);
     setImmersiveMode(false);
     setCurrentView('gardenflow');
-  }, [setActiveManuscriptEditorFile, setCurrentView, setImmersiveMode]);
+  }, [setActiveManuscriptEditorFile, setActiveVideoProjectId, setCurrentView, setImmersiveMode]);
 
   const openGardenFlowSession = useCallback((sessionId: string) => {
     const nextSessionId = String(sessionId || '').trim();
     if (!nextSessionId) return;
     setActiveManuscriptEditorFile(null);
+    setActiveVideoProjectId(null);
     setImmersiveMode(false);
     setGardenFlowNavigationAction({
       action: 'open-session',
@@ -95,7 +101,7 @@ export function useGardenFlowShellNavigation({
       nonce: Date.now(),
     });
     setCurrentView('gardenflow');
-  }, [setActiveManuscriptEditorFile, setCurrentView, setImmersiveMode]);
+  }, [setActiveManuscriptEditorFile, setActiveVideoProjectId, setCurrentView, setImmersiveMode]);
 
   return {
     gardenflowOnboardingVersion,

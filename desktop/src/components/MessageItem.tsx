@@ -620,6 +620,7 @@ export type ChatMessageLinkKind =
   | 'video'
   | 'audio'
   | 'manuscript'
+  | 'video-project'
   | 'document'
   | 'pdf'
   | 'html'
@@ -641,7 +642,7 @@ export interface ChatMessageLinkTarget {
   mimeType?: string;
   sizeBytes?: number;
   previewText?: string;
-  artifactType?: 'xiaohongshu-note';
+  artifactType?: 'xiaohongshu-note' | 'product-video-project';
   noteType?: XhsNoteType;
   projectPath?: string;
   relativePath?: string;
@@ -831,7 +832,7 @@ const TEXT_LINK_EXTENSIONS = new Set([
   'lock',
 ]);
 const ARCHIVE_LINK_EXTENSIONS = new Set(['zip', 'rar', '7z', 'tar', 'gz', 'tgz']);
-const PREVIEW_VIRTUAL_PATH_RE = /^(workspace|knowledge|manuscripts|media|cover|gardenflow):\/\/.+/i;
+const PREVIEW_VIRTUAL_PATH_RE = /^(workspace|knowledge|manuscripts|media|cover|gardenflow|video-project):\/\/.+/i;
 const PREVIEW_PATH_LINKIFY_EXT_PATTERN = '(?:png|jpe?g|webp|gif|bmp|svg|avif|ico|tiff?|mp4|webm|mov|m4v|mkv|avi|ogv|mp3|wav|m4a|flac|aac|ogg|oga|opus|pdf|docx?|odt|pptx?|odp|xlsx?|ods|html?|md|markdown|redpost|redvideo|thrive|txt|srt|vtt|diff|patch|json|csv|tsv|ya?ml|toml|ini|conf|config|env|xml|log|sql|sh|bash|zsh|fish|ts|tsx|js|jsx|mjs|cjs|rs|py|go|java|c|cpp|cc|cxx|h|hpp|hh|hxx|css|scss|sass|less|vue|svelte|astro|rb|php|swift|kt|kts|scala|r|lua|pl|pm|dart|dockerfile|lock|zip|rar|7z|tar|gz|tgz)';
 const PREVIEW_PATH_LINKIFY_RE = new RegExp(
   String.raw`(^|[\s([{])((?:(?:workspace|knowledge|manuscripts|media|cover|gardenflow):\/\/|file:\/\/|local-file:\/\/|gardenflow-asset:\/\/asset\/|[A-Za-z]:[\\/]|\\\\|\/|\.{1,2}[\\/]|[A-Za-z0-9._@ -]+[\\/])[^<>"'\n\r]*?\.${PREVIEW_PATH_LINKIFY_EXT_PATTERN})(?=$|[\s)\]},.!?;:'">])`,
@@ -911,6 +912,7 @@ const getExtension = (value: string): string | undefined => {
 
 const inferMessageLinkKind = (href: string, localPathCandidate?: string): ChatMessageLinkKind => {
   const source = localPathCandidate || href;
+  if (/^video-project:\/\//i.test(source)) return 'video-project';
   const extension = getExtension(source);
   if (!extension) return /^https?:\/\//i.test(href) ? 'web' : 'unknown';
   if (IMAGE_LINK_EXTENSIONS.has(extension)) return 'image';
@@ -936,6 +938,8 @@ const getMessageLinkKindLabel = (target: ChatMessageLinkTarget): string => {
         return '音频';
       case 'manuscript':
         return '稿件';
+      case 'video-project':
+        return '商品视频工程';
       case 'document':
         return '文档';
       case 'web':
@@ -958,6 +962,7 @@ const getMessageLinkIcon = (kind: ChatMessageLinkKind) => {
     case 'image':
       return ImageIcon;
     case 'video':
+    case 'video-project':
       return Video;
     case 'audio':
       return Music;

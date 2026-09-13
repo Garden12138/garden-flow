@@ -93,6 +93,11 @@ export interface RemotionScene {
     durationInFrames: number;
     trimInFrames?: number;
     motionPreset?: MotionPreset;
+    fitMode?: 'contain-blur' | 'cover';
+    volume?: number;
+    fadeInFrames?: number;
+    fadeOutFrames?: number;
+    muted?: boolean;
     overlayTitle?: string;
     overlayBody?: string;
     overlays?: RemotionOverlay[];

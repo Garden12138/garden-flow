@@ -39,6 +39,7 @@ export interface ToolConfirmationDetails {
 export interface ToolConfirmRequestPayload {
   callId: string;
   name: string;
+  params?: Record<string, unknown>;
   details: ToolConfirmationDetails;
 }
 

@@ -11,6 +11,7 @@ export { GrepTool } from './grepTool';
 export { BashTool } from './bashTool';
 export { AppCliTool } from './appCliTool';
 export { AudioGenerateTool, ImageGenerateTool, VideoGenerateTool } from './mediaGenerationTools';
+export { ProductVideoComposeTool } from './productVideoComposeTool';
 export { WorkspaceTool } from './workspaceTool';
 // 辅助工具
 export { CalculatorTool } from './calculatorTool';
@@ -41,6 +42,7 @@ import { SkillTool } from './skillTool';
 import { BashTool } from './bashTool';
 import { AppCliTool } from './appCliTool';
 import { AudioGenerateTool, ImageGenerateTool, VideoGenerateTool } from './mediaGenerationTools';
+import { ProductVideoComposeTool } from './productVideoComposeTool';
 import { WorkspaceTool } from './workspaceTool';
 import {
     createBuiltinToolInstances,
@@ -137,6 +139,21 @@ const ensureBuiltinToolDescriptorsRegistered = (): void => {
         artifactOutput: ['video'],
         retryPolicy: 'manual',
         create: () => new VideoGenerateTool(),
+    });
+    register({
+        name: 'product_video_compose',
+        displayName: 'Compose Product Video',
+        description: 'Create a review-gated editable product video project from trusted product assets and an approved storyboard.',
+        kind: ToolKind.Execute,
+        contexts: ['gardenflow', 'diagnostics'],
+        visibility: 'public',
+        requiresContext: null,
+        preconditions: ['one product only', 'storyboard must reference product-owned assets', 'user confirmation is mandatory'],
+        successSignal: 'editable product-video project link returned',
+        failureSignal: 'proposal, product assets, generation, or project assembly failed',
+        artifactOutput: ['project', 'video'],
+        retryPolicy: 'manual',
+        create: () => new ProductVideoComposeTool(),
     });
     register({
         name: 'audio_generate',

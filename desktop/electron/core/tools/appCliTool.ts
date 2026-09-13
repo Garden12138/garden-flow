@@ -124,6 +124,7 @@ import {
 } from '../subjectsLibraryStore';
 import { generateImagesToMediaLibrary } from '../imageGenerationService';
 import { generateVideosToMediaLibrary, VideoGenerationProviderError } from '../videoGenerationService';
+import { createBrandWorkspaceStore } from '../brandWorkspaceStore';
 import { SkillManager } from '../skillManager';
 import { getWorkItemStore, type WorkItemStatus, type WorkItemType } from '../workItemStore';
 import {
@@ -289,6 +290,7 @@ const CONCURRENCY_SAFE_APP_CLI_ACTIONS = new Map<string, Set<string>>([
     ['media', new Set(['list', 'get', 'search'])],
     ['video-edit', new Set(['list', 'get'])],
     ['subjects', new Set(['list', 'get', 'search'])],
+    ['products', new Set(['get'])],
     ['mcp', new Set(['list', 'status', 'oauth-status'])],
     ['settings', new Set(['get', 'show'])],
     ['archives', new Set(['list', 'get'])],
@@ -648,6 +650,11 @@ const APP_CLI_NAMESPACE_HELP: Record<string, { summary: string; actions: string[
         summary: 'Search subjects/personas/products and categories.',
         actions: ['list', 'get', 'search', 'categories'],
         examples: ['subjects search --query "张三 Z001 跑鞋"', 'subjects get --id subject_xxx'],
+    },
+    products: {
+        summary: 'Read trusted product facts and creative image assets.',
+        actions: ['get'],
+        examples: ['products get --id product_xxx'],
     },
     image: {
         summary: 'Generate images, including reference-guided flows.',
@@ -1897,6 +1904,8 @@ export class AppCliTool extends DeclarativeTool<typeof AppCliParamsSchema> {
                 return this.handleMedia(parsed, payload);
             case 'subjects':
                 return this.handleSubjects(parsed, payload);
+            case 'products':
+                return this.handleProducts(parsed, payload);
             case 'image':
                 return this.handleImage(parsed, payload);
             case 'video':
@@ -3358,6 +3367,13 @@ export class AppCliTool extends DeclarativeTool<typeof AppCliParamsSchema> {
         }
 
         throw new Error(`Unsupported subjects action: ${action}`);
+    }
+
+    private async handleProducts(parsed: ParsedCommand, payload: Record<string, unknown>) {
+        if (parsed.action !== 'get') throw new Error(`Unsupported products action: ${parsed.action}`);
+        const id = requireString(readFlag(parsed.flags, 'id', 'product-id') || payload.id || payload.productId, 'productId');
+        const store = createBrandWorkspaceStore(() => path.join(getWorkspacePaths().subjects, 'brand-workspace'));
+        return { product: await store.getProductCreativeReference(id) };
     }
 
     private async handleVideoEdit(parsed: ParsedCommand, payload: Record<string, unknown>) {

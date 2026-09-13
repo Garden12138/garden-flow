@@ -1,5 +1,7 @@
-import { AlertTriangle, Terminal, FileEdit, Info, X, Check } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, Terminal, FileEdit, Info, X, Check, Image as ImageIcon, Sparkles } from 'lucide-react';
 import { clsx } from 'clsx';
+import { resolveAssetUrl } from '../utils/pathManager';
 
 interface ToolConfirmDialogProps {
     request: ToolConfirmRequest | null;
@@ -19,11 +21,58 @@ const TYPE_COLORS = {
     info: 'border-gray-500/50 bg-gray-500/5',
 };
 
+type ProductReference = {
+    id: string;
+    name: string;
+    skus?: Array<{ id: string; name: string; variantText?: string }>;
+    assets: Array<{ id: string; role: string; origin: string; previewUrl: string }>;
+};
+
+type ProductProposalScene = {
+    id: string;
+    title: string;
+    durationMs: number;
+    source: 'product-asset' | 'ai-motion';
+    productAssetIds: string[];
+    overlayText?: string;
+    generationPrompt?: string;
+};
+
 export function ToolConfirmDialog({ request, onConfirm, onCancel }: ToolConfirmDialogProps) {
+    const [productReference, setProductReference] = useState<ProductReference | null>(null);
+
+    useEffect(() => {
+        setProductReference(null);
+        if (request?.name !== 'product_video_compose') return;
+        const productId = String(request.params?.productId || '').trim();
+        if (!productId) return;
+        let active = true;
+        void window.ipcRenderer.brandWorkspace.getProductCreativeReference<{
+            success?: boolean;
+            product?: ProductReference;
+        }>({ id: productId }).then((result) => {
+            if (active && result.success && result.product) setProductReference(result.product);
+        }).catch(() => undefined);
+        return () => {
+            active = false;
+        };
+    }, [request]);
+
+    const proposalScenes = useMemo(() => (
+        Array.isArray(request?.params?.scenes)
+            ? request.params.scenes.filter((scene): scene is ProductProposalScene => Boolean(scene && typeof scene === 'object'))
+            : []
+    ), [request]);
+
     if (!request) return null;
 
     const Icon = TYPE_ICONS[request.details.type] || AlertTriangle;
     const colorClass = TYPE_COLORS[request.details.type] || TYPE_COLORS.info;
+    const productSpecification = productReference?.skus
+        ?.map((sku) => String(sku.variantText || sku.name || '').trim())
+        .filter(Boolean)
+        .slice(0, 3)
+        .join(' · ');
 
     return (
         <div className={clsx(
@@ -51,6 +100,39 @@ export function ToolConfirmDialog({ request, onConfirm, onCancel }: ToolConfirmD
 
             <div className="px-4 py-3 bg-surface-primary">
                 <div className="space-y-3">
+                    {request.name === 'product_video_compose' && proposalScenes.length > 0 && (
+                        <div className="space-y-2">
+                            <div className="flex items-center justify-between text-xs">
+                                <span className="font-semibold text-text-primary">{productReference?.name || String(request.params?.productName || '商品')}</span>
+                                <span className="text-text-tertiary">{proposalScenes.filter((scene) => scene.source === 'ai-motion').length} 个 AI 镜头</span>
+                            </div>
+                            {productSpecification && <p className="text-[10px] text-text-tertiary">规格：{productSpecification}</p>}
+                            <div className="grid max-h-72 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
+                                {proposalScenes.map((scene, index) => {
+                                    const asset = productReference?.assets.find((item) => scene.productAssetIds.includes(item.id));
+                                    return (
+                                        <div key={scene.id} className="flex gap-2 rounded-xl border border-border bg-surface-secondary p-2">
+                                            <div className="flex h-20 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-black/80">
+                                                {asset?.previewUrl
+                                                    ? <img src={resolveAssetUrl(asset.previewUrl)} alt={scene.title} className="h-full w-full object-cover" />
+                                                    : <ImageIcon className="h-4 w-4 text-white/40" />}
+                                            </div>
+                                            <div className="min-w-0 flex-1 py-0.5">
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-[10px] font-bold text-text-tertiary">{index + 1}</span>
+                                                    <p className="truncate text-xs font-semibold text-text-primary">{scene.title}</p>
+                                                </div>
+                                                <p className="mt-1 text-[10px] text-text-tertiary">{(scene.durationMs / 1000).toFixed(1)} 秒 · {scene.source === 'ai-motion' ? 'AI 动效' : '原始素材'} · {asset?.role || '图片'}</p>
+                                                {scene.overlayText && <p className="mt-1 line-clamp-2 text-[10px] text-text-secondary">文字：{scene.overlayText}</p>}
+                                                {scene.source === 'ai-motion' && <p className="mt-1 inline-flex items-center gap-1 text-[10px] text-amber-700"><Sparkles className="h-3 w-3" />参考图生成，无内置音频</p>}
+                                                {scene.source === 'ai-motion' && scene.generationPrompt && <p className="mt-1 line-clamp-3 text-[10px] leading-relaxed text-text-secondary">生成描述：{scene.generationPrompt}</p>}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
                     <div className="text-xs text-text-secondary whitespace-pre-wrap font-mono bg-surface-secondary p-3 rounded-xl border border-border max-h-40 overflow-auto">
                         {request.details.description}
                     </div>

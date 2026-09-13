@@ -35,7 +35,7 @@ active_note_uri={{active_xhs_note_uri}}
    `app_cli(command="image generate --prompt ... --note-path <工程路径> --slot-id <槽位 ID> --completion-scope note")`。
    生成工具会在返回前把图片绑定到槽位；不要先批量生成、最后再集中绑定。`imagePages[]` 只表示内页，封面单独绑定到 `cover` 槽位。
    整篇生图使用 `--completion-scope note`，只有用户明确要求仅生成或重做某一个槽位时才使用 `--completion-scope slot`。整篇生图必须持续执行，直到封面和全部图文页槽位均为 `ready`；不得用“正在生成下一张”等过程说明提前结束任务。
-7. 视频必须遵守 `gardenflow-video-director` 的“脚本确认后生成”流程。用户确认脚本前不调用视频生成。确认后不要再停留在帮助查询或过程说明：
+7. 视频必须遵守 `video-director` 的审核与生成流程。用户确认前不调用视频生成。确认后不要再停留在帮助查询或过程说明：
    - 单镜头且总时长不超过 12 秒：调用 `app_cli(command="video generate --prompt ... --duration <秒数> --aspect-ratio <比例> --note-path <工程路径> --slot-id final-video")`。
    - 多镜头或总时长超过 12 秒：调用 `app_cli(command="video generate-note --note-path <工程路径> --slot-id final-video")`。该原子动作会读取已确认分镜，自动拆成不超过 12 秒的片段，逐段生成、拼接成目标时长，再绑定到 `final-video`。
    只有生成工具成功返回 `xhsBinding=...#final-video` 后才算完成；帮助输出、`note-get`、孤立媒体文件或口头说明都不算交付。

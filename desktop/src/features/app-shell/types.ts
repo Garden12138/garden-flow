@@ -48,6 +48,10 @@ export type AppIntent =
   | {
       type: 'manuscript.open';
       manuscriptPath: string;
+    }
+  | {
+      type: 'video-project.open';
+      projectId: string;
     };
 
 export type AppNavigateEventDetail = AppIntent;

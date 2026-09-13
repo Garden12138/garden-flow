@@ -72,6 +72,34 @@ export type BrandWorkspaceAssetRef = Omit<StoredAssetRef, 'relativePath'> & {
   absolutePath: string;
 };
 
+export type ProductCreativeReference = {
+  type: 'product-creative-reference';
+  id: string;
+  name: string;
+  updatedAt: string;
+  productVersion: string;
+  brandName?: string;
+  description?: string;
+  audience?: string;
+  usageScenarios: string[];
+  brandStyle?: string;
+  facts: Array<{ key: string; value: string; origin: BrandWorkspaceFact['origin'] }>;
+  skus: Array<{ id: string; name: string; variantText?: string; externalId?: string }>;
+  sources: Array<{
+    platform: string;
+    sourceUrl: string;
+    capturedAt: string;
+    price?: ProductSourceSnapshot['price'];
+    parameters: Array<{ key: string; value: string }>;
+  }>;
+  assets: Array<{
+    id: string;
+    role: string;
+    origin: StoredAssetRef['origin'];
+    previewUrl: string;
+  }>;
+};
+
 export type ProductSourceSnapshot = {
   captureVersion?: number;
   id: string;
@@ -475,6 +503,71 @@ export function createBrandWorkspaceStore(rootProvider: () => string) {
     };
   }
 
+  async function getProductCreativeReference(idInput: string): Promise<ProductCreativeReference> {
+    const catalog = await readCatalog();
+    const id = cleanId(idInput);
+    const product = catalog.products.find((item) => item.id === id);
+    if (!product) throw new Error('商品不存在');
+    const brand = product.brandId ? catalog.brands.find((item) => item.id === product.brandId) : undefined;
+    const skus = catalog.skus.filter((sku) => sku.productId === product.id);
+    const skuIds = new Set(skus.map((sku) => sku.id));
+    const detailPageIds = new Set(catalog.detailPages.filter((page) => page.productId === product.id).map((page) => page.id));
+    const storedAssets = catalog.assets.filter((asset) => (
+      (asset.ownerType === 'product' && asset.ownerId === product.id)
+      || (asset.ownerType === 'sku' && skuIds.has(asset.ownerId))
+      || (asset.ownerType === 'product-detail' && detailPageIds.has(asset.ownerId))
+    ));
+    const sources = catalog.sourceSnapshots
+      .filter((snapshot) => snapshot.productId === product.id)
+      .sort((left, right) => right.capturedAt.localeCompare(left.capturedAt));
+    return {
+      type: 'product-creative-reference',
+      id: product.id,
+      name: product.name,
+      updatedAt: product.updatedAt,
+      productVersion: product.updatedAt,
+      brandName: brand?.name || sources[0]?.brandName,
+      description: product.description,
+      audience: product.audience,
+      usageScenarios: product.usageScenarios || [],
+      brandStyle: product.brandStyle,
+      facts: product.facts.map((fact) => ({ key: fact.key, value: fact.value, origin: fact.origin })),
+      skus: skus.map((sku) => ({ id: sku.id, name: sku.name, variantText: sku.variantText, externalId: sku.externalId })),
+      sources: sources.slice(0, 4).map((source) => ({
+        platform: source.platform,
+        sourceUrl: source.sourceUrl,
+        capturedAt: source.capturedAt,
+        price: source.price,
+        parameters: source.parameters,
+      })),
+      assets: storedAssets.map((asset) => ({
+        id: asset.id,
+        role: asset.role,
+        origin: asset.origin,
+        previewUrl: toAppAssetUrl(path.join(rootProvider(), asset.relativePath)),
+      })),
+    };
+  }
+
+  async function resolveProductCreativeAssetPaths(idInput: string, assetIdsInput: string[]) {
+    const catalog = await readCatalog();
+    const id = cleanId(idInput);
+    const product = catalog.products.find((item) => item.id === id);
+    if (!product) throw new Error('商品不存在');
+    const skuIds = new Set(catalog.skus.filter((sku) => sku.productId === product.id).map((sku) => sku.id));
+    const detailPageIds = new Set(catalog.detailPages.filter((page) => page.productId === product.id).map((page) => page.id));
+    const allowed = new Map(catalog.assets.filter((asset) => (
+      (asset.ownerType === 'product' && asset.ownerId === product.id)
+      || (asset.ownerType === 'sku' && skuIds.has(asset.ownerId))
+      || (asset.ownerType === 'product-detail' && detailPageIds.has(asset.ownerId))
+    )).map((asset) => [asset.id, asset]));
+    return Array.from(new Set(assetIdsInput.map(cleanId).filter(Boolean))).map((assetId) => {
+      const asset = allowed.get(assetId);
+      if (!asset) throw new Error(`商品素材不存在或不属于当前商品：${assetId}`);
+      return { assetId, absolutePath: path.join(rootProvider(), asset.relativePath) };
+    });
+  }
+
   async function upsertBrand(input: {
     id?: string;
     name?: string;
@@ -813,6 +906,14 @@ export function createBrandWorkspaceStore(rootProvider: () => string) {
     getProductAiReference: async (id: string) => {
       await mutationQueue;
       return getProductAiReference(id);
+    },
+    getProductCreativeReference: async (id: string) => {
+      await mutationQueue;
+      return getProductCreativeReference(id);
+    },
+    resolveProductCreativeAssetPaths: async (id: string, assetIds: string[]) => {
+      await mutationQueue;
+      return resolveProductCreativeAssetPaths(id, assetIds);
     },
     upsertBrand: (input: Parameters<typeof upsertBrand>[0]) => enqueueMutation(() => upsertBrand(input)),
     upsertProduct: (input: Parameters<typeof upsertProduct>[0]) => enqueueMutation(() => upsertProduct(input)),

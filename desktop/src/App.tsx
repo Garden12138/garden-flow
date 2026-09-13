@@ -33,6 +33,7 @@ const GenerationStudioPage = lazy(async () => ({ default: (await import('./pages
 const SubjectsPage = lazy(async () => ({ default: (await import('./pages/Subjects')).Subjects }));
 const AutomationPage = lazy(async () => ({ default: (await import('./pages/Automation')).Automation }));
 const ApprovalPage = lazy(async () => ({ default: (await import('./pages/Approval')).Approval }));
+const ProductVideoWorkbench = lazy(async () => ({ default: (await import('./pages/ProductVideoWorkbench')).ProductVideoWorkbench }));
 
 function ViewLoadingFallback() {
   const { t } = useI18n();
@@ -52,6 +53,8 @@ function AuthenticatedApp() {
     setImmersiveMode,
     activeManuscriptEditorFile,
     setActiveManuscriptEditorFile,
+    activeVideoProjectId,
+    setActiveVideoProjectId,
     mountedViews,
     persistentViews,
     navigateToView,
@@ -112,6 +115,7 @@ function AuthenticatedApp() {
     currentView,
     setCurrentView,
     setActiveManuscriptEditorFile,
+    setActiveVideoProjectId,
     setImmersiveMode,
   });
 
@@ -127,6 +131,7 @@ function AuthenticatedApp() {
     navigateToView,
     setCurrentView,
     setActiveManuscriptEditorFile,
+    setActiveVideoProjectId,
     setSettingsNavigationTarget,
     setGardenFlowNavigationAction,
     setApprovalTargetDocketId,
@@ -141,8 +146,9 @@ function AuthenticatedApp() {
     handleCoverStudioExecutionStateChange,
   } = useExecutionPersistence(setViewPersistent);
 
-  const isManuscriptEditorActive = currentView === 'gardenflow' && Boolean(activeManuscriptEditorFile);
-  const effectiveImmersiveMode: ImmersiveMode = isManuscriptEditorActive ? false : immersiveMode;
+  const isVideoProjectActive = currentView === 'gardenflow' && Boolean(activeVideoProjectId);
+  const isManuscriptEditorActive = currentView === 'gardenflow' && Boolean(activeManuscriptEditorFile) && !isVideoProjectActive;
+  const effectiveImmersiveMode: ImmersiveMode = isManuscriptEditorActive || isVideoProjectActive ? false : immersiveMode;
 
   return (
     <>
@@ -154,6 +160,14 @@ function AuthenticatedApp() {
         globalSidebarContent={gardenFlowGlobalSidebarContent}
         activeModalView={subjectsModalOpen ? 'subjects' : undefined}
         renderTitleBarContent={({ currentView }) => {
+          if (isVideoProjectActive) {
+            return (
+              <div className="inline-flex min-w-0 items-center gap-2 text-[12px] font-semibold text-text-secondary">
+                <FileText className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
+                <span className="truncate">商品视频工程</span>
+              </div>
+            );
+          }
           if (isManuscriptEditorActive) {
             return (
               <div className="inline-flex min-w-0 items-center gap-2 text-[12px] font-semibold text-text-secondary">
@@ -191,6 +205,11 @@ function AuthenticatedApp() {
                   source: 'standalone',
                 })}
                 onOpenManuscript={navigateToManuscript}
+                onOpenVideoProject={(projectId) => {
+                  setActiveManuscriptEditorFile(null);
+                  setActiveVideoProjectId(projectId);
+                  setCurrentView('gardenflow');
+                }}
               />
             </Suspense>
           </div>
@@ -206,6 +225,13 @@ function AuthenticatedApp() {
                 onClose={closeManuscriptEditor}
                 onImmersiveModeChange={setImmersiveMode}
               />
+            </Suspense>
+          </div>
+        )}
+        {isVideoProjectActive && activeVideoProjectId && (
+          <div className="h-full min-h-0 flex flex-col overflow-hidden">
+            <Suspense fallback={<ViewLoadingFallback />}>
+              <ProductVideoWorkbench projectId={activeVideoProjectId} onClose={() => setActiveVideoProjectId(null)} />
             </Suspense>
           </div>
         )}
@@ -260,7 +286,7 @@ function AuthenticatedApp() {
           </div>
         )}
         {(currentView !== 'gardenflow' || shouldRenderView(mountedViews, currentView, persistentViews, 'gardenflow')) && (
-          <div className={currentView === 'gardenflow' && !isManuscriptEditorActive ? 'h-full min-h-0 flex flex-col' : 'hidden'}>
+          <div className={currentView === 'gardenflow' && !isManuscriptEditorActive && !isVideoProjectActive ? 'h-full min-h-0 flex flex-col' : 'hidden'}>
             <Suspense fallback={currentView === 'gardenflow' ? <ViewLoadingFallback /> : null}>
               <GardenFlowPage
                 pendingMessage={pendingGardenFlowMessage}

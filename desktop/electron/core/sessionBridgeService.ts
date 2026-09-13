@@ -305,15 +305,21 @@ export class SessionBridgeService extends EventEmitter {
     }
     const resolvedAt = Date.now();
     const request = pending.request;
+    const resolvedOutcome = request.details.requiresUserAcknowledgement === true
+      && outcome !== ToolConfirmationOutcome.Cancel
+      ? ToolConfirmationOutcome.ProceedAfterUserAcknowledgement
+      : outcome;
     request.resolvedAt = resolvedAt;
-    request.decision = outcome;
-    request.status = outcome === ToolConfirmationOutcome.ProceedAlways
+    request.decision = resolvedOutcome;
+    request.status = resolvedOutcome === ToolConfirmationOutcome.ProceedAfterUserAcknowledgement
+      ? 'approved_once'
+      : outcome === ToolConfirmationOutcome.ProceedAlways
       ? 'approved_always'
       : outcome === ToolConfirmationOutcome.ProceedOnce
         ? 'approved_once'
         : 'cancelled';
     this.pendingPermissionRequests.delete(requestId);
-    pending.resolve(outcome);
+    pending.resolve(resolvedOutcome);
     this.broadcast(request.sessionId, {
       type: 'permission_resolved',
       payload: request,

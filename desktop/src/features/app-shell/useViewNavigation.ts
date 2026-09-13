@@ -57,6 +57,7 @@ export function useViewNavigation() {
   const [currentView, setCurrentView] = useState<ViewType>(readInitialView);
   const [immersiveMode, setImmersiveMode] = useState<ImmersiveMode>(false);
   const [activeManuscriptEditorFile, setActiveManuscriptEditorFile] = useState<string | null>(null);
+  const [activeVideoProjectId, setActiveVideoProjectId] = useState<string | null>(null);
   const [mountedViews, setMountedViews] = useState<Set<ViewType>>(() => computeMountedViews([currentView]));
   const [persistentViews, setPersistentViews] = useState<Set<ViewType>>(() => new Set());
   const viewHistoryRef = useRef<ViewType[]>([currentView]);
@@ -71,6 +72,7 @@ export function useViewNavigation() {
 
   const navigateToView = useCallback((view: ViewType) => {
     setActiveManuscriptEditorFile(null);
+    setActiveVideoProjectId(null);
     setImmersiveMode(false);
     setCurrentView(view);
   }, []);
@@ -103,6 +105,8 @@ export function useViewNavigation() {
     setImmersiveMode,
     activeManuscriptEditorFile,
     setActiveManuscriptEditorFile,
+    activeVideoProjectId,
+    setActiveVideoProjectId,
     mountedViews,
     persistentViews,
     navigateToView,

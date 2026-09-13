@@ -50,6 +50,7 @@ type SceneTransitionWindow = {
 };
 
 export interface VideoMotionCompositionProps {
+    [key: string]: unknown;
     composition: RemotionCompositionConfig;
     runtime?: RuntimeMode;
 }
@@ -912,7 +913,7 @@ function SceneLayerContent({
     const contentStyle: React.CSSProperties = {
         width: '100%',
         height: '100%',
-        objectFit: 'cover',
+        objectFit: scene.fitMode === 'contain-blur' ? 'contain' : 'cover',
         transform: `translate3d(${motion.translateX}px, ${motion.translateY}px, 0) scale(${motion.scale})`,
         opacity: baseOpacity,
     };
@@ -925,16 +926,36 @@ function SceneLayerContent({
             }}
         >
             {showBaseMedia && scene.assetKind === 'audio' ? (
-                <Audio src={source} />
+                <Audio
+                    src={source}
+                    startFrom={scene.trimInFrames || 0}
+                    volume={(frame) => {
+                        const base = Math.max(0, Math.min(1, Number(scene.volume ?? 1)));
+                        const fadeIn = Math.max(0, Number(scene.fadeInFrames || 0));
+                        const fadeOut = Math.max(0, Number(scene.fadeOutFrames || 0));
+                        const fadeInGain = fadeIn > 0 ? Math.min(1, frame / fadeIn) : 1;
+                        const remaining = Math.max(0, scene.durationInFrames - frame);
+                        const fadeOutGain = fadeOut > 0 ? Math.min(1, remaining / fadeOut) : 1;
+                        return base * Math.min(fadeInGain, fadeOutGain);
+                    }}
+                />
             ) : null}
             {showBaseMedia && scene.assetKind === 'image' ? (
-                <Img src={source} style={contentStyle} />
+                <>
+                    {scene.fitMode === 'contain-blur' && (
+                        <Img
+                            src={source}
+                            style={{ position: 'absolute', inset: '-6%', width: '112%', height: '112%', objectFit: 'cover', filter: 'blur(42px)', opacity: 0.48 }}
+                        />
+                    )}
+                    <Img src={source} style={contentStyle} />
+                </>
             ) : showBaseMedia && scene.assetKind === 'video' ? (
                 runtime === 'preview' ? (
                     <Html5Video
                         src={source}
                         style={contentStyle}
-                        muted={!enableMediaAudio}
+                        muted={scene.muted ?? !enableMediaAudio}
                         startFrom={scene.trimInFrames || 0}
                         endAt={(scene.trimInFrames || 0) + scene.durationInFrames}
                     />
@@ -942,7 +963,7 @@ function SceneLayerContent({
                     <OffthreadVideo
                         src={source}
                         style={contentStyle}
-                        muted={!enableMediaAudio}
+                        muted={scene.muted ?? !enableMediaAudio}
                         startFrom={scene.trimInFrames || 0}
                         endAt={(scene.trimInFrames || 0) + scene.durationInFrames}
                     />

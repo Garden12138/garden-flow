@@ -33,6 +33,7 @@ type UseGlobalIntentRouterParams = {
   navigateToView: (view: ViewType) => void;
   setCurrentView: (view: ViewType) => void;
   setActiveManuscriptEditorFile: (value: string | null) => void;
+  setActiveVideoProjectId: (value: string | null) => void;
   setSettingsNavigationTarget: (value: SettingsNavigationTarget | null) => void;
   setGardenFlowNavigationAction: (value: GardenFlowNavigationAction | null) => void;
   setApprovalTargetDocketId: (value: string) => void;
@@ -44,6 +45,7 @@ export function useGlobalIntentRouter({
   navigateToView,
   setCurrentView,
   setActiveManuscriptEditorFile,
+  setActiveVideoProjectId,
   setSettingsNavigationTarget,
   setGardenFlowNavigationAction,
   setApprovalTargetDocketId,
@@ -133,7 +135,17 @@ export function useGlobalIntentRouter({
         const manuscriptPath = String(intent.manuscriptPath || '').trim();
         if (!manuscriptPath) return;
         setActiveManuscriptEditorFile(manuscriptPath);
-        navigateToView('gardenflow');
+        setActiveVideoProjectId(null);
+        setCurrentView('gardenflow');
+        return;
+      }
+
+      if (intent.type === 'video-project.open') {
+        const projectId = String(intent.projectId || '').trim();
+        if (!projectId) return;
+        setActiveManuscriptEditorFile(null);
+        setActiveVideoProjectId(projectId);
+        setCurrentView('gardenflow');
         return;
       }
 
@@ -150,10 +162,12 @@ export function useGlobalIntentRouter({
     navigateToView,
     navigateToGardenFlow,
     setActiveManuscriptEditorFile,
+    setActiveVideoProjectId,
     setApprovalTargetDocketId,
     setPendingGenerationIntent,
     setGardenFlowNavigationAction,
     setSettingsNavigationTarget,
+    setCurrentView,
   ]);
 
   useEffect(() => {

@@ -6,6 +6,7 @@
  */
 
 import { z } from 'zod';
+import { satisfiesUserAcknowledgement, shouldRequestToolConfirmation } from '../../shared/toolConfirmationPolicy';
 import { attachLocalImagesToToolResult } from './toolImageAttachments';
 
 // ========== Tool Types ==========
@@ -92,6 +93,7 @@ export interface ToolConfirmationDetails {
 export enum ToolConfirmationOutcome {
     ProceedOnce = 'proceed_once',
     ProceedAlways = 'proceed_always',
+    ProceedAfterUserAcknowledgement = 'proceed_after_user_acknowledgement',
     Cancel = 'cancel',
 }
 
@@ -642,10 +644,15 @@ export class ToolExecutor {
         }
 
         // 检查是否需要确认
-        const requiresConfirmation = (tool.requiresConfirmation || request.forceConfirmation) && !this.autoConfirmTools.has(name);
+        const confirmationDetails = request.confirmationDetails || tool.getConfirmationDetails?.(params) || null;
+        const requiresUserAcknowledgement = confirmationDetails?.requiresUserAcknowledgement === true;
+        const requiresConfirmation = shouldRequestToolConfirmation({
+            requiresConfirmation: Boolean(tool.requiresConfirmation || request.forceConfirmation),
+            requiresUserAcknowledgement,
+            isAutoConfirmed: this.autoConfirmTools.has(name),
+        });
         if (requiresConfirmation) {
-            const confirmDetails = request.confirmationDetails || tool.getConfirmationDetails?.(params) || null;
-            if (!confirmDetails || !this.onConfirmRequest) {
+            if (!confirmationDetails || !this.onConfirmRequest) {
                 return {
                     callId,
                     name,
@@ -657,7 +664,7 @@ export class ToolExecutor {
                 };
             }
 
-            const outcome = await this.onConfirmRequest(callId, tool, params, confirmDetails);
+            const outcome = await this.onConfirmRequest(callId, tool, params, confirmationDetails);
 
             if (outcome === ToolConfirmationOutcome.Cancel) {
                 return {
@@ -668,7 +675,19 @@ export class ToolExecutor {
                 };
             }
 
-            if (outcome === ToolConfirmationOutcome.ProceedAlways) {
+            if (!satisfiesUserAcknowledgement(requiresUserAcknowledgement, outcome)) {
+                return {
+                    callId,
+                    name,
+                    result: createErrorResult(
+                        `Tool "${name}" requires explicit user acknowledgement`,
+                        ToolErrorType.PERMISSION_DENIED,
+                    ),
+                    durationMs: Date.now() - startTime,
+                };
+            }
+
+            if (outcome === ToolConfirmationOutcome.ProceedAlways && !requiresUserAcknowledgement) {
                 this.autoConfirmTools.add(name);
             }
         }

@@ -159,3 +159,42 @@ test('selected product references expose verified facts and sources to AI creati
   assert.equal(reference.sources[0].shopName, '宝路伟嘉京东自营旗舰店');
   assert.equal(reference.imageCount, 1);
 });
+
+test('creative product references expose previews while absolute paths stay in the main-process resolver', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'gardenflow-product-creative-reference-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const store = createBrandWorkspaceStore(() => root);
+  const first = await store.ingestProduct({
+    platform: 'jd',
+    externalId: 'creative-1',
+    sourceUrl: 'https://item.jd.com/creative-1.html',
+    title: '可信商品 A',
+    price: { text: '¥129', currency: 'CNY', label: '采集价' },
+    parameters: [{ key: '容量', value: '500ml' }],
+    images: [{ name: '主图', role: 'primary', dataUrl: ONE_PIXEL_PNG, origin: 'capture' }],
+  });
+  const second = await store.ingestProduct({
+    platform: 'jd',
+    externalId: 'creative-2',
+    sourceUrl: 'https://item.jd.com/creative-2.html',
+    title: '可信商品 B',
+    images: [{ name: '主图', role: 'primary', dataUrl: ONE_PIXEL_PNG, origin: 'capture' }],
+  });
+
+  const reference = await store.getProductCreativeReference(first.product.product.id);
+  assert.equal(reference.productVersion, reference.updatedAt);
+  assert.equal(reference.sources[0].price?.text, '¥129');
+  assert.equal(reference.assets[0].role, 'primary');
+  assert.match(reference.assets[0].previewUrl, /^gardenflow-asset:\/\/asset\//);
+  assert.equal('absolutePath' in reference.assets[0], false);
+
+  const resolved = await store.resolveProductCreativeAssetPaths(first.product.product.id, [reference.assets[0].id]);
+  assert.equal(resolved.length, 1);
+  assert.ok(path.isAbsolute(resolved[0].absolutePath));
+
+  const secondReference = await store.getProductCreativeReference(second.product.product.id);
+  await assert.rejects(
+    store.resolveProductCreativeAssetPaths(first.product.product.id, [secondReference.assets[0].id]),
+    /不属于当前商品/,
+  );
+});

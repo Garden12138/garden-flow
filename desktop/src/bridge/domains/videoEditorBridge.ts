@@ -8,6 +8,10 @@ export function createVideoEditorBridge(core: BridgeCore) {
       createProject: (payload?: Record<string, unknown>) =>
         core.invokeChannel('videoEditorV2:create-project', payload || {}),
       getProject: (payload: { projectId: string }) => core.invokeChannel('videoEditorV2:get-project', payload),
+      listProjects: () => core.invokeChannel('videoEditorV2:list-projects'),
+      applyProductCommand: (payload: Record<string, unknown>) => core.invokeChannel('videoEditorV2:apply-product-command', payload),
+      setProductMusic: (payload: { projectId: string; sourcePath?: string }) => core.invokeChannel('videoEditorV2:set-product-music', payload),
+      retryProductScene: (payload: { projectId: string; sceneId: string }) => core.invokeChannel('videoEditorV2:retry-product-scene', payload),
       importAssets: (payload: { projectId: string; sourcePaths?: string[] }) =>
         core.invokeChannel('videoEditorV2:import-assets', payload),
       importSrt: (payload: { projectId: string; assetId?: string; srtPath?: string; srtContent?: string; language?: string }) =>

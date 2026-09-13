@@ -14,6 +14,7 @@ import { shallowArrayEqual, useMediaJobsStore } from '../features/media-jobs/use
 import { isMediaJobTerminal, isMediaJobSuccessful, type MediaJobProjection } from '../features/media-jobs/types';
 import { hasRenderableAssetUrl, resolveAssetUrl } from '../utils/pathManager';
 import { uiMeasure, uiTraceInteraction } from '../utils/uiDebug';
+import { GARDENFLOW_NAVIGATE_EVENT } from '../notifications/types';
 import { subscribeRuntimeEventStream } from '../runtime/runtimeEventStream';
 import { useChatSessionActivities } from '../runtime/chatSessionStore';
 import {
@@ -71,7 +72,7 @@ interface FilePreviewResolveResult {
     mimeType?: string | null;
     sizeBytes?: number | null;
     previewText?: string | null;
-    artifactType?: 'xiaohongshu-note' | null;
+    artifactType?: 'xiaohongshu-note' | 'product-video-project' | null;
     noteType?: 'image' | 'video' | null;
     projectPath?: string | null;
     relativePath?: string | null;
@@ -193,6 +194,7 @@ const PREVIEW_KIND_SET = new Set<ChatMessageLinkKind>([
     'video',
     'audio',
     'manuscript',
+    'video-project',
     'document',
     'pdf',
     'html',
@@ -2273,6 +2275,19 @@ export function GardenFlow({
     }, [onOpenGardenFlowOnboarding, onboardingCompleted, onboardingKnown]);
 
     const handlePreviewLink = useCallback((target: ChatMessageLinkTarget) => {
+        const videoProjectMatch = String(target.href || '').trim().match(/^video-project:\/\/([^/?#]+)/i);
+        if (videoProjectMatch) {
+            let projectId = videoProjectMatch[1];
+            try {
+                projectId = decodeURIComponent(projectId);
+            } catch {
+                // Keep the original id when the link contains malformed encoding.
+            }
+            window.dispatchEvent(new CustomEvent(GARDENFLOW_NAVIGATE_EVENT, {
+                detail: { type: 'video-project.open', projectId },
+            }));
+            return;
+        }
         clearPreviewSidebarAnimationTimer();
         setIsPreviewSidebarClosing(false);
         setPreviewTarget(target);

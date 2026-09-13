@@ -159,6 +159,8 @@ import {
 import { BrowserCaptureOperationCache } from './core/browserCaptureOperationCache';
 import {
   applyAutoEditRunToVideoEditorV2Project,
+  applyProductVideoEditCommand,
+  attachGeneratedProductVideoScene,
   createVideoEditorV2Project,
   generateAutoEditForVideoEditorV2Project,
   getOrCreateVideoEditorV2ProjectForManuscript,
@@ -166,15 +168,19 @@ import {
   importAssetsToVideoEditorV2Project,
   importSrtContentToVideoEditorV2Project,
   importSrtFileToVideoEditorV2Project,
+  listVideoEditorV2Projects,
   mergeVideoEditorV2SrtSegments,
   reorderVideoEditorV2TimelineClip,
   setVideoEditorV2TimelineClipDisabled,
+  setProductVideoMusic,
+  setProductVideoSceneGenerationState,
   splitVideoEditorV2TimelineClip,
   splitVideoEditorV2SrtSegment,
   trimVideoEditorV2TimelineClip,
   undoVideoEditorV2ProjectTimeline,
   updateVideoEditorV2SrtSegment,
 } from './core/video-editor-v2/videoEditorV2ProjectStore';
+import { ProductVideoEditCommandSchema } from '../shared/productVideoProposal';
 import { renderVideoEditorV2Project } from './core/video-editor-v2/renderExportService';
 import { transcribeMediaToSrt } from './core/video-auto-edit/asrSrtService';
 import { buildRuntimeBaseSystemPrompt } from './core/prompts/defaultPromptBuilder';
@@ -1017,8 +1023,8 @@ function resolveForcedSkillNames(input: unknown): string[] {
     if (xhsNoteType === 'image' && !forcedSkillNames.includes('image-director')) {
       forcedSkillNames.push('image-director');
     }
-    if (xhsNoteType === 'video' && !forcedSkillNames.includes('gardenflow-video-director')) {
-      forcedSkillNames.push('gardenflow-video-director');
+    if (xhsNoteType === 'video' && !forcedSkillNames.includes('video-director')) {
+      forcedSkillNames.push('video-director');
     }
   }
   if (
@@ -6461,6 +6467,103 @@ ipcMain.handle('videoEditorV2:get-project', async (_, payload?: { projectId?: st
   }
 });
 
+ipcMain.handle('videoEditorV2:list-projects', async () => {
+  try {
+    return { success: true, projects: await listVideoEditorV2Projects() };
+  } catch (error) {
+    console.error('Failed to list video editor V2 projects:', error);
+    return { success: false, error: String(error), projects: [] };
+  }
+});
+
+ipcMain.handle('videoEditorV2:apply-product-command', async (_, payload?: {
+  projectId?: string;
+  command?: import('../shared/videoAutoEdit').ProductVideoEditCommand;
+}) => {
+  try {
+    const projectId = String(payload?.projectId || '').trim();
+    if (!projectId || !payload?.command) return { success: false, error: 'projectId and command are required' };
+    const command = ProductVideoEditCommandSchema.parse(payload.command);
+    const project = await applyProductVideoEditCommand({ projectId, command });
+    emitRendererDataChanged('video-editor-v2', { action: command.type, entityId: project.id });
+    return { success: true, project };
+  } catch (error) {
+    console.error('Failed to apply product video edit command:', error);
+    return { success: false, error: String(error) };
+  }
+});
+
+ipcMain.handle('videoEditorV2:set-product-music', async (_, payload?: { projectId?: string; sourcePath?: string }) => {
+  try {
+    const projectId = String(payload?.projectId || '').trim();
+    if (!projectId) return { success: false, error: 'projectId is required' };
+    let sourcePath = String(payload?.sourcePath || '').trim();
+    if (!sourcePath) {
+      const picker = await dialog.showOpenDialog({
+        title: '选择商品视频背景音乐',
+        properties: ['openFile'],
+        filters: [{ name: 'Audio Files', extensions: ['mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg', 'opus'] }],
+      });
+      if (picker.canceled || !picker.filePaths[0]) return { success: true, canceled: true };
+      sourcePath = picker.filePaths[0];
+    }
+    const project = await setProductVideoMusic({ projectId, sourcePath });
+    emitRendererDataChanged('video-editor-v2', { action: 'music.set', entityId: project.id });
+    return { success: true, project };
+  } catch (error) {
+    console.error('Failed to set product video music:', error);
+    return { success: false, error: String(error) };
+  }
+});
+
+ipcMain.handle('videoEditorV2:retry-product-scene', async (_, payload?: { projectId?: string; sceneId?: string }) => {
+  const projectId = String(payload?.projectId || '').trim();
+  const sceneId = String(payload?.sceneId || '').trim();
+  try {
+    const project = await getVideoEditorV2Project(projectId);
+    const scene = project?.productVideo?.scenes.find((item) => item.id === sceneId);
+    if (!project?.productVideo || !scene || scene.source !== 'ai-motion') return { success: false, error: 'AI 分镜不存在' };
+    const assetMap = new Map(project.assets
+      .filter((asset) => asset.provenance?.kind === 'brand-product' && asset.provenance.sourceAssetId)
+      .map((asset) => [String(asset.provenance?.sourceAssetId), asset.projectPath]));
+    const referenceImages = scene.productAssetIds.map((id) => assetMap.get(id)).filter((item): item is string => Boolean(item));
+    if (referenceImages.length === 0) return { success: false, error: '原始商品参考图已不可用' };
+    await setProductVideoSceneGenerationState({ projectId, sceneId, status: 'generating' });
+    const { generateVideosToMediaLibrary } = await import('./core/videoGenerationService');
+    const result = await generateVideosToMediaLibrary({
+      prompt: String(scene.generationPrompt || '').trim(),
+      projectId,
+      title: `${project.title}-${scene.title}`,
+      generationMode: 'reference-guided',
+      referenceImages,
+      aspectRatio: project.canvas.aspectRatio,
+      count: 1,
+      durationSeconds: Math.max(1, scene.durationMs / 1000),
+      resolution: '1080p',
+      generateAudio: false,
+    });
+    const generated = result.assets[0];
+    const absolutePath = generated?.relativePath ? getAbsoluteMediaPath(generated.relativePath) : '';
+    if (!absolutePath) throw new Error('AI 动效镜头没有返回可用文件');
+    const updated = await attachGeneratedProductVideoScene({
+      projectId,
+      sceneId,
+      absolutePath,
+      generationJobId: generated.id,
+      prompt: scene.generationPrompt,
+    });
+    emitRendererDataChanged('video-editor-v2', { action: 'scene.retry', entityId: updated.id });
+    emitRendererDataChanged('media', { action: 'generate-video' });
+    return { success: true, project: updated };
+  } catch (error) {
+    if (projectId && sceneId) {
+      await setProductVideoSceneGenerationState({ projectId, sceneId, status: 'failed', error: String(error) }).catch(() => undefined);
+    }
+    console.error('Failed to retry product video scene:', error);
+    return { success: false, error: String(error) };
+  }
+});
+
 ipcMain.handle('videoEditorV2:import-assets', async (_, payload?: {
   projectId?: string;
   sourcePaths?: string[];
@@ -6903,6 +7006,17 @@ ipcMain.handle('brand-workspace:get', async (_, payload?: { id?: string }) => {
     return { success: true, ...(await brandWorkspaceStore.get(id)) };
   } catch (error) {
     console.error('Failed to get brand workspace item:', error);
+    return { success: false, error: String(error) };
+  }
+});
+
+ipcMain.handle('brand-workspace:get-product-creative-reference', async (_, payload?: { id?: string }) => {
+  try {
+    const id = String(payload?.id || '').trim();
+    if (!id) return { success: false, error: 'id is required' };
+    return { success: true, product: await brandWorkspaceStore.getProductCreativeReference(id) };
+  } catch (error) {
+    console.error('Failed to get product creative reference:', error);
     return { success: false, error: String(error) };
   }
 });

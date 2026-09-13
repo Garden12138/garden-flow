@@ -3,7 +3,7 @@ import { Archive, ArrowRight, Bell, Clapperboard, FileText, Folder, Image, Image
 import { ApprovalPanel } from './Approval';
 import { subscribeDataChanged } from '../bridge/appEvents';
 import { formatTimestampDate, parseTimestampMs } from '../utils/time';
-import type { ThrivePluginHomeAction, ThrivePluginHomeWidget } from '../types';
+import type { ThrivePluginHomeAction, ThrivePluginHomeWidget, VideoEditorV2ProjectSummary } from '../types';
 import { dispatchAppIntent } from '../features/app-shell/appIntent';
 import type { FlowStage } from '../features/app-shell/types';
 import { WorkbenchStatePanel } from '../features/workbench/WorkbenchPrimitives';
@@ -13,6 +13,7 @@ interface HomeProps {
     onNavigateToCoverStudio?: () => void;
     onNavigateToGenerationStudio?: (mode: 'image' | 'video' | 'audio' | 'cover') => void;
     onOpenManuscript?: (filePath: string) => void;
+    onOpenVideoProject?: (projectId: string) => void;
 }
 
 interface KnowledgeCountResponse {
@@ -59,9 +60,10 @@ interface HomeStats {
 
 interface RecentManuscript {
     path: string;
+    projectId?: string;
     name: string;
     title: string;
-    draftType: 'longform' | 'video' | 'audio' | 'unknown';
+    draftType: 'longform' | 'video' | 'audio' | 'product-video' | 'unknown';
     updatedAt: number;
     summary: string;
 }
@@ -108,10 +110,25 @@ function stripDraftExtension(fileName: string): string {
 }
 
 function resolveDraftTypeLabel(type: RecentManuscript['draftType']): string {
+    if (type === 'product-video') return '商品视频工程';
     if (type === 'video') return '视频';
     if (type === 'audio') return '音频';
     if (type === 'longform') return '长文';
     return '稿件';
+}
+
+function buildRecentVideoProjects(projects: VideoEditorV2ProjectSummary[]): RecentManuscript[] {
+    return projects
+        .filter((project) => project.projectKind === 'product-video')
+        .map((project) => ({
+            path: `video-project://${project.id}`,
+            projectId: project.id,
+            name: project.title,
+            title: project.title,
+            draftType: 'product-video' as const,
+            updatedAt: Date.parse(project.updatedAt) || 0,
+            summary: project.productVideo?.productSnapshot.name || '',
+        }));
 }
 
 function formatRecentDate(updatedAt: number): string {
@@ -205,18 +222,20 @@ function QuickAppButton({
 function RecentManuscriptCard({
     manuscript,
     onOpen,
+    onOpenVideoProject,
 }: {
     manuscript: RecentManuscript;
     onOpen?: (filePath: string) => void;
+    onOpenVideoProject?: (projectId: string) => void;
 }) {
-    const Icon = manuscript.draftType === 'video'
+    const Icon = manuscript.draftType === 'video' || manuscript.draftType === 'product-video'
         ? Clapperboard
         : FileText;
 
     return (
         <button
             type="button"
-            onClick={() => onOpen?.(manuscript.path)}
+            onClick={() => manuscript.projectId ? onOpenVideoProject?.(manuscript.projectId) : onOpen?.(manuscript.path)}
             className="workbench-home__manuscript group overflow-hidden border border-border bg-surface-primary text-left transition-colors hover:border-accent-secondary/50 hover:bg-surface-secondary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary/35"
             title={manuscript.title}
         >
@@ -322,7 +341,7 @@ function PluginHomeWidgetCard({
     );
 }
 
-export function Home({ isActive = true, onNavigateToCoverStudio, onNavigateToGenerationStudio, onOpenManuscript }: HomeProps) {
+export function Home({ isActive = true, onNavigateToCoverStudio, onNavigateToGenerationStudio, onOpenManuscript, onOpenVideoProject }: HomeProps) {
     const [stats, setStats] = useState<HomeStats>(EMPTY_STATS);
     const [recentManuscripts, setRecentManuscripts] = useState<RecentManuscript[]>([]);
     const [pluginHomeWidgets, setPluginHomeWidgets] = useState<ThrivePluginHomeWidget[]>([]);
@@ -350,12 +369,13 @@ export function Home({ isActive = true, onNavigateToCoverStudio, onNavigateToGen
         if (!hasSnapshotRef.current) setLoading(true);
         setError('');
         try {
-            const [knowledgeResult, subjectsResult, mediaResult, manuscriptTree, approvalStats] = await Promise.all([
+            const [knowledgeResult, subjectsResult, mediaResult, manuscriptTree, approvalStats, videoProjectsResult] = await Promise.all([
                 window.ipcRenderer.knowledge.listPage<KnowledgeCountResponse>({ limit: 1 }),
                 window.ipcRenderer.subjects.list({ limit: 500 }) as Promise<SubjectListResponse>,
                 window.ipcRenderer.media.list({ limit: 500 }) as Promise<MediaListResponse>,
                 window.ipcRenderer.manuscripts.list() as Promise<FileNode[]>,
                 window.ipcRenderer.teamRuntime.reviewDocketStats() as Promise<ReviewDocketStats>,
+                window.ipcRenderer.videoEditorV2.listProjects(),
             ]);
             if (requestId !== requestIdRef.current) return;
             if (subjectsResult?.success === false) throw new Error(subjectsResult.error || '资产统计失败');
@@ -368,10 +388,14 @@ export function Home({ isActive = true, onNavigateToCoverStudio, onNavigateToGen
                 media: Number.isFinite(mediaResult?.total)
                     ? Number(mediaResult.total)
                     : Array.isArray(mediaResult?.assets) ? mediaResult.assets.length : 0,
-                manuscripts: countFiles(Array.isArray(manuscriptTree) ? manuscriptTree : []),
+                manuscripts: countFiles(Array.isArray(manuscriptTree) ? manuscriptTree : [])
+                    + (videoProjectsResult.projects || []).filter((project) => project.projectKind === 'product-video').length,
                 pendingApprovals: Number(approvalStats?.pending || 0),
             });
-            setRecentManuscripts(buildRecentManuscripts(Array.isArray(manuscriptTree) ? manuscriptTree : []));
+            setRecentManuscripts([
+                ...buildRecentManuscripts(Array.isArray(manuscriptTree) ? manuscriptTree : []),
+                ...buildRecentVideoProjects(videoProjectsResult.projects || []),
+            ].sort((left, right) => right.updatedAt - left.updatedAt).slice(0, 4));
             hasSnapshotRef.current = true;
         } catch (loadError) {
             if (requestId !== requestIdRef.current) return;
@@ -663,6 +687,7 @@ export function Home({ isActive = true, onNavigateToCoverStudio, onNavigateToGen
                                         key={manuscript.path}
                                         manuscript={manuscript}
                                         onOpen={onOpenManuscript}
+                                        onOpenVideoProject={onOpenVideoProject}
                                     />
                                 ))}
                             </div>

@@ -1,5 +1,7 @@
 export type VideoEditorV2ProjectStatus =
   | 'draft'
+  | 'generating'
+  | 'partial'
   | 'analyzing'
   | 'transcribing'
   | 'ready'
@@ -10,6 +12,10 @@ export type VideoEditorV2ProjectStatus =
 
 export type VideoEditorV2AssetKind = 'video' | 'audio' | 'image';
 export type VideoEditorV2TrackKind = 'primary-video' | 'b-roll' | 'subtitle' | 'music' | 'voiceover' | 'effect';
+export type ProductVideoFitMode = 'contain-blur' | 'cover';
+export type ProductVideoMotionPreset = 'static' | 'slow-zoom-in' | 'slow-zoom-out' | 'pan-left' | 'pan-right';
+export type ProductVideoSceneSource = 'product-asset' | 'ai-motion';
+export type ProductVideoGenerationStatus = 'not-required' | 'pending' | 'generating' | 'ready' | 'failed';
 export type SrtSegmentTag = 'keep' | 'remove' | 'highlight' | 'hook' | 'filler' | 'unclear';
 
 export interface VideoCanvasSpec {
@@ -45,6 +51,65 @@ export interface MediaAssetRecord {
   createdAt: string;
   updatedAt: string;
   probe?: MediaProbeRecord;
+  provenance?: {
+    kind: 'brand-product' | 'ai-generated' | 'user-import';
+    productId?: string;
+    sourceAssetId?: string;
+    generationJobId?: string;
+    prompt?: string;
+  };
+}
+
+export interface ProductVideoProposalScene {
+  id: string;
+  title: string;
+  durationMs: number;
+  source: ProductVideoSceneSource;
+  productAssetIds: string[];
+  overlayText?: string;
+  generationPrompt?: string;
+  fitMode: ProductVideoFitMode;
+  motionPreset: ProductVideoMotionPreset;
+}
+
+export interface ProductVideoProposal {
+  version: 1;
+  proposalId: string;
+  productId: string;
+  referencedProductIds: string[];
+  productName: string;
+  productUpdatedAt: string;
+  title: string;
+  canvas: VideoCanvasSpec;
+  durationMs: number;
+  scenes: ProductVideoProposalScene[];
+}
+
+export interface ProductVideoSceneState extends ProductVideoProposalScene {
+  generationStatus: ProductVideoGenerationStatus;
+  generationJobId?: string;
+  generatedAssetId?: string;
+  error?: string;
+}
+
+export interface ProductVideoProjectMetadata {
+  proposal: ProductVideoProposal;
+  productSnapshot: {
+    id: string;
+    name: string;
+    updatedAt: string;
+    brandName?: string;
+    facts: Array<{ key: string; value: string; origin: string }>;
+    skus?: Array<{ id: string; name: string; variantText?: string; externalId?: string }>;
+    sources?: Array<{
+      platform: string;
+      sourceUrl: string;
+      capturedAt: string;
+      price?: { text: string; currency?: string; label?: string };
+      parameters: Array<{ key: string; value: string }>;
+    }>;
+  };
+  scenes: ProductVideoSceneState[];
 }
 
 export interface SrtSegment {
@@ -105,6 +170,12 @@ export interface VideoTimelineClip {
   transform?: VideoTransformSpec;
   style?: VideoClipStyle;
   text?: string;
+  sceneId?: string;
+  fitMode?: ProductVideoFitMode;
+  motionPreset?: ProductVideoMotionPreset;
+  volume?: number;
+  fadeInMs?: number;
+  fadeOutMs?: number;
 }
 
 export interface VideoTimelineTrack {
@@ -169,6 +240,7 @@ export interface VideoEditorV2UndoRecord {
   label: string;
   timeline: VideoTimelineV2;
   autoEditRuns?: AutoEditRunRecord[];
+  productVideo?: ProductVideoProjectMetadata | null;
 }
 
 export interface RemotionSnapshotRecord {
@@ -184,9 +256,10 @@ export interface RenderOutputRecord {
 }
 
 export interface VideoEditorV2Project {
-  version: 1;
+  version: 2;
   id: string;
   title: string;
+  projectKind: 'subtitle-edit' | 'product-video';
   sourceManuscriptPath?: string | null;
   projectDir: string;
   createdAt: string;
@@ -201,4 +274,15 @@ export interface VideoEditorV2Project {
   remotionSnapshot?: RemotionSnapshotRecord | null;
   renderOutputs: RenderOutputRecord[];
   lastError?: string | null;
+  productVideo?: ProductVideoProjectMetadata | null;
 }
+
+export type ProductVideoEditCommand =
+  | { type: 'scene.reorder'; sceneId: string; targetSceneId: string; position: 'before' | 'after' }
+  | { type: 'scene.duration'; sceneId: string; durationMs: number }
+  | { type: 'scene.fit'; sceneId: string; fitMode: ProductVideoFitMode }
+  | { type: 'scene.motion'; sceneId: string; motionPreset: ProductVideoMotionPreset }
+  | { type: 'scene.text'; sceneId: string; text: string }
+  | { type: 'scene.asset'; sceneId: string; assetId: string }
+  | { type: 'scene.delete'; sceneId: string }
+  | { type: 'music.remove' };
