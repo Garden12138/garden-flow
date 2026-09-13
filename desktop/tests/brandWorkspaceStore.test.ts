@@ -131,3 +131,31 @@ test('product snapshots retain shop, price context and source images even after 
   const reloaded = await createBrandWorkspaceStore(() => root).get(first.product.product.id);
   assert.ok(reloaded);
 });
+
+test('selected product references expose verified facts and sources to AI creation', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'gardenflow-product-ai-reference-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const store = createBrandWorkspaceStore(() => root);
+  const captured = await store.ingestProduct({
+    platform: 'jd',
+    externalId: '280930',
+    sourceUrl: 'https://item.jd.com/280930.html',
+    capturedAt: '2026-09-12T08:27:57.000Z',
+    title: '伟嘉猫粮',
+    brandName: '伟嘉',
+    shopName: '宝路伟嘉京东自营旗舰店',
+    selectedSku: { externalId: '280930', name: '成猫粮10kg|海洋鱼味' },
+    price: { text: '¥153', currency: 'CNY', label: '到手价' },
+    parameters: [{ key: '适用阶段', value: '成猫' }],
+    images: [{ name: '主图', dataUrl: ONE_PIXEL_PNG, origin: 'capture' }],
+  });
+
+  const reference = await store.getProductAiReference(captured.product.product.id);
+  assert.equal(reference.type, 'product-asset');
+  assert.equal(reference.brandName, '伟嘉');
+  assert.deepEqual(reference.facts, [{ key: '适用阶段', value: '成猫', origin: 'captured' }]);
+  assert.equal(reference.skus[0].name, '成猫粮10kg|海洋鱼味');
+  assert.equal(reference.sources[0].price?.text, '¥153');
+  assert.equal(reference.sources[0].shopName, '宝路伟嘉京东自营旗舰店');
+  assert.equal(reference.imageCount, 1);
+});

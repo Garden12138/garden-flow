@@ -123,6 +123,37 @@ interface AssetMentionCatalogRecord {
   absoluteVoicePath?: string;
 }
 
+interface BrandWorkspaceMentionAsset {
+  path?: string;
+  absolutePath?: string;
+}
+
+interface BrandWorkspaceMentionSnapshot {
+  platform?: string;
+  brandName?: string;
+}
+
+interface BrandWorkspaceMentionProductBundle {
+  product?: {
+    id?: string;
+    name?: string;
+    description?: string;
+    facts?: Array<{ key?: string; value?: string }>;
+  };
+  assets?: BrandWorkspaceMentionAsset[];
+  sourceSnapshots?: BrandWorkspaceMentionSnapshot[];
+}
+
+interface BrandWorkspaceMentionBrandBundle {
+  brand?: { id?: string; name?: string };
+  products?: BrandWorkspaceMentionProductBundle[];
+}
+
+interface BrandWorkspaceMentionListResponse {
+  success?: boolean;
+  brands?: BrandWorkspaceMentionBrandBundle[];
+}
+
 interface KnowledgeMentionListPageResponse {
   items?: KnowledgeMentionCatalogRecord[];
   nextCursor?: string | null;
@@ -249,6 +280,42 @@ function normalizeAssetMentionRecord(item: AssetMentionCatalogRecord): ChatAsset
     primaryPreviewUrl: String(item.primaryPreviewUrl || '').trim() || undefined,
     voicePath: String(item.voicePath || '').trim() || undefined,
     absoluteVoicePath: String(item.absoluteVoicePath || '').trim() || undefined,
+  };
+}
+
+function normalizeProductMentionRecord(
+  brand: BrandWorkspaceMentionBrandBundle,
+  bundle: BrandWorkspaceMentionProductBundle,
+): ChatAssetMentionOption | null {
+  const product = bundle.product;
+  const id = String(product?.id || '').trim();
+  const name = String(product?.name || '').trim();
+  if (!id || !name) return null;
+  const snapshots = Array.isArray(bundle.sourceSnapshots) ? bundle.sourceSnapshots : [];
+  const assets = Array.isArray(bundle.assets) ? bundle.assets : [];
+  const sourceLabels = Array.from(new Set(snapshots
+    .map((snapshot) => String(snapshot.platform || '').trim().toLowerCase())
+    .filter(Boolean)
+    .map((platform) => platform === 'jd' ? '京东' : platform)));
+  const assignedBrand = String(brand.brand?.id || '') === 'brand_unassigned'
+    ? ''
+    : String(brand.brand?.name || '').trim();
+  const capturedBrand = snapshots.map((snapshot) => String(snapshot.brandName || '').trim()).find(Boolean) || '';
+  const brandName = assignedBrand || capturedBrand;
+  const factTags = Array.isArray(product?.facts)
+    ? product.facts.map((fact) => String(fact.key || '').trim()).filter(Boolean).slice(0, 8)
+    : [];
+  const previewUrls = assets.map((asset) => String(asset.path || '').trim()).filter(Boolean);
+  const absoluteImagePaths = assets.map((asset) => String(asset.absolutePath || '').trim()).filter(Boolean);
+  return {
+    id,
+    name,
+    description: ['商品', brandName, sourceLabels.join(' / ')].filter(Boolean).join(' · '),
+    categoryId: '商品',
+    tags: Array.from(new Set(['商品', brandName, ...sourceLabels, ...factTags].filter(Boolean))),
+    previewUrls,
+    primaryPreviewUrl: previewUrls[0],
+    absoluteImagePaths,
   };
 }
 
@@ -2212,17 +2279,26 @@ export function Chat({
   const loadAssetMentionOptions = useCallback(async () => {
     if (!isActiveRef.current) return;
     try {
-      const result = await window.ipcRenderer.subjects.list({ limit: 500 });
-      const records = Array.isArray(result?.subjects)
-        ? result.subjects
-        : Array.isArray(result?.assets)
-          ? result.assets
+      const [subjectResult, brandWorkspaceResult] = await Promise.all([
+        window.ipcRenderer.subjects.list({ limit: 500 }),
+        window.ipcRenderer.brandWorkspace.list<BrandWorkspaceMentionListResponse>(),
+      ]);
+      const records = Array.isArray(subjectResult?.subjects)
+        ? subjectResult.subjects
+        : Array.isArray(subjectResult?.assets)
+          ? subjectResult.assets
           : [];
-      setAssetMentionOptions(
-        records
-          .map((item) => normalizeAssetMentionRecord(item as AssetMentionCatalogRecord))
-          .filter((item): item is ChatAssetMentionOption => Boolean(item)),
-      );
+      const subjectOptions = records
+        .map((item) => normalizeAssetMentionRecord(item as AssetMentionCatalogRecord))
+        .filter((item): item is ChatAssetMentionOption => Boolean(item));
+      const productOptions = (brandWorkspaceResult?.brands || []).flatMap((brand) => (
+        (brand.products || [])
+          .map((product) => normalizeProductMentionRecord(brand, product))
+          .filter((item): item is ChatAssetMentionOption => Boolean(item))
+      ));
+      setAssetMentionOptions(Array.from(new Map(
+        [...productOptions, ...subjectOptions].map((item) => [item.id, item]),
+      ).values()));
     } catch (error) {
       console.error('Failed to load asset mention options:', error);
       setAssetMentionOptions([]);
@@ -5288,7 +5364,7 @@ export function Chat({
       {[
         ['目标', '这次内容希望用户知道、相信或采取什么行动？'],
         ['受众', '写给谁，他们现在最关心什么？'],
-        ['素材', '使用 # 引用资料，或直接添加附件。'],
+        ['素材', '使用 @ 引用资产，# 引用资料，或直接添加附件。'],
         ['交付', '选择文章、脚本、标题组或其他形式。'],
       ].map(([label, hint]) => (
         <div key={label}>

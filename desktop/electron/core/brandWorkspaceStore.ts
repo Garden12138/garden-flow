@@ -425,6 +425,56 @@ export function createBrandWorkspaceStore(rootProvider: () => string) {
     throw new Error('品牌或商品不存在');
   }
 
+  async function getProductAiReference(idInput: string) {
+    const catalog = await readCatalog();
+    const id = cleanId(idInput);
+    const product = catalog.products.find((item) => item.id === id);
+    if (!product) throw new Error('商品不存在');
+    const sourceSnapshots = catalog.sourceSnapshots
+      .filter((snapshot) => snapshot.productId === product.id)
+      .sort((left, right) => right.capturedAt.localeCompare(left.capturedAt));
+    const brand = product.brandId
+      ? catalog.brands.find((item) => item.id === product.brandId)
+      : undefined;
+    return {
+      type: 'product-asset' as const,
+      id: product.id,
+      name: product.name,
+      brandName: brand?.name || sourceSnapshots[0]?.brandName,
+      description: product.description,
+      audience: product.audience,
+      usageScenarios: product.usageScenarios || [],
+      brandStyle: product.brandStyle,
+      facts: product.facts.map((fact) => ({
+        key: fact.key,
+        value: fact.value,
+        origin: fact.origin,
+      })),
+      skus: catalog.skus
+        .filter((sku) => sku.productId === product.id)
+        .map((sku) => ({
+          id: sku.id,
+          name: sku.name,
+          variantText: sku.variantText,
+          externalId: sku.externalId,
+        })),
+      sources: sourceSnapshots.slice(0, 4).map((snapshot) => ({
+        platform: snapshot.platform,
+        sourceUrl: snapshot.sourceUrl,
+        capturedAt: snapshot.capturedAt,
+        externalId: snapshot.externalId,
+        shopName: snapshot.shopName,
+        price: snapshot.price,
+        selectedSku: snapshot.selectedSku,
+        parameters: snapshot.parameters,
+        missingFields: snapshot.missingFields,
+      })),
+      imageCount: catalog.assets.filter((asset) => (
+        asset.ownerType === 'product' && asset.ownerId === product.id
+      )).length,
+    };
+  }
+
   async function upsertBrand(input: {
     id?: string;
     name?: string;
@@ -759,6 +809,10 @@ export function createBrandWorkspaceStore(rootProvider: () => string) {
     get: async (id: string) => {
       await mutationQueue;
       return get(id);
+    },
+    getProductAiReference: async (id: string) => {
+      await mutationQueue;
+      return getProductAiReference(id);
     },
     upsertBrand: (input: Parameters<typeof upsertBrand>[0]) => enqueueMutation(() => upsertBrand(input)),
     upsertProduct: (input: Parameters<typeof upsertProduct>[0]) => enqueueMutation(() => upsertProduct(input)),

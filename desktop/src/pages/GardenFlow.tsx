@@ -2578,7 +2578,7 @@ export function GardenFlow({
                                         onMessageLinkPreview={handlePreviewLink}
                                         activePreviewHref={previewTarget?.href || null}
                                         keepComposerInputActive={true}
-                                        placeholder="描述创作目标，使用 # 调用知识库"
+                                        placeholder="描述创作目标，使用 @ 引用资产、# 调用知识库"
                                         fixedMemberMention={activeMemberMention}
                                         onSessionActivity={markHistorySessionActivity}
                                         messageListHeader={<GardenFlowImageGenerationProgressPanel jobs={activeAiSurface === 'gardenflow' ? visibleImageJobs : []} />}
