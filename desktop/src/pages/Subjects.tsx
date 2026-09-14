@@ -154,6 +154,7 @@ interface BrandWorkspaceProductBundle {
     product: BrandWorkspaceProduct;
     skus: BrandWorkspaceSku[];
     assets: BrandWorkspaceAssetRef[];
+    reviewAssets?: BrandWorkspaceAssetRef[];
     skuAssets?: Record<string, BrandWorkspaceAssetRef[]>;
     sourceSnapshots?: BrandWorkspaceSourceSnapshot[];
 }
@@ -2824,6 +2825,9 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
                                             snapshot={activeProductSourceSnapshot}
                                             images={activeProductSourceSnapshot.imageAssetIds.flatMap((id) => (
                                                 activeDetailProductBundle?.assets.find((asset) => asset.id === id) || []
+                                            ))}
+                                            reviewImages={(activeDetailProductBundle?.reviewAssets || []).filter((asset) => (
+                                                activeProductSourceSnapshot.reviewCapture?.reviews.some((review) => review.imageAssetIds.includes(asset.id))
                                             ))}
                                         />
                                     </div>

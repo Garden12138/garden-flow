@@ -10,6 +10,514 @@ export function isJdProductUrl(value) {
 }
 
 // Keep this function self-contained: chrome.scripting serializes it into the page.
+export async function ensureJdReviewModal(pageDocument = globalThis.document) {
+  const clean = (value, limit = 2_000) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, limit);
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const isVisible = (node) => {
+    let current = node;
+    while (current && current !== pageDocument) {
+      if (current.hidden || current.getAttribute?.('aria-hidden') === 'true') return false;
+      const style = clean(current.getAttribute?.('style'), 1_000).toLowerCase();
+      if (/(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden)/.test(style)) return false;
+      try {
+        const computed = pageDocument.defaultView?.getComputedStyle?.(current);
+        if (computed?.display === 'none' || computed?.visibility === 'hidden') return false;
+      } catch {
+        // Inline state is still sufficient in DOM-only test environments.
+      }
+      current = current.parentElement;
+    }
+    return Boolean(node);
+  };
+  const findModal = () => {
+    const candidates = Array.from(pageDocument.querySelectorAll('[role="dialog"], dialog, [aria-modal="true"], [class*="dialog"], [class*="modal"]'));
+    const explicit = candidates.find((node) => {
+      if (!isVisible(node)) return false;
+      const text = clean(node.textContent, 20_000);
+      return /商品(?:评论|评价)/.test(text) && /(好评|中评|差评|图\/视频|追评)/.test(text);
+    });
+    if (explicit) return explicit;
+    const headings = Array.from(pageDocument.querySelectorAll('h1, h2, h3, [role="heading"], div, span'))
+      .filter((node) => isVisible(node) && /^商品(?:评论|评价)$/.test(clean(node.textContent, 20)));
+    for (const heading of headings) {
+      let root = heading.parentElement;
+      for (let depth = 0; root && root !== pageDocument.body && depth < 8; depth += 1, root = root.parentElement) {
+        const text = clean(root.textContent, 20_000);
+        if (/好评/.test(text) && /中评/.test(text) && /差评/.test(text) && /最新|当前商品/.test(text)) return root;
+      }
+    }
+    return null;
+  };
+  if (findModal()) return { modalDetected: true, opened: false, entryFound: true };
+
+  const entryPattern = /^全部(?:评价|评论)(?:\s*[>›»→]|$)/;
+  const entries = [];
+  const seen = new Set();
+  for (const node of pageDocument.querySelectorAll('button, a, [role="button"], div, span')) {
+    const label = clean(node.textContent, 100);
+    if (!isVisible(node) || label.length > 40 || !entryPattern.test(label)) continue;
+    const interactive = node.closest?.('button, a, [role="button"]') || node;
+    if (!isVisible(interactive) || interactive.disabled || interactive.getAttribute?.('aria-disabled') === 'true' || seen.has(interactive)) continue;
+    seen.add(interactive);
+    entries.push({
+      node: interactive,
+      priority: /^(BUTTON|A)$/i.test(String(interactive.tagName || '')) || interactive.getAttribute?.('role') === 'button' ? 0 : 1,
+      labelLength: label.length,
+    });
+  }
+  if (!entries.length) return { modalDetected: false, opened: false, entryFound: false };
+  entries.sort((left, right) => left.priority - right.priority || left.labelLength - right.labelLength);
+
+  const pageWindow = pageDocument.defaultView || globalThis.window;
+  const originalX = Number(pageWindow?.scrollX || 0);
+  const originalY = Number(pageWindow?.scrollY || 0);
+  for (const candidate of entries.slice(0, 4)) {
+    const entry = candidate.node;
+    try {
+      entry.scrollIntoView?.({ block: 'center', inline: 'nearest' });
+      entry.click?.();
+    } catch {
+      // Continue with the remaining visible entry candidates.
+    }
+    for (let attempt = 0; attempt < 16; attempt += 1) {
+      await sleep(250);
+      if (findModal()) {
+        try { pageWindow?.scrollTo?.(originalX, originalY); } catch { /* Best effort. */ }
+        return { modalDetected: true, opened: true, entryFound: true };
+      }
+    }
+  }
+  try { pageWindow?.scrollTo?.(originalX, originalY); } catch { /* Best effort. */ }
+  return { modalDetected: false, opened: false, entryFound: true };
+}
+
+// Keep this function self-contained: chrome.scripting serializes it into the page.
+export function extractJdReviewPreview(pageDocument = globalThis.document) {
+  const clean = (value, limit = 2_000) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, limit);
+  const isVisible = (node) => {
+    if (!node || node.hidden || node.getAttribute?.('aria-hidden') === 'true') return false;
+    const style = clean(node.getAttribute?.('style'), 1_000).toLowerCase();
+    return !/(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden)/.test(style);
+  };
+  const hash = (value) => {
+    let result = 2166136261;
+    for (const character of String(value || '')) {
+      result ^= character.charCodeAt(0);
+      result = Math.imul(result, 16777619);
+    }
+    return (result >>> 0).toString(36);
+  };
+  const findModal = () => {
+    const candidates = Array.from(pageDocument.querySelectorAll('[role="dialog"], dialog, [aria-modal="true"], [class*="dialog"], [class*="modal"]'));
+    const explicit = candidates.find((node) => {
+      if (!isVisible(node)) return false;
+      const text = clean(node.textContent, 20_000);
+      return /商品(?:评论|评价)/.test(text) && /(好评|中评|差评|图\/视频|追评)/.test(text);
+    });
+    if (explicit) return explicit;
+    const headings = Array.from(pageDocument.querySelectorAll('h1, h2, h3, [role="heading"], div, span'))
+      .filter((node) => isVisible(node) && /^商品(?:评论|评价)$/.test(clean(node.textContent, 20)));
+    for (const heading of headings) {
+      let root = heading.parentElement;
+      for (let depth = 0; root && root !== pageDocument.body && depth < 8; depth += 1, root = root.parentElement) {
+        const text = clean(root.textContent, 20_000);
+        if (/好评/.test(text) && /中评/.test(text) && /差评/.test(text) && /最新|当前商品/.test(text)) return root;
+      }
+    }
+    return null;
+  };
+  const modal = findModal();
+  if (!modal) {
+    return {
+      modalDetected: false,
+      availableFilters: [],
+      selectedFilters: [],
+      results: [],
+      reviews: [],
+      status: 'not-opened',
+      warnings: ['未检测到商品评价弹窗；保存时会再次尝试自动打开，商品资料仍可正常保存'],
+    };
+  }
+  const filterSelectors = [
+    '[role="tab"]',
+    'button',
+    '[role="button"]',
+    '[class*="filter"] [class*="item"]',
+    '[class*="tag"]',
+    '[class*="Tag"]',
+  ].join(', ');
+  const availableFilters = [];
+  const seenLabels = new Set();
+  for (const node of modal.querySelectorAll(filterSelectors)) {
+    if (!isVisible(node)) continue;
+    const rawText = clean(node.textContent, 100);
+    if (!rawText || rawText.length > 48 || /^(关闭|回复|有用|更多|上一页|下一页)$/.test(rawText)) continue;
+    if ((rawText.match(/\d+(?:\.\d+)?%?(?:万|千|百)?\+?/g) || []).length > 1) continue;
+    const match = rawText.match(/^(.*?)(\d+(?:\.\d+)?%?(?:万|千|百)?\+?|99%好评)$/);
+    const label = clean(match?.[1] || rawText, 40);
+    const countText = clean(match?.[2], 30);
+    const isSentiment = /^(好评|中评|差评)$/.test(label);
+    if (!label || (match && !clean(match[1], 40)) || (!match && !isSentiment) || seenLabels.has(label)) continue;
+    seenLabels.add(label);
+    const sentiment = label === '好评' ? 'positive' : label === '中评' ? 'neutral' : label === '差评' ? 'negative' : undefined;
+    availableFilters.push({
+      id: `review-filter-${availableFilters.length}-${hash(label)}`,
+      label,
+      ...(countText ? { countText } : {}),
+      ...(sentiment ? { sentiment } : {}),
+    });
+  }
+  const activeFilter = availableFilters.find((filter) => {
+    const node = Array.from(modal.querySelectorAll(filterSelectors)).find((candidate) => clean(candidate.textContent, 100).startsWith(filter.label));
+    return node?.getAttribute('aria-selected') === 'true' || /(?:^|\s)(?:active|selected|checked)(?:\s|$)/i.test(String(node?.className || ''));
+  });
+  const sortText = clean(Array.from(modal.querySelectorAll('[class*="sort"], [role="tablist"]')).map((node) => node.textContent).find((text) => /最新|默认|时间/.test(String(text))), 100);
+  const scopeText = clean(Array.from(modal.querySelectorAll('[class*="scope"], [class*="product"]')).map((node) => node.textContent).find((text) => /当前商品|全部商品/.test(String(text))), 100);
+  return {
+    modalDetected: true,
+    availableFilters,
+    selectedFilters: [],
+    results: [],
+    reviews: [],
+    status: availableFilters.length ? 'ready' : 'partial',
+    warnings: availableFilters.length ? [] : ['已检测到商品评价弹窗，但没有识别到可用筛选标签'],
+    ...(activeFilter ? { activeFilterId: activeFilter.id } : {}),
+    ...(sortText ? { sortText } : {}),
+    ...(scopeText ? { scopeText } : {}),
+  };
+}
+
+// Keep this function self-contained: chrome.scripting serializes it into the page.
+export async function captureJdProductReviews(reviewOptions = {}, pageDocument = globalThis.document, pageLocation = globalThis.location) {
+  const clean = (value, limit = 20_000) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, limit);
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const isVisible = (node) => {
+    if (!node || node.hidden || node.getAttribute?.('aria-hidden') === 'true') return false;
+    const style = clean(node.getAttribute?.('style'), 1_000).toLowerCase();
+    return !/(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden)/.test(style);
+  };
+  const hash = (value) => {
+    let result = 2166136261;
+    for (const character of String(value || '')) {
+      result ^= character.charCodeAt(0);
+      result = Math.imul(result, 16777619);
+    }
+    return (result >>> 0).toString(36);
+  };
+  const absoluteMediaUrl = (value) => {
+    const source = clean(value, 8_000);
+    if (!source || /^(data|blob):/i.test(source)) return '';
+    try {
+      const url = new URL(source, String(pageLocation?.href || ''));
+      return /^https?:$/.test(url.protocol) && /(^|\.)(jd\.com|jd\.hk|jdimg\.com|360buyimg\.com|jcloudcs\.com)$/.test(url.hostname) ? url.href : '';
+    } catch { return ''; }
+  };
+  const findModal = () => {
+    const candidates = Array.from(pageDocument.querySelectorAll('[role="dialog"], dialog, [aria-modal="true"], [class*="dialog"], [class*="modal"]'));
+    const explicit = candidates.find((node) => {
+      if (!isVisible(node)) return false;
+      const text = clean(node.textContent, 20_000);
+      return /商品(?:评论|评价)/.test(text) && /(好评|中评|差评|图\/视频|追评)/.test(text);
+    });
+    if (explicit) return explicit;
+    const headings = Array.from(pageDocument.querySelectorAll('h1, h2, h3, [role="heading"], div, span'))
+      .filter((node) => isVisible(node) && /^商品(?:评论|评价)$/.test(clean(node.textContent, 20)));
+    for (const heading of headings) {
+      let root = heading.parentElement;
+      for (let depth = 0; root && root !== pageDocument.body && depth < 8; depth += 1, root = root.parentElement) {
+        const text = clean(root.textContent, 20_000);
+        if (/好评/.test(text) && /中评/.test(text) && /差评/.test(text) && /最新|当前商品/.test(text)) return root;
+      }
+    }
+    return null;
+  };
+  const modal = findModal();
+  if (!modal) {
+    return {
+      modalDetected: false,
+      availableFilters: [],
+      selectedFilters: [],
+      results: [],
+      reviews: [],
+      status: 'not-opened',
+      warnings: ['未检测到商品评价弹窗，本次仅保存商品资料'],
+    };
+  }
+
+  const filterSelectors = [
+    '[role="tab"]',
+    'button',
+    '[role="button"]',
+    '[class*="filter"] [class*="item"]',
+    '[class*="tag"]',
+    '[class*="Tag"]',
+  ].join(', ');
+  const discoverFilters = () => {
+    const found = [];
+    const seenLabels = new Set();
+    for (const node of modal.querySelectorAll(filterSelectors)) {
+      if (!isVisible(node)) continue;
+      const rawText = clean(node.textContent, 100);
+      if (!rawText || rawText.length > 48 || /^(关闭|回复|有用|更多|上一页|下一页)$/.test(rawText)) continue;
+      if ((rawText.match(/\d+(?:\.\d+)?%?(?:万|千|百)?\+?/g) || []).length > 1) continue;
+      const match = rawText.match(/^(.*?)(\d+(?:\.\d+)?%?(?:万|千|百)?\+?|99%好评)$/);
+      const label = clean(match?.[1] || rawText, 40);
+      const countText = clean(match?.[2], 30);
+      const isSentiment = /^(好评|中评|差评)$/.test(label);
+      if (!label || (match && !clean(match[1], 40)) || (!match && !isSentiment) || seenLabels.has(label)) continue;
+      seenLabels.add(label);
+      const sentiment = label === '好评' ? 'positive' : label === '中评' ? 'neutral' : label === '差评' ? 'negative' : undefined;
+      found.push({
+        id: `review-filter-${found.length}-${hash(label)}`,
+        label,
+        countText,
+        sentiment,
+        node,
+      });
+    }
+    return found;
+  };
+  const available = discoverFilters();
+  const availableFilters = available.map(({ node: _node, ...filter }) => ({
+    id: filter.id,
+    label: filter.label,
+    ...(filter.countText ? { countText: filter.countText } : {}),
+    ...(filter.sentiment ? { sentiment: filter.sentiment } : {}),
+  }));
+  const requestedLimit = Number(reviewOptions?.limitPerFilter);
+  const limitPerFilter = Number.isFinite(requestedLimit)
+    ? Math.max(1, Math.min(50, Math.trunc(requestedLimit)))
+    : 5;
+  const requestedIds = Array.from(new Set((Array.isArray(reviewOptions?.selectedFilterIds) ? reviewOptions.selectedFilterIds : [])
+    .map((value) => clean(value, 200)).filter(Boolean)));
+  const requestedLabels = Array.from(new Set((Array.isArray(reviewOptions?.selectedFilterLabels) ? reviewOptions.selectedFilterLabels : [])
+    .map((value) => clean(value, 40)).filter(Boolean)));
+  let selected = available.filter((filter) => requestedIds.includes(filter.id) || requestedLabels.includes(filter.label));
+  if (!requestedIds.length && !requestedLabels.length) {
+    selected = ['好评', '中评', '差评'].flatMap((label) => available.find((filter) => filter.label === label) || []);
+  }
+  const selectedFilters = selected.map((filter) => ({ id: filter.id, label: filter.label, limit: limitPerFilter }));
+  const warnings = [];
+  if (!requestedIds.length && !requestedLabels.length) {
+    for (const label of ['好评', '中评', '差评']) {
+      if (!selected.some((filter) => filter.label === label)) warnings.push(`未找到默认筛选标签“${label}”`);
+    }
+  } else if (selected.length < Math.max(requestedIds.length, requestedLabels.length)) {
+    warnings.push('部分所选评论标签在保存时已不可用');
+  }
+
+  const originalFilter = available.find((filter) => (
+    filter.node.getAttribute?.('aria-selected') === 'true'
+    || /(?:^|\s)(?:active|selected|checked)(?:\s|$)/i.test(String(filter.node.className || ''))
+  ));
+  const scrollCandidates = Array.from(modal.querySelectorAll('*')).filter((node) => Number(node.scrollHeight || 0) > Number(node.clientHeight || 0) + 20);
+  const scrollContainer = scrollCandidates.sort((left, right) => Number(right.clientHeight || 0) - Number(left.clientHeight || 0))[0] || modal;
+  const originalScrollTop = Number(scrollContainer.scrollTop || 0);
+
+  const firstText = (root, selectors, limit = 2_000) => {
+    for (const selector of selectors) {
+      for (const node of root.querySelectorAll(selector)) {
+        const value = clean(node.getAttribute?.('content') || node.textContent, limit);
+        if (value) return value;
+      }
+    }
+    return '';
+  };
+  const leafTexts = (root, limit = 10_000) => Array.from(root.querySelectorAll('div, span, p, time, li'))
+    .filter((node) => isVisible(node))
+    .map((node) => ({ node, text: clean(node.textContent, limit) }))
+    .filter(({ node, text }) => text && !Array.from(node.children || []).some((child) => clean(child.textContent, limit)));
+  const discoverReviewRows = () => {
+    const selector = [
+      '[data-comment-id]',
+      '[data-review-id]',
+      '.comment-item',
+      '.comment-column',
+      '[class*="comment-item"]',
+      '[class*="commentItem"]',
+      '[class*="CommentItem"]',
+      '[class*="review-item"]',
+      '[class*="reviewItem"]',
+    ].join(', ');
+    const explicitRows = Array.from(modal.querySelectorAll(selector));
+    const structuralRows = [];
+    if (!explicitRows.length) {
+      const avatars = Array.from(modal.querySelectorAll('img[alt*="avatar" i], img[class*="avatar" i], [class*="avatar" i] img'));
+      for (const avatar of avatars) {
+        let candidate = avatar.parentElement;
+        for (let depth = 0; candidate && candidate !== modal && depth < 8; depth += 1, candidate = candidate.parentElement) {
+          const text = clean(candidate.textContent, 20_000);
+          const avatarCount = candidate.querySelectorAll('img[alt*="avatar" i], img[class*="avatar" i], [class*="avatar" i] img').length;
+          const hasDate = /(?:^|[^\d])(?:\d{4}-)?\d{2}-\d{2}(?!\d)/.test(text);
+          const hasBody = leafTexts(candidate).some((item) => item.text.length >= 18 && !/(?:^|[^\d])(?:\d{4}-)?\d{2}-\d{2}(?!\d)/.test(item.text));
+          if (avatarCount === 1 && hasDate && hasBody) {
+            structuralRows.push(candidate);
+            break;
+          }
+        }
+      }
+    }
+    const candidates = explicitRows.length ? explicitRows : structuralRows;
+    return Array.from(new Set(candidates)).filter((node, index, items) => (
+      isVisible(node) && !items.some((candidate, candidateIndex) => candidateIndex !== index && candidate.contains(node))
+    ));
+  };
+  const extractReviews = (filter) => {
+    const rows = discoverReviewRows();
+    const reviews = [];
+    for (const row of rows) {
+      const textItems = leafTexts(row);
+      const explicitText = firstText(row, ['[data-role="comment-text"]', '[class*="comment-content"]', '[class*="commentText"]', '[class*="comment-text"]', '[class*="content"] [class*="text"]', '.comment-con'], 10_000);
+      const fallbackText = textItems
+        .map((item) => item.text)
+        .filter((value) => value.length >= 18 && !/(?:^|[^\d])(?:\d{4}-)?\d{2}-\d{2}(?!\d)/.test(value))
+        .filter((value) => !/该店铺购买|^(?:回复|有用|超赞)$/.test(value))
+        .sort((left, right) => right.length - left.length)[0] || '';
+      const text = explicitText || fallbackText;
+      if (!text) continue;
+      const explicitAuthor = firstText(row, ['[data-role="author"]', '[class*="user-name"]', '[class*="nickname"]', '[class*="userName"]', '[class*="user"] [class*="name"]'], 300);
+      const fallbackAuthor = textItems.map((item) => item.text.match(/^([^\s]{1,20}\*{2,}[^\s]{0,12})/)?.[1]).find(Boolean) || '';
+      const authorName = explicitAuthor || fallbackAuthor;
+      const explicitDate = firstText(row, ['time', '[data-role="date"]', '[class*="date"]', '[class*="time"]'], 300);
+      const fallbackDate = textItems.map((item) => item.text.match(/(?:^|[^\d])((?:\d{4}-)?\d{2}-\d{2})(?!\d)/)?.[1]).find(Boolean) || '';
+      const dateText = explicitDate || fallbackDate;
+      const explicitSku = firstText(row, ['[data-role="sku"]', '[class*="sku"]', '[class*="product-info"]', '[class*="order-info"]'], 1_000);
+      const fallbackSku = textItems.map((item) => item.text)
+        .find((value) => value !== text && value.length <= 120 && /(?:kg|\d+g|口味|猫粮|装|味)$/i.test(value)) || '';
+      const skuText = explicitSku || fallbackSku;
+      const ratingNodes = Array.from(row.querySelectorAll('[data-score], [data-rating], [aria-label*="星"], [title*="星"], [class*="star" i], img[alt*="星"]'));
+      const ratingSources = [row, ...ratingNodes].flatMap((node) => [
+        node.getAttribute?.('data-score'),
+        node.getAttribute?.('data-rating'),
+        node.getAttribute?.('aria-label'),
+        node.getAttribute?.('title'),
+        node.getAttribute?.('alt'),
+        node.getAttribute?.('class'),
+        node.getAttribute?.('style'),
+        node.textContent,
+      ]).map((value) => clean(value, 200)).filter(Boolean);
+      let rating;
+      for (const source of ratingSources) {
+        const explicitMatch = source.match(/^([1-5])(?:\.0)?$/)
+          || source.match(/(?:^|[^\d])([1-5])(?:\.0)?\s*(?:星|分|stars?)(?:[^\d]|$)/i)
+          || source.match(/(?:star|score|rating|level)[-_:\s]*([1-5])(?:[^\d]|$)/i)
+          || source.match(/(?:width\s*:\s*)(20|40|60|80|100)%/i);
+        if (!explicitMatch) continue;
+        const numeric = Number(explicitMatch[1]);
+        rating = numeric > 5 ? numeric / 20 : numeric;
+        break;
+      }
+      const badges = Array.from(row.querySelectorAll('[data-role="badge"], [class*="badge"], [class*="tag"]'))
+        .map((node) => clean(node.textContent, 100)).filter(Boolean).slice(0, 12);
+      for (const item of textItems) {
+        if (/该店铺购买|^(?:超赞|追评)$/.test(item.text) && item.text.length <= 100) badges.push(item.text);
+      }
+      const helpfulText = firstText(row, ['[data-role="helpful"]', '[class*="helpful"]', '[class*="useful"]'], 200);
+      const helpfulMatch = helpfulText.match(/(\d+)/);
+      const imageSourceUrls = [];
+      for (const image of row.querySelectorAll('img')) {
+        if (image.closest?.('[class*="avatar"], [class*="user"]')) continue;
+        const imageRole = clean([image.getAttribute?.('alt'), image.className, image.getAttribute?.('class')].join(' '), 500).toLowerCase();
+        if (/(?:avatar|star|more|icon|头像|星)/.test(imageRole) && !/(?:pic|photo|image)/.test(imageRole)) continue;
+        const source = ['data-original', 'data-src', 'src'].map((attribute) => image.getAttribute(attribute)).map(absoluteMediaUrl).find(Boolean);
+        if (source && !imageSourceUrls.includes(source)) imageSourceUrls.push(source);
+      }
+      const videoNode = row.querySelector('video, [data-role="review-video"], [class*="video"]');
+      const videoSourceUrl = absoluteMediaUrl(videoNode?.getAttribute?.('src') || videoNode?.querySelector?.('source')?.getAttribute?.('src'));
+      const platformReviewId = clean(row.getAttribute?.('data-comment-id') || row.getAttribute?.('data-review-id'), 500);
+      const id = platformReviewId ? `jd-${platformReviewId}` : `jd-review-${hash([authorName, dateText, skuText, text, imageSourceUrls.join('|')].join('::'))}`;
+      reviews.push({
+        id,
+        ...(platformReviewId ? { platformReviewId } : {}),
+        ...(authorName ? { authorName } : {}),
+        text,
+        ...(rating ? { rating } : {}),
+        ...(filter.sentiment ? { sentiment: filter.sentiment } : {}),
+        matchedFilterIds: [filter.id],
+        ...(dateText ? { dateText } : {}),
+        ...(skuText ? { skuText } : {}),
+        ...(badges.length ? { badges: Array.from(new Set(badges)) } : {}),
+        ...(helpfulMatch ? { helpfulCount: Number(helpfulMatch[1]) } : {}),
+        imageSourceUrls: imageSourceUrls.slice(0, 9),
+        ...(videoNode ? { video: { present: true, ...(videoSourceUrl ? { sourceUrl: videoSourceUrl } : {}) } } : {}),
+      });
+    }
+    return reviews;
+  };
+  const signature = () => clean(discoverReviewRows().slice(0, 2).map((node) => node.textContent).join('|'), 1_000);
+  const merged = new Map();
+  const results = [];
+  for (const filter of selected) {
+    const before = signature();
+    filter.node.click?.();
+    let sawLoadingState = false;
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      await sleep(250);
+      const active = filter.node.getAttribute?.('aria-selected') === 'true'
+        || /(?:^|\s)(?:active|selected|checked)(?:\s|$)/i.test(String(filter.node.className || ''));
+      const current = signature();
+      if (!current) sawLoadingState = true;
+      if (current && current !== before) break;
+      if (active && current && ((sawLoadingState && attempt >= 1) || attempt >= 3)) break;
+    }
+    scrollContainer.scrollTop = 0;
+    let collected = [];
+    let previousCount = -1;
+    let stalled = 0;
+    while (collected.length < limitPerFilter && stalled < 3) {
+      collected = extractReviews(filter).slice(0, limitPerFilter);
+      if (collected.length === previousCount) stalled += 1;
+      else stalled = 0;
+      previousCount = collected.length;
+      if (collected.length >= limitPerFilter) break;
+      const priorTop = Number(scrollContainer.scrollTop || 0);
+      const step = Math.max(Number(scrollContainer.clientHeight || 0) * 0.75, 480);
+      scrollContainer.scrollTop = priorTop + step;
+      const PageEvent = pageDocument.defaultView?.Event || globalThis.Event;
+      if (PageEvent) scrollContainer.dispatchEvent?.(new PageEvent('scroll', { bubbles: true }));
+      await sleep(400);
+    }
+    for (const review of collected) {
+      const prior = merged.get(review.id);
+      merged.set(review.id, prior ? {
+        ...prior,
+        matchedFilterIds: Array.from(new Set([...(prior.matchedFilterIds || []), filter.id])),
+      } : review);
+    }
+    const complete = collected.length >= limitPerFilter;
+    results.push({
+      filterId: filter.id,
+      label: filter.label,
+      requested: limitPerFilter,
+      captured: collected.length,
+      status: complete ? 'complete' : 'partial',
+      ...(!complete ? { warning: `仅加载到 ${collected.length} 条评论` } : {}),
+    });
+  }
+  if (originalFilter && !selected.some((filter) => filter.id === originalFilter.id)) {
+    originalFilter.node.click?.();
+    await sleep(250);
+  }
+  scrollContainer.scrollTop = originalScrollTop;
+  const reviews = Array.from(merged.values()).slice(0, 1_000);
+  if (!selected.length) warnings.push('没有可执行的评论筛选标签，本次仅保存商品资料');
+  if (results.some((result) => result.status !== 'complete')) warnings.push('部分评论标签未达到请求数量');
+  const sortText = clean(Array.from(modal.querySelectorAll('[class*="sort"], [role="tablist"]')).map((node) => node.textContent).find((text) => /最新|默认|时间/.test(String(text))), 100);
+  const scopeText = clean(Array.from(modal.querySelectorAll('[class*="scope"], [class*="product"]')).map((node) => node.textContent).find((text) => /当前商品|全部商品/.test(String(text))), 100);
+  return {
+    modalDetected: true,
+    availableFilters,
+    selectedFilters,
+    results,
+    reviews,
+    status: selected.length && !warnings.length && results.every((result) => result.status === 'complete') ? 'complete' : 'partial',
+    warnings: Array.from(new Set(warnings)),
+    ...(sortText ? { sortText } : {}),
+    ...(scopeText ? { scopeText } : {}),
+  };
+}
+
+// Keep this function self-contained: chrome.scripting serializes it into the page.
 export function extractJdProductPayload(pageDocument = globalThis.document, pageLocation = globalThis.location) {
   const clean = (value, limit = 20_000) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, limit);
   const nodeText = (node) => clean(node?.getAttribute('content') || node?.textContent);
@@ -206,7 +714,7 @@ export function extractJdProductPayload(pageDocument = globalThis.document, page
   if (!parameters.length) missingFields.push('商品参数');
 
   return {
-    platform: 'jd', captureVersion: 2, externalId, sourceUrl, capturedAt: new Date().toISOString(), title,
+    platform: 'jd', captureVersion: 3, externalId, sourceUrl, capturedAt: new Date().toISOString(), title,
     brandName: brandName || undefined,
     shopName: shopName || undefined,
     description: description || undefined,

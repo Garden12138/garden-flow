@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Image as ImageIcon } from 'lucide-react';
+import { Image as ImageIcon, Star, Video } from 'lucide-react';
 import { resolveAssetUrl } from '../../utils/pathManager';
 
 export interface ProductPreviewSnapshot {
@@ -15,6 +15,42 @@ export interface ProductPreviewSnapshot {
     price?: { text: string; currency?: string; label?: string };
     parameters: Array<{ key: string; value: string }>;
     detailText?: string;
+    reviewCapture?: {
+        modalDetected: boolean;
+        status: 'not-opened' | 'ready' | 'complete' | 'partial';
+        availableFilters: Array<{
+            id: string;
+            label: string;
+            countText?: string;
+            sentiment?: 'positive' | 'neutral' | 'negative';
+        }>;
+        selectedFilters: Array<{ id: string; label: string; limit: number }>;
+        results: Array<{
+            filterId: string;
+            label: string;
+            requested: number;
+            captured: number;
+            status: 'complete' | 'partial' | 'missing';
+            warning?: string;
+        }>;
+        reviews: Array<{
+            id: string;
+            authorName?: string;
+            text: string;
+            rating?: number;
+            sentiment?: 'positive' | 'neutral' | 'negative';
+            matchedFilterIds: string[];
+            dateText?: string;
+            skuText?: string;
+            badges?: string[];
+            helpfulCount?: number;
+            imageAssetIds: string[];
+            video?: { present: true; sourceUrl?: string };
+        }>;
+        warnings: string[];
+        sortText?: string;
+        scopeText?: string;
+    };
     missingFields: string[];
 }
 
@@ -24,19 +60,22 @@ export interface ProductPreviewImage {
     role?: string;
 }
 
-export function ProductSourcePreview({ snapshot, images, legacy = false, rawText }: {
+export function ProductSourcePreview({ snapshot, images, reviewImages = [], legacy = false, rawText }: {
     snapshot: ProductPreviewSnapshot;
     images: ProductPreviewImage[];
+    reviewImages?: ProductPreviewImage[];
     legacy?: boolean;
     rawText?: string;
 }) {
     const [imageIndex, setImageIndex] = useState(0);
+    const [reviewFilterId, setReviewFilterId] = useState('all');
     const [rejectedImages, setRejectedImages] = useState<Set<string>>(() => new Set());
     const imageIdentity = images.map((image) => image.path).join('\n');
     useEffect(() => {
         setImageIndex(0);
         setRejectedImages(new Set());
-    }, [imageIdentity]);
+        setReviewFilterId('all');
+    }, [imageIdentity, snapshot.capturedAt]);
     const availableImages = useMemo(() => images.filter((image) => !rejectedImages.has(image.path)), [images, rejectedImages]);
     const activeImage = availableImages[Math.min(imageIndex, availableImages.length - 1)];
     const rejectImage = (path: string) => setRejectedImages((current) => new Set([...current, path]));
@@ -46,6 +85,12 @@ export function ProductSourcePreview({ snapshot, images, legacy = false, rawText
         ['当前规格', snapshot.selectedSku?.variantText || '未识别'],
         ['商品编号', snapshot.selectedSku?.externalId || snapshot.externalId],
     ].filter(([, value]) => value);
+    const reviewCapture = snapshot.reviewCapture;
+    const filterLabels = new Map((reviewCapture?.availableFilters || []).map((filter) => [filter.id, filter.label]));
+    const reviewImageMap = new Map(reviewImages.map((image) => [image.id, image]));
+    const filteredReviews = (reviewCapture?.reviews || []).filter((review) => (
+        reviewFilterId === 'all' || review.matchedFilterIds.includes(reviewFilterId)
+    ));
 
     return (
         <div className="space-y-5 text-text-primary">
@@ -130,6 +175,92 @@ export function ProductSourcePreview({ snapshot, images, legacy = false, rawText
                             </div>
                         ))}
                     </dl>
+                </section>
+            )}
+            {reviewCapture && (
+                <section className="space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h3 className="text-sm font-semibold">商品评论 · {reviewCapture.reviews.length} 条</h3>
+                        {(reviewCapture.scopeText || reviewCapture.sortText) && (
+                            <div className="text-xs text-text-tertiary">
+                                {[reviewCapture.scopeText, reviewCapture.sortText].filter(Boolean).join(' · ')}
+                            </div>
+                        )}
+                    </div>
+                    {reviewCapture.results.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                            {reviewCapture.results.map((result) => (
+                                <button
+                                    key={result.filterId}
+                                    type="button"
+                                    onClick={() => setReviewFilterId((current) => current === result.filterId ? 'all' : result.filterId)}
+                                    aria-pressed={reviewFilterId === result.filterId}
+                                    className={`rounded-full border px-3 py-1 text-xs transition ${reviewFilterId === result.filterId ? 'border-accent-primary bg-accent-primary/10 text-accent-primary' : 'border-black/10 bg-white text-text-secondary hover:border-black/20'}`}
+                                    title={result.warning}
+                                >
+                                    {result.label} {result.captured}/{result.requested}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                    {reviewCapture.warnings.length > 0 && (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+                            {reviewCapture.warnings.join('；')}
+                        </div>
+                    )}
+                    {filteredReviews.length > 0 ? (
+                        <div className="space-y-3">
+                            {filteredReviews.map((review) => {
+                                const localImages = review.imageAssetIds
+                                    .map((id) => reviewImageMap.get(id))
+                                    .filter((image): image is ProductPreviewImage => Boolean(image) && !rejectedImages.has(image.path));
+                                const labels = Array.from(new Set(review.matchedFilterIds.map((id) => filterLabels.get(id)).filter(Boolean)));
+                                return (
+                                    <article key={review.id} className="rounded-xl border border-black/[0.06] bg-white p-4">
+                                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-tertiary">
+                                            <span className="font-semibold text-text-primary">{review.authorName || '京东用户'}</span>
+                                            {review.rating && (
+                                                <span className="inline-flex items-center gap-1 text-amber-600">
+                                                    <Star className="h-3.5 w-3.5 fill-current" />{review.rating} 星
+                                                </span>
+                                            )}
+                                            {review.dateText && <span>{review.dateText}</span>}
+                                            {review.skuText && <span>{review.skuText}</span>}
+                                            {review.video?.present && <span className="inline-flex items-center gap-1"><Video className="h-3.5 w-3.5" />含视频</span>}
+                                        </div>
+                                        {(labels.length > 0 || (review.badges || []).length > 0) && (
+                                            <div className="mt-2 flex flex-wrap gap-1.5">
+                                                {[...labels, ...(review.badges || [])].map((label) => (
+                                                    <span key={label} className="rounded-full bg-surface-secondary px-2 py-0.5 text-[11px] text-text-secondary">{label}</span>
+                                                ))}
+                                            </div>
+                                        )}
+                                        <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-text-secondary">{review.text}</p>
+                                        {localImages.length > 0 && (
+                                            <div className="mt-3 flex flex-wrap gap-2">
+                                                {localImages.map((image) => (
+                                                    <img
+                                                        key={image.id}
+                                                        src={resolveAssetUrl(image.path)}
+                                                        alt="评论图片"
+                                                        className="h-24 w-24 rounded-lg border border-black/[0.06] object-cover"
+                                                        onError={() => rejectImage(image.path)}
+                                                    />
+                                                ))}
+                                            </div>
+                                        )}
+                                        {typeof review.helpfulCount === 'number' && (
+                                            <div className="mt-3 text-xs text-text-tertiary">有用 {review.helpfulCount}</div>
+                                        )}
+                                    </article>
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        <div className="rounded-xl border border-dashed border-black/10 px-4 py-6 text-center text-sm text-text-tertiary">
+                            {reviewCapture.modalDetected ? '本次没有采集到评论' : '本次保存时未打开商品评价弹窗'}
+                        </div>
+                    )}
                 </section>
             )}
             {[...new Set([snapshot.description, snapshot.detailText].filter(Boolean))].map((text) => (

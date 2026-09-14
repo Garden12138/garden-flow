@@ -7,7 +7,13 @@ import {
   buildKnowledgeEntryFromCaptureDocument,
   buildKnowledgeEntryFromPagePayload,
 } from './capture/knowledgeEntryMapper.js';
-import { extractJdProductPayload, isJdProductUrl } from './capture/jdProduct.js';
+import {
+  captureJdProductReviews,
+  ensureJdReviewModal,
+  extractJdProductPayload,
+  extractJdReviewPreview,
+  isJdProductUrl,
+} from './capture/jdProduct.js';
 
 const NATIVE_KNOWLEDGE_ENDPOINT = Object.freeze({
   baseUrl: 'native://gardenflow',
@@ -453,7 +459,7 @@ async function handleMessage(message, sender) {
     case 'preview-jd-product':
       return await previewJdProductFromTab(tabId);
     case 'save-jd-product':
-      return await saveJdProductFromTab(tabId);
+      return await saveJdProductFromTab(tabId, message?.reviewOptions);
     case 'save-xhs':
       return await enqueueXhsTask({
         type: message.type,
@@ -4318,6 +4324,8 @@ async function previewJdProductFromTab(tabId) {
   if (!product?.externalId || !product?.title) {
     throw new Error('当前页面未识别到完整的京东商品名称或商品标识');
   }
+  await runExtraction(tabId, ensureJdReviewModal, { world: 'MAIN' });
+  product.reviewCapture = await runExtraction(tabId, extractJdReviewPreview, { world: 'MAIN' });
   return {
     success: true,
     preview: true,
@@ -4326,11 +4334,28 @@ async function previewJdProductFromTab(tabId) {
   };
 }
 
-async function saveJdProductFromTab(tabId) {
+async function saveJdProductFromTab(tabId, reviewOptions = {}) {
   const preview = await previewJdProductFromTab(tabId);
-  const payload = preview.product;
+  const normalizedReviewOptions = {
+    selectedFilterIds: Array.from(new Set((Array.isArray(reviewOptions?.selectedFilterIds) ? reviewOptions.selectedFilterIds : [])
+      .map((value) => normalizeText(value).slice(0, 200)).filter(Boolean))).slice(0, 50),
+    selectedFilterLabels: Array.from(new Set((Array.isArray(reviewOptions?.selectedFilterLabels) ? reviewOptions.selectedFilterLabels : [])
+      .map((value) => normalizeText(value).slice(0, 40)).filter(Boolean))).slice(0, 50),
+    limitPerFilter: Number.isFinite(Number(reviewOptions?.limitPerFilter))
+      ? Math.max(1, Math.min(50, Math.trunc(Number(reviewOptions.limitPerFilter))))
+      : 5,
+  };
+  const reviewCapture = await runExtraction(tabId, captureJdProductReviews, {
+    world: 'MAIN',
+    args: [normalizedReviewOptions],
+  });
+  const payload = {
+    ...preview.product,
+    reviewOptions: normalizedReviewOptions,
+    reviewCapture,
+  };
   const operationId = createBridgeOperationId('assets.ingestProduct', payload);
-  const result = await requestNativeHost('assets.ingestProduct', { operationId, payload }, 60_000);
+  const result = await requestNativeHost('assets.ingestProduct', { operationId, payload }, 120_000);
   return {
     success: true,
     mode: 'jd-product',
@@ -4339,6 +4364,9 @@ async function saveJdProductFromTab(tabId) {
     snapshotId: result?.snapshotId || '',
     duplicate: Boolean(result?.duplicate),
     importedImages: Number(result?.importedImages || 0),
+    importedReviewImages: Number(result?.importedReviewImages || 0),
+    capturedReviews: Number(result?.capturedReviews || 0),
+    reviewWarnings: Array.isArray(result?.reviewWarnings) ? result.reviewWarnings : reviewCapture?.warnings || [],
     missingFields: Array.isArray(result?.missingFields) ? result.missingFields : payload.missingFields || [],
   };
 }

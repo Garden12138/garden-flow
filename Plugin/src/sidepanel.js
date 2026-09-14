@@ -49,6 +49,10 @@ let capturePendingAction = '';
 let captureFeedback = null;
 let captureSignature = '';
 let jdProductPreview = null;
+let jdReviewOptions = {
+  selectedFilterIds: [],
+  limitPerFilter: 5,
+};
 let currentSettings = {
   xhsBloggerNoteLimit: 50,
   xhsIntervalMaxSeconds: 6,
@@ -109,8 +113,24 @@ function bindEvents() {
     void runCaptureAction(button.dataset.action || '');
   });
   elements.captureOptions.addEventListener('change', (event) => {
-    if (event.target?.id !== 'xhs-save-comments-inline') return;
-    void updateXhsSaveCommentsSetting(Boolean(event.target.checked));
+    if (event.target?.id === 'xhs-save-comments-inline') {
+      void updateXhsSaveCommentsSetting(Boolean(event.target.checked));
+      return;
+    }
+    if (event.target?.matches?.('[data-jd-review-filter]')) {
+      const filterId = String(event.target.dataset.jdReviewFilter || '');
+      const selected = new Set(jdReviewOptions.selectedFilterIds);
+      if (event.target.checked) selected.add(filterId);
+      else selected.delete(filterId);
+      jdReviewOptions.selectedFilterIds = Array.from(selected);
+      renderCaptureActions(context);
+      return;
+    }
+    if (event.target?.id === 'jd-review-limit') {
+      const limit = Number(event.target.value);
+      jdReviewOptions.limitPerFilter = Number.isFinite(limit) ? Math.max(1, Math.min(50, Math.trunc(limit))) : 5;
+      renderCaptureActions(context);
+    }
   });
   elements.platformIcon.addEventListener('error', () => {
     elements.platformIcon.classList.add('hidden');
@@ -285,6 +305,7 @@ function renderCaptureActions(nextContext) {
   if (captureSignature !== nextSignature) {
     captureFeedback = null;
     jdProductPreview = null;
+    jdReviewOptions = { selectedFilterIds: [], limitPerFilter: 5 };
     captureSignature = nextSignature;
   }
 
@@ -362,6 +383,71 @@ function renderCaptureActions(nextContext) {
       details.append(term, detail);
     }
     summary.appendChild(details);
+    const reviewCapture = product.reviewCapture;
+    const reviewPanel = document.createElement('section');
+    reviewPanel.className = 'jd-review-options';
+    const reviewHeading = document.createElement('div');
+    reviewHeading.className = 'jd-review-options-heading';
+    reviewHeading.textContent = '商品评论';
+    reviewPanel.appendChild(reviewHeading);
+    if (reviewCapture?.modalDetected) {
+      const filters = Array.isArray(reviewCapture.availableFilters) ? reviewCapture.availableFilters : [];
+      const availableIds = new Set(filters.map((filter) => filter.id));
+      jdReviewOptions.selectedFilterIds = jdReviewOptions.selectedFilterIds.filter((id) => availableIds.has(id));
+      const hint = document.createElement('div');
+      hint.className = 'jd-review-options-hint';
+      hint.textContent = filters.length
+        ? '可选择多个标签；不选择时默认采集好评、中评、差评。'
+        : '已检测到评价弹窗，但没有识别到可用标签。';
+      reviewPanel.appendChild(hint);
+      if (filters.length) {
+        const filterList = document.createElement('div');
+        filterList.className = 'jd-review-filter-list';
+        for (const filter of filters) {
+          const label = document.createElement('label');
+          label.className = 'jd-review-filter';
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.dataset.jdReviewFilter = filter.id;
+          checkbox.checked = jdReviewOptions.selectedFilterIds.includes(filter.id);
+          checkbox.disabled = Boolean(capturePendingAction) || !isHealthy;
+          const text = document.createElement('span');
+          text.textContent = `${filter.label}${filter.countText ? ` ${filter.countText}` : ''}`;
+          label.append(checkbox, text);
+          filterList.appendChild(label);
+        }
+        reviewPanel.appendChild(filterList);
+        const limitRow = document.createElement('label');
+        limitRow.className = 'jd-review-limit-row';
+        const limitLabel = document.createElement('span');
+        limitLabel.textContent = '每个标签采集';
+        const limitInput = document.createElement('input');
+        limitInput.id = 'jd-review-limit';
+        limitInput.type = 'number';
+        limitInput.min = '1';
+        limitInput.max = '50';
+        limitInput.step = '1';
+        limitInput.value = String(jdReviewOptions.limitPerFilter);
+        limitInput.disabled = Boolean(capturePendingAction) || !isHealthy;
+        const unit = document.createElement('span');
+        unit.textContent = '条';
+        limitRow.append(limitLabel, limitInput, unit);
+        reviewPanel.appendChild(limitRow);
+        const selection = document.createElement('div');
+        selection.className = 'jd-review-options-hint';
+        const selectedLabels = filters.filter((filter) => jdReviewOptions.selectedFilterIds.includes(filter.id)).map((filter) => filter.label);
+        selection.textContent = selectedLabels.length
+          ? `将采集：${selectedLabels.join('、')}，各 ${jdReviewOptions.limitPerFilter} 条`
+          : `默认采集：好评、中评、差评，各 ${jdReviewOptions.limitPerFilter} 条`;
+        reviewPanel.appendChild(selection);
+      }
+    } else {
+      const warning = document.createElement('div');
+      warning.className = 'jd-review-options-warning';
+      warning.textContent = '没有检测到评价弹窗。点“确认保存”时会再次自动打开并采集；如果页面没有可用入口，商品资料仍会正常保存。';
+      reviewPanel.appendChild(warning);
+    }
+    summary.appendChild(reviewPanel);
     if (product.parameters?.length) {
       const disclosure = document.createElement('details');
       const label = document.createElement('summary');
@@ -456,6 +542,15 @@ async function runCaptureAction(action) {
       tabId,
       tabUrl: tab.url || '',
       windowId: Number(tab.windowId || 0) || undefined,
+      ...(action === 'saveJdProduct' ? {
+        reviewOptions: {
+          selectedFilterIds: jdReviewOptions.selectedFilterIds,
+          selectedFilterLabels: (jdProductPreview?.reviewCapture?.availableFilters || [])
+            .filter((filter) => jdReviewOptions.selectedFilterIds.includes(filter.id))
+            .map((filter) => filter.label),
+          limitPerFilter: jdReviewOptions.limitPerFilter,
+        },
+      } : {}),
     });
     if (response.taskQueue) {
       renderTaskQueue(response.taskQueue);
@@ -731,8 +826,8 @@ function getCaptureActionConfig(nextContext) {
       actions: [
         hasCurrentPreview
           ? { label: '确认保存到资产库', action: 'saveJdProduct', primary: true, title: '保存当前商品及来源快照' }
-          : { label: '预览商品资料', action: 'previewJdProduct', primary: true, title: '读取当前商品和所选规格' },
-        ...(hasCurrentPreview ? [{ label: '重新识别', action: 'previewJdProduct', title: '更新当前价格、规格和已加载的商品详情' }] : []),
+          : { label: '预览商品及评论', action: 'previewJdProduct', primary: true, title: '读取当前商品、所选规格和评论标签' },
+        ...(hasCurrentPreview ? [{ label: '重新识别', action: 'previewJdProduct', title: '更新商品资料并自动识别评论标签' }] : []),
       ],
     };
   }
@@ -837,8 +932,8 @@ function getCaptureActionConfig(nextContext) {
 
 function getCaptureActionMeta(action) {
   const map = {
-    previewJdProduct: { type: 'preview-jd-product', pending: '识别中...', done: '商品资料已识别，请核对后保存' },
-    saveJdProduct: { type: 'save-jd-product', pending: '保存中...', done: '商品已保存到资产库' },
+    previewJdProduct: { type: 'preview-jd-product', pending: '正在识别商品及评论...', done: '商品及评论标签已识别，请核对后保存' },
+    saveJdProduct: { type: 'save-jd-product', pending: '正在打开评价并保存...', done: '商品已保存到资产库' },
     save: { type: 'save-xhs', pending: '保存中...', done: '已保存到 GardenFlow' },
     download: { type: 'xhs:download-current-note', pending: '下载中...', done: '已创建下载任务' },
     comments: { type: 'xhs:collect-current-comments', pending: '采集中...', done: '评论已写入知识库' },
@@ -866,10 +961,18 @@ function summarizeActionResponse(response, fallback) {
   }
   if (response?.mode === 'jd-product') {
     const imageText = `，已保存 ${Number(response.importedImages || 0)} 张图片`;
+    const reviewText = Number(response.capturedReviews || 0) > 0
+      ? `、${Number(response.capturedReviews || 0)} 条评论和 ${Number(response.importedReviewImages || 0)} 张评论图`
+      : '；本次未采集评论';
+    const reviewWarningText = Array.isArray(response.reviewWarnings) && response.reviewWarnings.length > 0
+      ? `；${response.reviewWarnings.join('；')}`
+      : '';
     const missingText = Array.isArray(response.missingFields) && response.missingFields.length > 0
       ? `；待补充：${response.missingFields.join('、')}`
       : '';
-    return response.duplicate ? `商品来源快照已更新${imageText}${missingText}` : `商品已保存到资产库${imageText}${missingText}`;
+    return response.duplicate
+      ? `商品来源快照已更新${imageText}${reviewText}${missingText}${reviewWarningText}`
+      : `商品已保存到资产库${imageText}${reviewText}${missingText}${reviewWarningText}`;
   }
   if (response?.noteId) {
     const identity = String(response.title || response.noteId || '').trim();

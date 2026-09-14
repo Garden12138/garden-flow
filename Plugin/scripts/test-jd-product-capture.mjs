@@ -1,7 +1,51 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { parseHTML } from 'linkedom';
-import { extractJdProductPayload } from '../src/capture/jdProduct.js';
+import {
+  captureJdProductReviews,
+  ensureJdReviewModal,
+  extractJdProductPayload,
+  extractJdReviewPreview,
+} from '../src/capture/jdProduct.js';
+
+function createReviewModal() {
+  const { document } = parseHTML(`<!doctype html><html><body>
+    <div role="dialog" aria-modal="true" class="comment-dialog">
+      <h2>商品评价</h2>
+      <div class="comment-filter-list" role="tablist">
+        <button role="tab" data-filter="all">全部 99%好评</button>
+        <button role="tab" data-filter="image">图/视频 5万+</button>
+        <button role="tab" data-filter="repeat">回头客 1900+</button>
+        <button role="tab" data-filter="positive">好评 50万+</button>
+        <button role="tab" data-filter="neutral">中评 2000+</button>
+        <button role="tab" data-filter="negative">差评 2000+</button>
+      </div>
+      <div class="comment-scope">最新 | 当前商品</div>
+      <div class="comment-list"></div>
+    </div>
+  </body></html>`);
+  const list = document.querySelector('.comment-list');
+  const render = (filter) => {
+    for (const button of document.querySelectorAll('[data-filter]')) button.classList.toggle('active', button.dataset.filter === filter);
+    list.innerHTML = Array.from({ length: 5 }, (_, index) => `
+      <article class="comment-item" data-comment-id="${filter}-${index}">
+        <span data-role="author">j***${index}</span>
+        <span data-role="badge">已购 10 次</span>
+        <span data-role="date">03-${20 + index}</span>
+        <span data-role="sku">海洋鱼味</span>
+        <span data-score="5">5 星</span>
+        <p data-role="comment-text">${filter} 评论 ${index + 1}，猫咪很喜欢。</p>
+        <div data-role="review-media"><img src="https://img10.360buyimg.com/jfs/t1/${filter}-${index}.jpg"></div>
+        ${index === 0 ? '<span data-role="review-video"><video src="https://video-jdvideo.jcloudcs.com/review.mp4"></video></span>' : ''}
+      </article>
+    `).join('');
+  };
+  for (const button of document.querySelectorAll('[data-filter]')) {
+    button.addEventListener('click', () => render(button.dataset.filter));
+  }
+  render('all');
+  return document;
+}
 
 test('extracts the current JD SKU, images, price, and parameters for preview', () => {
   const { document } = parseHTML(`<!doctype html><html><head><title>测试保温杯 - 京东</title></head><body>
@@ -129,7 +173,7 @@ test('captures scoped JD CSS detail images without collecting unrelated styleshe
   assert.equal(payload.images[0].role, 'detail');
   assert.equal(payload.images[0].sourceUrl, 'https://img10.360buyimg.com/jfs/t1/detail.jpg');
   assert.equal(payload.detailText, undefined);
-  assert.equal(payload.captureVersion, 2);
+  assert.equal(payload.captureVersion, 3);
 });
 
 test('a loading shell cannot be saved under the JD homepage title or a third-party heading', () => {
@@ -137,4 +181,178 @@ test('a loading shell cannot be saved under the JD homepage title or a third-par
   const payload = extractJdProductPayload(document, new URL('https://item.jd.com/280930.html'));
   assert.equal(payload.title, '');
   assert.ok(payload.missingFields.includes('商品名称'));
+});
+
+test('recognizes visible review filters only after the JD review modal is open', () => {
+  const closed = parseHTML('<html><body><button>全部评价</button></body></html>').document;
+  assert.equal(extractJdReviewPreview(closed).modalDetected, false);
+
+  const preview = extractJdReviewPreview(createReviewModal());
+  assert.equal(preview.modalDetected, true);
+  assert.deepEqual(preview.availableFilters.map((filter) => filter.label), ['全部', '图/视频', '回头客', '好评', '中评', '差评']);
+  assert.deepEqual(preview.availableFilters.slice(-3).map((filter) => filter.sentiment), ['positive', 'neutral', 'negative']);
+});
+
+test('opens the JD review modal automatically from the all-reviews entry', async () => {
+  const { document } = parseHTML(`<!doctype html><html><body>
+    <button id="open-reviews">全部评价 ›</button>
+    <div id="review-modal" role="dialog" aria-modal="true" class="comment-dialog" style="display: none">
+      <h2>商品评价</h2>
+      <button role="tab">好评 50万+</button>
+      <button role="tab">中评 2000+</button>
+      <button role="tab">差评 2000+</button>
+      <div>最新 · 当前商品</div>
+    </div>
+  </body></html>`);
+  const modal = document.querySelector('#review-modal');
+  document.querySelector('#open-reviews').addEventListener('click', () => modal.removeAttribute('style'));
+
+  const result = await ensureJdReviewModal(document);
+  assert.deepEqual(result, { modalDetected: true, opened: true, entryFound: true });
+  assert.equal(extractJdReviewPreview(document).modalDetected, true);
+});
+
+test('reports when a JD page has no automatic review entry', async () => {
+  const { document } = parseHTML('<html><body><button>加入购物车</button></body></html>');
+  assert.deepEqual(await ensureJdReviewModal(document), {
+    modalDetected: false,
+    opened: false,
+    entryFound: false,
+  });
+});
+
+test('recognizes the current JD popup structure without exposing nested count nodes as filters', async () => {
+  const { document } = parseHTML(`<!doctype html><html><body>
+    <main>
+      <div><span>商品评价</span></div>
+      <div class="tag-list">
+        <div class="tag-item"><span>全部</span><span class="tag-count">99%好评</span></div>
+        <div class="tag-item"><span>图/视频</span><span class="tag-count">5万+</span></div>
+        <div class="tag-item"><span>好评</span><span class="tag-count">50万+</span></div>
+        <div class="tag-item"><span>中评</span><span class="tag-count">2000+</span></div>
+        <div class="tag-item"><span>差评</span><span class="tag-count">2000+</span></div>
+      </div>
+      <div>最新</div><div>当前商品</div>
+      <section class="review-row">
+        <img alt="avatar" src="https://img10.360buyimg.com/jfs/t1/avatar_sma.jpg">
+        <div>j***m 该店铺购买≥10次</div>
+        <img alt="star" src="https://img10.360buyimg.com/jfs/t1/star.png">
+        <span>03-29</span><span>成猫粮1.3kg|海洋鱼味</span>
+        <p>一直给家里的猫喂这款猫粮，适口性很好，包装也完整，会继续回购。</p>
+        <img alt="pic" src="https://img10.360buyimg.com/jfs/t1/review.jpg.dpg">
+      </section>
+    </main>
+  </body></html>`);
+  const preview = extractJdReviewPreview(document);
+  assert.deepEqual(preview.availableFilters.map((filter) => filter.label), ['全部', '图/视频', '好评', '中评', '差评']);
+
+  const capture = await captureJdProductReviews({ selectedFilterLabels: ['好评'], limitPerFilter: 1 }, document, new URL('https://item.jd.com/280930.html'));
+  assert.equal(capture.reviews.length, 1);
+  assert.equal(capture.reviews[0].authorName, 'j***m');
+  assert.equal(capture.reviews[0].dateText, '03-29');
+  assert.equal(capture.reviews[0].skuText, '成猫粮1.3kg|海洋鱼味');
+  assert.deepEqual(capture.reviews[0].imageSourceUrls, ['https://img10.360buyimg.com/jfs/t1/review.jpg.dpg']);
+});
+
+test('defaults to five positive, neutral, and negative reviews and keeps review media metadata', async () => {
+  const capture = await captureJdProductReviews({}, createReviewModal(), new URL('https://item.jd.com/280930.html'));
+  assert.equal(capture.status, 'complete');
+  assert.deepEqual(capture.selectedFilters.map((filter) => [filter.label, filter.limit]), [
+    ['好评', 5],
+    ['中评', 5],
+    ['差评', 5],
+  ]);
+  assert.equal(capture.reviews.length, 15);
+  assert.equal(capture.reviews[0].imageSourceUrls.length, 1);
+  assert.equal(capture.reviews[0].video.present, true);
+});
+
+test('waits for an asynchronous filter refresh and scrolls the modal for more reviews', async () => {
+  const { document } = parseHTML(`<!doctype html><html><body>
+    <div role="dialog" class="comment-dialog">
+      <h2>商品评价</h2>
+      <button role="tab" data-filter="positive">好评 20+</button>
+      <button role="tab">中评 2</button>
+      <button role="tab">差评 1</button>
+      <div class="comment-scope">最新 | 当前商品</div>
+      <div class="comment-list"></div>
+    </div>
+  </body></html>`);
+  const button = document.querySelector('[data-filter="positive"]');
+  const list = document.querySelector('.comment-list');
+  Object.defineProperties(list, {
+    clientHeight: { configurable: true, value: 400 },
+    scrollHeight: { configurable: true, value: 2_000 },
+  });
+  const row = (index) => `<article class="comment-item" data-comment-id="async-${index}">
+    <span data-role="author">u***${index}</span>
+    <span data-role="date">2026-09-${10 + index}</span>
+    <span data-role="sku">海洋鱼味 10kg</span>
+    <span data-score="4"></span>
+    <p data-role="comment-text">异步加载的好评内容第 ${index} 条，猫咪吃得很好，会继续购买。</p>
+  </article>`;
+  list.innerHTML = row(0);
+  button.addEventListener('click', () => {
+    button.setAttribute('aria-selected', 'true');
+    list.innerHTML = '<p>加载中</p>';
+    setTimeout(() => { list.innerHTML = row(1); }, 450);
+  });
+  list.addEventListener('scroll', () => {
+    if (list.querySelectorAll('.comment-item').length === 1) list.insertAdjacentHTML('beforeend', row(2) + row(3));
+  });
+
+  const capture = await captureJdProductReviews({ selectedFilterLabels: ['好评'], limitPerFilter: 3 }, document, new URL('https://item.jd.com/280930.html'));
+  assert.equal(capture.status, 'complete');
+  assert.equal(capture.results[0].captured, 3);
+  assert.deepEqual(capture.reviews.map((review) => review.rating), [4, 4, 4]);
+});
+
+test('captures only custom review filters and clamps the shared limit to one through fifty', async () => {
+  const document = createReviewModal();
+  const modal = document.querySelector('[role="dialog"]');
+  modal.scrollTop = 123;
+  const preview = extractJdReviewPreview(document);
+  const imageFilter = preview.availableFilters.find((filter) => filter.label === '图/视频');
+  const capture = await captureJdProductReviews({
+    selectedFilterIds: [imageFilter.id],
+    selectedFilterLabels: ['图/视频'],
+    limitPerFilter: 0,
+  }, document, new URL('https://item.jd.com/280930.html'));
+  assert.deepEqual(capture.selectedFilters, [{ id: imageFilter.id, label: '图/视频', limit: 1 }]);
+  assert.equal(capture.reviews.length, 1);
+  assert.equal(document.querySelector('[data-filter="all"]').classList.contains('active'), true);
+  assert.equal(modal.scrollTop, 123);
+
+  const upper = await captureJdProductReviews({ selectedFilterLabels: ['回头客'], limitPerFilter: 99 }, createReviewModal(), new URL('https://item.jd.com/280930.html'));
+  assert.equal(upper.selectedFilters[0].limit, 50);
+  assert.equal(upper.results[0].status, 'partial');
+});
+
+test('deduplicates the same review across filters and retains every matching label', async () => {
+  const document = createReviewModal();
+  for (const button of document.querySelectorAll('[data-filter]')) {
+    button.addEventListener('click', () => {
+      Array.from(document.querySelectorAll('.comment-item')).forEach((row, index) => row.setAttribute('data-comment-id', `shared-${index}`));
+    });
+  }
+  const capture = await captureJdProductReviews({}, document, new URL('https://item.jd.com/280930.html'));
+  assert.equal(capture.reviews.length, 5);
+  assert.equal(capture.reviews[0].matchedFilterIds.length, 3);
+});
+
+test('reports partial default review capture when a sentiment filter is unavailable', async () => {
+  const document = createReviewModal();
+  document.querySelector('[data-filter="neutral"]').remove();
+  const capture = await captureJdProductReviews({}, document, new URL('https://item.jd.com/280930.html'));
+  assert.equal(capture.status, 'partial');
+  assert.deepEqual(capture.selectedFilters.map((filter) => filter.label), ['好评', '差评']);
+  assert.ok(capture.warnings.some((warning) => warning.includes('中评')));
+});
+
+test('returns a non-blocking review result when the review modal is closed', async () => {
+  const { document } = parseHTML('<html><body><button>全部评价</button></body></html>');
+  const capture = await captureJdProductReviews({}, document, new URL('https://item.jd.com/280930.html'));
+  assert.equal(capture.status, 'not-opened');
+  assert.equal(capture.reviews.length, 0);
+  assert.match(capture.warnings[0], /仅保存商品资料/);
 });

@@ -58,7 +58,7 @@ export type BrandWorkspaceSku = {
 
 type StoredAssetRef = {
   id: string;
-  ownerType: 'brand' | 'product' | 'sku' | 'product-detail';
+  ownerType: 'brand' | 'product' | 'sku' | 'product-detail' | 'product-review';
   ownerId: string;
   relativePath: string;
   sourceUrl?: string;
@@ -92,12 +92,79 @@ export type ProductCreativeReference = {
     price?: ProductSourceSnapshot['price'];
     parameters: Array<{ key: string; value: string }>;
   }>;
+  reviews: ProductReviewReference[];
   assets: Array<{
     id: string;
     role: string;
     origin: StoredAssetRef['origin'];
     previewUrl: string;
   }>;
+};
+
+export type ProductReviewFilter = {
+  id: string;
+  label: string;
+  countText?: string;
+  sentiment?: 'positive' | 'neutral' | 'negative';
+};
+
+export type ProductReviewResult = {
+  filterId: string;
+  label: string;
+  requested: number;
+  captured: number;
+  status: 'complete' | 'partial' | 'missing';
+  warning?: string;
+};
+
+export type ProductReviewRecord = {
+  id: string;
+  platformReviewId?: string;
+  authorName?: string;
+  text: string;
+  rating?: number;
+  sentiment?: 'positive' | 'neutral' | 'negative';
+  matchedFilterIds: string[];
+  dateText?: string;
+  skuText?: string;
+  badges?: string[];
+  helpfulCount?: number;
+  imageAssetIds: string[];
+  sourceImages?: Array<{
+    sourceUrl: string;
+    status?: 'localized' | 'failed' | 'skipped';
+  }>;
+  video?: { present: true; sourceUrl?: string };
+};
+
+export type ProductReviewCapture = {
+  modalDetected: boolean;
+  status: 'not-opened' | 'ready' | 'complete' | 'partial';
+  availableFilters: ProductReviewFilter[];
+  selectedFilters: Array<{ id: string; label: string; limit: number }>;
+  results: ProductReviewResult[];
+  reviews: ProductReviewRecord[];
+  warnings: string[];
+  activeFilterId?: string;
+  sortText?: string;
+  scopeText?: string;
+};
+
+export type ProductReviewReference = Pick<ProductReviewRecord,
+  'id' | 'authorName' | 'text' | 'rating' | 'sentiment' | 'matchedFilterIds' | 'dateText' | 'skuText' | 'badges' | 'helpfulCount'
+> & {
+  filterLabels: string[];
+  capturedAt: string;
+};
+
+export type CapturedProductReview = Omit<ProductReviewRecord, 'imageAssetIds' | 'sourceImages'> & {
+  imageSourceUrls?: string[];
+  images?: BrandWorkspaceImageInput[];
+  sourceImages?: ProductReviewRecord['sourceImages'];
+};
+
+export type CapturedProductReviewCapture = Omit<ProductReviewCapture, 'reviews'> & {
+  reviews: CapturedProductReview[];
 };
 
 export type ProductSourceSnapshot = {
@@ -126,6 +193,7 @@ export type ProductSourceSnapshot = {
   detailText?: string;
   imageAssetIds: string[];
   sourceImages?: Array<{ sourceUrl: string; role: string }>;
+  reviewCapture?: ProductReviewCapture;
   missingFields: string[];
 };
 
@@ -170,6 +238,12 @@ export type CapturedProductInput = {
   detailText?: string;
   images?: BrandWorkspaceImageInput[];
   sourceImages?: Array<{ sourceUrl: string; role: string }>;
+  reviewOptions?: {
+    selectedFilterIds?: string[];
+    selectedFilterLabels?: string[];
+    limitPerFilter?: number;
+  };
+  reviewCapture?: CapturedProductReviewCapture;
   missingFields?: string[];
 };
 
@@ -235,6 +309,117 @@ function normalizeFacts(value: unknown, defaultOrigin: BrandWorkspaceFact['origi
   return result.slice(0, 300);
 }
 
+function normalizeReviewSentiment(value: unknown): ProductReviewRecord['sentiment'] {
+  return ['positive', 'neutral', 'negative'].includes(String(value))
+    ? value as ProductReviewRecord['sentiment']
+    : undefined;
+}
+
+function normalizeStoredReviewCapture(value: unknown): ProductReviewCapture | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const availableFilters: ProductReviewFilter[] = (Array.isArray(record.availableFilters) ? record.availableFilters : [])
+    .flatMap((item) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
+      const filter = item as Record<string, unknown>;
+      const id = cleanId(filter.id);
+      const label = cleanText(filter.label, 100);
+      if (!id || !label) return [];
+      return [{
+        id,
+        label,
+        countText: cleanText(filter.countText, 100) || undefined,
+        sentiment: normalizeReviewSentiment(filter.sentiment),
+      }];
+    }).slice(0, 50);
+  const selectedFilters = (Array.isArray(record.selectedFilters) ? record.selectedFilters : [])
+    .flatMap((item) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
+      const filter = item as Record<string, unknown>;
+      const id = cleanId(filter.id);
+      const label = cleanText(filter.label, 100);
+      if (!id || !label) return [];
+      const rawLimit = Number(filter.limit);
+      return [{ id, label, limit: Number.isFinite(rawLimit) ? Math.max(1, Math.min(50, Math.trunc(rawLimit))) : 5 }];
+    }).slice(0, 50);
+  const results: ProductReviewResult[] = (Array.isArray(record.results) ? record.results : [])
+    .flatMap((item) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
+      const result = item as Record<string, unknown>;
+      const filterId = cleanId(result.filterId);
+      const label = cleanText(result.label, 100);
+      if (!filterId || !label) return [];
+      const status = ['complete', 'partial', 'missing'].includes(String(result.status))
+        ? result.status as ProductReviewResult['status']
+        : 'partial';
+      return [{
+        filterId,
+        label,
+        requested: Math.max(0, Math.min(50, Math.trunc(Number(result.requested) || 0))),
+        captured: Math.max(0, Math.min(50, Math.trunc(Number(result.captured) || 0))),
+        status,
+        warning: cleanText(result.warning, 500) || undefined,
+      }];
+    }).slice(0, 50);
+  const reviews: ProductReviewRecord[] = (Array.isArray(record.reviews) ? record.reviews : [])
+    .flatMap((item) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
+      const review = item as Record<string, unknown>;
+      const id = cleanId(review.id);
+      const text = cleanText(review.text, 10_000);
+      if (!id || !text) return [];
+      const rating = Number(review.rating);
+      const helpfulCount = Number(review.helpfulCount);
+      const video = review.video && typeof review.video === 'object' && !Array.isArray(review.video)
+        ? review.video as Record<string, unknown>
+        : null;
+      return [{
+        id,
+        platformReviewId: cleanId(review.platformReviewId) || undefined,
+        authorName: cleanText(review.authorName, 300) || undefined,
+        text,
+        rating: Number.isFinite(rating) && rating >= 1 && rating <= 5 ? rating : undefined,
+        sentiment: normalizeReviewSentiment(review.sentiment),
+        matchedFilterIds: cleanStringList(review.matchedFilterIds, 50).map(cleanId).filter(Boolean),
+        dateText: cleanText(review.dateText, 300) || undefined,
+        skuText: cleanText(review.skuText, 1_000) || undefined,
+        badges: cleanStringList(review.badges, 20),
+        helpfulCount: Number.isFinite(helpfulCount) && helpfulCount >= 0 ? Math.trunc(helpfulCount) : undefined,
+        imageAssetIds: cleanStringList(review.imageAssetIds, 20).map(cleanId).filter(Boolean),
+        sourceImages: (Array.isArray(review.sourceImages) ? review.sourceImages : [])
+          .flatMap((image) => {
+            if (!image || typeof image !== 'object' || Array.isArray(image)) return [];
+            const sourceImage = image as Record<string, unknown>;
+            const status = ['localized', 'failed', 'skipped'].includes(String(sourceImage.status))
+              ? sourceImage.status as 'localized' | 'failed' | 'skipped'
+              : undefined;
+            return [{ sourceUrl: cleanText(sourceImage.sourceUrl, 8_000), status }];
+          })
+          .filter((image) => /^https?:\/\//i.test(image.sourceUrl))
+          .slice(0, 20),
+        video: video?.present === true ? {
+          present: true as const,
+          sourceUrl: cleanText(video.sourceUrl, 8_000) || undefined,
+        } : undefined,
+      }];
+    }).slice(0, 1_000);
+  const status = ['not-opened', 'ready', 'complete', 'partial'].includes(String(record.status))
+    ? record.status as ProductReviewCapture['status']
+    : reviews.length ? 'partial' : 'not-opened';
+  return {
+    modalDetected: record.modalDetected === true,
+    status,
+    availableFilters,
+    selectedFilters,
+    results,
+    reviews,
+    warnings: cleanStringList(record.warnings, 100),
+    activeFilterId: cleanId(record.activeFilterId) || undefined,
+    sortText: cleanText(record.sortText, 100) || undefined,
+    scopeText: cleanText(record.scopeText, 100) || undefined,
+  };
+}
+
 function normalizeCatalog(value: unknown): BrandWorkspaceCatalog {
   const source = value && typeof value === 'object' && !Array.isArray(value)
     ? value as Partial<BrandWorkspaceCatalog>
@@ -247,9 +432,59 @@ function normalizeCatalog(value: unknown): BrandWorkspaceCatalog {
       : [],
     skus: Array.isArray(source.skus) ? source.skus : [],
     assets: Array.isArray(source.assets) ? source.assets : [],
-    sourceSnapshots: Array.isArray(source.sourceSnapshots) ? source.sourceSnapshots : [],
+    sourceSnapshots: Array.isArray(source.sourceSnapshots)
+      ? source.sourceSnapshots.map((snapshot) => ({
+          ...snapshot,
+          reviewCapture: normalizeStoredReviewCapture(snapshot.reviewCapture),
+        }))
+      : [],
     detailPages: Array.isArray(source.detailPages) ? source.detailPages : [],
   };
+}
+
+function selectReviewReferences(snapshots: ProductSourceSnapshot[], limit = 15): ProductReviewReference[] {
+  const snapshot = snapshots.find((item) => (item.reviewCapture?.reviews.length || 0) > 0);
+  if (!snapshot?.reviewCapture) return [];
+  const capture = snapshot.reviewCapture;
+  const filterLabels = new Map(capture.availableFilters.map((filter) => [filter.id, filter.label]));
+  const orderedFilterIds = Array.from(new Set([
+    ...capture.selectedFilters.map((filter) => filter.id),
+    ...capture.reviews.flatMap((review) => review.matchedFilterIds),
+  ])).filter(Boolean);
+  const queues = orderedFilterIds.map((filterId) => capture.reviews.filter((review) => review.matchedFilterIds.includes(filterId)));
+  const selected: ProductReviewRecord[] = [];
+  const seen = new Set<string>();
+  let queueIndex = 0;
+  while (selected.length < limit && queues.some((queue) => queue.length > queueIndex)) {
+    for (const queue of queues) {
+      const review = queue[queueIndex];
+      if (!review || seen.has(review.id)) continue;
+      seen.add(review.id);
+      selected.push(review);
+      if (selected.length >= limit) break;
+    }
+    queueIndex += 1;
+  }
+  for (const review of capture.reviews) {
+    if (selected.length >= limit) break;
+    if (seen.has(review.id)) continue;
+    seen.add(review.id);
+    selected.push(review);
+  }
+  return selected.map((review) => ({
+    id: review.id,
+    authorName: review.authorName,
+    text: cleanText(review.text, 500),
+    rating: review.rating,
+    sentiment: review.sentiment,
+    matchedFilterIds: review.matchedFilterIds,
+    filterLabels: Array.from(new Set(review.matchedFilterIds.map((id) => filterLabels.get(id)).filter(Boolean))) as string[],
+    dateText: review.dateText,
+    skuText: review.skuText,
+    badges: review.badges,
+    helpfulCount: review.helpfulCount,
+    capturedAt: snapshot.capturedAt,
+  }));
 }
 
 function safeFileName(value: unknown, fallback: string): string {
@@ -394,6 +629,10 @@ export function createBrandWorkspaceStore(rootProvider: () => string) {
   function productBundle(catalog: BrandWorkspaceCatalog, product: BrandWorkspaceProduct) {
     const skus = catalog.skus.filter((sku) => sku.productId === product.id);
     const detailPages = catalog.detailPages.filter((page) => page.productId === product.id);
+    const sourceSnapshots = catalog.sourceSnapshots
+      .filter((snapshot) => snapshot.productId === product.id)
+      .sort((left, right) => right.capturedAt.localeCompare(left.capturedAt));
+    const reviewIds = new Set(sourceSnapshots.flatMap((snapshot) => snapshot.reviewCapture?.reviews.map((review) => review.id) || []));
     return {
       product,
       skus,
@@ -407,9 +646,8 @@ export function createBrandWorkspaceStore(rootProvider: () => string) {
         page.id,
         catalog.assets.filter((asset) => asset.ownerType === 'product-detail' && asset.ownerId === page.id).map(publicAsset),
       ])),
-      sourceSnapshots: catalog.sourceSnapshots
-        .filter((snapshot) => snapshot.productId === product.id)
-        .sort((left, right) => right.capturedAt.localeCompare(left.capturedAt)),
+      reviewAssets: catalog.assets.filter((asset) => asset.ownerType === 'product-review' && reviewIds.has(asset.ownerId)).map(publicAsset),
+      sourceSnapshots,
     };
   }
 
@@ -500,6 +738,7 @@ export function createBrandWorkspaceStore(rootProvider: () => string) {
       imageCount: catalog.assets.filter((asset) => (
         asset.ownerType === 'product' && asset.ownerId === product.id
       )).length,
+      reviews: selectReviewReferences(sourceSnapshots),
     };
   }
 
@@ -540,6 +779,7 @@ export function createBrandWorkspaceStore(rootProvider: () => string) {
         price: source.price,
         parameters: source.parameters,
       })),
+      reviews: selectReviewReferences(sources),
       assets: storedAssets.map((asset) => ({
         id: asset.id,
         role: asset.role,
@@ -823,8 +1063,62 @@ export function createBrandWorkspaceStore(rootProvider: () => string) {
       ];
     }
 
+    const capturedReviews = Array.isArray(input.reviewCapture?.reviews) ? input.reviewCapture.reviews.slice(0, 1_000) : [];
+    const storedReviews: ProductReviewRecord[] = [];
+    for (const capturedReview of capturedReviews) {
+      const sourceReviewId = cleanId(capturedReview?.id);
+      const text = cleanText(capturedReview?.text, 10_000);
+      if (!sourceReviewId || !text) continue;
+      const reviewId = cleanId(`review-${platform}-${externalId}-${sourceReviewId}`);
+      const priorReviewAssets = catalog.assets.filter((asset) => asset.ownerType === 'product-review' && asset.ownerId === reviewId);
+      const newReviewAssets = await resolveAssets(catalog, (capturedReview.images || []).map((image) => ({
+        ...image,
+        origin: 'capture',
+        role: 'review-image',
+      })), 'product-review', reviewId);
+      const reviewAssets = Array.from(new Map([...priorReviewAssets, ...newReviewAssets].map((asset) => [asset.id, asset])).values());
+      replaceOwnerAssets(catalog, 'product-review', reviewId, reviewAssets);
+      const capturedSourceImages: NonNullable<ProductReviewRecord['sourceImages']> = capturedReview.sourceImages
+        || capturedReview.imageSourceUrls?.map((sourceUrl) => ({ sourceUrl }))
+        || [];
+      const currentReviewSourceUrls = new Set(capturedSourceImages
+        .map((image) => cleanText(image.sourceUrl, 8_000))
+        .filter(Boolean));
+      const rating = Number(capturedReview.rating);
+      const helpfulCount = Number(capturedReview.helpfulCount);
+      storedReviews.push({
+        id: reviewId,
+        platformReviewId: cleanId(capturedReview.platformReviewId) || undefined,
+        authorName: cleanText(capturedReview.authorName, 300) || undefined,
+        text,
+        rating: Number.isFinite(rating) && rating >= 1 && rating <= 5 ? rating : undefined,
+        sentiment: normalizeReviewSentiment(capturedReview.sentiment),
+        matchedFilterIds: cleanStringList(capturedReview.matchedFilterIds, 50).map(cleanId).filter(Boolean),
+        dateText: cleanText(capturedReview.dateText, 300) || undefined,
+        skuText: cleanText(capturedReview.skuText, 1_000) || undefined,
+        badges: cleanStringList(capturedReview.badges, 20),
+        helpfulCount: Number.isFinite(helpfulCount) && helpfulCount >= 0 ? Math.trunc(helpfulCount) : undefined,
+        imageAssetIds: reviewAssets.filter((asset) => asset.sourceUrl && currentReviewSourceUrls.has(asset.sourceUrl)).map((asset) => asset.id),
+        sourceImages: capturedSourceImages
+          .map((image) => ({
+            sourceUrl: cleanText(image.sourceUrl, 8_000),
+            status: ['localized', 'failed', 'skipped'].includes(String(image.status)) ? image.status : undefined,
+          }))
+          .filter((image) => /^https?:\/\//i.test(image.sourceUrl))
+          .slice(0, 20),
+        video: capturedReview.video?.present === true ? {
+          present: true,
+          sourceUrl: cleanText(capturedReview.video.sourceUrl, 8_000) || undefined,
+        } : undefined,
+      });
+    }
+    const reviewCapture = input.reviewCapture ? normalizeStoredReviewCapture({
+      ...input.reviewCapture,
+      reviews: storedReviews,
+    }) : undefined;
+
     const snapshot: ProductSourceSnapshot = {
-      captureVersion: input.captureVersion === 2 ? 2 : undefined,
+      captureVersion: input.captureVersion === 2 || input.captureVersion === 3 ? input.captureVersion : undefined,
       id: snapshotId,
       productId,
       platform,
@@ -851,6 +1145,7 @@ export function createBrandWorkspaceStore(rootProvider: () => string) {
       sourceImages: (input.sourceImages || input.images || []).slice(0, 24)
         .map((image) => ({ sourceUrl: cleanText(image.sourceUrl, 8_000), role: cleanText(image.role, 100) || 'gallery' }))
         .filter((image) => /^https?:\/\//i.test(image.sourceUrl)),
+      reviewCapture,
       missingFields: cleanStringList(input.missingFields, 30),
     };
     catalog.sourceSnapshots = [...catalog.sourceSnapshots, snapshot]

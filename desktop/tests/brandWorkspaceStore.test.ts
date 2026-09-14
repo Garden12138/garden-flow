@@ -198,3 +198,93 @@ test('creative product references expose previews while absolute paths stay in t
     /不属于当前商品/,
   );
 });
+
+test('JD review captures stay in source snapshots, keep review images separate, and expose balanced AI context', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'gardenflow-product-reviews-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const store = createBrandWorkspaceStore(() => root);
+  const filters = [
+    { id: 'positive', label: '好评', sentiment: 'positive' as const },
+    { id: 'neutral', label: '中评', sentiment: 'neutral' as const },
+    { id: 'negative', label: '差评', sentiment: 'negative' as const },
+  ];
+  const reviews = filters.flatMap((filter) => Array.from({ length: 6 }, (_, index) => ({
+    id: `${filter.id}-${index}`,
+    authorName: `j***${index}`,
+    text: `${filter.label}评论 ${index + 1} ${'内容'.repeat(300)}`,
+    rating: filter.id === 'positive' ? 5 : filter.id === 'neutral' ? 3 : 1,
+    sentiment: filter.sentiment,
+    matchedFilterIds: [filter.id],
+    dateText: `2026-09-${String(index + 1).padStart(2, '0')}`,
+    skuText: '海洋鱼味',
+    badges: ['已购'],
+    helpfulCount: index,
+    imageSourceUrls: filter.id === 'positive' && index === 0 ? ['https://img10.360buyimg.com/jfs/t1/review.jpg'] : [],
+    sourceImages: filter.id === 'positive' && index === 0 ? [{
+      sourceUrl: 'https://img10.360buyimg.com/jfs/t1/review.jpg',
+      status: 'localized' as const,
+    }] : [],
+    images: filter.id === 'positive' && index === 0 ? [{
+      name: '评论图',
+      sourceUrl: 'https://img10.360buyimg.com/jfs/t1/review.jpg',
+      dataUrl: ONE_PIXEL_PNG,
+      origin: 'capture' as const,
+    }] : [],
+  })));
+  const captured = await store.ingestProduct({
+    captureVersion: 3,
+    platform: 'jd',
+    externalId: 'review-product',
+    sourceUrl: 'https://item.jd.com/review-product.html',
+    capturedAt: '2026-09-12T08:27:57.000Z',
+    title: '评论测试商品',
+    images: [{ name: '商品主图', role: 'primary', dataUrl: ONE_PIXEL_PNG, origin: 'capture' }],
+    reviewCapture: {
+      modalDetected: true,
+      status: 'complete',
+      availableFilters: filters,
+      selectedFilters: filters.map((filter) => ({ id: filter.id, label: filter.label, limit: 6 })),
+      results: filters.map((filter) => ({ filterId: filter.id, label: filter.label, requested: 6, captured: 6, status: 'complete' as const })),
+      reviews,
+      warnings: [],
+      sortText: '最新',
+      scopeText: '当前商品',
+    },
+  });
+
+  assert.equal(captured.sourceSnapshot.captureVersion, 3);
+  assert.equal(captured.sourceSnapshot.reviewCapture?.reviews.length, 18);
+  assert.equal(captured.sourceSnapshot.reviewCapture?.reviews[0].imageAssetIds.length, 1);
+  assert.equal(captured.sourceSnapshot.reviewCapture?.reviews[0].sourceImages?.[0].status, 'localized');
+  assert.equal(captured.product.assets.length, 1);
+  assert.equal(captured.product.reviewAssets.length, 1);
+  assert.equal(captured.product.reviewAssets[0].ownerType, 'product-review');
+
+  await store.ingestProduct({
+    captureVersion: 3,
+    platform: 'jd',
+    externalId: 'review-product',
+    sourceUrl: 'https://item.jd.com/review-product.html',
+    capturedAt: '2026-09-13T08:27:57.000Z',
+    title: '评论测试商品',
+    reviewCapture: {
+      modalDetected: false,
+      status: 'not-opened',
+      availableFilters: [],
+      selectedFilters: [],
+      results: [],
+      reviews: [],
+      warnings: ['未打开评论弹窗'],
+    },
+  });
+
+  const reference = await store.getProductAiReference(captured.product.product.id);
+  assert.equal(reference.reviews.length, 15);
+  assert.deepEqual(reference.reviews.slice(0, 3).map((review) => review.filterLabels[0]), ['好评', '中评', '差评']);
+  assert.ok(reference.reviews.every((review) => review.text.length <= 500));
+  assert.equal(reference.reviews[0].capturedAt, '2026-09-12T08:27:57.000Z');
+
+  const creativeReference = await store.getProductCreativeReference(captured.product.product.id);
+  assert.equal(creativeReference.reviews.length, 15);
+  assert.equal(creativeReference.assets.some((asset) => asset.role === 'review-image'), false);
+});
