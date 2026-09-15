@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { parseHTML } from 'linkedom';
 import {
+  buildSiteSearchTargetUrl,
   normalizeResearchRequest,
   pickReusableResearchTab,
   runSiteResearch,
@@ -69,12 +70,17 @@ test('normalizes JD keyword search and extracts unique product cards from the re
     depth: 'preview',
   });
   assert.equal(request.site.id, 'jd');
-  assert.equal(request.site.searchViaPageUi, true);
+  assert.equal(request.site.searchViaPageUi, false);
   assert.equal(request.site.detailOpenMode, 'direct_url');
   assert.equal(pickReusableResearchTab([
     { id: 1, url: 'https://fakejd.com/search', title: 'lookalike' },
     { id: 2, url: 'https://search.jd.com/Search?keyword=cat', title: '京东搜索' },
-  ], request)?.id, 2);
+  ], request), null);
+  const targetUrl = new URL(buildSiteSearchTargetUrl(request.site, '冻干 猫粮'));
+  assert.equal(targetUrl.hostname, 'search.jd.com');
+  assert.equal(targetUrl.pathname, '/Search');
+  assert.equal(targetUrl.searchParams.get('keyword'), '冻干 猫粮');
+  assert.equal(targetUrl.searchParams.get('enc'), 'utf-8');
 
   const { window, document } = parseHTML(`<!doctype html><html><head><title>冻干猫粮 - 京东</title></head><body>
     <ul id="J_goodsList">
@@ -115,6 +121,51 @@ test('normalizes JD keyword search and extracts unique product cards from the re
   assert.equal(extracted.items[0].author, '伟嘉京东自营旗舰店');
   assert.equal(extracted.items[0].interactionRef.site, 'jd');
   assert.equal(extracted.items[1].sourceUrl, 'https://item.jd.com/10001.html');
+});
+
+test('opens the JD search result URL directly without submitting a page input', async () => {
+  let openedUrl = '';
+  let submitCount = 0;
+  const result = await runSiteResearch({
+    operation: 'search',
+    site: 'jd',
+    query: '冻干 猫粮',
+    depth: 'preview',
+    limit: 1,
+    maxScrolls: 0,
+    snapshot: false,
+  }, {
+    createControlledTab: async ({ url }) => {
+      openedUrl = url;
+      return { tab: { id: 61, url, title: '京东搜索' } };
+    },
+    getTab: async () => ({ id: 61, url: openedUrl, title: '京东搜索' }),
+    claimTab: async () => {},
+    waitForTabComplete: async () => {},
+    submitSearch: async () => {
+      submitCount += 1;
+      return { success: true, submitted: true };
+    },
+    readSnapshot: async () => ({ snapshot: '' }),
+    readSiteEvidence: async () => ({
+      success: true,
+      pageState: { surface: 'search_results' },
+      items: [{
+        id: '280930',
+        sourceUrl: 'https://item.jd.com/280930.html',
+        title: '伟嘉猫粮',
+      }],
+    }),
+  });
+
+  const targetUrl = new URL(openedUrl);
+  assert.equal(targetUrl.hostname, 'search.jd.com');
+  assert.equal(targetUrl.pathname, '/Search');
+  assert.equal(targetUrl.searchParams.get('keyword'), '冻干 猫粮');
+  assert.equal(targetUrl.searchParams.get('enc'), 'utf-8');
+  assert.equal(submitCount, 0);
+  assert.equal(result.success, true);
+  assert.equal(result.items[0].id, '280930');
 });
 
 test('normalizes supported typed filters and rejects unsupported filters', () => {

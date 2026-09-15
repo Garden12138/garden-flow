@@ -93,6 +93,7 @@ export function normalizeResearchRequest(input = {}) {
 
 export function pickReusableResearchTab(tabs, request) {
   if (request?.operation !== 'search') return null;
+  if (request?.site?.searchViaPageUi !== true) return null;
   const patterns = Array.isArray(request?.site?.hosts) ? request.site.hosts : [];
   if (!patterns.length) return null;
   const siteId = String(request?.site?.id || '');
@@ -125,7 +126,7 @@ export async function runSiteResearch(requestInput, deps = {}) {
     throw new Error('site research runtime is missing browser dependencies');
   }
   const targetUrl = request.operation === 'search'
-    ? request.site.searchEntryUrl
+    ? buildSiteSearchTargetUrl(request.site, request.query)
     : request.sourceUrl;
   if (!targetUrl && !request.tabId) throw new Error(`${request.site.displayName} research route is unavailable`);
   let tab = request.tabId ? await deps.getTab?.(request.tabId) : null;
@@ -154,17 +155,24 @@ export async function runSiteResearch(requestInput, deps = {}) {
   }
   if (typeof deps.waitForTabComplete === 'function') await deps.waitForTabComplete(tab.id, request.timeoutMs);
   if (request.operation === 'search') {
-    if (request.site.searchViaPageUi !== true || typeof deps.submitSearch !== 'function') {
+    if (request.site.searchViaPageUi === true && typeof deps.submitSearch !== 'function') {
       return researchSearchFailure(request, tab, targetUrl, {
         reason: 'search_ui_runtime_unavailable',
         message: `${request.site.displayName} page UI search is unavailable`,
       });
     }
-    const submitted = unwrapContentDelivery(await deps.submitSearch(tab.id, extractorRequest(request)));
-    if (submitted?.success !== true) {
-      return researchSearchFailure(request, tab, targetUrl, submitted);
+    if (request.site.searchViaPageUi === true) {
+      const submitted = unwrapContentDelivery(await deps.submitSearch(tab.id, extractorRequest(request)));
+      if (submitted?.success !== true) {
+        return researchSearchFailure(request, tab, targetUrl, submitted);
+      }
+      if (typeof deps.waitForTabComplete === 'function') await deps.waitForTabComplete(tab.id, request.timeoutMs);
+    } else if (!request.site.searchUrlTemplate) {
+      return researchSearchFailure(request, tab, targetUrl, {
+        reason: 'search_ui_runtime_unavailable',
+        message: `${request.site.displayName} search route is unavailable`,
+      });
     }
-    if (typeof deps.waitForTabComplete === 'function') await deps.waitForTabComplete(tab.id, request.timeoutMs);
   }
   const current = await deps.getTab?.(tab.id) || tab;
   let extracted = unwrapContentDelivery(await deps.readSiteEvidence(tab.id, extractorRequest(request)));
@@ -787,6 +795,22 @@ function resolveSiteCapability(value, sourceUrl) {
   if (!spec) throw new Error('research.run requires supported site: xiaohongshu, douyin, jd, youtube, or web');
   if (sourceUrl && !urlMatchesSite(sourceUrl, spec)) throw new Error(`URL does not belong to ${spec.displayName}`);
   return spec;
+}
+
+export function buildSiteSearchTargetUrl(site, query) {
+  const entryUrl = normalizeHttpUrl(site?.searchEntryUrl || '');
+  if (site?.searchViaPageUi === true) return entryUrl;
+  const template = String(site?.searchUrlTemplate || '').trim();
+  if (!template) return entryUrl;
+  if (!template.includes('{query}') || /\{[^}]*\}/.test(template.replaceAll('{query}', ''))) {
+    throw new Error(`${site?.displayName || 'site'} search URL template is invalid`);
+  }
+  const keyword = String(query || '').trim();
+  const targetUrl = normalizeHttpUrl(template.replaceAll('{query}', encodeURIComponent(keyword)));
+  if (!urlMatchesSite(targetUrl, site)) {
+    throw new Error(`${site?.displayName || 'site'} search URL does not match its declared hosts`);
+  }
+  return targetUrl;
 }
 
 function inferSiteId(sourceUrl) {

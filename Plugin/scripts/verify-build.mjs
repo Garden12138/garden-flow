@@ -154,6 +154,13 @@ for (const capability of siteResearchCapabilities.capabilities || []) {
     ['direct_url', 'page_click'].includes(capability.detailOpenMode),
     `${capability.id} must declare detailOpenMode`,
   );
+  if (capability.supportedOperations?.includes('search')) {
+    assert(capability.searchEntryUrl, `${capability.id} must declare a search entry URL`);
+    assert(
+      capability.searchViaPageUi === true || String(capability.searchUrlTemplate || '').includes('{query}'),
+      `${capability.id} must declare page UI search or a query URL template`,
+    );
+  }
 }
 assert(siteResearchCapabilities.capabilities.length > 0, 'Site research capability registry must not be empty');
 const siteCapabilityIds = new Set();

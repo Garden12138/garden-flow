@@ -12,7 +12,7 @@ allowed-tools: app_cli
 ```
 桌面 GardenFlow ── Desktop Bridge ── native host ── GardenFlow 插件
    │                                              │
-   │  research.run（京东关键词）                  │  页内搜索并读取商品卡片
+   │  research.run（京东关键词）                  │  打开搜索结果页并读取商品卡片
    │  tab.create + capture.save                   │  打开商品、采集详情与评论
    │                                              │  assets.ingestProduct 入库
    │  tab.close                                   │  关闭任务创建的标签页
@@ -22,7 +22,7 @@ allowed-tools: app_cli
 ## 每轮流程
 
 1. 就绪检查确认至少配置一个采集关键词，且至少有一个已连接的采集插件实例。
-2. 每天从关键词列表轮换一个关键词，通过 `research.run` 在京东页面搜索并读取去重后的商品卡片。
+2. 每天从关键词列表轮换一个关键词，通过 `research.run` 生成京东官方搜索结果地址并读取去重后的商品卡片，不依赖首页搜索输入框。
 3. 按搜索结果逐个创建受控商品标签页，等待页面加载，再调用 `capture.save`，评论配置通过 `reviewOptions` 一并传入。
 4. 评论标签留空时，插件自动采集好评、中评、差评各指定数量；填写标签后只采集对应标签。
 5. 商品识别、评论滚动、去重、媒体下载和 `assets.ingestProduct` 入库全部复用侧栏保存链路。
@@ -40,4 +40,5 @@ allowed-tools: app_cli
 
 - 「采集关键词」未就绪：至少填写一个希望在京东搜索的商品关键词，多个关键词可用逗号或换行分隔。
 - 「浏览器插件桥接」未就绪：打开采集浏览器，启用 GardenFlow 插件，并保持桌面端运行。
+- 「京东页内搜索未成功：search_input_unavailable」：当前插件版本过旧；更新插件后任务会直接打开搜索结果页，不再查找首页输入框。
 - 商品保存但评论为零：查看来源快照的评论采集提示，确认商品页面仍提供“全部评论/全部评价”入口。
