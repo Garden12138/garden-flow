@@ -22,6 +22,20 @@ test('loads xhs-auto-capture from desktop electron builtin-skills', async () => 
     assert.ok(body.includes('entryId'), 'skill should tie completion to real knowledge entries');
 });
 
+test('loads jd-auto-capture with the structured product snapshot pipeline', async () => {
+    const skillsDir = path.join(desktopRoot, 'electron', 'builtin-skills');
+    const skills = await loadSkillsFromDir(skillsDir, 'builtin');
+    const skill = skills.find((item) => item.name === 'jd-auto-capture');
+    assert.ok(skill, 'expected jd-auto-capture to be discovered');
+    assert.equal(skill?.sourceScope, 'builtin');
+    const body = String(skill?.body || '');
+    assert.ok(body.includes('tab.create'));
+    assert.ok(body.includes('capture.save'));
+    assert.ok(body.includes('reviewOptions'));
+    assert.ok(body.includes('assets.ingestProduct'));
+    assert.ok(body.includes('snapshotId'));
+});
+
 test('xhs capture prompt describes the structured plugin pipeline', () => {
     const promptSource = fs.readFileSync(
         path.join(desktopRoot, 'electron', 'core', 'builtinAutomationTasks.ts'),

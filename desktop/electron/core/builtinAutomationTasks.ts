@@ -3,6 +3,12 @@ import { getXhsPublisherBinding } from '../db';
 import { XHS_AUTO_CAPTURE_TASK_ID } from './xhsAutoCaptureCompletion';
 import { buildXhsSearchUrl } from './xhsAutoCaptureChrome';
 import { XHS_PUBLISHER_CAPABILITY } from '../../shared/xhsPublisher';
+import {
+    JD_AUTO_CAPTURE_TASK_ID,
+    resolveJdAutoCaptureLaunch,
+} from './jdAutoCaptureSettings';
+
+export { JD_AUTO_CAPTURE_TASK_ID, resolveJdAutoCaptureLaunch } from './jdAutoCaptureSettings';
 
 /**
  * 内置自动化任务：定义在代码，状态在配置。
@@ -121,6 +127,109 @@ const XHS_AUTO_CAPTURE_SETTINGS: BuiltinAutomationSettingField[] = [
     },
 ];
 
+const JD_AUTO_CAPTURE_SETTINGS: BuiltinAutomationSettingField[] = [
+    {
+        key: 'productUrls',
+        label: '京东商品链接',
+        type: 'string-list',
+        required: true,
+        placeholder: 'https://item.jd.com/100012345678.html',
+        description: '填写京东商品详情页链接，支持逗号或换行分隔；每轮按列表轮换采集。',
+        defaultValue: [],
+    },
+    {
+        key: 'maxProductsPerRun',
+        label: '单轮最多采集商品数',
+        type: 'number',
+        min: 1,
+        max: 20,
+        description: '列表较长时会按天轮换，默认每轮 5 个。',
+        defaultValue: 5,
+    },
+    {
+        key: 'reviewFilterLabels',
+        label: '评论筛选标签',
+        type: 'string-list',
+        placeholder: '图/视频, 回头客, 毛发顺滑',
+        description: '留空时自动采集好评、中评、差评；填写后只采集指定标签。',
+        defaultValue: [],
+    },
+    {
+        key: 'reviewsPerFilter',
+        label: '每个标签采集评论数',
+        type: 'number',
+        min: 1,
+        max: 50,
+        description: '所有标签使用同一数量，默认 5 条。',
+        defaultValue: 5,
+    },
+    {
+        key: 'pacing',
+        label: '采集节奏',
+        type: 'select',
+        options: [
+            { value: 'conservative', label: '保守（推荐）' },
+            { value: 'normal', label: '正常' },
+        ],
+        description: '控制打开商品和开始识别之间的等待时间。',
+        defaultValue: 'conservative',
+    },
+];
+
+function buildJdAutoCapturePrompt(settings: Record<string, unknown>): string {
+    const launch = resolveJdAutoCaptureLaunch(settings);
+    return [
+        '[GardenFlow 内置自动化任务：京东商品自动采集]',
+        `任务ID: ${JD_AUTO_CAPTURE_TASK_ID}`,
+        '',
+        '本轮参数：',
+        `- 商品链接数: ${launch.productUrls.length}/${launch.allProductUrls.length}`,
+        `- 评论标签: ${launch.reviewFilterLabels.join(' / ') || '好评 / 中评 / 差评（默认）'}`,
+        `- 每标签评论数: ${launch.reviewsPerFilter}`,
+        '',
+        '执行方式由运行时结构化完成：为每个商品创建受控标签页，调用插件 capture.save 识别商品和评论并写入来源快照，最后关闭任务创建的标签页。',
+    ].join('\n');
+}
+
+async function checkJdAutoCaptureReadiness(
+    settings: Record<string, unknown>,
+): Promise<BuiltinAutomationReadinessReport> {
+    const launch = resolveJdAutoCaptureLaunch(settings);
+    const checks: BuiltinAutomationReadinessCheck[] = [];
+    const linksOk = launch.allProductUrls.length > 0 && launch.invalidProductUrls.length === 0;
+    checks.push({
+        id: 'product-urls',
+        label: '京东商品链接',
+        status: linksOk ? 'ok' : 'failed',
+        detail: launch.invalidProductUrls.length > 0
+            ? `有 ${launch.invalidProductUrls.length} 个链接不是京东商品详情页`
+            : launch.allProductUrls.length > 0
+                ? `已配置 ${launch.allProductUrls.length} 个商品链接`
+                : '未配置商品链接',
+        hint: linksOk ? undefined : '请填写形如 https://item.jd.com/商品编号.html 的商品详情页链接，并移除无效链接。',
+    });
+
+    const bridgeInstances = (getBrowserCaptureBridgeService()?.getStatus().instances || [])
+        .filter((instance) => instance.extensionKind === 'capture');
+    const bridgeOk = bridgeInstances.length > 0;
+    checks.push({
+        id: 'plugin-bridge',
+        label: '浏览器插件桥接',
+        status: bridgeOk ? 'ok' : 'failed',
+        detail: bridgeOk ? `已连接 ${bridgeInstances.length} 个采集插件实例` : '未检测到已连接的 GardenFlow 插件',
+        hint: bridgeOk ? undefined : '请打开采集用的浏览器，启用 GardenFlow 插件，并保持 GardenFlow 桌面端运行。',
+    });
+
+    const blocking = checks.find((check) => check.status === 'failed');
+    return {
+        taskId: JD_AUTO_CAPTURE_TASK_ID,
+        ready: !blocking,
+        checkedAt: nowIso(),
+        blockingReason: blocking ? `${blocking.label}：${blocking.detail}` : '',
+        checks,
+    };
+}
+
 export function resolveXhsAutoCaptureLaunch(settings: Record<string, unknown>): {
     keyword: string;
     searchUrl: string;
@@ -226,6 +335,17 @@ const BUILTIN_AUTOMATION_DEFINITIONS: BuiltinAutomationDefinition[] = [
         settingsSchema: XHS_AUTO_CAPTURE_SETTINGS,
         buildPrompt: buildXhsAutoCapturePrompt,
         checkReadiness: checkXhsAutoCaptureReadiness,
+    },
+    {
+        id: JD_AUTO_CAPTURE_TASK_ID,
+        name: '京东商品自动采集',
+        description: '按商品链接定时打开京东详情页，通过 GardenFlow 插件采集商品字段、图片和指定评论标签，并保存为可追溯的来源快照。默认关闭。',
+        supportedPlatforms: ['darwin', 'win32', 'linux'],
+        trigger: { kind: 'schedule', schedule: { mode: 'daily', time: '10:30' } },
+        requiredSkills: ['jd-auto-capture'],
+        settingsSchema: JD_AUTO_CAPTURE_SETTINGS,
+        buildPrompt: buildJdAutoCapturePrompt,
+        checkReadiness: checkJdAutoCaptureReadiness,
     },
     {
         id: XHS_AUTO_PUBLISH_TASK_ID,

@@ -4292,11 +4292,11 @@ async function saveSelectedTextFromTab(tabId) {
   };
 }
 
-async function saveCurrentPageFromTab(tabId) {
-  const inspection = await inspectPage(tabId);
+async function saveCurrentPageFromTab(tabId, options = {}, existingInspection = null) {
+  const inspection = existingInspection || await inspectPage(tabId);
   const action = normalizeText(inspection?.pageInfo?.action) || 'save-page-link';
   if (action === 'preview-jd-product' || action === 'save-jd-product') {
-    return await saveJdProductFromTab(tabId);
+    return await saveJdProductFromTab(tabId, options?.reviewOptions);
   }
   if (action === 'save-xhs') {
     return await saveXhsNoteFromTab(tabId);
@@ -4546,6 +4546,18 @@ async function saveXhsNoteFromTab(tabId) {
 }
 
 configurePluginCapture({
+  saveCurrentPageFromTab: async (tabId, options) => {
+    const inspection = await inspectPage(tabId);
+    if (normalizeText(inspection?.pageInfo?.action) === 'save-xhs') {
+      return await enqueueXhsTask({
+        type: 'save-xhs',
+        title: createXhsTaskTitle('save-xhs', {}, tabId),
+        tabId,
+        execute: () => saveXhsNoteFromTab(tabId),
+      });
+    }
+    return await saveCurrentPageFromTab(tabId, options, inspection);
+  },
   saveXhsNoteFromTab: (tabId) => enqueueXhsTask({
     type: 'save-xhs',
     title: createXhsTaskTitle('save-xhs', {}, tabId),

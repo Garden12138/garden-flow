@@ -28,8 +28,10 @@ import { getWorkItemStore } from './workItemStore';
 import {
   getBuiltinAutomationDefinition,
   isBuiltinAutomationSupportedOnCurrentPlatform,
+  JD_AUTO_CAPTURE_TASK_ID,
   listBuiltinAutomationDefinitions,
   normalizeBuiltinTaskSettings,
+  resolveJdAutoCaptureLaunch,
   resolveXhsAutoCaptureLaunch,
   XHS_AUTO_PUBLISH_TASK_ID,
   type BuiltinAutomationDefinition,
@@ -40,6 +42,10 @@ import {
   createXhsStructuredCaptureIo,
   runXhsStructuredCaptureRound,
 } from './xhsStructuredCapture';
+import {
+  createJdStructuredCaptureIo,
+  runJdStructuredCaptureRound,
+} from './jdStructuredCapture';
 import {
   normalizeAutomationTaskSource,
   type AutomationTaskSource,
@@ -2420,6 +2426,66 @@ export class GardenFlowBackgroundRunner extends EventEmitter {
         this.emit('log', {
           level: 'info',
           message: `Builtin task completed: ${definition.id} saved=${round.saved} duplicates=${round.duplicates} failed=${round.failed}`,
+          reason,
+          at: nowIso(),
+        });
+        return;
+      }
+
+      if (definition.id === JD_AUTO_CAPTURE_TASK_ID) {
+        const launch = resolveJdAutoCaptureLaunch(state.settings);
+        this.emit('log', {
+          level: 'info',
+          message: `Builtin task starting structured JD capture: ${definition.id} products=${launch.productUrls.length}`,
+          reason,
+          at: nowIso(),
+        });
+        const round = await runJdStructuredCaptureRound(
+          {
+            productUrls: launch.productUrls,
+            reviewFilterLabels: launch.reviewFilterLabels,
+            reviewsPerFilter: launch.reviewsPerFilter,
+            pacing: launch.pacing,
+          },
+          createJdStructuredCaptureIo((level, message) => {
+            this.emit('log', { level, message, reason, at: nowIso() });
+          }),
+        );
+        this.postAutomationReportToMainSession(round.summary, `[内置自动化结果:${definition.name}]`);
+        if (round.status === 'blocked') {
+          state.lastRunAt = nowIso();
+          state.lastResult = 'skipped';
+          state.lastError = round.reason || '京东商品采集被登录或安全验证阻断';
+          settleNextRun();
+          runtime.skipNode(runtimeTaskId, 'execute_tools', state.lastError);
+          runtime.completeTask(runtimeTaskId, `builtin:${definition.id}:skipped`);
+          this.emit('log', {
+            level: 'warn',
+            message: `Builtin task skipped: ${definition.id}: ${state.lastError}`,
+            reason,
+            at: nowIso(),
+          });
+          return;
+        }
+        if (round.status !== 'captured') {
+          throw new Error(round.reason || '京东商品采集未完成，不记为成功');
+        }
+        runtime.addCheckpoint(runtimeTaskId, 'execute_tools', '京东商品结构化采集完成', {
+          builtinTaskId: definition.id,
+          saved: round.saved,
+          recaptured: round.recaptured,
+          failed: round.failed,
+          capturedReviews: round.capturedReviews,
+        });
+        state.lastRunAt = nowIso();
+        state.lastResult = 'success';
+        state.lastError = undefined;
+        settleNextRun();
+        runtime.completeNode(runtimeTaskId, 'execute_tools', '内置任务执行完成');
+        runtime.completeTask(runtimeTaskId, `builtin:${definition.id}:success`);
+        this.emit('log', {
+          level: 'info',
+          message: `Builtin task completed: ${definition.id} saved=${round.saved} recaptured=${round.recaptured} failed=${round.failed} reviews=${round.capturedReviews}`,
           reason,
           at: nowIso(),
         });

@@ -86,13 +86,13 @@ export function createNativeMethodRouter(deps = {}) {
     .register('capture.save', async (params) => {
       const normalized = normalize('capture.save', params);
       return deps.saveXhsNoteFromTab
-        ? deps.saveXhsNoteFromTab(normalized.tabId)
+        ? deps.saveXhsNoteFromTab(normalized.tabId, normalized)
         : runNativeBrowserAction(deps, 'capture.save', 'capture.save', params);
     })
     .register('save-xhs', async (params) => {
       const normalized = normalize('save-xhs', params);
       return deps.saveXhsNoteFromTab
-        ? deps.saveXhsNoteFromTab(normalized.tabId)
+        ? deps.saveXhsNoteFromTab(normalized.tabId, normalized)
         : runNativeBrowserAction(deps, 'capture.save', 'save-xhs', params);
     })
     .register('getCapabilities', async (params) => runNativeBrowserAction(deps, 'browser.capabilities', 'getCapabilities', params))

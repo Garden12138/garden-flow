@@ -109,24 +109,29 @@ addDownloadChangeListener((event) => {
   void browserEventBridge.sendDownloadChange(event).catch(() => {});
 });
 let pluginCaptureRuntime = {
+  saveCurrentPageFromTab: null,
   saveXhsNoteFromTab: null,
 };
 
 export function configurePluginCapture(deps = {}) {
   pluginCaptureRuntime = {
+    saveCurrentPageFromTab: typeof deps.saveCurrentPageFromTab === 'function'
+      ? deps.saveCurrentPageFromTab
+      : pluginCaptureRuntime.saveCurrentPageFromTab,
     saveXhsNoteFromTab: typeof deps.saveXhsNoteFromTab === 'function'
       ? deps.saveXhsNoteFromTab
       : pluginCaptureRuntime.saveXhsNoteFromTab,
   };
 }
 
-async function saveXhsNoteViaPluginCapture(tabId) {
-  if (typeof pluginCaptureRuntime.saveXhsNoteFromTab !== 'function') {
+async function saveCurrentPageViaPluginCapture(tabId, options = {}) {
+  const handler = pluginCaptureRuntime.saveCurrentPageFromTab || pluginCaptureRuntime.saveXhsNoteFromTab;
+  if (typeof handler !== 'function') {
     throw new Error('plugin capture runtime is not configured');
   }
   const id = Number(tabId);
   if (!Number.isInteger(id) || id <= 0) throw new Error('capture.save requires tabId');
-  return await pluginCaptureRuntime.saveXhsNoteFromTab(id);
+  return await handler(id, options);
 }
 
 const nativeMethodRouter = createNativeMethodRouter({
@@ -137,7 +142,7 @@ const nativeMethodRouter = createNativeMethodRouter({
   runBrowserAction: async (action, sessionId = '') => runBrowserAction(action, {
     session: await resolveBrowserActionSession(sessionId || '', 'native_host'),
   }),
-  saveXhsNoteFromTab: saveXhsNoteViaPluginCapture,
+  saveXhsNoteFromTab: saveCurrentPageViaPluginCapture,
   onRoute: (event) => browserEventBridge.publishCommandRouterEvent(event),
 });
 
@@ -192,12 +197,21 @@ const BROWSER_CONTROL_MCP_TOOLS = [
   },
   {
     name: 'capture.save',
-    description: 'Save the current page using the same plugin capture path as the in-page 「保存笔记」 button (Xiaohongshu uses save-xhs → knowledge.ingestXhsEntryV2).',
+    description: 'Save the current page using the same site-specific plugin capture path as the side panel. Supports Xiaohongshu notes and JD products, including optional JD review filters.',
     inputSchema: {
       type: 'object',
       properties: {
         tabId: { type: 'number' },
         sessionId: { type: 'string' },
+        reviewOptions: {
+          type: 'object',
+          properties: {
+            selectedFilterIds: { type: 'array', maxItems: 50, items: { type: 'string' } },
+            selectedFilterLabels: { type: 'array', maxItems: 50, items: { type: 'string' } },
+            limitPerFilter: { type: 'number', minimum: 1, maximum: 50 },
+          },
+          additionalProperties: false,
+        },
       },
       required: ['tabId'],
       additionalProperties: true,
@@ -1601,7 +1615,9 @@ async function runBrowserAction(action, context = {}) {
       case 'save-xhs': {
         const tabId = Number(normalized.tabId || session.activeTabId || activeBrowserSession?.activeTabId || 0);
         await requireActiveControlledTabLease(session, tabId, 'capture.save');
-        result = await saveXhsNoteViaPluginCapture(tabId);
+        result = await saveCurrentPageViaPluginCapture(tabId, {
+          reviewOptions: normalized.reviewOptions,
+        });
         break;
       }
       case 'research.run':
