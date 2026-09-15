@@ -29,6 +29,8 @@ test('loads jd-auto-capture with the structured product snapshot pipeline', asyn
     assert.ok(skill, 'expected jd-auto-capture to be discovered');
     assert.equal(skill?.sourceScope, 'builtin');
     const body = String(skill?.body || '');
+    assert.ok(body.includes('research.run'));
+    assert.ok(body.includes('关键词'));
     assert.ok(body.includes('tab.create'));
     assert.ok(body.includes('capture.save'));
     assert.ok(body.includes('reviewOptions'));

@@ -159,11 +159,11 @@ const BROWSER_CONTROL_MCP_TOOLS = [
   },
   {
     name: 'research.run',
-    description: 'Execute one typed read-only site-research action. Desktop owns multi-step navigation, scrolling, item open/restore, retry, and cleanup orchestration. Xiaohongshu/Douyin items use originating-page UI clicks with no direct-URL fallback; macro mode runs the complete research sequence.',
+    description: 'Execute one typed read-only site-research action. Desktop owns multi-step navigation, scrolling, item open/restore, retry, and cleanup orchestration. Supports keyword search on Xiaohongshu, Douyin, and JD; macro mode runs the complete research sequence.',
     inputSchema: {
       type: 'object',
       properties: {
-        site: { type: 'string', enum: ['xiaohongshu', 'xhs', 'douyin', 'youtube', 'web'] },
+        site: { type: 'string', enum: ['xiaohongshu', 'xhs', 'douyin', 'jd', 'jingdong', 'youtube', 'web'] },
         operation: { type: 'string', enum: ['search', 'author_scan', 'content_scan'] },
         query: { type: 'string' },
         url: { type: 'string' },

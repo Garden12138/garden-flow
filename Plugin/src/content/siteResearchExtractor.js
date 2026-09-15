@@ -12,6 +12,12 @@ const SITE_CARD_SELECTORS = Object.freeze({
   douyin: Object.freeze([
     'a[href*="/video/"]',
   ]),
+  jd: Object.freeze([
+    'li.gl-item .p-img a[href*="item.jd.com/"]',
+    'li.gl-item .p-name a[href*="item.jd.com/"]',
+    '[data-sku] a[href*="item.jd.com/"]',
+    'a[href*="//item.jd.com/"]',
+  ]),
 });
 
 const SITE_DETAIL_CLOSE_SELECTORS = Object.freeze({
@@ -64,6 +70,21 @@ const SITE_SEARCH_UI = Object.freeze({
       'button[type="submit"]',
       '[role="search"] button',
       '[class*="search"] button',
+    ]),
+  }),
+  jd: Object.freeze({
+    inputs: Object.freeze([
+      '#key',
+      'input[name="keyword"]',
+      '[role="search"] input',
+      'input[placeholder*="搜索"]',
+      'input[type="search"]',
+    ]),
+    submits: Object.freeze([
+      '.form .button',
+      'button.button',
+      'button[type="submit"]',
+      '[role="search"] button',
     ]),
   }),
 });
@@ -128,6 +149,8 @@ export function extractSiteResearch(input = {}) {
     ? extractXiaohongshu(operation, limit, commentLimit, detailOpenMode)
     : site === 'douyin'
       ? extractDouyin(operation, limit, commentLimit, detailOpenMode)
+      : site === 'jd'
+        ? extractJd(operation, limit, detailOpenMode)
       : site === 'youtube'
         ? extractYouTube(commentLimit)
         : extractGenericWeb(limit);
@@ -394,6 +417,20 @@ function extractDouyin(operation, limit, commentLimit, detailOpenMode) {
   });
 }
 
+function extractJd(operation, limit, detailOpenMode) {
+  if (operation !== 'search') return extractGenericWeb(limit);
+  const cards = extractCards(SITE_CARD_SELECTORS.jd, limit, {
+    title: ['.p-name em', '.p-name', '[class*="product-name"]', '[class*="title"]'],
+    author: ['.p-shop a', '.p-shop', '[class*="shop"]'],
+    engagement: ['.p-commit a', '.p-commit', '[class*="comment"]'],
+  }, 'jd', detailOpenMode);
+  return {
+    items: cards.items,
+    resultState: cards.resultState,
+    hasMore: cards.items.length >= limit,
+  };
+}
+
 function extractYouTube(commentLimit) {
   return extractContent({
     title: ['h1 yt-formatted-string', 'h1'],
@@ -651,6 +688,11 @@ function detectSiteSurface(site, blocker) {
     if (/search/.test(pathname)) return 'search_results';
     return 'entry';
   }
+  if (site === 'jd') {
+    if (/^\/\d+\.html$/i.test(pathname)) return 'detail';
+    if (location.hostname.toLowerCase().startsWith('search.') || /\/search/i.test(pathname)) return 'search_results';
+    return 'entry';
+  }
   return 'page';
 }
 
@@ -786,7 +828,7 @@ function readMeta(names) {
 }
 
 function normalizeSite(value) {
-  const aliases = { xhs: 'xiaohongshu', redbook: 'xiaohongshu', rednote: 'xiaohongshu', dy: 'douyin', yt: 'youtube', generic_web: 'web', generic: 'web' };
+  const aliases = { xhs: 'xiaohongshu', redbook: 'xiaohongshu', rednote: 'xiaohongshu', dy: 'douyin', jingdong: 'jd', yt: 'youtube', generic_web: 'web', generic: 'web' };
   const normalized = String(value || '').trim().toLowerCase();
   return aliases[normalized] || normalized || 'web';
 }
@@ -801,6 +843,7 @@ function inferSite(hostname) {
   const host = String(hostname || '').toLowerCase();
   if (host.includes('xiaohongshu.com') || host.includes('rednote.com')) return 'xiaohongshu';
   if (host.includes('douyin.com')) return 'douyin';
+  if (host === 'jd.com' || host.endsWith('.jd.com') || host === 'jd.hk' || host.endsWith('.jd.hk')) return 'jd';
   if (host.includes('youtube.com') || host === 'youtu.be') return 'youtube';
   return 'web';
 }
@@ -824,7 +867,9 @@ function externalIdFromUrl(value) {
 }
 
 function isLikelyContentUrl(value) {
-  return /\/(explore|discovery\/item|video|watch)\//.test(value) || /[?&]v=/.test(value);
+  return /\/(explore|discovery\/item|video|watch)\//.test(value)
+    || /\/\d+\.html(?:[?#]|$)/i.test(value)
+    || /[?&]v=/.test(value);
 }
 
 function clamp(value, minimum, maximum, fallback) {

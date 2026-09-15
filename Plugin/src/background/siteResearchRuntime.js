@@ -101,7 +101,7 @@ export function pickReusableResearchTab(tabs, request) {
   for (const tab of tabs || []) {
     const url = String(tab?.url || tab?.pendingUrl || '');
     if (!tab?.id || !/^https?:/i.test(url)) continue;
-    if (!patterns.some((pattern) => url.includes(String(pattern)))) continue;
+    if (!patterns.some((pattern) => urlMatchesHostPattern(url, pattern))) continue;
     if (isLikelySiteDetailUrl(url, siteId)) continue;
     let score = 10;
     if (/search_result/i.test(url)) score = 30;
@@ -784,7 +784,7 @@ function resolveSiteCapability(value, sourceUrl) {
     .find((spec) => spec.aliases.includes(requested))?.id || '';
   const id = alias || requested || inferSiteId(sourceUrl);
   const spec = SITE_CAPABILITY_SPECS[id];
-  if (!spec) throw new Error('research.run requires supported site: xiaohongshu, douyin, youtube, or web');
+  if (!spec) throw new Error('research.run requires supported site: xiaohongshu, douyin, jd, youtube, or web');
   if (sourceUrl && !urlMatchesSite(sourceUrl, spec)) throw new Error(`URL does not belong to ${spec.displayName}`);
   return spec;
 }
@@ -802,6 +802,16 @@ function urlMatchesSite(url, spec) {
   try {
     const host = new URL(url).hostname.toLowerCase();
     return spec.hosts.includes('*') || spec.hosts.some((suffix) => host === suffix || host.endsWith(`.${suffix}`));
+  } catch {
+    return false;
+  }
+}
+
+function urlMatchesHostPattern(url, suffix) {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    const normalized = String(suffix || '').trim().toLowerCase();
+    return normalized === '*' || host === normalized || host.endsWith(`.${normalized}`);
   } catch {
     return false;
   }
@@ -826,6 +836,7 @@ function isLikelySiteHomeUrl(url, siteId) {
     const path = new URL(url).pathname.replace(/\/+$/, '') || '/';
     if (siteId === 'xiaohongshu') return path === '/' || path === '/explore';
     if (siteId === 'douyin') return path === '/' || path === '/jingxuan';
+    if (siteId === 'jd') return path === '/' || path.toLowerCase() === '/search';
   } catch {
     return false;
   }
@@ -842,6 +853,9 @@ function isLikelySiteDetailUrl(url, siteId) {
     }
     if (siteId === 'douyin') {
       return /^\/video\//.test(path) || /^\/note\//.test(path) || /^\/user\//.test(path);
+    }
+    if (siteId === 'jd') {
+      return /^\/\d+\.html$/i.test(path);
     }
   } catch {
     return false;

@@ -43,6 +43,22 @@
       "concurrencyPolicy": "single_account"
     },
     {
+      "id": "jd",
+      "aliases": ["jingdong"],
+      "displayName": "京东",
+      "hostPatterns": ["jd.com", "jd.hk"],
+      "searchEntryUrl": "https://www.jd.com/",
+      "searchViaPageUi": true,
+      "detailOpenMode": "direct_url",
+      "supportedOperations": ["search"],
+      "supportedFilters": {},
+      "defaultSurface": ["search"],
+      "debugSurface": ["search"],
+      "capabilityVersion": "1.0.0",
+      "extractorSchemaHash": "8cb00f75f4996154453d28a3b0dceb7f1b3dca69c146543816fbcf9e05f7231f",
+      "concurrencyPolicy": "single_account"
+    },
+    {
       "id": "youtube",
       "aliases": ["yt"],
       "displayName": "YouTube",

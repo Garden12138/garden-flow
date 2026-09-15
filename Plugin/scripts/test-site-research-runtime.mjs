@@ -2,11 +2,13 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { parseHTML } from 'linkedom';
 import {
   normalizeResearchRequest,
   pickReusableResearchTab,
   runSiteResearch,
 } from '../src/background/siteResearchRuntime.js';
+import { extractSiteResearch } from '../src/content/siteResearchExtractor.js';
 import {
   buildBrowserPolicyDecision,
   resolveBrowserPolicyPageUrl,
@@ -57,6 +59,62 @@ test('normalizes generic web content scans and existing-tab requests', () => {
   });
   assert.equal(existingTab.site.id, 'xiaohongshu');
   assert.equal(existingTab.tabId, 12);
+});
+
+test('normalizes JD keyword search and extracts unique product cards from the result page', () => {
+  const request = normalizeResearchRequest({
+    operation: 'search',
+    site: 'jingdong',
+    query: '冻干猫粮',
+    depth: 'preview',
+  });
+  assert.equal(request.site.id, 'jd');
+  assert.equal(request.site.searchViaPageUi, true);
+  assert.equal(request.site.detailOpenMode, 'direct_url');
+  assert.equal(pickReusableResearchTab([
+    { id: 1, url: 'https://fakejd.com/search', title: 'lookalike' },
+    { id: 2, url: 'https://search.jd.com/Search?keyword=cat', title: '京东搜索' },
+  ], request)?.id, 2);
+
+  const { window, document } = parseHTML(`<!doctype html><html><head><title>冻干猫粮 - 京东</title></head><body>
+    <ul id="J_goodsList">
+      <li class="gl-item" data-sku="280930">
+        <div class="p-img"><a href="https://item.jd.com/280930.html?search=1"><img alt="伟嘉猫粮"></a></div>
+        <div class="p-name"><a href="https://item.jd.com/280930.html"><em>伟嘉成猫冻干猫粮 10kg</em></a></div>
+        <div class="p-shop"><a>伟嘉京东自营旗舰店</a></div>
+        <div class="p-commit"><a>200万+条评价</a></div>
+      </li>
+      <li class="gl-item" data-sku="10001">
+        <div class="p-name"><a href="//item.jd.com/10001.html"><em>冻干双拼猫粮 20斤</em></a></div>
+      </li>
+    </ul>
+  </body></html>`);
+  window.innerWidth = 1200;
+  window.innerHeight = 800;
+  window.HTMLElement.prototype.getBoundingClientRect = () => ({
+    left: 0, top: 0, right: 100, bottom: 40, width: 100, height: 40,
+  });
+  document.elementFromPoint = () => document.querySelector('a');
+  Object.assign(globalThis, {
+    window,
+    document,
+    location: new URL('https://search.jd.com/Search?keyword=%E5%86%BB%E5%B9%B2%E7%8C%AB%E7%B2%AE'),
+    getComputedStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1', pointerEvents: 'auto' }),
+  });
+
+  const extracted = extractSiteResearch({
+    site: 'jd',
+    operation: 'search',
+    detailOpenMode: 'direct_url',
+    limit: 10,
+  });
+  assert.equal(extracted.success, true);
+  assert.equal(extracted.pageState.surface, 'search_results');
+  assert.equal(extracted.items.length, 2);
+  assert.equal(extracted.items[0].title, '伟嘉成猫冻干猫粮 10kg');
+  assert.equal(extracted.items[0].author, '伟嘉京东自营旗舰店');
+  assert.equal(extracted.items[0].interactionRef.site, 'jd');
+  assert.equal(extracted.items[1].sourceUrl, 'https://item.jd.com/10001.html');
 });
 
 test('normalizes supported typed filters and rejects unsupported filters', () => {

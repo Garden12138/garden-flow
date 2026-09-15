@@ -129,12 +129,12 @@ const XHS_AUTO_CAPTURE_SETTINGS: BuiltinAutomationSettingField[] = [
 
 const JD_AUTO_CAPTURE_SETTINGS: BuiltinAutomationSettingField[] = [
     {
-        key: 'productUrls',
-        label: '京东商品链接',
+        key: 'keywords',
+        label: '采集关键词',
         type: 'string-list',
         required: true,
-        placeholder: 'https://item.jd.com/100012345678.html',
-        description: '填写京东商品详情页链接，支持逗号或换行分隔；每轮按列表轮换采集。',
+        placeholder: '冻干猫粮, 露营帐篷, 儿童书桌',
+        description: '每轮从列表中轮换取一个关键词，在京东搜索并批量采集商品；为空时任务无法开启。',
         defaultValue: [],
     },
     {
@@ -143,7 +143,7 @@ const JD_AUTO_CAPTURE_SETTINGS: BuiltinAutomationSettingField[] = [
         type: 'number',
         min: 1,
         max: 20,
-        description: '列表较长时会按天轮换，默认每轮 5 个。',
+        description: '从当次关键词的搜索结果中采集，默认每轮 5 个。',
         defaultValue: 5,
     },
     {
@@ -171,7 +171,7 @@ const JD_AUTO_CAPTURE_SETTINGS: BuiltinAutomationSettingField[] = [
             { value: 'conservative', label: '保守（推荐）' },
             { value: 'normal', label: '正常' },
         ],
-        description: '控制打开商品和开始识别之间的等待时间。',
+        description: '控制搜索、打开商品和开始识别之间的等待时间。',
         defaultValue: 'conservative',
     },
 ];
@@ -183,11 +183,13 @@ function buildJdAutoCapturePrompt(settings: Record<string, unknown>): string {
         `任务ID: ${JD_AUTO_CAPTURE_TASK_ID}`,
         '',
         '本轮参数：',
-        `- 商品链接数: ${launch.productUrls.length}/${launch.allProductUrls.length}`,
+        `- 关键词: ${launch.keyword}`,
+        `- 备选关键词: ${launch.allKeywords.join(' / ') || '(无)'}`,
+        `- 最多采集商品数: ${launch.maxProductsPerRun}`,
         `- 评论标签: ${launch.reviewFilterLabels.join(' / ') || '好评 / 中评 / 差评（默认）'}`,
         `- 每标签评论数: ${launch.reviewsPerFilter}`,
         '',
-        '执行方式由运行时结构化完成：为每个商品创建受控标签页，调用插件 capture.save 识别商品和评论并写入来源快照，最后关闭任务创建的标签页。',
+        '执行方式由运行时结构化完成：插件在京东页面输入关键词并读取搜索结果，任务逐个打开商品卡片，调用 capture.save 识别商品和评论并写入来源快照。',
     ].join('\n');
 }
 
@@ -196,17 +198,13 @@ async function checkJdAutoCaptureReadiness(
 ): Promise<BuiltinAutomationReadinessReport> {
     const launch = resolveJdAutoCaptureLaunch(settings);
     const checks: BuiltinAutomationReadinessCheck[] = [];
-    const linksOk = launch.allProductUrls.length > 0 && launch.invalidProductUrls.length === 0;
+    const keywordsOk = launch.allKeywords.length > 0;
     checks.push({
-        id: 'product-urls',
-        label: '京东商品链接',
-        status: linksOk ? 'ok' : 'failed',
-        detail: launch.invalidProductUrls.length > 0
-            ? `有 ${launch.invalidProductUrls.length} 个链接不是京东商品详情页`
-            : launch.allProductUrls.length > 0
-                ? `已配置 ${launch.allProductUrls.length} 个商品链接`
-                : '未配置商品链接',
-        hint: linksOk ? undefined : '请填写形如 https://item.jd.com/商品编号.html 的商品详情页链接，并移除无效链接。',
+        id: 'keywords',
+        label: '采集关键词',
+        status: keywordsOk ? 'ok' : 'failed',
+        detail: keywordsOk ? `已配置 ${launch.allKeywords.length} 个关键词` : '未配置关键词',
+        hint: keywordsOk ? undefined : '请在任务配置中至少填写 1 个采集关键词。',
     });
 
     const bridgeInstances = (getBrowserCaptureBridgeService()?.getStatus().instances || [])
@@ -339,7 +337,7 @@ const BUILTIN_AUTOMATION_DEFINITIONS: BuiltinAutomationDefinition[] = [
     {
         id: JD_AUTO_CAPTURE_TASK_ID,
         name: '京东商品自动采集',
-        description: '按商品链接定时打开京东详情页，通过 GardenFlow 插件采集商品字段、图片和指定评论标签，并保存为可追溯的来源快照。默认关闭。',
+        description: '按关键词定时在京东搜索商品，通过 GardenFlow 插件逐个采集商品字段、图片和指定评论标签，并保存为可追溯的来源快照。默认关闭。',
         supportedPlatforms: ['darwin', 'win32', 'linux'],
         trigger: { kind: 'schedule', schedule: { mode: 'daily', time: '10:30' } },
         requiredSkills: ['jd-auto-capture'],

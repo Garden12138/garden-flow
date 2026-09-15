@@ -2436,13 +2436,14 @@ export class GardenFlowBackgroundRunner extends EventEmitter {
         const launch = resolveJdAutoCaptureLaunch(state.settings);
         this.emit('log', {
           level: 'info',
-          message: `Builtin task starting structured JD capture: ${definition.id} products=${launch.productUrls.length}`,
+          message: `Builtin task starting structured JD capture: ${definition.id} keyword=${launch.keyword} maxProducts=${launch.maxProductsPerRun}`,
           reason,
           at: nowIso(),
         });
         const round = await runJdStructuredCaptureRound(
           {
-            productUrls: launch.productUrls,
+            keyword: launch.keyword,
+            maxProducts: launch.maxProductsPerRun,
             reviewFilterLabels: launch.reviewFilterLabels,
             reviewsPerFilter: launch.reviewsPerFilter,
             pacing: launch.pacing,
