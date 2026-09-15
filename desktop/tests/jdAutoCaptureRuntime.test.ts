@@ -147,6 +147,7 @@ test('structured JD capture searches once, then opens, saves, and closes result 
         'research.run',
         'tab.create', 'capture.save', 'tab.close',
         'tab.create', 'capture.save', 'tab.close',
+        'tab.close',
     ]);
     assert.deepEqual(calls[0].args, {
         site: 'jd',
@@ -157,7 +158,13 @@ test('structured JD capture searches once, then opens, saves, and closes result 
         maxScrolls: 8,
         snapshot: false,
         active: true,
+        reuseExistingTab: false,
         timeoutMs: 30000,
+    });
+    assert.equal(calls.find((call) => call.name === 'tab.create')?.args.active, true);
+    assert.deepEqual(calls.at(-1), {
+        name: 'tab.close',
+        args: { tabId: 12, reason: 'jd_auto_capture_search_complete' },
     });
     assert.deepEqual(calls.find((call) => call.name === 'capture.save')?.args.reviewOptions, {
         selectedFilterLabels: ['图/视频', '回头客'],
@@ -199,7 +206,7 @@ test('structured JD capture keeps successful snapshots and continues after one r
     assert.equal(round.saved, 2);
     assert.equal(round.failed, 1);
     assert.match(round.reason || '', /部分商品/);
-    assert.deepEqual(closed, [70, 71, 72]);
+    assert.deepEqual(closed, [70, 71, 72, 12]);
 });
 
 test('structured JD capture stops before search when keyword or plugin is unavailable', async () => {
@@ -233,6 +240,7 @@ test('structured JD capture stops before search when keyword or plugin is unavai
 });
 
 test('structured JD capture reports a search login wall as blocked', async () => {
+    const closed: number[] = [];
     const round = await runJdStructuredCaptureRound({
         keyword: '猫粮',
         maxProducts: 5,
@@ -241,12 +249,25 @@ test('structured JD capture reports a search login wall as blocked', async () =>
         pacing: 'normal',
     }, {
         checkPluginInstance: () => ({ ok: true, detail: 'connected' }),
-        invokeBrowserControl: async () => ({
-            success: false,
-            reason: 'security_verification_required',
-            handoff: { required: true },
-        }),
+        invokeBrowserControl: async (_method, params) => {
+            const name = String(params.name || '');
+            const args = params.arguments as Record<string, unknown>;
+            if (name === 'research.run') {
+                return {
+                    success: false,
+                    reason: 'security_verification_required',
+                    tab: { id: 91 },
+                    handoff: { required: true },
+                };
+            }
+            if (name === 'tab.close') {
+                closed.push(Number(args.tabId));
+                return { success: true };
+            }
+            throw new Error(`unexpected tool ${name}`);
+        },
     });
     assert.equal(round.status, 'blocked');
     assert.match(round.reason || '', /安全验证/);
+    assert.deepEqual(closed, [91]);
 });

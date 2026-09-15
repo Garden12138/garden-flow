@@ -223,10 +223,14 @@ assert(!outputManifest.permissions.includes('cookies'), 'Content capture must no
 assert(outputManifest.host_permissions.includes('<all_urls>'), 'Manifest must include <all_urls> for generic browser control');
 
 const builtBackground = await readText(path.join(outputDir, 'background.js'));
+const builtSidepanel = await readText(path.join(outputDir, 'sidepanel.js'));
 assert(!/^\s*import\s/m.test(builtBackground), 'Background service worker must not rely on ESM imports');
 assert(builtBackground.includes('gardenflow-browser-control'), 'Built background should include browser-control runtime');
 assert(builtBackground.includes('extension.register'), 'Built background should register its stable extension instance with the native host');
 assert(builtBackground.includes('registrationSucceeded'), 'Built background should report extension registration truth separately from host connectivity');
+assert(builtBackground.includes('gardenflow:capture-activity:update'), 'Built background should publish automated capture activity to the side panel');
+assert(builtSidepanel.includes('gardenflow:capture-activity:update'), 'Built side panel should display automated capture activity');
+assert(builtSidepanel.includes('自动任务采集中'), 'Built side panel should make JD automation visibly active');
 assert(!backgroundSource.includes('document.cookie'), 'Content capture must not read browser cookies');
 assert(!backgroundSource.includes('knowledge.ingestDocumentSource'), 'Browser capture must not expose document-source local paths');
 assert(!backgroundSource.includes('knowledge.batchIngest'), 'Browser capture must not expose arbitrary batch-ingest paths');

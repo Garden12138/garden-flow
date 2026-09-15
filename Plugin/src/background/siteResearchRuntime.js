@@ -70,6 +70,7 @@ export function normalizeResearchRequest(input = {}) {
     sourceUrl,
     tabId: positiveInteger(input.tabId),
     active: input.active !== false,
+    reuseExistingTab: input.reuseExistingTab !== false,
     timeoutMs: clampNumber(input.timeoutMs, 1_000, 60_000, 20_000),
     snapshot: input.snapshot !== false,
     limit: clampNumber(input.limit, 1, 100, 10),
@@ -132,7 +133,7 @@ export async function runSiteResearch(requestInput, deps = {}) {
   if (!targetUrl && !request.tabId) throw new Error(`${request.site.displayName} research route is unavailable`);
   let tab = request.tabId ? await deps.getTab?.(request.tabId) : null;
   let reusedExistingTab = false;
-  if (!tab && typeof deps.listTabs === 'function') {
+  if (!tab && request.reuseExistingTab !== false && typeof deps.listTabs === 'function') {
     tab = pickReusableResearchTab(await deps.listTabs(), request);
     reusedExistingTab = Boolean(tab?.id);
     if (tab?.id && request.active !== false && typeof deps.activateTab === 'function') {
@@ -184,6 +185,7 @@ export async function runSiteResearch(requestInput, deps = {}) {
       site: siteMetadata(request.site),
       operation: request.operation,
       sourceUrl: current?.url || targetUrl,
+      tab: normalizeTab(current),
       reason: extracted.reason,
       retryable: false,
       partial: false,
@@ -217,6 +219,7 @@ export async function runSiteResearch(requestInput, deps = {}) {
         site: siteMetadata(request.site),
         operation: request.operation,
         sourceUrl: current?.url || targetUrl,
+        tab: normalizeTab(current),
         reason: extracted.reason,
         retryable: false,
         partial: false,
@@ -239,6 +242,7 @@ export async function runSiteResearch(requestInput, deps = {}) {
       site: siteMetadata(request.site),
       operation: request.operation,
       sourceUrl: current?.url || targetUrl,
+      tab: normalizeTab(current),
       reason: 'detail_capture_failed',
       retryable: false,
       partial: false,
@@ -451,6 +455,7 @@ function researchFilterFailure(request, tab, targetUrl, failure = {}) {
     site: siteMetadata(request.site),
     operation: request.operation,
     sourceUrl: tab?.url || targetUrl,
+    tab: normalizeTab(tab),
     reason: failure?.reason || 'filter_option_unavailable',
     retryable: false,
     partial: false,
@@ -469,6 +474,7 @@ function researchSearchFailure(request, tab, targetUrl, failure = {}) {
     site: siteMetadata(request.site),
     operation: request.operation,
     sourceUrl: tab?.url || targetUrl,
+    tab: normalizeTab(tab),
     reason: failure?.reason || 'search_ui_failed',
     message: String(failure?.message || failure?.error || 'platform page UI search failed').slice(0, 500),
     retryable: false,
@@ -491,6 +497,7 @@ function researchCardsFailure(request, tab, targetUrl, extracted = {}) {
     site: siteMetadata(request.site),
     operation: request.operation,
     sourceUrl: tab?.url || targetUrl,
+    tab: normalizeTab(tab),
     reason,
     message: reason === 'no_results'
       ? 'the platform explicitly reported that the current search has no results'

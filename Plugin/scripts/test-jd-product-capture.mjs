@@ -307,6 +307,30 @@ test('waits for an asynchronous filter refresh and scrolls the modal for more re
   assert.deepEqual(capture.reviews.map((review) => review.rating), [4, 4, 4]);
 });
 
+test('keeps the buyer review text when a longer merchant reply follows it', async () => {
+  const { document } = parseHTML(`<!doctype html><html><body>
+    <div role="dialog" class="comment-dialog">
+      <h2>商品评价</h2>
+      <button role="tab" data-filter="negative" aria-selected="true">差评 2000+</button>
+      <div class="comment-list">
+        <article class="comment-item" data-comment-id="buyer-with-reply">
+          <span data-role="author">j***y</span>
+          <span data-role="date">2021-06-10</span>
+          <span data-role="sku">鱼肉味4斤</span>
+          <span data-score="1">1 星</span>
+          <div class="comment-content">放在快递点，离收货地址三公里，让我怎么拿 商家：感谢您选择我们的产品。实在很抱歉出现这样的情况呢，我们也会根据您的反馈加强和快递公司的沟通。</div>
+        </article>
+      </div>
+    </div>
+  </body></html>`);
+
+  const capture = await captureJdProductReviews({ selectedFilterLabels: ['差评'], limitPerFilter: 1 }, document, new URL('https://item.jd.com/280930.html'));
+
+  assert.equal(capture.reviews.length, 1);
+  assert.equal(capture.reviews[0].text, '放在快递点，离收货地址三公里，让我怎么拿');
+  assert.doesNotMatch(capture.reviews[0].text, /商家/);
+});
+
 test('captures only custom review filters and clamps the shared limit to one through fifty', async () => {
   const document = createReviewModal();
   const modal = document.querySelector('[role="dialog"]');

@@ -72,6 +72,7 @@ test('normalizes JD keyword search and extracts unique product cards from the re
   assert.equal(request.site.id, 'jd');
   assert.equal(request.site.searchViaPageUi, true);
   assert.equal(request.site.detailOpenMode, 'direct_url');
+  assert.equal(request.reuseExistingTab, true);
   assert.equal(pickReusableResearchTab([
     { id: 1, url: 'https://fakejd.com/search', title: 'lookalike' },
     { id: 2, url: 'https://search.jd.com/Search?keyword=cat', title: '京东搜索' },
@@ -696,6 +697,7 @@ test('fails closed instead of fabricating a search URL when page UI search is un
   assert.equal(result.success, false);
   assert.equal(result.reason, 'search_ui_runtime_unavailable');
   assert.equal(result.sourceUrl, 'https://www.xiaohongshu.com/');
+  assert.equal(result.tab.id, 19);
 });
 
 test('returns a typed user handoff for login and security blockers', async () => {
@@ -946,6 +948,70 @@ test('reuses an existing Xiaohongshu search tab instead of creating a new one', 
   assert.equal(activated, 1);
   assert.equal(result.tab.id, 33);
   assert.equal(result.success, true);
+});
+
+test('creates an owned search tab when tab reuse is explicitly disabled', async () => {
+  let listed = 0;
+  let created = 0;
+  const result = await runSiteResearch({
+    operation: 'search',
+    site: 'jd',
+    query: '猫粮',
+    depth: 'preview',
+    limit: 1,
+    reuseExistingTab: false,
+  }, {
+    listTabs: async () => {
+      listed += 1;
+      return [{ id: 33, url: 'https://www.jd.com/', title: '京东' }];
+    },
+    createControlledTab: async ({ url }) => {
+      created += 1;
+      return { tab: { id: 44, url, title: '京东' } };
+    },
+    getTab: async () => ({ id: 44, url: 'https://search.jd.com/Search?keyword=cat', title: '猫粮 - 京东搜索' }),
+    claimTab: async () => {},
+    waitForTabComplete: async () => {},
+    submitSearch: async () => ({ success: true, submitted: true }),
+    readSnapshot: async () => ({ snapshot: '' }),
+    readSiteEvidence: async () => ({
+      success: true,
+      items: [{ id: '280930', sourceUrl: 'https://item.jd.com/280930.html', title: '猫粮' }],
+    }),
+  });
+
+  assert.equal(listed, 0);
+  assert.equal(created, 1);
+  assert.equal(result.tab.id, 44);
+  assert.equal(result.success, true);
+});
+
+test('keeps the owned tab id in an empty search result so the caller can close it', async () => {
+  const result = await runSiteResearch({
+    operation: 'search',
+    site: 'jd',
+    query: '没有结果的关键词',
+    depth: 'preview',
+    limit: 1,
+    maxScrolls: 0,
+    reuseExistingTab: false,
+  }, {
+    createControlledTab: async ({ url }) => ({ tab: { id: 45, url, title: '京东' } }),
+    getTab: async () => ({ id: 45, url: 'https://search.jd.com/Search?keyword=none', title: '京东搜索' }),
+    claimTab: async () => {},
+    waitForTabComplete: async () => {},
+    submitSearch: async () => ({ success: true, submitted: true }),
+    readSnapshot: async () => ({ snapshot: '' }),
+    readSiteEvidence: async () => ({
+      success: true,
+      pageState: { results: { status: 'empty', candidateCount: 0, interactableCount: 0 } },
+      items: [],
+    }),
+  });
+
+  assert.equal(result.success, false);
+  assert.equal(result.reason, 'no_results');
+  assert.equal(result.tab.id, 45);
 });
 
 test('falls back to creating a tab when a reusable tab cannot be claimed', async () => {

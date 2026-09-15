@@ -47,6 +47,7 @@ let context = null;
 let refreshing = false;
 let capturePendingAction = '';
 let captureFeedback = null;
+let automatedCaptureFeedback = null;
 let captureSignature = '';
 let jdProductPreview = null;
 let jdReviewOptions = {
@@ -151,6 +152,19 @@ function bindEvents() {
         ...context,
         queue: message.queue || {},
       });
+      return;
+    }
+    if (message?.type === 'gardenflow:capture-activity:update') {
+      const tabId = Number(message.tabId || 0);
+      const status = ['pending', 'success', 'error'].includes(message.status) ? message.status : 'idle';
+      automatedCaptureFeedback = {
+        tabId,
+        status,
+        message: String(message.message || ''),
+      };
+      if (tabId > 0 && tabId === Number(context?.tab?.id || 0)) {
+        renderCaptureActions(context);
+      }
     }
   });
 }
@@ -301,6 +315,11 @@ function renderPageIdentity(view) {
 
 function renderCaptureActions(nextContext) {
   const config = getCaptureActionConfig(nextContext);
+  const currentTabId = Number(nextContext?.tab?.id || 0);
+  const activeAutomatedFeedback = automatedCaptureFeedback?.tabId === currentTabId
+    ? automatedCaptureFeedback
+    : null;
+  const automatedCapturePending = activeAutomatedFeedback?.status === 'pending';
   const nextSignature = `${config.variant}:${nextContext?.tab?.id || 0}:${nextContext?.tab?.url || ''}`;
   if (captureSignature !== nextSignature) {
     captureFeedback = null;
@@ -326,8 +345,12 @@ function renderCaptureActions(nextContext) {
     button.dataset.action = item.action;
     button.className = item.primary ? 'primary' : '';
     button.title = item.title || item.label;
-    button.textContent = capturePendingAction === item.action ? meta.pending : item.label;
-    button.disabled = Boolean(capturePendingAction) || !isHealthy || item.disabled;
+    button.textContent = capturePendingAction === item.action
+      ? meta.pending
+      : automatedCapturePending && config.variant === 'jd-product'
+        ? '自动任务采集中…'
+        : item.label;
+    button.disabled = Boolean(capturePendingAction) || automatedCapturePending || !isHealthy || item.disabled;
     elements.captureActions.appendChild(button);
   }
 
@@ -338,7 +361,7 @@ function renderCaptureActions(nextContext) {
     checkbox.id = 'xhs-save-comments-inline';
     checkbox.type = 'checkbox';
     checkbox.checked = currentSettings?.xhsSaveCommentsWithNote !== false;
-    checkbox.disabled = Boolean(capturePendingAction) || !isHealthy;
+    checkbox.disabled = Boolean(capturePendingAction) || automatedCapturePending || !isHealthy;
     const text = document.createElement('span');
     text.textContent = '保存评论区';
     label.append(checkbox, text);
@@ -410,7 +433,7 @@ function renderCaptureActions(nextContext) {
           checkbox.type = 'checkbox';
           checkbox.dataset.jdReviewFilter = filter.id;
           checkbox.checked = jdReviewOptions.selectedFilterIds.includes(filter.id);
-          checkbox.disabled = Boolean(capturePendingAction) || !isHealthy;
+          checkbox.disabled = Boolean(capturePendingAction) || automatedCapturePending || !isHealthy;
           const text = document.createElement('span');
           text.textContent = `${filter.label}${filter.countText ? ` ${filter.countText}` : ''}`;
           label.append(checkbox, text);
@@ -428,7 +451,7 @@ function renderCaptureActions(nextContext) {
         limitInput.max = '50';
         limitInput.step = '1';
         limitInput.value = String(jdReviewOptions.limitPerFilter);
-        limitInput.disabled = Boolean(capturePendingAction) || !isHealthy;
+        limitInput.disabled = Boolean(capturePendingAction) || automatedCapturePending || !isHealthy;
         const unit = document.createElement('span');
         unit.textContent = '条';
         limitRow.append(limitLabel, limitInput, unit);
@@ -472,6 +495,10 @@ function renderCaptureActions(nextContext) {
 
   if (captureFeedback) {
     renderCaptureStatus(captureFeedback.message, captureFeedback.status);
+    return;
+  }
+  if (activeAutomatedFeedback) {
+    renderCaptureStatus(activeAutomatedFeedback.message, activeAutomatedFeedback.status);
     return;
   }
   if (!isHealthy) {

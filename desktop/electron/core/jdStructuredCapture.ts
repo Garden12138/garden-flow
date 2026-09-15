@@ -298,18 +298,37 @@ export async function runJdStructuredCaptureRound(
             maxScrolls: JD_SEARCH_MAX_SCROLLS,
             snapshot: false,
             active: true,
+            reuseExistingTab: false,
             timeoutMs: PLUGIN_STEP_TIMEOUT_MS,
         }, SEARCH_TIMEOUT_MS));
     } catch (error) {
         return finalize('failed', `京东搜索请求失败：${error instanceof Error ? error.message : String(error)}`);
     }
-    if (search.blocked) return finalize('blocked', `京东搜索遇到登录或安全验证（${search.reason || 'login_required'}），请先在浏览器完成处理`);
-    if (!search.ok) return finalize('failed', `京东关键词搜索未成功：${search.reason || '未知原因'}`);
-    if (!search.tabId) return finalize('failed', '京东搜索完成但插件未返回可用的结果页 tabId');
+    let searchTabClosed = false;
+    const closeSearchTab = async (): Promise<void> => {
+        if (!search.tabId || searchTabClosed) return;
+        searchTabClosed = true;
+        await callTool(io, 'tab.close', {
+            tabId: search.tabId,
+            reason: 'jd_auto_capture_search_complete',
+        }, CLOSE_TIMEOUT_MS).catch((error) => {
+            log('warn', `JD capture could not close search tab ${search.tabId}: ${error instanceof Error ? error.message : String(error)}`);
+        });
+    };
+    const finish = async (
+        status: JdStructuredCaptureRound['status'],
+        reason?: string,
+    ): Promise<JdStructuredCaptureRound> => {
+        await closeSearchTab();
+        return finalize(status, reason);
+    };
+    if (search.blocked) return await finish('blocked', `京东搜索遇到登录或安全验证（${search.reason || 'login_required'}），请先在浏览器完成处理`);
+    if (!search.ok) return await finish('failed', `京东关键词搜索未成功：${search.reason || '未知原因'}`);
+    if (!search.tabId) return await finish('failed', '京东搜索完成但插件未返回可用的结果页 tabId');
 
     const queue = uniqueJdSearchCards(search.items);
     const queuedProductIds = new Set(queue.map((card) => String(card.id || '')));
-    if (queue.length === 0) return finalize('failed', '京东搜索结果为空，或页面未识别到有效商品卡片');
+    if (queue.length === 0) return await finish('failed', '京东搜索结果为空，或页面未识别到有效商品卡片');
     log('info', `JD capture found ${search.items.length} product cards (${queue.length} unique) on tab=${search.tabId}`);
 
     const enqueueCards = (items: Array<Record<string, unknown>>): number => {
@@ -374,7 +393,7 @@ export async function runJdStructuredCaptureRound(
             log('info', `JD capture opening search result ${cursor}/${queue.length}: ${sourceUrl}`);
             tabId = createdTabId(await callTool(io, 'tab.create', {
                 url: sourceUrl,
-                active: false,
+                active: true,
                 waitUntilComplete: true,
             }, CREATE_TIMEOUT_MS));
             if (!tabId) throw new Error('插件创建了商品页，但没有返回 tabId');
@@ -429,10 +448,10 @@ export async function runJdStructuredCaptureRound(
         const partialReason = products.some((product) => product.outcome === 'failed')
             ? '部分商品未能保存，成功结果已保留'
             : undefined;
-        return finalize('captured', blockedReason || quotaMissReason || partialReason);
+        return await finish('captured', blockedReason || quotaMissReason || partialReason);
     }
-    if (blockedReason) return finalize('blocked', blockedReason);
-    return finalize('failed', quotaMissReason || '本轮没有商品成功保存');
+    if (blockedReason) return await finish('blocked', blockedReason);
+    return await finish('failed', quotaMissReason || '本轮没有商品成功保存');
 }
 
 export function createJdStructuredCaptureIo(

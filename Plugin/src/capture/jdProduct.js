@@ -323,6 +323,20 @@ export async function captureJdProductReviews(reviewOptions = {}, pageDocument =
     }
     return '';
   };
+  const userReviewText = (value, limit = 10_000) => {
+    const normalized = clean(value, limit);
+    const merchantReply = /(?:^|\s)(?:商家|卖家|店铺|客服)(?:回复)?\s*[：:]/.exec(normalized);
+    return clean(merchantReply ? normalized.slice(0, merchantReply.index) : normalized, limit);
+  };
+  const firstUserReviewText = (root, selectors, limit = 10_000) => {
+    for (const selector of selectors) {
+      for (const node of root.querySelectorAll(selector)) {
+        const value = userReviewText(node.getAttribute?.('content') || node.textContent, limit);
+        if (value) return value;
+      }
+    }
+    return '';
+  };
   const leafTexts = (root, limit = 10_000) => Array.from(root.querySelectorAll('div, span, p, time, li'))
     .filter((node) => isVisible(node))
     .map((node) => ({ node, text: clean(node.textContent, limit) }))
@@ -367,11 +381,12 @@ export async function captureJdProductReviews(reviewOptions = {}, pageDocument =
     const reviews = [];
     for (const row of rows) {
       const textItems = leafTexts(row);
-      const explicitText = firstText(row, ['[data-role="comment-text"]', '[class*="comment-content"]', '[class*="commentText"]', '[class*="comment-text"]', '[class*="content"] [class*="text"]', '.comment-con'], 10_000);
+      const explicitText = firstUserReviewText(row, ['[data-role="comment-text"]', '[class*="comment-content"]', '[class*="commentText"]', '[class*="comment-text"]', '[class*="content"] [class*="text"]', '.comment-con'], 10_000);
       const fallbackText = textItems
-        .map((item) => item.text)
+        .map((item) => userReviewText(item.text))
+        .filter(Boolean)
         .filter((value) => value.length >= 18 && !/(?:^|[^\d])(?:\d{4}-)?\d{2}-\d{2}(?!\d)/.test(value))
-        .filter((value) => !/该店铺购买|^(?:回复|有用|超赞)$/.test(value))
+        .filter((value) => !/该店铺购买|^(?:(?:商家|卖家|店铺|客服)(?:回复)?|回复|有用|超赞)$/.test(value))
         .sort((left, right) => right.length - left.length)[0] || '';
       const text = explicitText || fallbackText;
       if (!text) continue;

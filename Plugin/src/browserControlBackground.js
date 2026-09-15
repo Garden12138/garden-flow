@@ -134,6 +134,16 @@ async function saveCurrentPageViaPluginCapture(tabId, options = {}) {
   return await handler(id, options);
 }
 
+function publishCaptureActivity(tabId, status, message, details = {}) {
+  void chrome.runtime.sendMessage({
+    type: 'gardenflow:capture-activity:update',
+    tabId: Number(tabId),
+    status,
+    message,
+    ...details,
+  }).catch(() => {});
+}
+
 const nativeMethodRouter = createNativeMethodRouter({
   ping: () => ({ ok: true, now: new Date().toISOString(), status: nativeStatus }),
   getInfo: async () => await getBrowserControlInfo(),
@@ -189,6 +199,7 @@ const BROWSER_CONTROL_MCP_TOOLS = [
         ocr: { type: 'boolean' },
         transcribeAudio: { type: 'boolean' },
         snapshot: { type: 'boolean' },
+        reuseExistingTab: { type: 'boolean' },
         timeoutMs: { type: 'number' },
       },
       required: ['operation'],
@@ -1615,9 +1626,34 @@ async function runBrowserAction(action, context = {}) {
       case 'save-xhs': {
         const tabId = Number(normalized.tabId || session.activeTabId || activeBrowserSession?.activeTabId || 0);
         await requireActiveControlledTabLease(session, tabId, 'capture.save');
-        result = await saveCurrentPageViaPluginCapture(tabId, {
-          reviewOptions: normalized.reviewOptions,
-        });
+        const isJdProductCapture = normalized.reviewOptions && typeof normalized.reviewOptions === 'object';
+        publishCaptureActivity(
+          tabId,
+          'pending',
+          isJdProductCapture ? '自动任务正在通过商品采集插件保存商品及评论…' : '自动任务正在通过页面采集插件保存…',
+          { action: isJdProductCapture ? 'saveJdProduct' : 'saveCurrentPage' },
+        );
+        try {
+          result = await saveCurrentPageViaPluginCapture(tabId, {
+            reviewOptions: normalized.reviewOptions,
+          });
+          publishCaptureActivity(
+            tabId,
+            'success',
+            result?.mode === 'jd-product'
+              ? `自动采集完成：已保存 ${Number(result.capturedReviews || 0)} 条评论，正在关闭商品页`
+              : '自动采集完成，正在关闭页面',
+            { action: isJdProductCapture ? 'saveJdProduct' : 'saveCurrentPage', result },
+          );
+        } catch (error) {
+          publishCaptureActivity(
+            tabId,
+            'error',
+            `自动采集失败：${error instanceof Error ? error.message : String(error)}`,
+            { action: isJdProductCapture ? 'saveJdProduct' : 'saveCurrentPage' },
+          );
+          throw error;
+        }
         break;
       }
       case 'research.run':
