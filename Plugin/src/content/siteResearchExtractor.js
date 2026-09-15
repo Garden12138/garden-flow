@@ -76,6 +76,8 @@ const SITE_SEARCH_UI = Object.freeze({
     inputs: Object.freeze([
       '#key',
       'input[name="keyword"]',
+      'input[aria-label="搜索"]',
+      'input[class*="_search_input"]',
       '[role="search"] input',
       'input[placeholder*="搜索"]',
       'input[type="search"]',
@@ -83,6 +85,7 @@ const SITE_SEARCH_UI = Object.freeze({
     submits: Object.freeze([
       '.form .button',
       'button.button',
+      'button[class*="_search_btn"]',
       'button[type="submit"]',
       '[role="search"] button',
     ]),
@@ -419,16 +422,107 @@ function extractDouyin(operation, limit, commentLimit, detailOpenMode) {
 
 function extractJd(operation, limit, detailOpenMode) {
   if (operation !== 'search') return extractGenericWeb(limit);
-  const cards = extractCards(SITE_CARD_SELECTORS.jd, limit, {
+  const legacyCards = extractCards(SITE_CARD_SELECTORS.jd, limit, {
     title: ['.p-name em', '.p-name', '[class*="product-name"]', '[class*="title"]'],
     author: ['.p-shop a', '.p-shop', '[class*="shop"]'],
     engagement: ['.p-commit a', '.p-commit', '[class*="comment"]'],
   }, 'jd', detailOpenMode);
+  const itemsById = new Map();
+  for (const item of legacyCards.items) {
+    const itemId = String(item.id || externalIdFromUrl(item.sourceUrl)).replace(/\.html$/i, '');
+    if (itemId) itemsById.set(itemId, { ...item, id: itemId });
+  }
+  const cardNodes = document.querySelectorAll([
+    'li.gl-item[data-sku]',
+    '.plugin_goodsCardWrapper[data-sku]',
+    '[class*="goodsCardWrapper"][data-sku]',
+    '.plugin_goodsContainer [data-sku]',
+    '#J_goodsList [data-sku]',
+  ].join(', '));
+  let candidateCount = legacyCards.resultState.candidateCount;
+  const seenNodes = new Set();
+  for (const node of cardNodes) {
+    const root = node.closest('.plugin_goodsCardWrapper, [class*="goodsCardWrapper"], li.gl-item') || node;
+    if (seenNodes.has(root)) continue;
+    seenNodes.add(root);
+    const itemId = String(node.getAttribute('data-sku') || root.getAttribute('data-sku') || '').trim();
+    if (!/^\d+$/.test(itemId)) continue;
+    candidateCount += 1;
+    const sourceUrl = `https://item.jd.com/${itemId}.html`;
+    const title = extractJdCardTitle(root);
+    const authorNode = firstNode([
+      '.p-shop a',
+      '.p-shop',
+      '[class*="goods_shop"] [title]',
+      '[class*="goodsShop"] [title]',
+      '[class*="shop"] [title]',
+      '[class*="shop"]',
+    ], root);
+    const author = (text(authorNode) || String(authorNode?.getAttribute('title') || '')).slice(0, 200);
+    const cardText = text(root);
+    const engagementNode = firstNode([
+      '.p-commit a',
+      '.p-commit',
+      '[class*="comment"]',
+      '[class*="evaluate"]',
+    ], root);
+    const engagementText = (text(engagementNode)
+      || /(?:\d+(?:\.\d+)?(?:万|千)?\+?条?(?:评论|评价))/.exec(cardText)?.[0]
+      || '').slice(0, 120);
+    const existing = itemsById.get(itemId);
+    itemsById.set(itemId, {
+      ...existing,
+      id: itemId,
+      sourceUrl,
+      title: (title || existing?.title || '').slice(0, 500),
+      author: author || existing?.author || '',
+      engagementText: engagementText || existing?.engagementText || '',
+      previewText: cardText.slice(0, 1_000) || existing?.previewText || '',
+      interactionRef: {
+        kind: 'site_card',
+        action: 'open',
+        site: 'jd',
+        itemId,
+        sourceUrl,
+        rank: itemsById.has(itemId) ? existing?.interactionRef?.rank || itemsById.size : itemsById.size,
+      },
+    });
+    if (itemsById.size >= limit) break;
+  }
+  const items = [...itemsById.values()].slice(0, limit);
   return {
-    items: cards.items,
-    resultState: cards.resultState,
-    hasMore: cards.items.length >= limit,
+    items,
+    resultState: {
+      status: items.length > 0 || candidateCount > 0 ? 'ready' : detectExplicitEmptyResults() ? 'empty' : 'loading',
+      candidateCount,
+      interactableCount: items.length,
+    },
+    hasMore: items.length >= limit,
   };
+}
+
+function extractJdCardTitle(root) {
+  for (const selector of [
+    '.p-name em',
+    '.p-name',
+    '[class*="goods_title"] [title]',
+    '[class*="goodsTitle"] [title]',
+    '[class*="title"] [title]',
+    'span[title]',
+    'img[alt]',
+  ]) {
+    const candidates = [];
+    for (const node of root.querySelectorAll(selector)) {
+      const value = String(node.getAttribute('title') || node.getAttribute('alt') || text(node))
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (value.length > 1 && !candidates.includes(value)) candidates.push(value);
+    }
+    if (!candidates.length) continue;
+    candidates.sort((left, right) => right.length - left.length);
+    return candidates[0];
+  }
+  return '';
 }
 
 function extractYouTube(commentLimit) {
@@ -650,6 +744,9 @@ function readPageState(site) {
     'iframe[src*="captcha"]',
   ]);
   const path = `${location.pathname}${location.search}`.toLowerCase();
+  const hostname = location.hostname.toLowerCase();
+  const loginPage = /(^|\.)(?:passport|plogin)\.jd\.(?:com|hk)$/.test(hostname)
+    || /(?:^|\/)(?:login|signin)(?:[./?]|$)/.test(path);
   const unavailableText = `${document.title || ''}\n${String(document.body?.innerText || '').slice(0, 4_000)}`;
   const unavailable = /\/404(?:\/|\?|$)/.test(location.pathname.toLowerCase())
     || /(?:你访问的页面不见了|当前笔记暂时无法浏览|视频已失效|内容不存在)/i.test(unavailableText);
@@ -657,7 +754,7 @@ function readPageState(site) {
     ? 'content_unavailable'
     : security
     ? 'security_verification_required'
-    : modal || /\/(login|signin)(\/|\?|$)/.test(path)
+    : modal || loginPage
       ? 'login_required'
       : null;
   return {

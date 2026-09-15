@@ -160,6 +160,14 @@ for (const capability of siteResearchCapabilities.capabilities || []) {
       capability.searchViaPageUi === true || String(capability.searchUrlTemplate || '').includes('{query}'),
       `${capability.id} must declare page UI search or a query URL template`,
     );
+    if (capability.resultReadyTimeoutMs !== undefined) {
+      assert(
+        Number.isInteger(capability.resultReadyTimeoutMs)
+          && capability.resultReadyTimeoutMs >= 1_000
+          && capability.resultReadyTimeoutMs <= 60_000,
+        `${capability.id} resultReadyTimeoutMs must be between 1000 and 60000`,
+      );
+    }
   }
 }
 assert(siteResearchCapabilities.capabilities.length > 0, 'Site research capability registry must not be empty');

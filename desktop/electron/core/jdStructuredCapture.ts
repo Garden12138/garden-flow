@@ -304,7 +304,7 @@ export async function runJdStructuredCaptureRound(
         return finalize('failed', `京东搜索请求失败：${error instanceof Error ? error.message : String(error)}`);
     }
     if (search.blocked) return finalize('blocked', `京东搜索遇到登录或安全验证（${search.reason || 'login_required'}），请先在浏览器完成处理`);
-    if (!search.ok) return finalize('failed', `京东页内搜索未成功：${search.reason || '未知原因'}`);
+    if (!search.ok) return finalize('failed', `京东关键词搜索未成功：${search.reason || '未知原因'}`);
     if (!search.tabId) return finalize('failed', '京东搜索完成但插件未返回可用的结果页 tabId');
 
     const queue = uniqueJdSearchCards(search.items);

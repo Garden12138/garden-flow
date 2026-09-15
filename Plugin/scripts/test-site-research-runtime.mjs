@@ -9,7 +9,7 @@ import {
   pickReusableResearchTab,
   runSiteResearch,
 } from '../src/background/siteResearchRuntime.js';
-import { extractSiteResearch } from '../src/content/siteResearchExtractor.js';
+import { extractSiteResearch, submitSiteResearchSearch } from '../src/content/siteResearchExtractor.js';
 import {
   buildBrowserPolicyDecision,
   resolveBrowserPolicyPageUrl,
@@ -70,17 +70,15 @@ test('normalizes JD keyword search and extracts unique product cards from the re
     depth: 'preview',
   });
   assert.equal(request.site.id, 'jd');
-  assert.equal(request.site.searchViaPageUi, false);
+  assert.equal(request.site.searchViaPageUi, true);
   assert.equal(request.site.detailOpenMode, 'direct_url');
   assert.equal(pickReusableResearchTab([
     { id: 1, url: 'https://fakejd.com/search', title: 'lookalike' },
     { id: 2, url: 'https://search.jd.com/Search?keyword=cat', title: '京东搜索' },
-  ], request), null);
+  ], request)?.id, 2);
   const targetUrl = new URL(buildSiteSearchTargetUrl(request.site, '冻干 猫粮'));
-  assert.equal(targetUrl.hostname, 'search.jd.com');
-  assert.equal(targetUrl.pathname, '/Search');
-  assert.equal(targetUrl.searchParams.get('keyword'), '冻干 猫粮');
-  assert.equal(targetUrl.searchParams.get('enc'), 'utf-8');
+  assert.equal(targetUrl.hostname, 'www.jd.com');
+  assert.equal(targetUrl.pathname, '/');
 
   const { window, document } = parseHTML(`<!doctype html><html><head><title>冻干猫粮 - 京东</title></head><body>
     <ul id="J_goodsList">
@@ -123,7 +121,105 @@ test('normalizes JD keyword search and extracts unique product cards from the re
   assert.equal(extracted.items[1].sourceUrl, 'https://item.jd.com/10001.html');
 });
 
-test('opens the JD search result URL directly without submitting a page input', async () => {
+test('extracts current JD React product cards that expose data-sku without item links', () => {
+  const { window, document } = parseHTML(`<!doctype html><html><head><title>猫粮 - 京东</title></head><body>
+    <main class="plugin_goodsContainer">
+      <div class="plugin_goodsCardWrapper current-card" data-sku="100238992842">
+        <div class="module_goods_title_container"><span title="凯锐思猫粮冻干鲜肉双拼成猫粮毛护肠胃20斤">双拼猫粮</span></div>
+        <div class="module_goods_shop_container"><span title="凯锐思京东自营旗舰店">凯锐思京东自营旗舰店</span></div>
+        <div class="module_comment_count">10万+条评价</div>
+      </div>
+    </main>
+  </body></html>`);
+  window.innerWidth = 1200;
+  window.innerHeight = 800;
+  window.HTMLElement.prototype.getBoundingClientRect = () => ({
+    left: 0, top: 0, right: 320, bottom: 180, width: 320, height: 180,
+  });
+  document.elementFromPoint = () => document.querySelector('[data-sku]');
+  Object.assign(globalThis, {
+    window,
+    document,
+    location: new URL('https://search.jd.com/Search?keyword=%E7%8C%AB%E7%B2%AE'),
+    getComputedStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1', pointerEvents: 'auto' }),
+  });
+
+  const extracted = extractSiteResearch({
+    site: 'jd',
+    operation: 'search',
+    detailOpenMode: 'direct_url',
+    limit: 10,
+  });
+
+  assert.equal(extracted.success, true);
+  assert.equal(extracted.pageState.results.status, 'ready');
+  assert.equal(extracted.items.length, 1);
+  assert.equal(extracted.items[0].id, '100238992842');
+  assert.equal(extracted.items[0].sourceUrl, 'https://item.jd.com/100238992842.html');
+  assert.equal(extracted.items[0].title, '凯锐思猫粮冻干鲜肉双拼成猫粮毛护肠胃20斤');
+  assert.equal(extracted.items[0].author, '凯锐思京东自营旗舰店');
+  assert.equal(extracted.items[0].engagementText, '10万+条评价');
+});
+
+test('submits through the current JD aria-label search controls', async () => {
+  const { window, document } = parseHTML(`<!doctype html><html><head><title>京东</title></head><body>
+    <div class="module_search_form">
+      <input class="module_search_input" aria-label="搜索" value="旧关键词">
+      <button class="module_search_btn" type="button">搜索</button>
+    </div>
+  </body></html>`);
+  window.innerWidth = 1200;
+  window.innerHeight = 800;
+  window.HTMLElement.prototype.getBoundingClientRect = () => ({
+    left: 0, top: 0, right: 240, bottom: 40, width: 240, height: 40,
+  });
+  window.HTMLElement.prototype.scrollIntoView = () => {};
+  window.getComputedStyle = () => ({ display: 'block', visibility: 'visible', opacity: '1', pointerEvents: 'auto' });
+  Object.assign(globalThis, {
+    window,
+    document,
+    location: new URL('https://www.jd.com/'),
+    getComputedStyle: window.getComputedStyle,
+    Event: window.Event,
+    InputEvent: window.InputEvent || window.Event,
+    MouseEvent: window.MouseEvent || window.Event,
+    PointerEvent: window.PointerEvent || window.MouseEvent || window.Event,
+    Node: window.Node,
+    Element: window.Element,
+  });
+
+  const submitted = await submitSiteResearchSearch({ site: 'jd', query: '冻干猫粮' });
+
+  assert.equal(submitted.success, true);
+  assert.equal(submitted.method, 'click');
+  assert.equal(submitted.inputSelector, 'input[aria-label="搜索"]');
+  assert.equal(submitted.submitSelector, 'button[class*="_search_btn"]');
+  assert.equal(document.querySelector('input').value, '冻干猫粮');
+});
+
+test('classifies the current JD passport route as a login blocker', () => {
+  const { window, document } = parseHTML('<!doctype html><html><head><title>京东登录</title></head><body></body></html>');
+  window.innerWidth = 1200;
+  window.innerHeight = 800;
+  window.HTMLElement.prototype.getBoundingClientRect = () => ({
+    left: 0, top: 0, right: 100, bottom: 40, width: 100, height: 40,
+  });
+  document.elementFromPoint = () => document.body;
+  Object.assign(globalThis, {
+    window,
+    document,
+    location: new URL('https://passport.jd.com/new/login.aspx?ReturnUrl=https%3A%2F%2Fwww.jd.com%2F'),
+    getComputedStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1', pointerEvents: 'auto' }),
+  });
+
+  const extracted = extractSiteResearch({ site: 'jd', operation: 'search', limit: 10 });
+
+  assert.equal(extracted.success, false);
+  assert.equal(extracted.reason, 'login_required');
+  assert.equal(extracted.pageState.surface, 'blocked');
+});
+
+test('submits a JD keyword through the page UI before collecting product cards', async () => {
   let openedUrl = '';
   let submitCount = 0;
   const result = await runSiteResearch({
@@ -159,13 +255,53 @@ test('opens the JD search result URL directly without submitting a page input', 
   });
 
   const targetUrl = new URL(openedUrl);
-  assert.equal(targetUrl.hostname, 'search.jd.com');
-  assert.equal(targetUrl.pathname, '/Search');
-  assert.equal(targetUrl.searchParams.get('keyword'), '冻干 猫粮');
-  assert.equal(targetUrl.searchParams.get('enc'), 'utf-8');
-  assert.equal(submitCount, 0);
+  assert.equal(targetUrl.hostname, 'www.jd.com');
+  assert.equal(targetUrl.pathname, '/');
+  assert.equal(submitCount, 1);
   assert.equal(result.success, true);
   assert.equal(result.items[0].id, '280930');
+});
+
+test('uses the JD-specific readiness budget for slowly rendered search cards', async () => {
+  let reads = 0;
+  const waits = [];
+  const result = await runSiteResearch({
+    operation: 'search',
+    site: 'jd',
+    query: '冻干猫粮',
+    depth: 'preview',
+    limit: 1,
+    maxScrolls: 0,
+    snapshot: false,
+    timeoutMs: 20_000,
+  }, {
+    createControlledTab: async ({ url }) => ({ tab: { id: 62, url, title: '京东首页' } }),
+    getTab: async () => ({ id: 62, url: 'https://search.jd.com/Search?keyword=cat', title: '京东搜索' }),
+    claimTab: async () => {},
+    waitForTabComplete: async () => {},
+    submitSearch: async () => ({ success: true, submitted: true }),
+    readSnapshot: async () => ({ snapshot: '' }),
+    delay: async (ms) => { waits.push(ms); },
+    readSiteEvidence: async () => {
+      reads += 1;
+      if (reads < 14) {
+        return {
+          success: true,
+          pageState: { results: { status: 'loading', candidateCount: 0, interactableCount: 0 } },
+          items: [],
+        };
+      }
+      return {
+        success: true,
+        pageState: { results: { status: 'ready', candidateCount: 1, interactableCount: 1 } },
+        items: [{ id: '280930', sourceUrl: 'https://item.jd.com/280930.html', title: '伟嘉猫粮' }],
+      };
+    },
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.items[0].id, '280930');
+  assert.equal(waits.reduce((total, value) => total + value, 0), 9_750);
 });
 
 test('normalizes supported typed filters and rejects unsupported filters', () => {

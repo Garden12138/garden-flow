@@ -41,6 +41,7 @@ export function listSiteCapabilities() {
     filters: Object.fromEntries(Object.entries(spec.filters).map(([key, values]) => [key, [...values]])),
     searchEntryUrl: spec.searchEntryUrl || null,
     searchViaPageUi: spec.searchViaPageUi === true,
+    resultReadyTimeoutMs: Number(spec.resultReadyTimeoutMs) || RESULT_READY_TIMEOUT_MS,
     detailOpenMode: spec.detailOpenMode || 'direct_url',
     capabilityVersion: spec.capabilityVersion,
     extractorSchemaHash: spec.extractorSchemaHash,
@@ -622,7 +623,11 @@ async function collectBoundedCards(tabId, request, first, deps) {
   const collected = new Map();
   appendCollectedItems(collected, first?.items, request.limit);
   let latest = first || {};
-  const readyTimeoutMs = Math.min(request.timeoutMs, RESULT_READY_TIMEOUT_MS);
+  const configuredReadyTimeoutMs = Number(request.site?.resultReadyTimeoutMs);
+  const siteReadyTimeoutMs = Number.isFinite(configuredReadyTimeoutMs)
+    ? Math.max(1_000, Math.min(60_000, configuredReadyTimeoutMs))
+    : RESULT_READY_TIMEOUT_MS;
+  const readyTimeoutMs = Math.min(request.timeoutMs, siteReadyTimeoutMs);
   let readyWaitedMs = 0;
   while (!collected.size && resultStatus(latest) === 'loading' && readyWaitedMs < readyTimeoutMs) {
     const waitMs = Math.min(RESULT_READY_POLL_MS, readyTimeoutMs - readyWaitedMs);
