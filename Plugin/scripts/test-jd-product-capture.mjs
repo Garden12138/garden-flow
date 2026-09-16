@@ -512,6 +512,13 @@ test('recognizes the JD shopping-protection verification page before product ext
   assert.equal(payload.externalId, '');
 });
 
+test('recognizes JD access-frequency limiting before product extraction', () => {
+  const { document } = parseHTML('<html><body><p>访问频繁，请稍后再试</p></body></html>');
+  const payload = extractJdProductPayload(document, new URL('https://item.jd.com/280930.html'));
+  assert.equal(payload.accessErrorCode, 'BROWSER_RATE_LIMITED');
+  assert.equal(payload.externalId, '');
+});
+
 test('captures only custom review filters and clamps the shared limit to one through fifty', async () => {
   const document = createReviewModal();
   const modal = document.querySelector('[role="dialog"]');

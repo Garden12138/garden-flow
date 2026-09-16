@@ -171,7 +171,7 @@ const JD_AUTO_CAPTURE_SETTINGS: BuiltinAutomationSettingField[] = [
             { value: 'conservative', label: '保守（推荐）' },
             { value: 'normal', label: '正常' },
         ],
-        description: '控制搜索、打开商品和开始识别之间的等待时间。',
+        description: '保守模式会降低搜索滚动频率，商品页停留 10–16 秒，商品之间随机等待 20–35 秒，并在连续失败时提前停止。',
         defaultValue: 'conservative',
     },
 ];

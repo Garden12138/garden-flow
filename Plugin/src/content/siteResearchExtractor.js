@@ -184,7 +184,11 @@ export async function submitSiteResearchSearch(input = {}) {
   if (typed?.success !== true) {
     return { success: false, reason: 'search_input_failed', message: typed?.error || 'platform search input failed', sourceUrl: location.href };
   }
-  await delay(80);
+  const configuredInteractionDelayMs = Number(input.interactionDelayMs);
+  const submitPauseMs = Number.isFinite(configuredInteractionDelayMs) && configuredInteractionDelayMs > 0
+    ? Math.max(120, Math.min(800, Math.round(configuredInteractionDelayMs / 4)))
+    : 80;
+  await delay(submitPauseMs);
   const submitSelector = spec.submits.find((selector) => firstVisible([selector]));
   if (submitSelector) {
     const clicked = await clickElement({ selector: submitSelector });
@@ -750,17 +754,20 @@ function readPageState(site) {
   const unavailableText = `${document.title || ''}\n${String(document.body?.innerText || '').slice(0, 4_000)}`;
   const unavailable = /\/404(?:\/|\?|$)/.test(location.pathname.toLowerCase())
     || /(?:你访问的页面不见了|当前笔记暂时无法浏览|视频已失效|内容不存在)/i.test(unavailableText);
+  const rateLimited = /访问频繁|操作频繁|请求过于频繁|稍后再试|too many requests|rate limit/i.test(unavailableText);
   const blocker = unavailable
     ? 'content_unavailable'
-    : security
-    ? 'security_verification_required'
-    : modal || loginPage
-      ? 'login_required'
-      : null;
+    : rateLimited
+      ? 'rate_limited'
+      : security
+        ? 'security_verification_required'
+        : modal || loginPage
+          ? 'login_required'
+          : null;
   return {
     site,
     blocker,
-    loggedIn: blocker === 'login_required' || blocker === 'security_verification_required' ? false : null,
+    loggedIn: ['login_required', 'security_verification_required', 'rate_limited'].includes(blocker) ? false : null,
     surface: detectSiteSurface(site, blocker),
     url: location.href,
   };

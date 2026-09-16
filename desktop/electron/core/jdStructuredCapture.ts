@@ -69,15 +69,53 @@ type JdResearchOutcome = {
     tabId: number;
 };
 
-const BLOCKED_ERROR_CODES = new Set(['BROWSER_LOGIN_REQUIRED', 'BROWSER_SECURITY_CHALLENGE']);
-const BLOCKED_RESEARCH_REASONS = new Set(['login_required', 'security_verification_required']);
+const BLOCKED_ERROR_CODES = new Set(['BROWSER_LOGIN_REQUIRED', 'BROWSER_SECURITY_CHALLENGE', 'BROWSER_RATE_LIMITED']);
+const BLOCKED_RESEARCH_REASONS = new Set(['login_required', 'security_verification_required', 'rate_limited']);
 const SEARCH_TIMEOUT_MS = 90_000;
 const CREATE_TIMEOUT_MS = 45_000;
 const SAVE_TIMEOUT_MS = 180_000;
 const CLOSE_TIMEOUT_MS = 30_000;
 const PLUGIN_STEP_TIMEOUT_MS = 30_000;
-const JD_SEARCH_MAX_SCROLLS = 8;
 const JD_SEARCH_REFILL_MAX = 2;
+
+export type JdCapturePacingProfile = {
+    searchInteractionDelayMs: number;
+    searchScrollDelayMs: number;
+    searchMaxScrolls: number;
+    detailDwellRangeMs: [number, number];
+    betweenProductsRangeMs: [number, number];
+    failedProductCooldownRangeMs: [number, number];
+    reviewInteractionDelayMs: number;
+    reviewScrollDelayMs: number;
+    reviewMaxScrollRounds: number;
+};
+
+export function resolveJdCapturePacingProfile(pacing: 'conservative' | 'normal'): JdCapturePacingProfile {
+    if (pacing === 'conservative') {
+        return {
+            searchInteractionDelayMs: 5_000,
+            searchScrollDelayMs: 2_500,
+            searchMaxScrolls: 3,
+            detailDwellRangeMs: [10_000, 16_000],
+            betweenProductsRangeMs: [20_000, 35_000],
+            failedProductCooldownRangeMs: [30_000, 45_000],
+            reviewInteractionDelayMs: 1_500,
+            reviewScrollDelayMs: 1_800,
+            reviewMaxScrollRounds: 4,
+        };
+    }
+    return {
+        searchInteractionDelayMs: 1_500,
+        searchScrollDelayMs: 1_200,
+        searchMaxScrolls: 5,
+        detailDwellRangeMs: [4_000, 7_000],
+        betweenProductsRangeMs: [7_000, 12_000],
+        failedProductCooldownRangeMs: [12_000, 20_000],
+        reviewInteractionDelayMs: 700,
+        reviewScrollDelayMs: 900,
+        reviewMaxScrollRounds: 6,
+    };
+}
 
 function asRecord(value: unknown): Record<string, unknown> | null {
     return value && typeof value === 'object' && !Array.isArray(value)
@@ -149,7 +187,7 @@ export function isJdCaptureBlocker(error: unknown): boolean {
     const record = error && typeof error === 'object' ? error as Record<string, unknown> : null;
     const code = String(record?.code || '').trim();
     const message = error instanceof Error ? error.message : String(record?.message || error || '');
-    return BLOCKED_ERROR_CODES.has(code) || /需要先在浏览器中登录|安全验证/.test(message);
+    return BLOCKED_ERROR_CODES.has(code) || /需要先在浏览器中登录|安全验证|访问过于频繁|访问频繁/.test(message);
 }
 
 export function parseJdResearchResult(value: unknown): JdResearchOutcome {
@@ -193,7 +231,7 @@ export function parseJdCaptureSaveResult(value: unknown): JdCaptureSaveResult {
     return {
         ok: record.success === true && Boolean(String(record.productId || '').trim()) && Boolean(String(record.snapshotId || '').trim()),
         duplicate: record.duplicate === true,
-        blocked: BLOCKED_ERROR_CODES.has(code) || /需要先在浏览器中登录|安全验证/.test(reason),
+        blocked: BLOCKED_ERROR_CODES.has(code) || /需要先在浏览器中登录|安全验证|访问过于频繁|访问频繁/.test(reason),
         title: String(record.title || '').trim(),
         productId: String(record.productId || '').trim(),
         snapshotId: String(record.snapshotId || '').trim(),
@@ -226,8 +264,9 @@ function defaultSleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function captureDelayMs(pacing: 'conservative' | 'normal'): number {
-    return pacing === 'conservative' ? 4_000 : 1_500;
+function randomizedDelay(range: [number, number]): number {
+    const [minimum, maximum] = range;
+    return Math.round(minimum + Math.random() * Math.max(0, maximum - minimum));
 }
 
 function summarize(round: Omit<JdStructuredCaptureRound, 'summary'>): string {
@@ -264,10 +303,13 @@ export async function runJdStructuredCaptureRound(
     const products: JdProductCaptureOutcome[] = [];
     const sleep = io.sleep || defaultSleep;
     const log = io.log || (() => undefined);
+    const pacing = resolveJdCapturePacingProfile(input.pacing);
     let saved = 0;
     let recaptured = 0;
     let capturedReviews = 0;
     let blockedReason = '';
+    let consecutiveFailures = 0;
+    let failureCooldownApplied = false;
 
     const finalize = (status: JdStructuredCaptureRound['status'], reason?: string): JdStructuredCaptureRound => {
         const base = {
@@ -298,7 +340,9 @@ export async function runJdStructuredCaptureRound(
             query: keyword,
             depth: 'preview',
             limit: searchLimit,
-            maxScrolls: JD_SEARCH_MAX_SCROLLS,
+            maxScrolls: pacing.searchMaxScrolls,
+            interactionDelayMs: pacing.searchInteractionDelayMs,
+            scrollDelayMs: pacing.searchScrollDelayMs,
             snapshot: false,
             active: true,
             reuseExistingTab: false,
@@ -325,7 +369,7 @@ export async function runJdStructuredCaptureRound(
         await closeSearchTab();
         return finalize(status, reason);
     };
-    if (search.blocked) return await finish('blocked', `京东搜索遇到登录或安全验证（${search.reason || 'login_required'}），请先在浏览器完成处理`);
+    if (search.blocked) return await finish('blocked', `京东搜索遇到登录、安全验证或访问限制（${search.reason || 'login_required'}），请先在浏览器完成处理`);
     if (!search.ok) return await finish('failed', `京东关键词搜索未成功：${search.reason || '未知原因'}`);
     if (!search.tabId) return await finish('failed', '京东搜索完成但插件未返回可用的结果页 tabId');
 
@@ -366,7 +410,9 @@ export async function runJdStructuredCaptureRound(
                     executionMode: 'extract',
                     depth: 'preview',
                     limit: 40,
-                    maxScrolls: JD_SEARCH_MAX_SCROLLS,
+                    maxScrolls: pacing.searchMaxScrolls,
+                    interactionDelayMs: pacing.searchInteractionDelayMs,
+                    scrollDelayMs: pacing.searchScrollDelayMs,
                     snapshot: false,
                     timeoutMs: PLUGIN_STEP_TIMEOUT_MS,
                 }, SEARCH_TIMEOUT_MS));
@@ -376,7 +422,7 @@ export async function runJdStructuredCaptureRound(
                 break;
             }
             if (refill.blocked) {
-                blockedReason = `继续读取京东搜索结果时遇到登录或安全验证（${refill.reason || 'login_required'}）`;
+                blockedReason = `继续读取京东搜索结果时遇到登录、安全验证或访问限制（${refill.reason || 'login_required'}）`;
                 break;
             }
             if (!refill.ok || enqueueCards(refill.items) === 0) {
@@ -390,9 +436,15 @@ export async function runJdStructuredCaptureRound(
         cursor += 1;
         const sourceUrl = String(card.sourceUrl || '').trim();
         const cardTitle = String(card.title || '').trim();
-        if (products.length > 0) await sleep(captureDelayMs(input.pacing));
+        if (products.length > 0 && !failureCooldownApplied) {
+            const delayMs = randomizedDelay(pacing.betweenProductsRangeMs);
+            log('info', `JD capture pacing before next product: ${delayMs}ms (${input.pacing})`);
+            await sleep(delayMs);
+        }
+        failureCooldownApplied = false;
         let tabId = 0;
         let tabClosed = false;
+        let productSucceeded = false;
         try {
             log('info', `JD capture opening search result ${cursor}/${queue.length}: ${sourceUrl}`);
             tabId = createdTabId(await callTool(io, 'tab.create', {
@@ -402,7 +454,9 @@ export async function runJdStructuredCaptureRound(
             }, CREATE_TIMEOUT_MS));
             if (!tabId) throw new Error('插件创建了商品页，但没有返回 tabId');
 
-            await sleep(captureDelayMs(input.pacing));
+            const detailDwellMs = randomizedDelay(pacing.detailDwellRangeMs);
+            log('info', `JD capture dwelling on product page: ${detailDwellMs}ms (${input.pacing})`);
+            await sleep(detailDwellMs);
             const result = parseJdCaptureSaveResult(await callTool(io, 'capture.save', {
                 tabId,
                 closeAfterSave: true,
@@ -410,15 +464,20 @@ export async function runJdStructuredCaptureRound(
                     selectedFilterLabels: reviewFilterLabels,
                     limitPerFilter: reviewsPerFilter,
                     captureAll: false,
+                    interactionDelayMs: pacing.reviewInteractionDelayMs,
+                    scrollDelayMs: pacing.reviewScrollDelayMs,
+                    maxScrollRounds: pacing.reviewMaxScrollRounds,
                 },
             }, SAVE_TIMEOUT_MS));
             tabClosed = result.tabClosed;
             if (result.blocked) {
-                blockedReason = `保存商品时遇到登录或安全验证：${result.reason || sourceUrl}`;
+                blockedReason = `保存商品时遇到登录、安全验证或访问限制：${result.reason || sourceUrl}`;
                 products.push({ sourceUrl, title: cardTitle, outcome: 'failed', error: blockedReason });
             } else if (!result.ok) {
                 throw new Error(result.reason || '插件没有返回有效的商品与来源快照 ID');
             } else {
+                productSucceeded = true;
+                consecutiveFailures = 0;
                 capturedReviews += result.capturedReviews;
                 if (result.duplicate) recaptured += 1;
                 else saved += 1;
@@ -437,7 +496,7 @@ export async function runJdStructuredCaptureRound(
             }
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            if (isJdCaptureBlocker(error)) blockedReason = `采集商品时遇到登录或安全验证：${message}`;
+            if (isJdCaptureBlocker(error)) blockedReason = `采集商品时遇到登录、安全验证或访问限制：${message}`;
             products.push({ sourceUrl, title: cardTitle, outcome: 'failed', error: message });
             log('warn', `JD capture failed for ${sourceUrl}: ${message}`);
         } finally {
@@ -447,6 +506,17 @@ export async function runJdStructuredCaptureRound(
                         log('warn', `JD capture could not close product tab ${tabId}: ${error instanceof Error ? error.message : String(error)}`);
                     });
             }
+        }
+        if (!productSucceeded && !blockedReason) {
+            consecutiveFailures += 1;
+            if (consecutiveFailures >= 2) {
+                blockedReason = '连续两个商品采集失败，为避免继续触发京东风控，已提前停止本轮';
+                break;
+            }
+            const cooldownMs = randomizedDelay(pacing.failedProductCooldownRangeMs);
+            log('warn', `JD capture cooling down after failure: ${cooldownMs}ms`);
+            await sleep(cooldownMs);
+            failureCooldownApplied = true;
         }
     }
 

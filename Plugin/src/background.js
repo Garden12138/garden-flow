@@ -383,13 +383,15 @@ function inferCapturePlatform(value) {
 }
 
 function captureAccessError(code, platform, origin) {
-  const normalizedCode = ['BROWSER_LOGIN_REQUIRED', 'BROWSER_SECURITY_CHALLENGE', 'CONTENT_NOT_ACCESSIBLE'].includes(code)
+  const normalizedCode = ['BROWSER_LOGIN_REQUIRED', 'BROWSER_SECURITY_CHALLENGE', 'BROWSER_RATE_LIMITED', 'CONTENT_NOT_ACCESSIBLE'].includes(code)
     ? code
     : 'CONTENT_NOT_ACCESSIBLE';
   const message = normalizedCode === 'BROWSER_LOGIN_REQUIRED'
     ? `当前${platform || '平台'}页面需要先在浏览器中登录`
     : normalizedCode === 'BROWSER_SECURITY_CHALLENGE'
       ? `当前${platform || '平台'}页面需要完成安全验证`
+      : normalizedCode === 'BROWSER_RATE_LIMITED'
+        ? `当前${platform || '平台'}访问过于频繁，请稍后再试`
       : '当前页面正文不可访问';
   return Object.assign(new Error(message), {
     code: normalizedCode,
@@ -399,7 +401,9 @@ function captureAccessError(code, platform, origin) {
     origin: safePageOrigin(origin),
     recovery: normalizedCode === 'CONTENT_NOT_ACCESSIBLE'
       ? '确认正文已在当前页面中展开后重试'
-      : '回到当前浏览器页面自行完成登录或验证，然后重新采集',
+      : normalizedCode === 'BROWSER_RATE_LIMITED'
+        ? '停止本轮采集并等待一段时间后再试'
+        : '回到当前浏览器页面自行完成登录或验证，然后重新采集',
   });
 }
 
@@ -4354,6 +4358,15 @@ async function saveJdProductFromTab(tabId, reviewOptions = {}) {
       ? Math.max(1, Math.min(50, Math.trunc(Number(reviewOptions.limitPerFilter))))
       : 5,
     captureAll: reviewOptions?.captureAll === true,
+    interactionDelayMs: Number.isFinite(Number(reviewOptions?.interactionDelayMs))
+      ? Math.max(0, Math.min(5_000, Math.trunc(Number(reviewOptions.interactionDelayMs))))
+      : 0,
+    scrollDelayMs: Number.isFinite(Number(reviewOptions?.scrollDelayMs))
+      ? Math.max(400, Math.min(5_000, Math.trunc(Number(reviewOptions.scrollDelayMs))))
+      : 400,
+    maxScrollRounds: Number.isFinite(Number(reviewOptions?.maxScrollRounds))
+      ? Math.max(1, Math.min(12, Math.trunc(Number(reviewOptions.maxScrollRounds))))
+      : 6,
   };
   const reviewCapture = await runExtraction(tabId, captureJdProductReviews, {
     world: 'MAIN',

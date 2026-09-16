@@ -73,6 +73,8 @@ test('normalizes JD keyword search and extracts unique product cards from the re
   assert.equal(request.site.searchViaPageUi, true);
   assert.equal(request.site.detailOpenMode, 'direct_url');
   assert.equal(request.reuseExistingTab, true);
+  assert.equal(request.interactionDelayMs, 0);
+  assert.equal(request.scrollDelayMs, 800);
   assert.equal(pickReusableResearchTab([
     { id: 1, url: 'https://fakejd.com/search', title: 'lookalike' },
     { id: 2, url: 'https://search.jd.com/Search?keyword=cat', title: '京东搜索' },
@@ -120,6 +122,19 @@ test('normalizes JD keyword search and extracts unique product cards from the re
   assert.equal(extracted.items[0].author, '伟嘉京东自营旗舰店');
   assert.equal(extracted.items[0].interactionRef.site, 'jd');
   assert.equal(extracted.items[1].sourceUrl, 'https://item.jd.com/10001.html');
+});
+
+test('normalizes bounded interaction delays for paced site research', () => {
+  const request = normalizeResearchRequest({
+    operation: 'search',
+    site: 'jd',
+    query: '猫粮',
+    interactionDelayMs: 50_000,
+    scrollDelayMs: 50,
+  });
+
+  assert.equal(request.interactionDelayMs, 10_000);
+  assert.equal(request.scrollDelayMs, 500);
 });
 
 test('extracts current JD React product cards that expose data-sku without item links', () => {
@@ -217,6 +232,24 @@ test('classifies the current JD passport route as a login blocker', () => {
 
   assert.equal(extracted.success, false);
   assert.equal(extracted.reason, 'login_required');
+  assert.equal(extracted.pageState.surface, 'blocked');
+});
+
+test('classifies a JD frequency warning as a rate-limit blocker', () => {
+  const { window, document } = parseHTML('<!doctype html><html><head><title>访问频繁</title></head><body><p>操作频繁，请稍后再试</p></body></html>');
+  window.innerWidth = 1200;
+  window.innerHeight = 800;
+  Object.assign(globalThis, {
+    window,
+    document,
+    location: new URL('https://search.jd.com/Search?keyword=cat'),
+    getComputedStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1', pointerEvents: 'auto' }),
+  });
+
+  const extracted = extractSiteResearch({ site: 'jd', operation: 'search', limit: 10 });
+
+  assert.equal(extracted.success, false);
+  assert.equal(extracted.reason, 'rate_limited');
   assert.equal(extracted.pageState.surface, 'blocked');
 });
 

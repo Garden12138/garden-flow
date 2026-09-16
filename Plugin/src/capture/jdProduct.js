@@ -15,6 +15,7 @@ export async function ensureJdReviewModal(pageDocument = globalThis.document) {
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const detectAccessErrorCode = () => {
     const pageProbe = clean(pageDocument.body?.innerText || pageDocument.body?.textContent || '', 8_000);
+    if (/访问频繁|操作频繁|请求过于频繁|稍后再试|too many requests|rate limit/i.test(pageProbe)) return 'BROWSER_RATE_LIMITED';
     if (/captcha|安全验证|人机验证|访问受限|滑块验证|verify you are human|验证一下[，,\s]*购物无忧|快速验证/i.test(pageProbe)) {
       return 'BROWSER_SECURITY_CHALLENGE';
     }
@@ -111,11 +112,13 @@ export async function ensureJdReviewModal(pageDocument = globalThis.document) {
 export function extractJdReviewPreview(pageDocument = globalThis.document) {
   const clean = (value, limit = 2_000) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, limit);
   const pageProbe = clean(pageDocument.body?.innerText || pageDocument.body?.textContent || '', 8_000);
-  const accessErrorCode = /captcha|安全验证|人机验证|访问受限|滑块验证|verify you are human|验证一下[，,\s]*购物无忧|快速验证/i.test(pageProbe)
-    ? 'BROWSER_SECURITY_CHALLENGE'
-    : /请先登录|登录后查看|登录后继续|sign in to continue|login required/i.test(pageProbe)
-      ? 'BROWSER_LOGIN_REQUIRED'
-      : '';
+  const accessErrorCode = /访问频繁|操作频繁|请求过于频繁|稍后再试|too many requests|rate limit/i.test(pageProbe)
+    ? 'BROWSER_RATE_LIMITED'
+    : /captcha|安全验证|人机验证|访问受限|滑块验证|verify you are human|验证一下[，,\s]*购物无忧|快速验证/i.test(pageProbe)
+      ? 'BROWSER_SECURITY_CHALLENGE'
+      : /请先登录|登录后查看|登录后继续|sign in to continue|login required/i.test(pageProbe)
+        ? 'BROWSER_LOGIN_REQUIRED'
+        : '';
   if (accessErrorCode) {
     return {
       modalDetected: false,
@@ -124,7 +127,7 @@ export function extractJdReviewPreview(pageDocument = globalThis.document) {
       results: [],
       reviews: [],
       status: 'blocked',
-      warnings: ['检测到登录或安全验证，已停止评论采集'],
+      warnings: ['检测到登录、安全验证或访问限制，已停止评论采集'],
       accessErrorCode,
     };
   }
@@ -227,6 +230,7 @@ export async function captureJdProductReviews(reviewOptions = {}, pageDocument =
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const detectAccessErrorCode = () => {
     const pageProbe = clean(pageDocument.body?.innerText || pageDocument.body?.textContent || '', 8_000);
+    if (/访问频繁|操作频繁|请求过于频繁|稍后再试|too many requests|rate limit/i.test(pageProbe)) return 'BROWSER_RATE_LIMITED';
     if (/captcha|安全验证|人机验证|访问受限|滑块验证|verify you are human|验证一下[，,\s]*购物无忧|快速验证/i.test(pageProbe)) {
       return 'BROWSER_SECURITY_CHALLENGE';
     }
@@ -282,7 +286,7 @@ export async function captureJdProductReviews(reviewOptions = {}, pageDocument =
       results: [],
       reviews: [],
       status: 'blocked',
-      warnings: ['检测到登录或安全验证，已停止评论采集'],
+      warnings: ['检测到登录、安全验证或访问限制，已停止评论采集'],
       accessErrorCode: initialAccessErrorCode,
     };
   }
@@ -347,6 +351,12 @@ export async function captureJdProductReviews(reviewOptions = {}, pageDocument =
   const maxScrollRounds = Number.isFinite(Number(reviewOptions?.maxScrollRounds))
     ? Math.max(1, Math.min(12, Math.trunc(Number(reviewOptions.maxScrollRounds))))
     : 6;
+  const interactionDelayMs = Number.isFinite(Number(reviewOptions?.interactionDelayMs))
+    ? Math.max(0, Math.min(5_000, Math.trunc(Number(reviewOptions.interactionDelayMs))))
+    : 0;
+  const scrollDelayMs = Number.isFinite(Number(reviewOptions?.scrollDelayMs))
+    ? Math.max(400, Math.min(5_000, Math.trunc(Number(reviewOptions.scrollDelayMs))))
+    : 400;
   const safetyReviewLimit = captureAll ? 50 : limitPerFilter;
   const requestedIds = Array.from(new Set((Array.isArray(reviewOptions?.selectedFilterIds) ? reviewOptions.selectedFilterIds : [])
     .map((value) => clean(value, 200)).filter(Boolean)));
@@ -584,6 +594,7 @@ export async function captureJdProductReviews(reviewOptions = {}, pageDocument =
   captureFilters: for (const filter of selected) {
     const before = signature();
     filter.node.click?.();
+    if (interactionDelayMs > 0) await sleep(interactionDelayMs);
     let sawLoadingState = false;
     for (let attempt = 0; attempt < 12; attempt += 1) {
       await sleep(250);
@@ -622,7 +633,7 @@ export async function captureJdProductReviews(reviewOptions = {}, pageDocument =
       scrollRounds += 1;
       const PageEvent = pageDocument.defaultView?.Event || globalThis.Event;
       if (PageEvent) scrollContainer.dispatchEvent?.(new PageEvent('scroll', { bubbles: true }));
-      await sleep(400);
+      await sleep(scrollDelayMs);
     }
     const collected = Array.from(collectedById.values());
     if (collected.length > safetyReviewLimit) collected.splice(safetyReviewLimit);
@@ -659,7 +670,7 @@ export async function captureJdProductReviews(reviewOptions = {}, pageDocument =
       results,
       reviews: Array.from(merged.values()),
       status: 'blocked',
-      warnings: Array.from(new Set([...warnings, '检测到登录或安全验证，已停止评论采集'])),
+      warnings: Array.from(new Set([...warnings, '检测到登录、安全验证或访问限制，已停止评论采集'])),
       accessErrorCode,
     };
   }
@@ -704,11 +715,13 @@ export function extractJdProductPayload(pageDocument = globalThis.document, page
   const unique = (values) => Array.from(new Set(values.filter(Boolean)));
   const sourceUrl = String(pageLocation.href || '');
   const pageProbe = clean(pageDocument.body?.innerText || pageDocument.body?.textContent || '', 8_000);
-  const accessErrorCode = /captcha|安全验证|人机验证|访问受限|滑块验证|verify you are human|验证一下[，,\s]*购物无忧|快速验证/i.test(pageProbe)
-    ? 'BROWSER_SECURITY_CHALLENGE'
-    : /请先登录|登录后查看|登录后继续|sign in to continue|login required/i.test(pageProbe)
-      ? 'BROWSER_LOGIN_REQUIRED'
-      : '';
+  const accessErrorCode = /访问频繁|操作频繁|请求过于频繁|稍后再试|too many requests|rate limit/i.test(pageProbe)
+    ? 'BROWSER_RATE_LIMITED'
+    : /captcha|安全验证|人机验证|访问受限|滑块验证|verify you are human|验证一下[，,\s]*购物无忧|快速验证/i.test(pageProbe)
+      ? 'BROWSER_SECURITY_CHALLENGE'
+      : /请先登录|登录后查看|登录后继续|sign in to continue|login required/i.test(pageProbe)
+        ? 'BROWSER_LOGIN_REQUIRED'
+        : '';
   if (accessErrorCode) {
     return {
       platform: 'jd',

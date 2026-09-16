@@ -11,6 +11,7 @@ import {
     isJdCaptureBlocker,
     parseJdCaptureSaveResult,
     parseJdResearchResult,
+    resolveJdCapturePacingProfile,
     runJdStructuredCaptureRound,
     uniqueJdSearchCards,
     type JdStructuredCaptureIo,
@@ -54,6 +55,18 @@ test('resolves and rotates JD search keywords while bounding review settings', (
 
     const nextDay = resolveJdAutoCaptureLaunch(settings, 24 * 60 * 60 * 1_000);
     assert.equal(nextDay.keyword, '露营帐篷');
+});
+
+test('conservative JD pacing is materially slower and performs fewer search scrolls', () => {
+    const conservative = resolveJdCapturePacingProfile('conservative');
+    const normal = resolveJdCapturePacingProfile('normal');
+
+    assert.ok(conservative.searchInteractionDelayMs > normal.searchInteractionDelayMs);
+    assert.ok(conservative.searchScrollDelayMs > normal.searchScrollDelayMs);
+    assert.ok(conservative.searchMaxScrolls < normal.searchMaxScrolls);
+    assert.ok(conservative.detailDwellRangeMs[0] >= 10_000);
+    assert.ok(conservative.betweenProductsRangeMs[0] >= 20_000);
+    assert.ok(conservative.reviewInteractionDelayMs > normal.reviewInteractionDelayMs);
 });
 
 test('normalizes and deduplicates JD product cards returned by keyword search', () => {
@@ -158,7 +171,9 @@ test('structured JD capture searches once, then opens, saves, and closes result 
         query: '冻干猫粮',
         depth: 'preview',
         limit: 8,
-        maxScrolls: 8,
+        maxScrolls: 5,
+        interactionDelayMs: 1500,
+        scrollDelayMs: 1200,
         snapshot: false,
         active: true,
         reuseExistingTab: false,
@@ -176,6 +191,9 @@ test('structured JD capture searches once, then opens, saves, and closes result 
             selectedFilterLabels: ['图/视频', '回头客'],
             limitPerFilter: 7,
             captureAll: false,
+            interactionDelayMs: 700,
+            scrollDelayMs: 900,
+            maxScrollRounds: 6,
         },
     });
 });
@@ -357,4 +375,36 @@ test('structured JD capture stops the entire round when product capture hits qui
     assert.match(round.reason || '', /安全验证/);
     assert.deepEqual(opened, [101]);
     assert.deepEqual(closed, [101, 12]);
+});
+
+test('structured JD capture stops after two consecutive product failures', async () => {
+    let nextTabId = 120;
+    let saveAttempts = 0;
+    const waits: number[] = [];
+    const round = await runJdStructuredCaptureRound({
+        keyword: '猫粮',
+        maxProducts: 2,
+        reviewFilterLabels: [],
+        reviewsPerFilter: 5,
+        pacing: 'conservative',
+    }, {
+        checkPluginInstance: () => ({ ok: true, detail: 'connected' }),
+        sleep: async (ms) => { waits.push(ms); },
+        invokeBrowserControl: async (_method, params) => {
+            const name = String(params.name || '');
+            if (name === 'research.run') return searchResult([productCard('1'), productCard('2'), productCard('3')]);
+            if (name === 'tab.create') return { success: true, tab: { id: nextTabId++ } };
+            if (name === 'capture.save') {
+                saveAttempts += 1;
+                throw new Error('商品页暂时不可用');
+            }
+            if (name === 'tab.close') return { success: true };
+            throw new Error(`unexpected tool ${name}`);
+        },
+    });
+
+    assert.equal(round.status, 'blocked');
+    assert.equal(saveAttempts, 2);
+    assert.match(round.reason || '', /连续两个商品采集失败/);
+    assert.ok(waits.some((ms) => ms >= 30_000 && ms <= 45_000));
 });

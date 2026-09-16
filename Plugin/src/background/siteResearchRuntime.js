@@ -78,6 +78,8 @@ export function normalizeResearchRequest(input = {}) {
     filters: normalizeResearchFilters(input.filters, site, operation),
     depth: normalizeDepth(input.depth),
     maxScrolls: clampNumber(input.maxScrolls, 0, 8, 3),
+    interactionDelayMs: clampNumber(input.interactionDelayMs, 0, 10_000, 0),
+    scrollDelayMs: clampNumber(input.scrollDelayMs, 500, 5_000, 800),
     downloadMedia: input.downloadMedia === true || input.ocr === true || input.transcribeAudio === true,
     mediaTypes: normalizeMediaTypes(input.mediaTypes),
     mediaLimit: clampNumber(input.mediaLimit, 1, MAX_MEDIA_LIMIT, DEFAULT_MEDIA_LIMIT),
@@ -164,6 +166,7 @@ export async function runSiteResearch(requestInput, deps = {}) {
       });
     }
     if (request.site.searchViaPageUi === true) {
+      if (request.interactionDelayMs > 0) await delayWithDeps(request.interactionDelayMs, deps);
       const submitted = unwrapContentDelivery(await deps.submitSearch(tab.id, extractorRequest(request)));
       if (submitted?.success !== true) {
         return researchSearchFailure(request, tab, targetUrl, submitted);
@@ -313,6 +316,7 @@ async function runSiteResearchStep(request, deps) {
     if (request.operation !== 'search' || typeof deps.submitSearch !== 'function') {
       throw new Error('research.run submit_search requires a search operation and page UI dependency');
     }
+    if (request.interactionDelayMs > 0) await delayWithDeps(request.interactionDelayMs, deps);
     const submitted = unwrapContentDelivery(await deps.submitSearch(request.tabId, extractorRequest(request)));
     return {
       ...submitted,
@@ -651,7 +655,7 @@ async function collectBoundedCards(tabId, request, first, deps) {
     const previousCount = collected.size;
     const scrolled = unwrapContentDelivery(await deps.scrollPage(tabId));
     if (scrolled?.success === false) break;
-    await delayWithDeps(800, deps);
+    await delayWithDeps(request.scrollDelayMs, deps);
     latest = unwrapContentDelivery(await deps.readSiteEvidence(tabId, extractorRequest(request)));
     if (latest?.success === false) break;
     appendCollectedItems(collected, latest?.items, request.limit);
