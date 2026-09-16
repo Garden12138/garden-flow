@@ -29,7 +29,6 @@ export function resolveJdAutoCaptureLaunch(
     allKeywords: string[];
     keyword: string;
     reviewFilterLabels: string[];
-    reviewsPerFilter: number;
     maxProductsPerRun: number;
     pacing: 'normal' | 'conservative';
 } {
@@ -40,7 +39,6 @@ export function resolveJdAutoCaptureLaunch(
         allKeywords,
         keyword,
         reviewFilterLabels: Array.from(new Set(toStringList(settings.reviewFilterLabels))).slice(0, 50),
-        reviewsPerFilter: clampNumber(settings.reviewsPerFilter, 5, 1, 50),
         maxProductsPerRun: clampNumber(settings.maxProductsPerRun, 5, 1, 20),
         pacing: textValue(settings.pacing) === 'normal' ? 'normal' : 'conservative',
     };

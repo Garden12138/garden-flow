@@ -7,6 +7,22 @@ import {
   extractJdProductPayload,
   extractJdReviewPreview,
 } from '../src/capture/jdProduct.js';
+import { removeTabWithRetry } from '../src/background/tabCloseRuntime.js';
+
+test('retries transient Chrome tab-close failures and confirms the tab is gone', async () => {
+  let attempts = 0;
+  const waits = [];
+  const result = await removeTabWithRetry(async () => {
+    attempts += 1;
+    if (attempts < 3) throw new Error('Tabs cannot be edited right now');
+  }, 42, { wait: async (ms) => waits.push(ms) });
+
+  assert.deepEqual(result, { closed: true, attempts: 3, alreadyClosed: false });
+  assert.deepEqual(waits, [200, 400]);
+  assert.deepEqual(await removeTabWithRetry(async () => {
+    throw new Error('No tab with id: 42');
+  }, 42), { closed: true, attempts: 1, alreadyClosed: true });
+});
 
 function createReviewModal() {
   const { document } = parseHTML(`<!doctype html><html><body>
@@ -307,7 +323,7 @@ test('waits for an asynchronous filter refresh and scrolls the modal for more re
   assert.deepEqual(capture.reviews.map((review) => review.rating), [4, 4, 4]);
 });
 
-test('keeps the buyer review text when a longer merchant reply follows it', async () => {
+test('keeps the complete buyer review and merchant reply in separate fields', async () => {
   const { document } = parseHTML(`<!doctype html><html><body>
     <div role="dialog" class="comment-dialog">
       <h2>商品评价</h2>
@@ -328,7 +344,43 @@ test('keeps the buyer review text when a longer merchant reply follows it', asyn
 
   assert.equal(capture.reviews.length, 1);
   assert.equal(capture.reviews[0].text, '放在快递点，离收货地址三公里，让我怎么拿');
-  assert.doesNotMatch(capture.reviews[0].text, /商家/);
+  assert.equal(capture.reviews[0].merchantReply, '感谢您选择我们的产品。实在很抱歉出现这样的情况呢，我们也会根据您的反馈加强和快递公司的沟通。');
+});
+
+test('captures every loadable review without count or body truncation in capture-all mode', async () => {
+  const longBody = `开头-${'完整评论'.repeat(3_000)}-结尾`;
+  const { document } = parseHTML(`<!doctype html><html><body>
+    <div role="dialog" class="comment-dialog">
+      <h2>商品评价</h2>
+      <button role="tab" data-filter="positive" aria-selected="true">好评 6</button>
+      <div class="comment-list"></div>
+    </div>
+  </body></html>`);
+  const list = document.querySelector('.comment-list');
+  const row = (index) => `<article class="comment-item" data-comment-id="all-${index}">
+    <span data-role="author">u***${index}</span>
+    <span data-role="date">2026-09-${10 + index}</span>
+    <p data-role="comment-text">${index === 0 ? longBody : `第 ${index + 1} 条完整评论`}</p>
+  </article>`;
+  Object.defineProperties(list, {
+    clientHeight: { configurable: true, value: 400 },
+    scrollHeight: { configurable: true, value: 2_000 },
+  });
+  list.innerHTML = row(0) + row(1);
+  list.addEventListener('scroll', () => {
+    if (list.querySelectorAll('.comment-item').length === 2) {
+      list.insertAdjacentHTML('beforeend', Array.from({ length: 4 }, (_, index) => row(index + 2)).join(''));
+    }
+  });
+
+  const capture = await captureJdProductReviews({ selectedFilterLabels: ['好评'], limitPerFilter: 5, captureAll: true }, document, new URL('https://item.jd.com/280930.html'));
+
+  assert.equal(capture.reviews.length, 6);
+  assert.equal(capture.reviews[0].text, longBody);
+  assert.equal(capture.reviews[0].text.endsWith('-结尾'), true);
+  assert.equal(capture.results[0].captureAll, true);
+  assert.equal(capture.results[0].captured, 6);
+  assert.equal(capture.results[0].status, 'complete');
 });
 
 test('captures only custom review filters and clamps the shared limit to one through fifty', async () => {

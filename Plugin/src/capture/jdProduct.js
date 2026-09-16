@@ -284,6 +284,7 @@ export async function captureJdProductReviews(reviewOptions = {}, pageDocument =
     ...(filter.countText ? { countText: filter.countText } : {}),
     ...(filter.sentiment ? { sentiment: filter.sentiment } : {}),
   }));
+  const captureAll = reviewOptions?.captureAll === true;
   const requestedLimit = Number(reviewOptions?.limitPerFilter);
   const limitPerFilter = Number.isFinite(requestedLimit)
     ? Math.max(1, Math.min(50, Math.trunc(requestedLimit)))
@@ -296,7 +297,12 @@ export async function captureJdProductReviews(reviewOptions = {}, pageDocument =
   if (!requestedIds.length && !requestedLabels.length) {
     selected = ['好评', '中评', '差评'].flatMap((label) => available.find((filter) => filter.label === label) || []);
   }
-  const selectedFilters = selected.map((filter) => ({ id: filter.id, label: filter.label, limit: limitPerFilter }));
+  const selectedFilters = selected.map((filter) => ({
+    id: filter.id,
+    label: filter.label,
+    limit: limitPerFilter,
+    ...(captureAll ? { captureAll: true } : {}),
+  }));
   const warnings = [];
   if (!requestedIds.length && !requestedLabels.length) {
     for (const label of ['好评', '中评', '差评']) {
@@ -323,24 +329,31 @@ export async function captureJdProductReviews(reviewOptions = {}, pageDocument =
     }
     return '';
   };
-  const userReviewText = (value, limit = 10_000) => {
-    const normalized = clean(value, limit);
+  const fullReviewText = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
+  const splitReviewText = (value) => {
+    const normalized = fullReviewText(value);
     const merchantReply = /(?:^|\s)(?:商家|卖家|店铺|客服)(?:回复)?\s*[：:]/.exec(normalized);
-    return clean(merchantReply ? normalized.slice(0, merchantReply.index) : normalized, limit);
+    if (!merchantReply) return { text: normalized, merchantReply: '' };
+    const replyText = normalized.slice(merchantReply.index).trim()
+      .replace(/^(?:商家|卖家|店铺|客服)(?:回复)?\s*[：:]\s*/, '');
+    return {
+      text: fullReviewText(normalized.slice(0, merchantReply.index)),
+      merchantReply: fullReviewText(replyText),
+    };
   };
-  const firstUserReviewText = (root, selectors, limit = 10_000) => {
+  const firstReviewContent = (root, selectors) => {
     for (const selector of selectors) {
       for (const node of root.querySelectorAll(selector)) {
-        const value = userReviewText(node.getAttribute?.('content') || node.textContent, limit);
-        if (value) return value;
+        const value = splitReviewText(node.getAttribute?.('content') || node.textContent);
+        if (value.text) return value;
       }
     }
-    return '';
+    return { text: '', merchantReply: '' };
   };
-  const leafTexts = (root, limit = 10_000) => Array.from(root.querySelectorAll('div, span, p, time, li'))
+  const leafTexts = (root) => Array.from(root.querySelectorAll('div, span, p, time, li'))
     .filter((node) => isVisible(node))
-    .map((node) => ({ node, text: clean(node.textContent, limit) }))
-    .filter(({ node, text }) => text && !Array.from(node.children || []).some((child) => clean(child.textContent, limit)));
+    .map((node) => ({ node, text: fullReviewText(node.textContent) }))
+    .filter(({ node, text }) => text && !Array.from(node.children || []).some((child) => fullReviewText(child.textContent)));
   const discoverReviewRows = () => {
     const selector = [
       '[data-comment-id]',
@@ -381,14 +394,17 @@ export async function captureJdProductReviews(reviewOptions = {}, pageDocument =
     const reviews = [];
     for (const row of rows) {
       const textItems = leafTexts(row);
-      const explicitText = firstUserReviewText(row, ['[data-role="comment-text"]', '[class*="comment-content"]', '[class*="commentText"]', '[class*="comment-text"]', '[class*="content"] [class*="text"]', '.comment-con'], 10_000);
-      const fallbackText = textItems
-        .map((item) => userReviewText(item.text))
-        .filter(Boolean)
-        .filter((value) => value.length >= 18 && !/(?:^|[^\d])(?:\d{4}-)?\d{2}-\d{2}(?!\d)/.test(value))
-        .filter((value) => !/该店铺购买|^(?:(?:商家|卖家|店铺|客服)(?:回复)?|回复|有用|超赞)$/.test(value))
-        .sort((left, right) => right.length - left.length)[0] || '';
-      const text = explicitText || fallbackText;
+      const explicitContent = firstReviewContent(row, ['[data-role="comment-text"]', '[class*="comment-content"]', '[class*="commentText"]', '[class*="comment-text"]', '[class*="content"] [class*="text"]', '.comment-con']);
+      const fallbackContent = textItems
+        .map((item) => splitReviewText(item.text))
+        .filter((value) => value.text)
+        .filter((value) => value.text.length >= 2 && !/(?:^|[^\d])(?:\d{4}-)?\d{2}-\d{2}(?!\d)/.test(value.text))
+        .filter((value) => !/该店铺购买|^(?:回复|有用|超赞)$/.test(value.text))
+        .sort((left, right) => right.text.length - left.text.length)[0] || { text: '', merchantReply: '' };
+      const text = explicitContent.text || fallbackContent.text;
+      const merchantReply = explicitContent.merchantReply
+        || textItems.map((item) => splitReviewText(item.text).merchantReply).filter(Boolean).sort((left, right) => right.length - left.length)[0]
+        || fallbackContent.merchantReply;
       if (!text) continue;
       const explicitAuthor = firstText(row, ['[data-role="author"]', '[class*="user-name"]', '[class*="nickname"]', '[class*="userName"]', '[class*="user"] [class*="name"]'], 300);
       const fallbackAuthor = textItems.map((item) => item.text.match(/^([^\s]{1,20}\*{2,}[^\s]{0,12})/)?.[1]).find(Boolean) || '';
@@ -446,6 +462,7 @@ export async function captureJdProductReviews(reviewOptions = {}, pageDocument =
         ...(platformReviewId ? { platformReviewId } : {}),
         ...(authorName ? { authorName } : {}),
         text,
+        ...(merchantReply ? { merchantReply } : {}),
         ...(rating ? { rating } : {}),
         ...(filter.sentiment ? { sentiment: filter.sentiment } : {}),
         matchedFilterIds: [filter.id],
@@ -476,15 +493,14 @@ export async function captureJdProductReviews(reviewOptions = {}, pageDocument =
       if (active && current && ((sawLoadingState && attempt >= 1) || attempt >= 3)) break;
     }
     scrollContainer.scrollTop = 0;
-    let collected = [];
-    let previousCount = -1;
+    const collectedById = new Map();
     let stalled = 0;
-    while (collected.length < limitPerFilter && stalled < 3) {
-      collected = extractReviews(filter).slice(0, limitPerFilter);
-      if (collected.length === previousCount) stalled += 1;
+    while (stalled < 3) {
+      const beforeCount = collectedById.size;
+      for (const review of extractReviews(filter)) collectedById.set(review.id, review);
+      if (collectedById.size === beforeCount) stalled += 1;
       else stalled = 0;
-      previousCount = collected.length;
-      if (collected.length >= limitPerFilter) break;
+      if (!captureAll && collectedById.size >= limitPerFilter) break;
       const priorTop = Number(scrollContainer.scrollTop || 0);
       const step = Math.max(Number(scrollContainer.clientHeight || 0) * 0.75, 480);
       scrollContainer.scrollTop = priorTop + step;
@@ -492,6 +508,8 @@ export async function captureJdProductReviews(reviewOptions = {}, pageDocument =
       if (PageEvent) scrollContainer.dispatchEvent?.(new PageEvent('scroll', { bubbles: true }));
       await sleep(400);
     }
+    const collected = Array.from(collectedById.values());
+    if (!captureAll && collected.length > limitPerFilter) collected.splice(limitPerFilter);
     for (const review of collected) {
       const prior = merged.get(review.id);
       merged.set(review.id, prior ? {
@@ -499,14 +517,15 @@ export async function captureJdProductReviews(reviewOptions = {}, pageDocument =
         matchedFilterIds: Array.from(new Set([...(prior.matchedFilterIds || []), filter.id])),
       } : review);
     }
-    const complete = collected.length >= limitPerFilter;
+    const complete = captureAll ? collected.length > 0 || /^0(?:\D|$)/.test(filter.countText || '') : collected.length >= limitPerFilter;
     results.push({
       filterId: filter.id,
       label: filter.label,
-      requested: limitPerFilter,
+      requested: captureAll ? collected.length : limitPerFilter,
       captured: collected.length,
       status: complete ? 'complete' : 'partial',
-      ...(!complete ? { warning: `仅加载到 ${collected.length} 条评论` } : {}),
+      ...(captureAll ? { captureAll: true } : {}),
+      ...(!complete ? { warning: captureAll ? '页面未加载出可采集评论' : `仅加载到 ${collected.length} 条评论` } : {}),
     });
   }
   if (originalFilter && !selected.some((filter) => filter.id === originalFilter.id)) {
@@ -514,9 +533,11 @@ export async function captureJdProductReviews(reviewOptions = {}, pageDocument =
     await sleep(250);
   }
   scrollContainer.scrollTop = originalScrollTop;
-  const reviews = Array.from(merged.values()).slice(0, 1_000);
+  const reviews = Array.from(merged.values());
   if (!selected.length) warnings.push('没有可执行的评论筛选标签，本次仅保存商品资料');
-  if (results.some((result) => result.status !== 'complete')) warnings.push('部分评论标签未达到请求数量');
+  if (results.some((result) => result.status !== 'complete')) {
+    warnings.push(captureAll ? '部分评论标签未能加载出评论' : '部分评论标签未达到请求数量');
+  }
   const sortText = clean(Array.from(modal.querySelectorAll('[class*="sort"], [role="tablist"]')).map((node) => node.textContent).find((text) => /最新|默认|时间/.test(String(text))), 100);
   const scopeText = clean(Array.from(modal.querySelectorAll('[class*="scope"], [class*="product"]')).map((node) => node.textContent).find((text) => /当前商品|全部商品/.test(String(text))), 100);
   return {

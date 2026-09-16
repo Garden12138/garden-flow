@@ -155,15 +155,6 @@ const JD_AUTO_CAPTURE_SETTINGS: BuiltinAutomationSettingField[] = [
         defaultValue: [],
     },
     {
-        key: 'reviewsPerFilter',
-        label: '每个标签采集评论数',
-        type: 'number',
-        min: 1,
-        max: 50,
-        description: '所有标签使用同一数量，默认 5 条。',
-        defaultValue: 5,
-    },
-    {
         key: 'pacing',
         label: '采集节奏',
         type: 'select',
@@ -187,7 +178,7 @@ function buildJdAutoCapturePrompt(settings: Record<string, unknown>): string {
         `- 备选关键词: ${launch.allKeywords.join(' / ') || '(无)'}`,
         `- 最多采集商品数: ${launch.maxProductsPerRun}`,
         `- 评论标签: ${launch.reviewFilterLabels.join(' / ') || '好评 / 中评 / 差评（默认）'}`,
-        `- 每标签评论数: ${launch.reviewsPerFilter}`,
+        '- 评论数量: 持续滚动到页面不再产生新评论',
         '',
         '执行方式由运行时结构化完成：插件在京东页面输入关键词并读取搜索结果，任务逐个打开商品卡片，调用 capture.save 识别商品和评论并写入来源快照。',
     ].join('\n');

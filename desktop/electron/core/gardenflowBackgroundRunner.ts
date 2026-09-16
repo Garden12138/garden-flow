@@ -2445,7 +2445,6 @@ export class GardenFlowBackgroundRunner extends EventEmitter {
             keyword: launch.keyword,
             maxProducts: launch.maxProductsPerRun,
             reviewFilterLabels: launch.reviewFilterLabels,
-            reviewsPerFilter: launch.reviewsPerFilter,
             pacing: launch.pacing,
           },
           createJdStructuredCaptureIo((level, message) => {

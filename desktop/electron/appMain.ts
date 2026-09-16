@@ -14749,7 +14749,12 @@ function validateCapturedJdProduct(payload: object): CapturedProductInput {
       const label = String(filter?.label || '').replace(/\s+/g, ' ').trim().slice(0, 100);
       if (!id || !label || !filterIds.has(id)) return [];
       const rawLimit = Number(filter?.limit);
-      return [{ id, label, limit: Number.isFinite(rawLimit) ? Math.max(1, Math.min(50, Math.trunc(rawLimit))) : 5 }];
+      return [{
+        id,
+        label,
+        limit: Number.isFinite(rawLimit) ? Math.max(1, Math.min(50, Math.trunc(rawLimit))) : 5,
+        captureAll: filter?.captureAll === true || undefined,
+      }];
     });
   const reviewResults = (Array.isArray(reviewCaptureRecord?.results) ? reviewCaptureRecord.results : [])
     .slice(0, 50)
@@ -14763,17 +14768,17 @@ function validateCapturedJdProduct(payload: object): CapturedProductInput {
       return [{
         filterId,
         label,
-        requested: Math.max(0, Math.min(50, Math.trunc(Number(item?.requested) || 0))),
-        captured: Math.max(0, Math.min(50, Math.trunc(Number(item?.captured) || 0))),
+        requested: Math.max(0, Math.trunc(Number(item?.requested) || 0)),
+        captured: Math.max(0, Math.trunc(Number(item?.captured) || 0)),
         status: resultStatus,
         warning: String(item?.warning || '').replace(/\s+/g, ' ').trim().slice(0, 500) || undefined,
+        captureAll: item?.captureAll === true || undefined,
       }];
     });
   const reviews = (Array.isArray(reviewCaptureRecord?.reviews) ? reviewCaptureRecord.reviews : [])
-    .slice(0, 1_000)
     .flatMap((review) => {
       const id = String(review?.id || '').trim().replace(/[^a-zA-Z0-9._:-]/g, '-').slice(0, 500);
-      const text = String(review?.text || '').replace(/\s+/g, ' ').trim().slice(0, 10_000);
+      const text = String(review?.text || '').replace(/\s+/g, ' ').trim();
       if (!id || !text) return [];
       const imageSourceUrls = (Array.isArray(review?.imageSourceUrls) ? review.imageSourceUrls : [])
         .slice(0, 9)
@@ -14806,6 +14811,7 @@ function validateCapturedJdProduct(payload: object): CapturedProductInput {
         platformReviewId: String(review?.platformReviewId || '').trim().replace(/[^a-zA-Z0-9._:-]/g, '-').slice(0, 500) || undefined,
         authorName: String(review?.authorName || '').replace(/\s+/g, ' ').trim().slice(0, 300) || undefined,
         text,
+        merchantReply: String(review?.merchantReply || '').replace(/\s+/g, ' ').trim() || undefined,
         rating: Number.isFinite(rating) && rating >= 1 && rating <= 5 ? rating : undefined,
         sentiment,
         matchedFilterIds: Array.from(new Set((Array.isArray(review?.matchedFilterIds) ? review.matchedFilterIds : [])
@@ -14855,6 +14861,7 @@ function validateCapturedJdProduct(payload: object): CapturedProductInput {
       limitPerFilter: Number.isFinite(Number(source.reviewOptions?.limitPerFilter))
         ? Math.max(1, Math.min(50, Math.trunc(Number(source.reviewOptions?.limitPerFilter))))
         : 5,
+      captureAll: source.reviewOptions?.captureAll === true,
     },
     reviewCapture,
     missingFields: [

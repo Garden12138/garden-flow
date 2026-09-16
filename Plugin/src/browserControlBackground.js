@@ -29,6 +29,7 @@ import { TARGET_GET_CONTROL_BADGE_STATE_TYPE, initializeTabControlBadges, readTa
 import { clearLeaseFaviconBadges, hasUnseenFinalizedBadges, initializeTabFaviconBadges, listFinalizedBadges, markFinalizedBadges } from './background/tabFaviconBadge.js';
 import { configureManagedTabGroupTelemetry, ensureAgentTabGroup, getManagedGroupIdContainingTabs, initializeManagedTabGroups, listManagedTabGroups, reconcileManagedGroupForTabs, refreshManagedGroupsFromChrome, releaseTabsFromManagedGroups, setSessionGroupTitle } from './background/tabGroupManager.js';
 import { createTabLifecycleRuntime } from './background/tabLifecycleRuntime.js';
+import { removeTabWithRetry } from './background/tabCloseRuntime.js';
 import { claimTabForSession as claimTabLeaseForSession, finalizeTabs as finalizeTabLeases, getSessionActiveLeases, getSessionTabs as getStoredSessionTabs, groupFinalizedTabs as groupStoredFinalizedTabs, listTabLeaseSnapshot, listTabLeases as listStoredTabLeases, moveReplacedTabLease, releaseActiveTurnLeases, releaseSessionTabLeases, releaseTabsForSession, removeTabLease, resumeHandoffTabs, syncSessionActiveTabFromLease, updateActiveSessionTurn } from './background/tabLeaseManager.js';
 import { getActiveTabInfo, getUserBrowserContext, listBrowserWindows, listReadingList, listRecentlyClosedSessions, listSessionDevices, listTopSites, listUserBookmarks, listUserTabs, searchUserHistory } from './background/userBrowserState.js';
 import { fetchUrlContents } from './background/urlContentRuntime.js';
@@ -220,9 +221,11 @@ const BROWSER_CONTROL_MCP_TOOLS = [
             selectedFilterIds: { type: 'array', maxItems: 50, items: { type: 'string' } },
             selectedFilterLabels: { type: 'array', maxItems: 50, items: { type: 'string' } },
             limitPerFilter: { type: 'number', minimum: 1, maximum: 50 },
+            captureAll: { type: 'boolean' },
           },
           additionalProperties: false,
         },
+        closeAfterSave: { type: 'boolean' },
       },
       required: ['tabId'],
       additionalProperties: true,
@@ -1637,14 +1640,41 @@ async function runBrowserAction(action, context = {}) {
           result = await saveCurrentPageViaPluginCapture(tabId, {
             reviewOptions: normalized.reviewOptions,
           });
-          publishCaptureActivity(
-            tabId,
-            'success',
-            result?.mode === 'jd-product'
-              ? `自动采集完成：已保存 ${Number(result.capturedReviews || 0)} 条评论，正在关闭商品页`
-              : '自动采集完成，正在关闭页面',
-            { action: isJdProductCapture ? 'saveJdProduct' : 'saveCurrentPage', result },
-          );
+          let tabClosed = false;
+          let closeError = '';
+          if (normalized.closeAfterSave === true) {
+            publishCaptureActivity(
+              tabId,
+              'pending',
+              result?.mode === 'jd-product'
+                ? `自动采集完成：已保存 ${Number(result.capturedReviews || 0)} 条评论，正在关闭商品页…`
+                : '自动采集完成，正在关闭页面…',
+              { action: isJdProductCapture ? 'saveJdProduct' : 'saveCurrentPage', result },
+            );
+            try {
+              await closeControlledTab(session, { tabId, reason: 'capture_save_complete' });
+              tabClosed = true;
+            } catch (error) {
+              closeError = describeErrorMessage(error);
+            }
+          }
+          result = {
+            ...result,
+            tabClosed,
+            ...(closeError ? { closeError } : {}),
+          };
+          if (!tabClosed) {
+            publishCaptureActivity(
+              tabId,
+              normalized.closeAfterSave === true ? 'error' : 'success',
+              normalized.closeAfterSave === true
+                ? `商品已保存，但商品页关闭失败，桌面端将重试：${closeError}`
+                : result?.mode === 'jd-product'
+                  ? `采集完成：已保存 ${Number(result.capturedReviews || 0)} 条评论`
+                  : '采集完成',
+              { action: isJdProductCapture ? 'saveJdProduct' : 'saveCurrentPage', result },
+            );
+          }
         } catch (error) {
           publishCaptureActivity(
             tabId,
@@ -3843,11 +3873,8 @@ async function closeControlledTab(session, action = {}) {
     publish: false,
     clearCursor: false,
   }).catch(() => {});
+  await removeTabWithRetry((id) => chrome.tabs.remove(id), tabId, { wait: sleep });
   const removed = await removeTabLease(tabId).catch((error) => ({ removed: false, error: describeError(error) }));
-  await chrome.tabs.remove(tabId).catch((error) => {
-    const message = describeError(error);
-    if (!/No tab with id|Tabs cannot be edited right now/i.test(message)) throw error;
-  });
   if (activeBrowserSession?.sessionId === session.sessionId && activeBrowserSession.activeTabId === tabId) {
     activeBrowserSession = { ...activeBrowserSession, activeTabId: null };
     setStatus({ browserControl: activeBrowserSession });

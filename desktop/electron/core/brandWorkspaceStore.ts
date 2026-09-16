@@ -115,6 +115,7 @@ export type ProductReviewResult = {
   captured: number;
   status: 'complete' | 'partial' | 'missing';
   warning?: string;
+  captureAll?: boolean;
 };
 
 export type ProductReviewRecord = {
@@ -122,6 +123,7 @@ export type ProductReviewRecord = {
   platformReviewId?: string;
   authorName?: string;
   text: string;
+  merchantReply?: string;
   rating?: number;
   sentiment?: 'positive' | 'neutral' | 'negative';
   matchedFilterIds: string[];
@@ -141,7 +143,7 @@ export type ProductReviewCapture = {
   modalDetected: boolean;
   status: 'not-opened' | 'ready' | 'complete' | 'partial';
   availableFilters: ProductReviewFilter[];
-  selectedFilters: Array<{ id: string; label: string; limit: number }>;
+  selectedFilters: Array<{ id: string; label: string; limit: number; captureAll?: boolean }>;
   results: ProductReviewResult[];
   reviews: ProductReviewRecord[];
   warnings: string[];
@@ -242,6 +244,7 @@ export type CapturedProductInput = {
     selectedFilterIds?: string[];
     selectedFilterLabels?: string[];
     limitPerFilter?: number;
+    captureAll?: boolean;
   };
   reviewCapture?: CapturedProductReviewCapture;
   missingFields?: string[];
@@ -265,6 +268,10 @@ function nowIso(): string {
 
 function cleanText(value: unknown, maxLength = 20_000): string {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, maxLength);
+}
+
+function cleanReviewText(value: unknown): string {
+  return String(value || '').replace(/\s+/g, ' ').trim();
 }
 
 function cleanLines(value: unknown, maxLength = 50_000): string {
@@ -340,7 +347,12 @@ function normalizeStoredReviewCapture(value: unknown): ProductReviewCapture | un
       const label = cleanText(filter.label, 100);
       if (!id || !label) return [];
       const rawLimit = Number(filter.limit);
-      return [{ id, label, limit: Number.isFinite(rawLimit) ? Math.max(1, Math.min(50, Math.trunc(rawLimit))) : 5 }];
+      return [{
+        id,
+        label,
+        limit: Number.isFinite(rawLimit) ? Math.max(1, Math.min(50, Math.trunc(rawLimit))) : 5,
+        captureAll: filter.captureAll === true || undefined,
+      }];
     }).slice(0, 50);
   const results: ProductReviewResult[] = (Array.isArray(record.results) ? record.results : [])
     .flatMap((item) => {
@@ -355,10 +367,11 @@ function normalizeStoredReviewCapture(value: unknown): ProductReviewCapture | un
       return [{
         filterId,
         label,
-        requested: Math.max(0, Math.min(50, Math.trunc(Number(result.requested) || 0))),
-        captured: Math.max(0, Math.min(50, Math.trunc(Number(result.captured) || 0))),
+        requested: Math.max(0, Math.trunc(Number(result.requested) || 0)),
+        captured: Math.max(0, Math.trunc(Number(result.captured) || 0)),
         status,
         warning: cleanText(result.warning, 500) || undefined,
+        captureAll: result.captureAll === true || undefined,
       }];
     }).slice(0, 50);
   const reviews: ProductReviewRecord[] = (Array.isArray(record.reviews) ? record.reviews : [])
@@ -366,7 +379,7 @@ function normalizeStoredReviewCapture(value: unknown): ProductReviewCapture | un
       if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
       const review = item as Record<string, unknown>;
       const id = cleanId(review.id);
-      const text = cleanText(review.text, 10_000);
+      const text = cleanReviewText(review.text);
       if (!id || !text) return [];
       const rating = Number(review.rating);
       const helpfulCount = Number(review.helpfulCount);
@@ -378,6 +391,7 @@ function normalizeStoredReviewCapture(value: unknown): ProductReviewCapture | un
         platformReviewId: cleanId(review.platformReviewId) || undefined,
         authorName: cleanText(review.authorName, 300) || undefined,
         text,
+        merchantReply: cleanReviewText(review.merchantReply) || undefined,
         rating: Number.isFinite(rating) && rating >= 1 && rating <= 5 ? rating : undefined,
         sentiment: normalizeReviewSentiment(review.sentiment),
         matchedFilterIds: cleanStringList(review.matchedFilterIds, 50).map(cleanId).filter(Boolean),
@@ -402,7 +416,7 @@ function normalizeStoredReviewCapture(value: unknown): ProductReviewCapture | un
           sourceUrl: cleanText(video.sourceUrl, 8_000) || undefined,
         } : undefined,
       }];
-    }).slice(0, 1_000);
+    });
   const status = ['not-opened', 'ready', 'complete', 'partial'].includes(String(record.status))
     ? record.status as ProductReviewCapture['status']
     : reviews.length ? 'partial' : 'not-opened';
@@ -1063,11 +1077,11 @@ export function createBrandWorkspaceStore(rootProvider: () => string) {
       ];
     }
 
-    const capturedReviews = Array.isArray(input.reviewCapture?.reviews) ? input.reviewCapture.reviews.slice(0, 1_000) : [];
+    const capturedReviews = Array.isArray(input.reviewCapture?.reviews) ? input.reviewCapture.reviews : [];
     const storedReviews: ProductReviewRecord[] = [];
     for (const capturedReview of capturedReviews) {
       const sourceReviewId = cleanId(capturedReview?.id);
-      const text = cleanText(capturedReview?.text, 10_000);
+      const text = cleanReviewText(capturedReview?.text);
       if (!sourceReviewId || !text) continue;
       const reviewId = cleanId(`review-${platform}-${externalId}-${sourceReviewId}`);
       const priorReviewAssets = catalog.assets.filter((asset) => asset.ownerType === 'product-review' && asset.ownerId === reviewId);
@@ -1091,6 +1105,7 @@ export function createBrandWorkspaceStore(rootProvider: () => string) {
         platformReviewId: cleanId(capturedReview.platformReviewId) || undefined,
         authorName: cleanText(capturedReview.authorName, 300) || undefined,
         text,
+        merchantReply: cleanReviewText(capturedReview.merchantReply) || undefined,
         rating: Number.isFinite(rating) && rating >= 1 && rating <= 5 ? rating : undefined,
         sentiment: normalizeReviewSentiment(capturedReview.sentiment),
         matchedFilterIds: cleanStringList(capturedReview.matchedFilterIds, 50).map(cleanId).filter(Boolean),

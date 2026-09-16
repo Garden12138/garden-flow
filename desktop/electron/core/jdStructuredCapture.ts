@@ -58,6 +58,7 @@ type JdCaptureSaveResult = {
     reviewWarnings: string[];
     missingFields: string[];
     reason: string;
+    tabClosed: boolean;
 };
 
 type JdResearchOutcome = {
@@ -184,6 +185,7 @@ export function parseJdCaptureSaveResult(value: unknown): JdCaptureSaveResult {
             reviewWarnings: [],
             missingFields: [],
             reason: 'empty_save_result',
+            tabClosed: false,
         };
     }
     const code = String(record.code || record.errorCode || '').trim();
@@ -201,6 +203,7 @@ export function parseJdCaptureSaveResult(value: unknown): JdCaptureSaveResult {
         reviewWarnings: stringList(record.reviewWarnings, 100),
         missingFields: stringList(record.missingFields, 100),
         reason,
+        tabClosed: record.tabClosed === true,
     };
 }
 
@@ -249,7 +252,6 @@ export async function runJdStructuredCaptureRound(
         keyword: string;
         maxProducts: number;
         reviewFilterLabels: string[];
-        reviewsPerFilter: number;
         pacing: 'conservative' | 'normal';
     },
     io: JdStructuredCaptureIo,
@@ -257,7 +259,6 @@ export async function runJdStructuredCaptureRound(
     const keyword = String(input.keyword || '').trim();
     const maxProducts = Math.max(1, Math.min(20, Math.round(Number(input.maxProducts) || 5)));
     const reviewFilterLabels = Array.from(new Set((input.reviewFilterLabels || []).map((label) => String(label || '').trim()).filter(Boolean))).slice(0, 50);
-    const reviewsPerFilter = Math.max(1, Math.min(50, Math.round(Number(input.reviewsPerFilter) || 5)));
     const products: JdProductCaptureOutcome[] = [];
     const sleep = io.sleep || defaultSleep;
     const log = io.log || (() => undefined);
@@ -389,6 +390,7 @@ export async function runJdStructuredCaptureRound(
         const cardTitle = String(card.title || '').trim();
         if (products.length > 0) await sleep(captureDelayMs(input.pacing));
         let tabId = 0;
+        let tabClosed = false;
         try {
             log('info', `JD capture opening search result ${cursor}/${queue.length}: ${sourceUrl}`);
             tabId = createdTabId(await callTool(io, 'tab.create', {
@@ -401,11 +403,13 @@ export async function runJdStructuredCaptureRound(
             await sleep(captureDelayMs(input.pacing));
             const result = parseJdCaptureSaveResult(await callTool(io, 'capture.save', {
                 tabId,
+                closeAfterSave: true,
                 reviewOptions: {
                     selectedFilterLabels: reviewFilterLabels,
-                    limitPerFilter: reviewsPerFilter,
+                    captureAll: true,
                 },
             }, SAVE_TIMEOUT_MS));
+            tabClosed = result.tabClosed;
             if (result.blocked) {
                 blockedReason = `保存商品时遇到登录或安全验证：${result.reason || sourceUrl}`;
                 products.push({ sourceUrl, title: cardTitle, outcome: 'failed', error: blockedReason });
@@ -434,9 +438,11 @@ export async function runJdStructuredCaptureRound(
             products.push({ sourceUrl, title: cardTitle, outcome: 'failed', error: message });
             log('warn', `JD capture failed for ${sourceUrl}: ${message}`);
         } finally {
-            if (tabId) {
+            if (tabId && !tabClosed) {
                 await callTool(io, 'tab.close', { tabId, reason: 'jd_auto_capture_complete' }, CLOSE_TIMEOUT_MS)
-                    .catch(() => undefined);
+                    .catch((error) => {
+                        log('warn', `JD capture could not close product tab ${tabId}: ${error instanceof Error ? error.message : String(error)}`);
+                    });
             }
         }
     }

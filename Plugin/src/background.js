@@ -4344,6 +4344,7 @@ async function saveJdProductFromTab(tabId, reviewOptions = {}) {
     limitPerFilter: Number.isFinite(Number(reviewOptions?.limitPerFilter))
       ? Math.max(1, Math.min(50, Math.trunc(Number(reviewOptions.limitPerFilter))))
       : 5,
+    captureAll: reviewOptions?.captureAll === true,
   };
   const reviewCapture = await runExtraction(tabId, captureJdProductReviews, {
     world: 'MAIN',

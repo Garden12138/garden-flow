@@ -208,10 +208,13 @@ test('JD review captures stay in source snapshots, keep review images separate, 
     { id: 'neutral', label: '中评', sentiment: 'neutral' as const },
     { id: 'negative', label: '差评', sentiment: 'negative' as const },
   ];
+  const fullReviewText = `开头-${'完整评论'.repeat(3_000)}-结尾`;
+  const fullMerchantReply = `${'完整回复'.repeat(3_000)}-结束`;
   const reviews = filters.flatMap((filter) => Array.from({ length: 6 }, (_, index) => ({
     id: `${filter.id}-${index}`,
     authorName: `j***${index}`,
-    text: `${filter.label}评论 ${index + 1} ${'内容'.repeat(300)}`,
+    text: filter.id === 'positive' && index === 0 ? fullReviewText : `${filter.label}评论 ${index + 1} ${'内容'.repeat(300)}`,
+    merchantReply: filter.id === 'positive' && index === 0 ? fullMerchantReply : undefined,
     rating: filter.id === 'positive' ? 5 : filter.id === 'neutral' ? 3 : 1,
     sentiment: filter.sentiment,
     matchedFilterIds: [filter.id],
@@ -243,8 +246,8 @@ test('JD review captures stay in source snapshots, keep review images separate, 
       modalDetected: true,
       status: 'complete',
       availableFilters: filters,
-      selectedFilters: filters.map((filter) => ({ id: filter.id, label: filter.label, limit: 6 })),
-      results: filters.map((filter) => ({ filterId: filter.id, label: filter.label, requested: 6, captured: 6, status: 'complete' as const })),
+      selectedFilters: filters.map((filter) => ({ id: filter.id, label: filter.label, limit: 5, captureAll: true })),
+      results: filters.map((filter) => ({ filterId: filter.id, label: filter.label, requested: 6, captured: 6, status: 'complete' as const, captureAll: true })),
       reviews,
       warnings: [],
       sortText: '最新',
@@ -254,6 +257,9 @@ test('JD review captures stay in source snapshots, keep review images separate, 
 
   assert.equal(captured.sourceSnapshot.captureVersion, 3);
   assert.equal(captured.sourceSnapshot.reviewCapture?.reviews.length, 18);
+  assert.equal(captured.sourceSnapshot.reviewCapture?.reviews[0].text, fullReviewText);
+  assert.equal(captured.sourceSnapshot.reviewCapture?.reviews[0].merchantReply, fullMerchantReply);
+  assert.equal(captured.sourceSnapshot.reviewCapture?.results[0].captureAll, true);
   assert.equal(captured.sourceSnapshot.reviewCapture?.reviews[0].imageAssetIds.length, 1);
   assert.equal(captured.sourceSnapshot.reviewCapture?.reviews[0].sourceImages?.[0].status, 'localized');
   assert.equal(captured.product.assets.length, 1);

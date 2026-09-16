@@ -53,6 +53,7 @@ let jdProductPreview = null;
 let jdReviewOptions = {
   selectedFilterIds: [],
   limitPerFilter: 5,
+  captureAll: true,
 };
 let currentSettings = {
   xhsBloggerNoteLimit: 50,
@@ -130,6 +131,11 @@ function bindEvents() {
     if (event.target?.id === 'jd-review-limit') {
       const limit = Number(event.target.value);
       jdReviewOptions.limitPerFilter = Number.isFinite(limit) ? Math.max(1, Math.min(50, Math.trunc(limit))) : 5;
+      renderCaptureActions(context);
+      return;
+    }
+    if (event.target?.id === 'jd-review-capture-all') {
+      jdReviewOptions.captureAll = Boolean(event.target.checked);
       renderCaptureActions(context);
     }
   });
@@ -324,7 +330,7 @@ function renderCaptureActions(nextContext) {
   if (captureSignature !== nextSignature) {
     captureFeedback = null;
     jdProductPreview = null;
-    jdReviewOptions = { selectedFilterIds: [], limitPerFilter: 5 };
+    jdReviewOptions = { selectedFilterIds: [], limitPerFilter: 5, captureAll: true };
     captureSignature = nextSignature;
   }
 
@@ -440,6 +446,17 @@ function renderCaptureActions(nextContext) {
           filterList.appendChild(label);
         }
         reviewPanel.appendChild(filterList);
+        const allRow = document.createElement('label');
+        allRow.className = 'jd-review-limit-row';
+        const allInput = document.createElement('input');
+        allInput.id = 'jd-review-capture-all';
+        allInput.type = 'checkbox';
+        allInput.checked = jdReviewOptions.captureAll;
+        allInput.disabled = Boolean(capturePendingAction) || automatedCapturePending || !isHealthy;
+        const allLabel = document.createElement('span');
+        allLabel.textContent = '持续滚动，采集页面可加载的全部评论';
+        allRow.append(allInput, allLabel);
+        reviewPanel.appendChild(allRow);
         const limitRow = document.createElement('label');
         limitRow.className = 'jd-review-limit-row';
         const limitLabel = document.createElement('span');
@@ -455,13 +472,14 @@ function renderCaptureActions(nextContext) {
         const unit = document.createElement('span');
         unit.textContent = '条';
         limitRow.append(limitLabel, limitInput, unit);
-        reviewPanel.appendChild(limitRow);
+        if (!jdReviewOptions.captureAll) reviewPanel.appendChild(limitRow);
         const selection = document.createElement('div');
         selection.className = 'jd-review-options-hint';
         const selectedLabels = filters.filter((filter) => jdReviewOptions.selectedFilterIds.includes(filter.id)).map((filter) => filter.label);
+        const quantity = jdReviewOptions.captureAll ? '可加载的全部评论' : `各 ${jdReviewOptions.limitPerFilter} 条`;
         selection.textContent = selectedLabels.length
-          ? `将采集：${selectedLabels.join('、')}，各 ${jdReviewOptions.limitPerFilter} 条`
-          : `默认采集：好评、中评、差评，各 ${jdReviewOptions.limitPerFilter} 条`;
+          ? `将采集：${selectedLabels.join('、')}，${quantity}`
+          : `默认采集：好评、中评、差评，${quantity}`;
         reviewPanel.appendChild(selection);
       }
     } else {
@@ -576,6 +594,7 @@ async function runCaptureAction(action) {
             .filter((filter) => jdReviewOptions.selectedFilterIds.includes(filter.id))
             .map((filter) => filter.label),
           limitPerFilter: jdReviewOptions.limitPerFilter,
+          captureAll: jdReviewOptions.captureAll,
         },
       } : {}),
     });

@@ -32,11 +32,13 @@ export interface ProductPreviewSnapshot {
             captured: number;
             status: 'complete' | 'partial' | 'missing';
             warning?: string;
+            captureAll?: boolean;
         }>;
         reviews: Array<{
             id: string;
             authorName?: string;
             text: string;
+            merchantReply?: string;
             rating?: number;
             sentiment?: 'positive' | 'neutral' | 'negative';
             matchedFilterIds: string[];
@@ -198,7 +200,7 @@ export function ProductSourcePreview({ snapshot, images, reviewImages = [], lega
                                     className={`rounded-full border px-3 py-1 text-xs transition ${reviewFilterId === result.filterId ? 'border-accent-primary bg-accent-primary/10 text-accent-primary' : 'border-black/10 bg-white text-text-secondary hover:border-black/20'}`}
                                     title={result.warning}
                                 >
-                                    {result.label} {result.captured}/{result.requested}
+                                    {result.label} {result.captureAll ? `${result.captured} 条（全部）` : `${result.captured}/${result.requested}`}
                                 </button>
                             ))}
                         </div>
@@ -236,6 +238,11 @@ export function ProductSourcePreview({ snapshot, images, reviewImages = [], lega
                                             </div>
                                         )}
                                         <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-text-secondary">{review.text}</p>
+                                        {review.merchantReply && (
+                                            <div className="mt-3 rounded-lg bg-surface-secondary px-3 py-2 text-xs leading-5 text-text-secondary">
+                                                <span className="font-semibold text-text-primary">商家回复：</span>{review.merchantReply}
+                                            </div>
+                                        )}
                                         {localImages.length > 0 && (
                                             <div className="mt-3 flex flex-wrap gap-2">
                                                 {localImages.map((image) => (
