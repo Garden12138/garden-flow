@@ -232,7 +232,7 @@ function captureDelayMs(pacing: 'conservative' | 'normal'): number {
 
 function summarize(round: Omit<JdStructuredCaptureRound, 'summary'>): string {
     const lines = [
-        `京东商品自动采集：关键词「${round.keyword}」，尝试 ${round.attempted} 个商品，成功保存 ${round.saved} 个来源快照（其中复采 ${round.recaptured} 个），失败 ${round.failed} 个，共采集评论 ${round.capturedReviews} 条。`,
+        `京东商品自动采集：关键词「${round.keyword}」，尝试 ${round.attempted} 个商品，新入库 ${round.saved} 个，重复复采 ${round.recaptured} 个，失败 ${round.failed} 个，共采集评论 ${round.capturedReviews} 条。`,
     ];
     for (const product of round.products) {
         if (product.outcome === 'failed') {
@@ -252,6 +252,7 @@ export async function runJdStructuredCaptureRound(
         keyword: string;
         maxProducts: number;
         reviewFilterLabels: string[];
+        reviewsPerFilter: number;
         pacing: 'conservative' | 'normal';
     },
     io: JdStructuredCaptureIo,
@@ -259,6 +260,7 @@ export async function runJdStructuredCaptureRound(
     const keyword = String(input.keyword || '').trim();
     const maxProducts = Math.max(1, Math.min(20, Math.round(Number(input.maxProducts) || 5)));
     const reviewFilterLabels = Array.from(new Set((input.reviewFilterLabels || []).map((label) => String(label || '').trim()).filter(Boolean))).slice(0, 50);
+    const reviewsPerFilter = Math.max(1, Math.min(50, Math.round(Number(input.reviewsPerFilter) || 5)));
     const products: JdProductCaptureOutcome[] = [];
     const sleep = io.sleep || defaultSleep;
     const log = io.log || (() => undefined);
@@ -406,7 +408,8 @@ export async function runJdStructuredCaptureRound(
                 closeAfterSave: true,
                 reviewOptions: {
                     selectedFilterLabels: reviewFilterLabels,
-                    captureAll: true,
+                    limitPerFilter: reviewsPerFilter,
+                    captureAll: false,
                 },
             }, SAVE_TIMEOUT_MS));
             tabClosed = result.tabClosed;
@@ -416,9 +419,9 @@ export async function runJdStructuredCaptureRound(
             } else if (!result.ok) {
                 throw new Error(result.reason || '插件没有返回有效的商品与来源快照 ID');
             } else {
-                saved += 1;
                 capturedReviews += result.capturedReviews;
                 if (result.duplicate) recaptured += 1;
+                else saved += 1;
                 products.push({
                     sourceUrl,
                     outcome: result.duplicate ? 'recaptured' : 'saved',
@@ -448,7 +451,7 @@ export async function runJdStructuredCaptureRound(
     }
 
     const quotaMissReason = !blockedReason && exhausted && saved < maxProducts
-        ? `京东搜索结果已用尽，本轮保存 ${saved} 个商品（目标 ${maxProducts} 个）`
+        ? `京东搜索结果已用尽，本轮新入库 ${saved} 个商品（目标 ${maxProducts} 个）`
         : undefined;
     if (saved > 0) {
         const partialReason = products.some((product) => product.outcome === 'failed')
@@ -457,6 +460,9 @@ export async function runJdStructuredCaptureRound(
         return await finish('captured', blockedReason || quotaMissReason || partialReason);
     }
     if (blockedReason) return await finish('blocked', blockedReason);
+    if (recaptured > 0) {
+        return await finish('captured', quotaMissReason || '本轮商品均已在资产库中（全部重复），未产生新商品');
+    }
     return await finish('failed', quotaMissReason || '本轮没有商品成功保存');
 }
 

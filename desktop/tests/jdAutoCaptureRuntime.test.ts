@@ -24,24 +24,24 @@ function productCard(id: string, title = `商品 ${id}`): Record<string, unknown
     return { id, title, sourceUrl: `https://item.jd.com/${id}.html?tracking=search` };
 }
 
-test('JD builtin task exposes keyword, product-count, and review-label settings', () => {
+test('JD builtin task exposes keyword, product-count, review-label, and review-count settings', () => {
     const source = fs.readFileSync(path.resolve('electron/core/builtinAutomationTasks.ts'), 'utf8');
     assert.equal(JD_AUTO_CAPTURE_TASK_ID, 'jd-product-auto-capture');
     assert.match(source, /id: JD_AUTO_CAPTURE_TASK_ID/);
     assert.match(source, /name: '京东商品自动采集'/);
     assert.match(source, /requiredSkills: \['jd-auto-capture'\]/);
-    for (const key of ['keywords', 'maxProductsPerRun', 'reviewFilterLabels', 'pacing']) {
+    for (const key of ['keywords', 'maxProductsPerRun', 'reviewFilterLabels', 'reviewsPerFilter', 'pacing']) {
         assert.match(source, new RegExp(`key: '${key}'`));
     }
-    assert.doesNotMatch(source, /key: 'reviewsPerFilter'/);
     assert.doesNotMatch(source, /key: 'productUrls'/);
 });
 
-test('resolves and rotates JD search keywords while preserving review labels', () => {
+test('resolves and rotates JD search keywords while bounding review settings', () => {
     const settings = {
         keywords: ['冻干猫粮', '露营帐篷', '儿童书桌', '冻干猫粮'],
         maxProductsPerRun: 99,
         reviewFilterLabels: ['图/视频', '图/视频', '回头客'],
+        reviewsPerFilter: 99,
         pacing: 'unexpected',
     };
     const first = resolveJdAutoCaptureLaunch(settings, 0);
@@ -49,6 +49,7 @@ test('resolves and rotates JD search keywords while preserving review labels', (
     assert.equal(first.keyword, '冻干猫粮');
     assert.equal(first.maxProductsPerRun, 20);
     assert.deepEqual(first.reviewFilterLabels, ['图/视频', '回头客']);
+    assert.equal(first.reviewsPerFilter, 50);
     assert.equal(first.pacing, 'conservative');
 
     const nextDay = resolveJdAutoCaptureLaunch(settings, 24 * 60 * 60 * 1_000);
@@ -117,7 +118,7 @@ test('structured JD capture searches once, then opens, saves, and closes result 
                 saveIndex += 1;
                 return {
                     success: true,
-                    duplicate: saveIndex === 2,
+                    duplicate: false,
                     title: `商品 ${saveIndex}`,
                     productId: `product-${saveIndex}`,
                     snapshotId: `snapshot-${saveIndex}`,
@@ -136,13 +137,14 @@ test('structured JD capture searches once, then opens, saves, and closes result 
         keyword: '冻干猫粮',
         maxProducts: 2,
         reviewFilterLabels: ['图/视频', '回头客'],
+        reviewsPerFilter: 7,
         pacing: 'normal',
     }, io);
 
     assert.equal(round.status, 'captured');
     assert.equal(round.keyword, '冻干猫粮');
     assert.equal(round.saved, 2);
-    assert.equal(round.recaptured, 1);
+    assert.equal(round.recaptured, 0);
     assert.equal(round.capturedReviews, 6);
     assert.deepEqual(calls.map((call) => call.name), [
         'research.run',
@@ -172,9 +174,51 @@ test('structured JD capture searches once, then opens, saves, and closes result 
         closeAfterSave: true,
         reviewOptions: {
             selectedFilterLabels: ['图/视频', '回头客'],
-            captureAll: true,
+            limitPerFilter: 7,
+            captureAll: false,
         },
     });
+});
+
+test('duplicate products do not fill the new-product quota', async () => {
+    let nextTabId = 40;
+    let saveIndex = 0;
+    const calls: string[] = [];
+    const round = await runJdStructuredCaptureRound({
+        keyword: '冻干猫粮',
+        maxProducts: 1,
+        reviewFilterLabels: [],
+        reviewsPerFilter: 5,
+        pacing: 'normal',
+    }, {
+        checkPluginInstance: () => ({ ok: true, detail: 'connected' }),
+        sleep: async () => undefined,
+        invokeBrowserControl: async (_method, params) => {
+            const name = String(params.name || '');
+            calls.push(name);
+            if (name === 'research.run') return searchResult([productCard('1'), productCard('2')]);
+            if (name === 'tab.create') return { success: true, tab: { id: nextTabId++ } };
+            if (name === 'capture.save') {
+                saveIndex += 1;
+                return {
+                    success: true,
+                    duplicate: saveIndex === 1,
+                    productId: `product-${saveIndex}`,
+                    snapshotId: `snapshot-${saveIndex}`,
+                    capturedReviews: 3,
+                    tabClosed: true,
+                };
+            }
+            if (name === 'tab.close') return { success: true };
+            throw new Error(`unexpected tool ${name}`);
+        },
+    });
+
+    assert.equal(round.status, 'captured');
+    assert.equal(round.saved, 1);
+    assert.equal(round.recaptured, 1);
+    assert.equal(round.attempted, 2);
+    assert.equal(calls.filter((name) => name === 'capture.save').length, 2);
 });
 
 test('structured JD capture keeps successful snapshots and continues after one result fails', async () => {
@@ -185,6 +229,7 @@ test('structured JD capture keeps successful snapshots and continues after one r
         keyword: '猫粮',
         maxProducts: 2,
         reviewFilterLabels: [],
+        reviewsPerFilter: 5,
         pacing: 'conservative',
     }, {
         checkPluginInstance: () => ({ ok: true, detail: 'connected' }),
@@ -219,6 +264,7 @@ test('structured JD capture stops before search when keyword or plugin is unavai
         keyword: '',
         maxProducts: 5,
         reviewFilterLabels: [],
+        reviewsPerFilter: 5,
         pacing: 'conservative' as const,
     };
     const missingKeyword = await runJdStructuredCaptureRound(input, {
@@ -248,6 +294,7 @@ test('structured JD capture reports a search login wall as blocked', async () =>
         keyword: '猫粮',
         maxProducts: 5,
         reviewFilterLabels: [],
+        reviewsPerFilter: 5,
         pacing: 'normal',
     }, {
         checkPluginInstance: () => ({ ok: true, detail: 'connected' }),
@@ -272,4 +319,42 @@ test('structured JD capture reports a search login wall as blocked', async () =>
     assert.equal(round.status, 'blocked');
     assert.match(round.reason || '', /安全验证/);
     assert.deepEqual(closed, [91]);
+});
+
+test('structured JD capture stops the entire round when product capture hits quick verification', async () => {
+    const opened: number[] = [];
+    const closed: number[] = [];
+    const challenge = Object.assign(new Error('当前京东页面需要完成安全验证'), {
+        code: 'BROWSER_SECURITY_CHALLENGE',
+    });
+    const round = await runJdStructuredCaptureRound({
+        keyword: '猫粮',
+        maxProducts: 2,
+        reviewFilterLabels: [],
+        reviewsPerFilter: 5,
+        pacing: 'normal',
+    }, {
+        checkPluginInstance: () => ({ ok: true, detail: 'connected' }),
+        sleep: async () => undefined,
+        invokeBrowserControl: async (_method, params) => {
+            const name = String(params.name || '');
+            const args = params.arguments as Record<string, unknown>;
+            if (name === 'research.run') return searchResult([productCard('1'), productCard('2')]);
+            if (name === 'tab.create') {
+                opened.push(101);
+                return { success: true, tab: { id: 101 } };
+            }
+            if (name === 'capture.save') throw challenge;
+            if (name === 'tab.close') {
+                closed.push(Number(args.tabId));
+                return { success: true };
+            }
+            throw new Error(`unexpected tool ${name}`);
+        },
+    });
+
+    assert.equal(round.status, 'blocked');
+    assert.match(round.reason || '', /安全验证/);
+    assert.deepEqual(opened, [101]);
+    assert.deepEqual(closed, [101, 12]);
 });

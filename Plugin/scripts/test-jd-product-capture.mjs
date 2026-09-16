@@ -347,6 +347,53 @@ test('keeps the complete buyer review and merchant reply in separate fields', as
   assert.equal(capture.reviews[0].merchantReply, '感谢您选择我们的产品。实在很抱歉出现这样的情况呢，我们也会根据您的反馈加强和快递公司的沟通。');
 });
 
+test('keeps the buyer text when a generic comment-content node belongs to the merchant reply', async () => {
+  const buyerText = '我家猫不爱吃，只要到碗里它就埋。';
+  const replyText = '实在抱歉给您和毛孩子带来了不好的体验，得知您家猫咪对这款猫粮十分抗拒，我们满心愧疚。';
+  const { document } = parseHTML(`<!doctype html><html><body>
+    <div role="dialog" class="comment-dialog">
+      <h2>商品评价</h2>
+      <button role="tab" data-filter="negative" aria-selected="true">差评 2000+</button>
+      <div class="comment-list">
+        <article class="comment-item" data-comment-id="buyer-and-shop-reply">
+          <span data-role="author">j***p</span>
+          <span data-role="date">01-02</span>
+          <span data-role="sku">肠道养护 成猫鸡肉味2kg</span>
+          <p class="comment-con">${buyerText}</p>
+          <div class="shop-reply">
+            <span class="reply-label">商家：</span>
+            <p class="comment-content">${replyText}</p>
+          </div>
+        </article>
+      </div>
+    </div>
+  </body></html>`);
+
+  const capture = await captureJdProductReviews({ selectedFilterLabels: ['差评'], limitPerFilter: 1 }, document, new URL('https://item.jd.com/280930.html'));
+
+  assert.equal(capture.reviews.length, 1);
+  assert.equal(capture.reviews[0].text, buyerText);
+  assert.equal(capture.reviews[0].merchantReply, replyText);
+});
+
+test('splits a merchant reply even when JD concatenates it directly after buyer punctuation', async () => {
+  const { document } = parseHTML(`<!doctype html><html><body>
+    <div role="dialog" class="comment-dialog">
+      <h2>商品评价</h2>
+      <button role="tab" data-filter="negative" aria-selected="true">差评 1</button>
+      <article class="comment-item" data-comment-id="concatenated-reply">
+        <span data-role="author">j***p</span><span data-role="date">01-02</span>
+        <p data-role="comment-text">用户原文没有空格。商家：这是完整商家回复。</p>
+      </article>
+    </div>
+  </body></html>`);
+
+  const capture = await captureJdProductReviews({ selectedFilterLabels: ['差评'], limitPerFilter: 1 }, document, new URL('https://item.jd.com/280930.html'));
+
+  assert.equal(capture.reviews[0].text, '用户原文没有空格。');
+  assert.equal(capture.reviews[0].merchantReply, '这是完整商家回复。');
+});
+
 test('captures every loadable review without count or body truncation in capture-all mode', async () => {
   const longBody = `开头-${'完整评论'.repeat(3_000)}-结尾`;
   const { document } = parseHTML(`<!doctype html><html><body>
@@ -381,6 +428,88 @@ test('captures every loadable review without count or body truncation in capture
   assert.equal(capture.results[0].captureAll, true);
   assert.equal(capture.results[0].captured, 6);
   assert.equal(capture.results[0].status, 'complete');
+});
+
+test('stops review scrolling as soon as JD quick verification appears', async () => {
+  const { document } = parseHTML(`<!doctype html><html><body>
+    <div role="dialog" class="comment-dialog">
+      <h2>商品评价</h2>
+      <button role="tab" data-filter="positive" aria-selected="true">好评 2000+</button>
+      <div class="comment-list">
+        <article class="comment-item" data-comment-id="risk-0">
+          <span data-role="author">u***0</span>
+          <span data-role="date">2026-09-10</span>
+          <p data-role="comment-text">风控前加载到的正常评论内容。</p>
+        </article>
+      </div>
+    </div>
+  </body></html>`);
+  const list = document.querySelector('.comment-list');
+  Object.defineProperties(list, {
+    clientHeight: { configurable: true, value: 400 },
+    scrollHeight: { configurable: true, value: 20_000 },
+  });
+  let scrolls = 0;
+  list.addEventListener('scroll', () => {
+    scrolls += 1;
+    document.body.innerHTML = '<main><p>验证一下，购物无忧</p><button>快速验证</button></main>';
+  });
+
+  const capture = await captureJdProductReviews({
+    selectedFilterLabels: ['好评'],
+    limitPerFilter: 3,
+  }, document, new URL('https://item.jd.com/280930.html'));
+
+  assert.equal(capture.status, 'blocked');
+  assert.equal(capture.accessErrorCode, 'BROWSER_SECURITY_CHALLENGE');
+  assert.equal(scrolls, 1);
+});
+
+test('capture-all mode stops at the scroll safety limit even while reviews keep growing', async () => {
+  const { document } = parseHTML(`<!doctype html><html><body>
+    <div role="dialog" class="comment-dialog">
+      <h2>商品评价</h2>
+      <button role="tab" data-filter="positive" aria-selected="true">好评 2000+</button>
+      <div class="comment-list">
+        <article class="comment-item" data-comment-id="safe-0">
+          <span data-role="author">u***0</span>
+          <span data-role="date">2026-09-10</span>
+          <p data-role="comment-text">安全上限测试评论第 0 条。</p>
+        </article>
+      </div>
+    </div>
+  </body></html>`);
+  const list = document.querySelector('.comment-list');
+  Object.defineProperties(list, {
+    clientHeight: { configurable: true, value: 400 },
+    scrollHeight: { configurable: true, value: 20_000 },
+  });
+  let scrolls = 0;
+  list.addEventListener('scroll', () => {
+    scrolls += 1;
+    list.insertAdjacentHTML('beforeend', `<article class="comment-item" data-comment-id="safe-${scrolls}">
+      <span data-role="author">u***${scrolls}</span>
+      <span data-role="date">2026-09-${10 + scrolls}</span>
+      <p data-role="comment-text">安全上限测试评论第 ${scrolls} 条。</p>
+    </article>`);
+  });
+
+  const capture = await captureJdProductReviews({
+    selectedFilterLabels: ['好评'],
+    captureAll: true,
+    maxScrollRounds: 2,
+  }, document, new URL('https://item.jd.com/280930.html'));
+
+  assert.equal(scrolls, 2);
+  assert.equal(capture.status, 'partial');
+  assert.match(capture.results[0].warning, /安全采集上限/);
+});
+
+test('recognizes the JD shopping-protection verification page before product extraction', () => {
+  const { document } = parseHTML('<html><body><p>验证一下，购物无忧</p><button>快速验证</button></body></html>');
+  const payload = extractJdProductPayload(document, new URL('https://item.jd.com/280930.html'));
+  assert.equal(payload.accessErrorCode, 'BROWSER_SECURITY_CHALLENGE');
+  assert.equal(payload.externalId, '');
 });
 
 test('captures only custom review filters and clamps the shared limit to one through fifty', async () => {

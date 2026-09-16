@@ -13,6 +13,14 @@ export function isJdProductUrl(value) {
 export async function ensureJdReviewModal(pageDocument = globalThis.document) {
   const clean = (value, limit = 2_000) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, limit);
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const detectAccessErrorCode = () => {
+    const pageProbe = clean(pageDocument.body?.innerText || pageDocument.body?.textContent || '', 8_000);
+    if (/captcha|安全验证|人机验证|访问受限|滑块验证|verify you are human|验证一下[，,\s]*购物无忧|快速验证/i.test(pageProbe)) {
+      return 'BROWSER_SECURITY_CHALLENGE';
+    }
+    if (/请先登录|登录后查看|登录后继续|sign in to continue|login required/i.test(pageProbe)) return 'BROWSER_LOGIN_REQUIRED';
+    return '';
+  };
   const isVisible = (node) => {
     let current = node;
     while (current && current !== pageDocument) {
@@ -29,6 +37,10 @@ export async function ensureJdReviewModal(pageDocument = globalThis.document) {
     }
     return Boolean(node);
   };
+  const initialAccessErrorCode = detectAccessErrorCode();
+  if (initialAccessErrorCode) {
+    return { modalDetected: false, opened: false, entryFound: false, accessErrorCode: initialAccessErrorCode };
+  }
   const findModal = () => {
     const candidates = Array.from(pageDocument.querySelectorAll('[role="dialog"], dialog, [aria-modal="true"], [class*="dialog"], [class*="modal"]'));
     const explicit = candidates.find((node) => {
@@ -81,6 +93,10 @@ export async function ensureJdReviewModal(pageDocument = globalThis.document) {
     }
     for (let attempt = 0; attempt < 16; attempt += 1) {
       await sleep(250);
+      const accessErrorCode = detectAccessErrorCode();
+      if (accessErrorCode) {
+        return { modalDetected: false, opened: false, entryFound: true, accessErrorCode };
+      }
       if (findModal()) {
         try { pageWindow?.scrollTo?.(originalX, originalY); } catch { /* Best effort. */ }
         return { modalDetected: true, opened: true, entryFound: true };
@@ -94,6 +110,24 @@ export async function ensureJdReviewModal(pageDocument = globalThis.document) {
 // Keep this function self-contained: chrome.scripting serializes it into the page.
 export function extractJdReviewPreview(pageDocument = globalThis.document) {
   const clean = (value, limit = 2_000) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, limit);
+  const pageProbe = clean(pageDocument.body?.innerText || pageDocument.body?.textContent || '', 8_000);
+  const accessErrorCode = /captcha|安全验证|人机验证|访问受限|滑块验证|verify you are human|验证一下[，,\s]*购物无忧|快速验证/i.test(pageProbe)
+    ? 'BROWSER_SECURITY_CHALLENGE'
+    : /请先登录|登录后查看|登录后继续|sign in to continue|login required/i.test(pageProbe)
+      ? 'BROWSER_LOGIN_REQUIRED'
+      : '';
+  if (accessErrorCode) {
+    return {
+      modalDetected: false,
+      availableFilters: [],
+      selectedFilters: [],
+      results: [],
+      reviews: [],
+      status: 'blocked',
+      warnings: ['检测到登录或安全验证，已停止评论采集'],
+      accessErrorCode,
+    };
+  }
   const isVisible = (node) => {
     if (!node || node.hidden || node.getAttribute?.('aria-hidden') === 'true') return false;
     const style = clean(node.getAttribute?.('style'), 1_000).toLowerCase();
@@ -191,6 +225,14 @@ export function extractJdReviewPreview(pageDocument = globalThis.document) {
 export async function captureJdProductReviews(reviewOptions = {}, pageDocument = globalThis.document, pageLocation = globalThis.location) {
   const clean = (value, limit = 20_000) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, limit);
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const detectAccessErrorCode = () => {
+    const pageProbe = clean(pageDocument.body?.innerText || pageDocument.body?.textContent || '', 8_000);
+    if (/captcha|安全验证|人机验证|访问受限|滑块验证|verify you are human|验证一下[，,\s]*购物无忧|快速验证/i.test(pageProbe)) {
+      return 'BROWSER_SECURITY_CHALLENGE';
+    }
+    if (/请先登录|登录后查看|登录后继续|sign in to continue|login required/i.test(pageProbe)) return 'BROWSER_LOGIN_REQUIRED';
+    return '';
+  };
   const isVisible = (node) => {
     if (!node || node.hidden || node.getAttribute?.('aria-hidden') === 'true') return false;
     const style = clean(node.getAttribute?.('style'), 1_000).toLowerCase();
@@ -231,6 +273,19 @@ export async function captureJdProductReviews(reviewOptions = {}, pageDocument =
     }
     return null;
   };
+  const initialAccessErrorCode = detectAccessErrorCode();
+  if (initialAccessErrorCode) {
+    return {
+      modalDetected: false,
+      availableFilters: [],
+      selectedFilters: [],
+      results: [],
+      reviews: [],
+      status: 'blocked',
+      warnings: ['检测到登录或安全验证，已停止评论采集'],
+      accessErrorCode: initialAccessErrorCode,
+    };
+  }
   const modal = findModal();
   if (!modal) {
     return {
@@ -289,6 +344,10 @@ export async function captureJdProductReviews(reviewOptions = {}, pageDocument =
   const limitPerFilter = Number.isFinite(requestedLimit)
     ? Math.max(1, Math.min(50, Math.trunc(requestedLimit)))
     : 5;
+  const maxScrollRounds = Number.isFinite(Number(reviewOptions?.maxScrollRounds))
+    ? Math.max(1, Math.min(12, Math.trunc(Number(reviewOptions.maxScrollRounds))))
+    : 6;
+  const safetyReviewLimit = captureAll ? 50 : limitPerFilter;
   const requestedIds = Array.from(new Set((Array.isArray(reviewOptions?.selectedFilterIds) ? reviewOptions.selectedFilterIds : [])
     .map((value) => clean(value, 200)).filter(Boolean)));
   const requestedLabels = Array.from(new Set((Array.isArray(reviewOptions?.selectedFilterLabels) ? reviewOptions.selectedFilterLabels : [])
@@ -332,7 +391,7 @@ export async function captureJdProductReviews(reviewOptions = {}, pageDocument =
   const fullReviewText = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
   const splitReviewText = (value) => {
     const normalized = fullReviewText(value);
-    const merchantReply = /(?:^|\s)(?:商家|卖家|店铺|客服)(?:回复)?\s*[：:]/.exec(normalized);
+    const merchantReply = /(?:商家|卖家|店铺|客服)(?:回复)?\s*[：:]/.exec(normalized);
     if (!merchantReply) return { text: normalized, merchantReply: '' };
     const replyText = normalized.slice(merchantReply.index).trim()
       .replace(/^(?:商家|卖家|店铺|客服)(?:回复)?\s*[：:]\s*/, '');
@@ -341,9 +400,28 @@ export async function captureJdProductReviews(reviewOptions = {}, pageDocument =
       merchantReply: fullReviewText(replyText),
     };
   };
-  const firstReviewContent = (root, selectors) => {
+  const isMerchantReplyNode = (node, row) => {
+    let current = node;
+    for (let depth = 0; current && current !== row && depth < 5; depth += 1, current = current.parentElement) {
+      const identity = [
+        current.getAttribute?.('data-role'),
+        current.getAttribute?.('class'),
+        current.getAttribute?.('id'),
+      ].map((value) => String(value || '')).join(' ');
+      if (/(?:^|[\s_-])(?:merchant|seller|vendor|shop|service)?[-_ ]*repl(?:y|ies)(?:[\s_-]|$)/i.test(identity)
+        || /(?:商家|卖家|店铺|客服)(?:回复)?/.test(identity)) return true;
+      const directText = fullReviewText(Array.from(current.childNodes || [])
+        .filter((child) => child.nodeType === 3)
+        .map((child) => child.textContent)
+        .join(' '));
+      if (/^(?:商家|卖家|店铺|客服)(?:回复)?\s*[：:]/.test(directText)) return true;
+    }
+    return false;
+  };
+  const firstUserReviewContent = (root, selectors) => {
     for (const selector of selectors) {
       for (const node of root.querySelectorAll(selector)) {
+        if (isMerchantReplyNode(node, root)) continue;
         const value = splitReviewText(node.getAttribute?.('content') || node.textContent);
         if (value.text) return value;
       }
@@ -354,6 +432,28 @@ export async function captureJdProductReviews(reviewOptions = {}, pageDocument =
     .filter((node) => isVisible(node))
     .map((node) => ({ node, text: fullReviewText(node.textContent) }))
     .filter(({ node, text }) => text && !Array.from(node.children || []).some((child) => fullReviewText(child.textContent)));
+  const merchantReplyText = (root, textItems) => {
+    const dedicated = Array.from(root.querySelectorAll([
+      '[data-role*="reply" i]',
+      '[class*="reply" i]',
+      '[class*="merchant" i]',
+      '[class*="seller" i]',
+      '[class*="shop-reply" i]',
+    ].join(', ')))
+      .filter((node) => isMerchantReplyNode(node, root))
+      .map((node) => {
+        const content = splitReviewText(node.getAttribute?.('content') || node.textContent);
+        return content.merchantReply || fullReviewText(node.textContent)
+          .replace(/^(?:商家|卖家|店铺|客服)(?:回复)?\s*[：:]\s*/, '');
+      })
+      .filter(Boolean);
+    const marked = textItems
+      .map((item) => splitReviewText(item.text).merchantReply)
+      .filter(Boolean);
+    const combined = splitReviewText(root.textContent).merchantReply;
+    return [...dedicated, ...marked, ...(combined ? [combined] : [])]
+      .sort((left, right) => right.length - left.length)[0] || '';
+  };
   const discoverReviewRows = () => {
     const selector = [
       '[data-comment-id]',
@@ -394,8 +494,9 @@ export async function captureJdProductReviews(reviewOptions = {}, pageDocument =
     const reviews = [];
     for (const row of rows) {
       const textItems = leafTexts(row);
-      const explicitContent = firstReviewContent(row, ['[data-role="comment-text"]', '[class*="comment-content"]', '[class*="commentText"]', '[class*="comment-text"]', '[class*="content"] [class*="text"]', '.comment-con']);
+      const explicitContent = firstUserReviewContent(row, ['[data-role="comment-text"]', '[class*="comment-content"]', '[class*="commentText"]', '[class*="comment-text"]', '[class*="content"] [class*="text"]', '.comment-con']);
       const fallbackContent = textItems
+        .filter((item) => !isMerchantReplyNode(item.node, row))
         .map((item) => splitReviewText(item.text))
         .filter((value) => value.text)
         .filter((value) => value.text.length >= 2 && !/(?:^|[^\d])(?:\d{4}-)?\d{2}-\d{2}(?!\d)/.test(value.text))
@@ -403,7 +504,7 @@ export async function captureJdProductReviews(reviewOptions = {}, pageDocument =
         .sort((left, right) => right.text.length - left.text.length)[0] || { text: '', merchantReply: '' };
       const text = explicitContent.text || fallbackContent.text;
       const merchantReply = explicitContent.merchantReply
-        || textItems.map((item) => splitReviewText(item.text).merchantReply).filter(Boolean).sort((left, right) => right.length - left.length)[0]
+        || merchantReplyText(row, textItems)
         || fallbackContent.merchantReply;
       if (!text) continue;
       const explicitAuthor = firstText(row, ['[data-role="author"]', '[class*="user-name"]', '[class*="nickname"]', '[class*="userName"]', '[class*="user"] [class*="name"]'], 300);
@@ -479,12 +580,15 @@ export async function captureJdProductReviews(reviewOptions = {}, pageDocument =
   const signature = () => clean(discoverReviewRows().slice(0, 2).map((node) => node.textContent).join('|'), 1_000);
   const merged = new Map();
   const results = [];
-  for (const filter of selected) {
+  let accessErrorCode = '';
+  captureFilters: for (const filter of selected) {
     const before = signature();
     filter.node.click?.();
     let sawLoadingState = false;
     for (let attempt = 0; attempt < 12; attempt += 1) {
       await sleep(250);
+      accessErrorCode = detectAccessErrorCode();
+      if (accessErrorCode) break captureFilters;
       const active = filter.node.getAttribute?.('aria-selected') === 'true'
         || /(?:^|\s)(?:active|selected|checked)(?:\s|$)/i.test(String(filter.node.className || ''));
       const current = signature();
@@ -495,21 +599,33 @@ export async function captureJdProductReviews(reviewOptions = {}, pageDocument =
     scrollContainer.scrollTop = 0;
     const collectedById = new Map();
     let stalled = 0;
+    let scrollRounds = 0;
+    let stoppedBySafetyLimit = false;
     while (stalled < 3) {
+      accessErrorCode = detectAccessErrorCode();
+      if (accessErrorCode) break captureFilters;
       const beforeCount = collectedById.size;
       for (const review of extractReviews(filter)) collectedById.set(review.id, review);
       if (collectedById.size === beforeCount) stalled += 1;
       else stalled = 0;
-      if (!captureAll && collectedById.size >= limitPerFilter) break;
+      if (collectedById.size >= safetyReviewLimit) {
+        stoppedBySafetyLimit = captureAll;
+        break;
+      }
+      if (scrollRounds >= maxScrollRounds) {
+        stoppedBySafetyLimit = stalled < 3;
+        break;
+      }
       const priorTop = Number(scrollContainer.scrollTop || 0);
       const step = Math.max(Number(scrollContainer.clientHeight || 0) * 0.75, 480);
       scrollContainer.scrollTop = priorTop + step;
+      scrollRounds += 1;
       const PageEvent = pageDocument.defaultView?.Event || globalThis.Event;
       if (PageEvent) scrollContainer.dispatchEvent?.(new PageEvent('scroll', { bubbles: true }));
       await sleep(400);
     }
     const collected = Array.from(collectedById.values());
-    if (!captureAll && collected.length > limitPerFilter) collected.splice(limitPerFilter);
+    if (collected.length > safetyReviewLimit) collected.splice(safetyReviewLimit);
     for (const review of collected) {
       const prior = merged.get(review.id);
       merged.set(review.id, prior ? {
@@ -517,7 +633,14 @@ export async function captureJdProductReviews(reviewOptions = {}, pageDocument =
         matchedFilterIds: Array.from(new Set([...(prior.matchedFilterIds || []), filter.id])),
       } : review);
     }
-    const complete = captureAll ? collected.length > 0 || /^0(?:\D|$)/.test(filter.countText || '') : collected.length >= limitPerFilter;
+    const complete = !stoppedBySafetyLimit
+      && (captureAll ? collected.length > 0 || /^0(?:\D|$)/.test(filter.countText || '') : collected.length >= limitPerFilter);
+    const warning = stoppedBySafetyLimit
+      ? `已达到安全采集上限（${collected.length} 条或 ${maxScrollRounds} 次滚动）`
+      : !complete
+        ? captureAll ? '页面未加载出可采集评论' : `仅加载到 ${collected.length} 条评论`
+        : '';
+    if (stoppedBySafetyLimit && warning) warnings.push(`${filter.label}：${warning}`);
     results.push({
       filterId: filter.id,
       label: filter.label,
@@ -525,8 +648,20 @@ export async function captureJdProductReviews(reviewOptions = {}, pageDocument =
       captured: collected.length,
       status: complete ? 'complete' : 'partial',
       ...(captureAll ? { captureAll: true } : {}),
-      ...(!complete ? { warning: captureAll ? '页面未加载出可采集评论' : `仅加载到 ${collected.length} 条评论` } : {}),
+      ...(warning ? { warning } : {}),
     });
+  }
+  if (accessErrorCode) {
+    return {
+      modalDetected: true,
+      availableFilters,
+      selectedFilters,
+      results,
+      reviews: Array.from(merged.values()),
+      status: 'blocked',
+      warnings: Array.from(new Set([...warnings, '检测到登录或安全验证，已停止评论采集'])),
+      accessErrorCode,
+    };
   }
   if (originalFilter && !selected.some((filter) => filter.id === originalFilter.id)) {
     originalFilter.node.click?.();
@@ -568,6 +703,26 @@ export function extractJdProductPayload(pageDocument = globalThis.document, page
   };
   const unique = (values) => Array.from(new Set(values.filter(Boolean)));
   const sourceUrl = String(pageLocation.href || '');
+  const pageProbe = clean(pageDocument.body?.innerText || pageDocument.body?.textContent || '', 8_000);
+  const accessErrorCode = /captcha|安全验证|人机验证|访问受限|滑块验证|verify you are human|验证一下[，,\s]*购物无忧|快速验证/i.test(pageProbe)
+    ? 'BROWSER_SECURITY_CHALLENGE'
+    : /请先登录|登录后查看|登录后继续|sign in to continue|login required/i.test(pageProbe)
+      ? 'BROWSER_LOGIN_REQUIRED'
+      : '';
+  if (accessErrorCode) {
+    return {
+      platform: 'jd',
+      captureVersion: 3,
+      sourceUrl,
+      capturedAt: new Date().toISOString(),
+      title: '',
+      externalId: '',
+      parameters: [],
+      images: [],
+      missingFields: ['商品名称', '商品标识'],
+      accessErrorCode,
+    };
+  }
   const currentUrl = new URL(sourceUrl);
   const pathSku = currentUrl.pathname.match(/\/(\d+)\.html/i)?.[1] || '';
   const selectedSkuId = clean(pathSku || currentUrl.searchParams.get('sku') || currentUrl.searchParams.get('skuId'), 500);

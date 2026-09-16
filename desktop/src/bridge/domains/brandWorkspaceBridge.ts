@@ -10,6 +10,7 @@ export function createBrandWorkspaceBridge(core: BridgeCore) {
       upsertProduct: <T = unknown>(payload: Record<string, unknown>) => core.invokeChannel('brand-workspace:upsert-product', payload) as Promise<T>,
       upsertSku: <T = unknown>(payload: Record<string, unknown>) => core.invokeChannel('brand-workspace:upsert-sku', payload) as Promise<T>,
       upsertProductDetailPage: <T = unknown>(payload: Record<string, unknown>) => core.invokeChannel('brand-workspace:upsert-product-detail-page', payload) as Promise<T>,
+      deleteProduct: <T = unknown>(payload: { id: string }) => core.invokeChannel('brand-workspace:delete-product', payload) as Promise<T>,
       rebuildAiIndex: <T = unknown>() => core.invokeChannel('brand-workspace:rebuild-ai-index') as Promise<T>,
     },
   };

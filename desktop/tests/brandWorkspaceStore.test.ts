@@ -294,3 +294,76 @@ test('JD review captures stay in source snapshots, keep review images separate, 
   assert.equal(creativeReference.reviews.length, 15);
   assert.equal(creativeReference.assets.some((asset) => asset.role === 'review-image'), false);
 });
+
+test('hard-deleting a captured product removes records, snapshots, reviews, and local asset files', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'gardenflow-product-hard-delete-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const store = createBrandWorkspaceStore(() => root);
+  const captured = await store.ingestProduct({
+    captureVersion: 3,
+    platform: 'jd',
+    externalId: 'delete-me',
+    sourceUrl: 'https://item.jd.com/delete-me.html',
+    title: '待硬删除商品',
+    selectedSku: { externalId: 'delete-me', name: '默认规格' },
+    images: [{ name: '商品主图', role: 'primary', dataUrl: ONE_PIXEL_PNG, origin: 'capture' }],
+    reviewCapture: {
+      modalDetected: true,
+      status: 'complete',
+      availableFilters: [{ id: 'negative', label: '差评', sentiment: 'negative' }],
+      selectedFilters: [{ id: 'negative', label: '差评', limit: 1 }],
+      results: [{ filterId: 'negative', label: '差评', requested: 1, captured: 1, status: 'complete' }],
+      reviews: [{
+        id: 'delete-review',
+        text: '用户评论',
+        merchantReply: '商家回复',
+        matchedFilterIds: ['negative'],
+        images: [{ name: '买家秀', dataUrl: ONE_PIXEL_PNG, origin: 'capture' }],
+      }],
+      warnings: [],
+    },
+  });
+  const sku = captured.product.skus[0];
+  await store.upsertSku({
+    id: sku.id,
+    productId: captured.product.product.id,
+    name: sku.name,
+    images: [{ name: 'SKU 图', dataUrl: ONE_PIXEL_PNG }],
+  });
+  await store.upsertProductDetailPage({
+    productId: captured.product.product.id,
+    platform: 'jd',
+    market: 'CN',
+    locale: 'zh-CN',
+    images: [{ name: '详情图', dataUrl: ONE_PIXEL_PNG }],
+  });
+
+  const before = await store.get(captured.product.product.id);
+  assert.ok(before.product);
+  const assetPaths = [
+    ...before.product.assets,
+    ...before.product.reviewAssets,
+    ...Object.values(before.product.skuAssets).flat(),
+    ...Object.values(before.product.detailPageAssets).flat(),
+  ].map((asset) => asset.absolutePath);
+  assert.ok(assetPaths.length >= 4);
+  for (const assetPath of assetPaths) await fs.access(assetPath);
+
+  const deleted = await store.deleteProduct(captured.product.product.id);
+
+  assert.equal(deleted.productId, captured.product.product.id);
+  assert.equal(deleted.deletedSnapshots, 1);
+  assert.equal(deleted.deletedReviews, 1);
+  assert.deepEqual(deleted.fileDeleteFailures, []);
+  await assert.rejects(store.get(captured.product.product.id), /不存在/);
+  assert.deepEqual(await store.list(), []);
+  for (const assetPath of assetPaths) {
+    await assert.rejects(fs.access(assetPath));
+  }
+  const catalog = JSON.parse(await fs.readFile(path.join(root, 'catalog.json'), 'utf8'));
+  assert.deepEqual(catalog.products, []);
+  assert.deepEqual(catalog.skus, []);
+  assert.deepEqual(catalog.sourceSnapshots, []);
+  assert.deepEqual(catalog.detailPages, []);
+  assert.deepEqual(catalog.assets, []);
+});

@@ -640,6 +640,14 @@ export function createBrandWorkspaceStore(rootProvider: () => string) {
     ];
   }
 
+  function deletableAssetPath(asset: StoredAssetRef): string | null {
+    const assetRoot = path.resolve(assetsRoot());
+    const absolutePath = path.resolve(rootProvider(), asset.relativePath);
+    const relative = path.relative(assetRoot, absolutePath);
+    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return null;
+    return absolutePath;
+  }
+
   function productBundle(catalog: BrandWorkspaceCatalog, product: BrandWorkspaceProduct) {
     const skus = catalog.skus.filter((sku) => sku.productId === product.id);
     const detailPages = catalog.detailPages.filter((page) => page.productId === product.id);
@@ -995,6 +1003,58 @@ export function createBrandWorkspaceStore(rootProvider: () => string) {
     return page;
   }
 
+  async function deleteProduct(idInput: string) {
+    const catalog = await readCatalog();
+    const productId = cleanId(idInput);
+    const product = catalog.products.find((item) => item.id === productId);
+    if (!product) throw new Error('商品不存在');
+
+    const skuIds = new Set(catalog.skus.filter((sku) => sku.productId === productId).map((sku) => sku.id));
+    const detailPageIds = new Set(catalog.detailPages.filter((page) => page.productId === productId).map((page) => page.id));
+    const snapshots = catalog.sourceSnapshots.filter((snapshot) => snapshot.productId === productId);
+    const reviewIds = new Set(snapshots.flatMap((snapshot) => (
+      snapshot.reviewCapture?.reviews.map((review) => review.id) || []
+    )));
+    const removedAssets = catalog.assets.filter((asset) => (
+      (asset.ownerType === 'product' && asset.ownerId === productId)
+      || (asset.ownerType === 'sku' && skuIds.has(asset.ownerId))
+      || (asset.ownerType === 'product-detail' && detailPageIds.has(asset.ownerId))
+      || (asset.ownerType === 'product-review' && reviewIds.has(asset.ownerId))
+    ));
+
+    catalog.products = catalog.products.filter((item) => item.id !== productId);
+    catalog.skus = catalog.skus.filter((sku) => sku.productId !== productId);
+    catalog.detailPages = catalog.detailPages.filter((page) => page.productId !== productId);
+    catalog.sourceSnapshots = catalog.sourceSnapshots.filter((snapshot) => snapshot.productId !== productId);
+    const removedAssetIds = new Set(removedAssets.map((asset) => asset.id));
+    catalog.assets = catalog.assets.filter((asset) => !removedAssetIds.has(asset.id));
+    await writeCatalog(catalog);
+
+    const fileDeleteFailures: string[] = [];
+    for (const asset of removedAssets) {
+      const absolutePath = deletableAssetPath(asset);
+      if (!absolutePath) {
+        fileDeleteFailures.push(asset.id);
+        continue;
+      }
+      try {
+        await fs.rm(absolutePath, { force: true });
+      } catch {
+        fileDeleteFailures.push(asset.id);
+      }
+    }
+
+    return {
+      productId,
+      deletedSnapshots: snapshots.length,
+      deletedSkus: skuIds.size,
+      deletedDetailPages: detailPageIds.size,
+      deletedReviews: reviewIds.size,
+      deletedAssets: removedAssets.length - fileDeleteFailures.length,
+      fileDeleteFailures,
+    };
+  }
+
   async function ingestProduct(input: CapturedProductInput) {
     const catalog = await readCatalog();
     const platform = cleanId(input.platform);
@@ -1229,6 +1289,7 @@ export function createBrandWorkspaceStore(rootProvider: () => string) {
     upsertProduct: (input: Parameters<typeof upsertProduct>[0]) => enqueueMutation(() => upsertProduct(input)),
     upsertSku: (input: Parameters<typeof upsertSku>[0]) => enqueueMutation(() => upsertSku(input)),
     upsertProductDetailPage: (input: Parameters<typeof upsertProductDetailPage>[0]) => enqueueMutation(() => upsertProductDetailPage(input)),
+    deleteProduct: (id: string) => enqueueMutation(() => deleteProduct(id)),
     ingestProduct: (input: CapturedProductInput) => enqueueMutation(() => ingestProduct(input)),
     rebuildAiIndex: () => enqueueMutation(rebuildAiIndex),
     catalogExists: () => fsSync.existsSync(catalogPath()),

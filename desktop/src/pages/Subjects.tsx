@@ -179,6 +179,7 @@ interface BrandWorkspaceBridge {
     upsertBrand: (payload: unknown) => Promise<BrandWorkspaceResult>;
     upsertProduct: (payload: unknown) => Promise<BrandWorkspaceResult>;
     upsertSku: (payload: unknown) => Promise<BrandWorkspaceResult>;
+    deleteProduct: (payload: { id: string }) => Promise<BrandWorkspaceResult>;
     rebuildAiIndex: () => Promise<BrandWorkspaceResult>;
 }
 
@@ -1157,6 +1158,7 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
     const [productDraftBrand, setProductDraftBrand] = useState<BrandWorkspaceBrand | null>(null);
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
     const [isProductModalSubmitting, setIsProductModalSubmitting] = useState(false);
+    const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
     const [expandedBrandIds, setExpandedBrandIds] = useState<Set<string>>(() => new Set());
     const [productDetailContext, setProductDetailContext] = useState<ProductDetailContext | null>(null);
     const [selectedDetailPlatformId, setSelectedDetailPlatformId] = useState('');
@@ -1903,6 +1905,34 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
             setIsProductModalSubmitting(false);
         }
     }, [closeProductModal, loadData, productDraft]);
+
+    const handleHardDeleteProduct = useCallback(async (productBundle: BrandWorkspaceProductBundle) => {
+        const product = productBundle.product;
+        const confirmed = await appConfirm(
+            `永久删除商品“${product.name}”？商品资料、来源快照、SKU、评论、详情页和本地图片文件都会被删除，且无法恢复。`,
+            { title: '硬删除采集资产', confirmLabel: '永久删除', tone: 'danger' },
+        );
+        if (!confirmed) return;
+        const brandWorkspaceBridge = getBrandWorkspaceBridge();
+        if (!brandWorkspaceBridge) {
+            void appAlert('品牌工作区不可用');
+            return;
+        }
+        setDeletingProductId(product.id);
+        setError('');
+        try {
+            const result = await brandWorkspaceBridge.deleteProduct({ id: product.id });
+            if (!result?.success) throw new Error(result?.error || '硬删除商品失败');
+            setProductDetailContext((current) => current?.productId === product.id ? null : current);
+            setSelectedDetailPlatformId('');
+            await loadData();
+        } catch (e) {
+            console.error('Failed to hard-delete product:', e);
+            setError(e instanceof Error ? e.message : '硬删除商品失败');
+        } finally {
+            setDeletingProductId(null);
+        }
+    }, [loadData]);
 
     const openCreateCategoryDialog = useCallback(() => {
         setCategoryDialogMode('create');
@@ -2717,6 +2747,15 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
                         <div className="flex shrink-0 items-center gap-2">
                             <button
                                 type="button"
+                                onClick={() => void handleHardDeleteProduct(activeDetailProductBundle)}
+                                disabled={deletingProductId === activeDetailProductBundle.product.id}
+                                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
+                            >
+                                <Trash2 className="h-4 w-4" />
+                                {deletingProductId === activeDetailProductBundle.product.id ? '正在删除…' : '硬删除'}
+                            </button>
+                            <button
+                                type="button"
                                 onClick={() => {
                                     openEditProductModal(activeDetailBrandBundle.brand, activeDetailProductBundle);
                                     setProductDetailContext(null);
@@ -3359,6 +3398,19 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
                                                                     title="编辑商品"
                                                                 >
                                                                     <Pencil className="h-4 w-4" />
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(event) => {
+                                                                        event.stopPropagation();
+                                                                        void handleHardDeleteProduct(productBundle);
+                                                                    }}
+                                                                    disabled={deletingProductId === product.id}
+                                                                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-red-500 transition hover:bg-red-50 hover:text-red-600 disabled:cursor-wait disabled:opacity-50"
+                                                                    aria-label="硬删除商品"
+                                                                    title="硬删除商品及全部采集资料"
+                                                                >
+                                                                    <Trash2 className="h-4 w-4" />
                                                                 </button>
                                                             </div>
                                                         );})}

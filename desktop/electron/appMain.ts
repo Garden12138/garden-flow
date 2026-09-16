@@ -7069,6 +7069,20 @@ ipcMain.handle('brand-workspace:upsert-product-detail-page', async (_, payload?:
   }
 });
 
+ipcMain.handle('brand-workspace:delete-product', async (_, payload?: { id?: string }) => {
+  try {
+    const id = String(payload?.id || '').trim();
+    if (!id) return { success: false, error: 'id is required' };
+    const deletion = await brandWorkspaceStore.deleteProduct(id);
+    await brandWorkspaceStore.rebuildAiIndex();
+    emitRendererDataChanged('subjects', { action: 'product-delete', entityId: id });
+    return { success: true, deletion };
+  } catch (error) {
+    console.error('Failed to hard-delete product:', error);
+    return { success: false, error: String(error) };
+  }
+});
+
 ipcMain.handle('brand-workspace:rebuild-ai-index', async () => {
   try {
     return { success: true, ...(await brandWorkspaceStore.rebuildAiIndex()) };

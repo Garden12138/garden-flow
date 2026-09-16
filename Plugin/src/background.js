@@ -4321,11 +4321,20 @@ async function saveCurrentPageFromTab(tabId, options = {}, existingInspection = 
 
 async function previewJdProductFromTab(tabId) {
   const product = await runExtraction(tabId, extractJdProductPayload, { world: 'MAIN' });
+  if (product?.accessErrorCode) {
+    throw captureAccessError(product.accessErrorCode, '京东', product?.sourceUrl);
+  }
   if (!product?.externalId || !product?.title) {
     throw new Error('当前页面未识别到完整的京东商品名称或商品标识');
   }
-  await runExtraction(tabId, ensureJdReviewModal, { world: 'MAIN' });
+  const modalState = await runExtraction(tabId, ensureJdReviewModal, { world: 'MAIN' });
+  if (modalState?.accessErrorCode) {
+    throw captureAccessError(modalState.accessErrorCode, '京东', product?.sourceUrl);
+  }
   product.reviewCapture = await runExtraction(tabId, extractJdReviewPreview, { world: 'MAIN' });
+  if (product.reviewCapture?.accessErrorCode) {
+    throw captureAccessError(product.reviewCapture.accessErrorCode, '京东', product?.sourceUrl);
+  }
   return {
     success: true,
     preview: true,
@@ -4350,6 +4359,9 @@ async function saveJdProductFromTab(tabId, reviewOptions = {}) {
     world: 'MAIN',
     args: [normalizedReviewOptions],
   });
+  if (reviewCapture?.accessErrorCode) {
+    throw captureAccessError(reviewCapture.accessErrorCode, '京东', preview.product?.sourceUrl);
+  }
   const payload = {
     ...preview.product,
     reviewOptions: normalizedReviewOptions,

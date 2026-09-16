@@ -53,7 +53,7 @@ let jdProductPreview = null;
 let jdReviewOptions = {
   selectedFilterIds: [],
   limitPerFilter: 5,
-  captureAll: true,
+  captureAll: false,
 };
 let currentSettings = {
   xhsBloggerNoteLimit: 50,
@@ -330,7 +330,7 @@ function renderCaptureActions(nextContext) {
   if (captureSignature !== nextSignature) {
     captureFeedback = null;
     jdProductPreview = null;
-    jdReviewOptions = { selectedFilterIds: [], limitPerFilter: 5, captureAll: true };
+    jdReviewOptions = { selectedFilterIds: [], limitPerFilter: 5, captureAll: false };
     captureSignature = nextSignature;
   }
 
@@ -454,7 +454,7 @@ function renderCaptureActions(nextContext) {
         allInput.checked = jdReviewOptions.captureAll;
         allInput.disabled = Boolean(capturePendingAction) || automatedCapturePending || !isHealthy;
         const allLabel = document.createElement('span');
-        allLabel.textContent = '持续滚动，采集页面可加载的全部评论';
+        allLabel.textContent = '尽量采集更多评论（每标签最多 50 条、最多滚动 6 次）';
         allRow.append(allInput, allLabel);
         reviewPanel.appendChild(allRow);
         const limitRow = document.createElement('label');
@@ -476,7 +476,7 @@ function renderCaptureActions(nextContext) {
         const selection = document.createElement('div');
         selection.className = 'jd-review-options-hint';
         const selectedLabels = filters.filter((filter) => jdReviewOptions.selectedFilterIds.includes(filter.id)).map((filter) => filter.label);
-        const quantity = jdReviewOptions.captureAll ? '可加载的全部评论' : `各 ${jdReviewOptions.limitPerFilter} 条`;
+        const quantity = jdReviewOptions.captureAll ? '各最多 50 条（安全上限）' : `各 ${jdReviewOptions.limitPerFilter} 条`;
         selection.textContent = selectedLabels.length
           ? `将采集：${selectedLabels.join('、')}，${quantity}`
           : `默认采集：好评、中评、差评，${quantity}`;
