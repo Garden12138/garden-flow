@@ -21,9 +21,12 @@ export function readSkipSubagentOrchestration(metadata: unknown): boolean {
 
 export function shouldRunSubagentOrchestration(params: {
   runtimeMode: RuntimeMode;
-  route?: Pick<IntentRoute, 'intent' | 'requiresMultiAgent'>;
+  route?: Pick<IntentRoute, 'intent' | 'requiresMultiAgent' | 'workflowKind'>;
   skipSubagentOrchestration?: boolean;
 }): boolean {
+  if (params.route?.workflowKind === 'product-video-compose') {
+    return false;
+  }
   if (params.skipSubagentOrchestration) {
     return false;
   }
@@ -38,9 +41,12 @@ export function shouldRunSubagentOrchestration(params: {
 
 export function shouldUseCoordinator(params: {
   runtimeMode: RuntimeMode;
-  route?: Pick<IntentRoute, 'intent' | 'requiresMultiAgent'>;
+  route?: Pick<IntentRoute, 'intent' | 'requiresMultiAgent' | 'workflowKind'>;
   skipSubagentOrchestration?: boolean;
 }): boolean {
+  if (params.route?.workflowKind === 'product-video-compose') {
+    return false;
+  }
   if (params.skipSubagentOrchestration) {
     return false;
   }

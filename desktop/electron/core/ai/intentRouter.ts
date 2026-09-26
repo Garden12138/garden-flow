@@ -7,7 +7,10 @@ import {
   requiredCapabilitiesForIntent,
   resolveIntentExecutionPolicy,
 } from './intentRoutePolicy';
+import { applyProductVideoWorkflowPolicy } from './productVideoWorkflowPolicy';
 import type { IntentName, IntentRoute, RoleId, RuntimeContext } from './types';
+
+export { applyProductVideoWorkflowPolicy, readExplicitProductRefs } from './productVideoWorkflowPolicy';
 
 type RuntimeLlmConfig = {
   apiKey: string;
@@ -297,7 +300,7 @@ export const routeIntent = async (params: {
   context: RuntimeContext;
   llm?: RuntimeLlmConfig;
 }): Promise<IntentRoute> => {
-  const fallback = buildFallbackRoute(params.context);
+  const fallback = applyProductVideoWorkflowPolicy(buildFallbackRoute(params.context), params.context);
   if (!params.llm?.apiKey || !params.llm.baseURL || !params.llm.model) {
     return fallback;
   }
@@ -309,7 +312,7 @@ export const routeIntent = async (params: {
       fallback,
     });
     if (routed) {
-      return routed;
+      return applyProductVideoWorkflowPolicy(routed, params.context);
     }
   } catch (error) {
     console.warn('[IntentRouter] llm-route-failed', {

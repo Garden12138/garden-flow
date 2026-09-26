@@ -248,6 +248,29 @@ const initDb = () => {
     CREATE INDEX IF NOT EXISTS idx_session_tool_results_call
       ON session_tool_results(session_id, call_id);
 
+    CREATE TABLE IF NOT EXISTS pending_tool_approvals (
+      call_id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      task_id TEXT,
+      tool_name TEXT NOT NULL,
+      proposal_id TEXT,
+      proposal_digest TEXT,
+      params_json TEXT NOT NULL,
+      details_json TEXT NOT NULL,
+      status TEXT NOT NULL,
+      result_json TEXT,
+      error_message TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      resolved_at INTEGER,
+      FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_pending_tool_approvals_session
+      ON pending_tool_approvals(session_id, status, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_pending_tool_approvals_proposal
+      ON pending_tool_approvals(session_id, tool_name, proposal_id, created_at DESC);
+
     CREATE TABLE IF NOT EXISTS runtime_events (
       id TEXT PRIMARY KEY,
       category TEXT NOT NULL,
@@ -283,6 +306,18 @@ const initDb = () => {
 
     CREATE INDEX IF NOT EXISTS idx_vectors_source ON knowledge_vectors(source_id);
   `);
+
+  // An app restart interrupts any in-flight approval execution. The approved
+  // proposal remains durable and can be retried idempotently by the user.
+  const interruptedApprovalTaskIds = (db.prepare(`
+    SELECT task_id FROM pending_tool_approvals
+    WHERE status = 'executing' AND task_id IS NOT NULL AND task_id != ''
+  `).all() as Array<{ task_id: string }>).map((row) => row.task_id);
+  db.prepare(`
+    UPDATE pending_tool_approvals
+    SET status = 'pending', updated_at = ?, error_message = NULL
+    WHERE status = 'executing'
+  `).run(Date.now());
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS agent_tasks (
@@ -325,6 +360,13 @@ const initDb = () => {
     CREATE INDEX IF NOT EXISTS idx_agent_task_traces_task
       ON agent_task_traces(task_id, created_at ASC);
   `);
+  for (const taskId of interruptedApprovalTaskIds) {
+    db.prepare(`
+      UPDATE agent_tasks
+      SET status = 'paused', completed_at = NULL, last_error = NULL, updated_at = ?
+      WHERE id = ? AND status = 'running'
+    `).run(Date.now(), taskId);
+  }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS acp_runs (
@@ -1582,6 +1624,37 @@ export interface RuntimeEventRecord {
   created_at: number;
 }
 
+export type PendingToolApprovalStatus =
+  | 'pending'
+  | 'executing'
+  | 'completed'
+  | 'cancelled'
+  | 'failed'
+  | 'superseded';
+
+export interface PendingToolApprovalRecord {
+  call_id: string;
+  session_id: string;
+  task_id?: string | null;
+  tool_name: string;
+  proposal_id?: string | null;
+  proposal_digest?: string | null;
+  params_json: string;
+  details_json: string;
+  status: PendingToolApprovalStatus;
+  result_json?: string | null;
+  error_message?: string | null;
+  created_at: number;
+  updated_at: number;
+  resolved_at?: number | null;
+}
+
+export interface PendingToolApprovalSnapshot extends PendingToolApprovalRecord {
+  params: Record<string, unknown>;
+  details: Record<string, unknown>;
+  result?: Record<string, unknown> | null;
+}
+
 export type AgentTaskStatus = 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
 export type AgentTaskNodeStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
 
@@ -1983,6 +2056,7 @@ export const updateChatSessionTitle = (id: string, title: string): void => {
  */
 export const deleteChatSession = (id: string): void => {
   db.prepare('DELETE FROM runtime_events WHERE session_id = ?').run(id);
+  db.prepare('DELETE FROM pending_tool_approvals WHERE session_id = ?').run(id);
   db.prepare('DELETE FROM session_tool_results WHERE session_id = ?').run(id);
   db.prepare('DELETE FROM session_checkpoints WHERE session_id = ?').run(id);
   db.prepare('DELETE FROM session_transcript_records WHERE session_id = ?').run(id);
@@ -2218,6 +2292,190 @@ export const setXhsPublisherBinding = (extensionInstanceId: string): void => {
   `).run(String(extensionInstanceId || '').trim(), Date.now());
 };
 
+const parsePendingToolApproval = (record: PendingToolApprovalRecord | null | undefined): PendingToolApprovalSnapshot | null => {
+  if (!record) return null;
+  const parseObject = (value: string | null | undefined): Record<string, unknown> | null => {
+    if (!value) return null;
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? parsed as Record<string, unknown>
+        : null;
+    } catch {
+      return null;
+    }
+  };
+  return {
+    ...record,
+    params: parseObject(record.params_json) || {},
+    details: parseObject(record.details_json) || {},
+    result: parseObject(record.result_json),
+  };
+};
+
+export const createOrReusePendingToolApproval = (input: {
+  callId: string;
+  sessionId: string;
+  taskId?: string | null;
+  toolName: string;
+  proposalId?: string | null;
+  proposalDigest?: string | null;
+  params: Record<string, unknown>;
+  details: Record<string, unknown>;
+}): {
+  approval: PendingToolApprovalSnapshot;
+  reused: boolean;
+  conflict: boolean;
+  supersededTaskIds: string[];
+} => db.transaction(() => {
+  const now = Date.now();
+  const proposalId = String(input.proposalId || '').trim() || null;
+  const proposalDigest = String(input.proposalDigest || '').trim() || null;
+  const existing = proposalId
+    ? db.prepare(`
+        SELECT * FROM pending_tool_approvals
+        WHERE session_id = ? AND tool_name = ? AND proposal_id = ?
+        ORDER BY created_at ASC
+        LIMIT 1
+      `).get(input.sessionId, input.toolName, proposalId) as PendingToolApprovalRecord | undefined
+    : undefined;
+
+  if (existing) {
+    const conflict = Boolean(
+      proposalDigest
+      && existing.proposal_digest
+      && proposalDigest !== existing.proposal_digest,
+    );
+    const supersededTaskIds = existing.task_id
+      && input.taskId
+      && existing.task_id !== input.taskId
+      && existing.status !== 'completed'
+      && existing.status !== 'executing'
+      ? [existing.task_id]
+      : [];
+
+    if (existing.status !== 'completed' && existing.status !== 'executing') {
+      const competingRows = db.prepare(`
+        SELECT task_id FROM pending_tool_approvals
+        WHERE session_id = ? AND tool_name = ? AND status = 'pending' AND call_id != ?
+      `).all(input.sessionId, input.toolName, existing.call_id) as Array<{ task_id?: string | null }>;
+      db.prepare(`
+        UPDATE pending_tool_approvals
+        SET status = 'superseded', updated_at = ?, resolved_at = ?
+        WHERE session_id = ? AND tool_name = ? AND status = 'pending' AND call_id != ?
+      `).run(now, now, input.sessionId, input.toolName, existing.call_id);
+      supersededTaskIds.push(...competingRows
+        .map((row) => String(row.task_id || '').trim())
+        .filter(Boolean));
+      db.prepare(`
+        UPDATE pending_tool_approvals
+        SET task_id = ?, status = 'pending', updated_at = ?, resolved_at = NULL,
+            result_json = NULL, error_message = NULL
+        WHERE call_id = ?
+      `).run(input.taskId || existing.task_id || null, now, existing.call_id);
+    }
+    const approval = parsePendingToolApproval(
+      db.prepare('SELECT * FROM pending_tool_approvals WHERE call_id = ?')
+        .get(existing.call_id) as PendingToolApprovalRecord | undefined,
+    );
+    if (!approval) throw new Error('无法恢复商品视频确认记录');
+    return { approval, reused: true, conflict, supersededTaskIds: Array.from(new Set(supersededTaskIds)) };
+  }
+
+  const supersededRows = db.prepare(`
+    SELECT task_id FROM pending_tool_approvals
+    WHERE session_id = ? AND tool_name = ? AND status = 'pending'
+  `).all(input.sessionId, input.toolName) as Array<{ task_id?: string | null }>;
+  db.prepare(`
+    UPDATE pending_tool_approvals
+    SET status = 'superseded', updated_at = ?, resolved_at = ?
+    WHERE session_id = ? AND tool_name = ? AND status = 'pending'
+  `).run(now, now, input.sessionId, input.toolName);
+
+  db.prepare(`
+    INSERT INTO pending_tool_approvals (
+      call_id, session_id, task_id, tool_name, proposal_id, proposal_digest,
+      params_json, details_json, status, result_json, error_message,
+      created_at, updated_at, resolved_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, ?, ?, NULL)
+  `).run(
+    input.callId,
+    input.sessionId,
+    input.taskId || null,
+    input.toolName,
+    proposalId,
+    proposalDigest,
+    JSON.stringify(input.params),
+    JSON.stringify(input.details),
+    now,
+    now,
+  );
+  const approval = parsePendingToolApproval(
+    db.prepare('SELECT * FROM pending_tool_approvals WHERE call_id = ?')
+      .get(input.callId) as PendingToolApprovalRecord | undefined,
+  );
+  if (!approval) throw new Error('无法创建商品视频确认记录');
+  return {
+    approval,
+    reused: false,
+    conflict: false,
+    supersededTaskIds: Array.from(new Set(
+      supersededRows.map((row) => String(row.task_id || '').trim()).filter(Boolean),
+    )),
+  };
+})();
+
+export const getPendingToolApproval = (callId: string): PendingToolApprovalSnapshot | null => (
+  parsePendingToolApproval(
+    db.prepare('SELECT * FROM pending_tool_approvals WHERE call_id = ?')
+      .get(callId) as PendingToolApprovalRecord | undefined,
+  )
+);
+
+export const getPendingToolApprovalForSession = (sessionId: string): PendingToolApprovalSnapshot | null => (
+  parsePendingToolApproval(
+    db.prepare(`
+      SELECT * FROM pending_tool_approvals
+      WHERE session_id = ? AND status IN ('pending', 'executing')
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `).get(sessionId) as PendingToolApprovalRecord | undefined,
+  )
+);
+
+export const claimPendingToolApproval = (callId: string): PendingToolApprovalSnapshot | null => {
+  const now = Date.now();
+  const result = db.prepare(`
+    UPDATE pending_tool_approvals
+    SET status = 'executing', updated_at = ?, error_message = NULL
+    WHERE call_id = ? AND status = 'pending'
+  `).run(now, callId);
+  if (result.changes === 0) return getPendingToolApproval(callId);
+  return getPendingToolApproval(callId);
+};
+
+export const resolvePendingToolApproval = (input: {
+  callId: string;
+  status: Extract<PendingToolApprovalStatus, 'completed' | 'cancelled' | 'failed' | 'pending'>;
+  result?: Record<string, unknown> | null;
+  errorMessage?: string | null;
+}): PendingToolApprovalSnapshot | null => {
+  const now = Date.now();
+  db.prepare(`
+    UPDATE pending_tool_approvals
+    SET status = ?, result_json = ?, error_message = ?, updated_at = ?, resolved_at = ?
+    WHERE call_id = ?
+  `).run(
+    input.status,
+    input.result ? JSON.stringify(input.result) : null,
+    input.errorMessage || null,
+    now,
+    input.status === 'pending' ? null : now,
+    input.callId,
+  );
+  return getPendingToolApproval(input.callId);
+};
+
 /**
  * 获取会话的所有消息
  */
@@ -2232,6 +2490,7 @@ export const getChatMessages = (sessionId: string): ChatMessage[] => {
  * 清空会话消息
  */
 export const clearChatMessages = (sessionId: string): void => {
+  db.prepare('DELETE FROM pending_tool_approvals WHERE session_id = ?').run(sessionId);
   const stmt = db.prepare('DELETE FROM chat_messages WHERE session_id = ?');
   stmt.run(sessionId);
 };

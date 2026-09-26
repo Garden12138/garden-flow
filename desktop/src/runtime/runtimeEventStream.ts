@@ -34,6 +34,8 @@ export interface ToolConfirmationDetails {
   title: string;
   description: string;
   impact?: string;
+  warnings?: string[];
+  requiresUserAcknowledgement?: boolean;
 }
 
 export interface ToolConfirmRequestPayload {
@@ -41,6 +43,7 @@ export interface ToolConfirmRequestPayload {
   name: string;
   params?: Record<string, unknown>;
   details: ToolConfirmationDetails;
+  status?: 'pending' | 'executing';
 }
 
 export interface RuntimeEventStreamHandlers {
@@ -246,11 +249,15 @@ function normalizeToolConfirmRequest(value: unknown): ToolConfirmRequestPayload 
   return {
     callId,
     name,
+    params: toRecord(record.params),
+    status: record.status === 'executing' ? 'executing' : 'pending',
     details: {
       type: detailType,
       title,
       description,
       impact: toOptionalText(detailsRecord.impact),
+      warnings: toTextArray(detailsRecord.warnings),
+      requiresUserAcknowledgement: detailsRecord.requiresUserAcknowledgement === true,
     },
   };
 }

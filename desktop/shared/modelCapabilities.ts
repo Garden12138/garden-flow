@@ -102,7 +102,7 @@ export const enforceModelCapabilityPolicy = (
     return MODEL_CAPABILITY_ORDER.filter((capability) => normalized.has(capability));
 };
 
-const normalizeModelInputCapabilities = (values: unknown): ModelInputCapability[] => {
+export const normalizeModelInputCapabilities = (values: unknown): ModelInputCapability[] => {
     const allowed = new Set<ModelInputCapability>(MODEL_INPUT_CAPABILITY_ORDER);
     const normalized = new Set<ModelInputCapability>();
     if (!Array.isArray(values)) {
@@ -233,14 +233,16 @@ export const getModelInputCapabilities = (modelId: string): ModelInputCapability
     if (!normalized) return [];
 
     const detected = new Set<ModelInputCapability>();
+    let matchedProfile = false;
     for (const rule of MODEL_PROFILE_RULES) {
         if (rule.patterns.some((pattern) => pattern.test(normalized))) {
+            matchedProfile = true;
             for (const input of rule.inputCapabilities) {
                 detected.add(input);
             }
         }
     }
-    if (detected.size > 0) {
+    if (matchedProfile) {
         return enforceModelInputCapabilityPolicy(normalized, detected);
     }
 

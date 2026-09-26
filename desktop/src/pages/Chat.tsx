@@ -5,6 +5,8 @@ import { clsx } from 'clsx';
 import { supportsAttachmentKindDirectInput } from '../../shared/modelCapabilities';
 import { attachmentParticipatesInChatRuntime } from '../../shared/chatAttachmentDelivery';
 import { parseChatRunMessageMetadata, type ChatSendReceipt } from '../../shared/chatRunState';
+import { shouldPreserveFixedSessionWarmMessages } from '../../shared/chatWarmSnapshotPolicy';
+import { resolveSubmittedAssetMentions } from '../../shared/chatAssetReferences';
 import {
   isXhsPublishJobStatus,
   type XhsPublishConsentMetadata,
@@ -271,6 +273,7 @@ function normalizeAssetMentionRecord(item: AssetMentionCatalogRecord): ChatAsset
   return {
     id,
     name,
+    referenceType: 'subject',
     description: String(item.description || '').trim() || undefined,
     categoryId: String(item.categoryId || '').trim() || undefined,
     tags: Array.isArray(item.tags) ? item.tags.map((tag) => String(tag || '').trim()).filter(Boolean) : [],
@@ -310,6 +313,7 @@ function normalizeProductMentionRecord(
   return {
     id,
     name,
+    referenceType: 'product',
     description: ['商品', brandName, sourceLabels.join(' / ')].filter(Boolean).join(' · '),
     categoryId: '商品',
     tags: Array.from(new Set(['商品', brandName, ...sourceLabels, ...factTags].filter(Boolean))),
@@ -784,22 +788,7 @@ type FixedSessionWarmSnapshot = {
 };
 
 const fixedSessionWarmSnapshots = new Map<string, FixedSessionWarmSnapshot>();
-const fixedSessionInflightLoads = new Map<string, Promise<[unknown[], ChatRuntimeState | null, unknown[]]>>();
-
-function shouldPreserveFixedSessionWarmMessages(
-  warm: FixedSessionWarmSnapshot | null,
-  history: unknown[],
-): boolean {
-  if (!warm?.messages.length) return false;
-  const activeMessage = [...warm.messages].reverse().find((message) => message.role === 'ai' && message.isStreaming);
-  if (!activeMessage) return false;
-  if (history.length < warm.messages.length) return true;
-  const persistedMessage = (history as Array<Record<string, unknown>>).find((message) => message.id === activeMessage.id);
-  if (!persistedMessage) return true;
-  const persistedRun = parseChatRunMessageMetadata(persistedMessage.metadata);
-  if ((activeMessage.runSequence || 0) > (persistedRun?.sequence || 0)) return true;
-  return String(activeMessage.content || '').length > String(persistedMessage.content || '').length;
-}
+const fixedSessionInflightLoads = new Map<string, Promise<[unknown[], ChatRuntimeState | null, unknown[], ToolConfirmRequest | null]>>();
 
 function resolveChatShortcutProvider(
   provider: ChatShortcutProvider | undefined,
@@ -1712,6 +1701,7 @@ export function Chat({
   const [composerModeParameterValues, setComposerModeParameterValues] = useState<Record<string, string>>({});
   const [isProcessing, setIsProcessing] = useState(false);
   const [confirmRequest, setConfirmRequest] = useState<ToolConfirmRequest | null>(null);
+  const [resolvingConfirmationCallId, setResolvingConfirmationCallId] = useState<string | null>(null);
   const [cliEscalationRequest, setCliEscalationRequest] = useState<CliEscalationRequestModel | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [selectionMenu, setSelectionMenu] = useState<SelectionMenu>({ visible: false, x: 0, y: 0, text: '' });
@@ -2635,6 +2625,7 @@ export function Chat({
         .map((item) => ({
           id: item.id,
           name: item.name,
+          referenceType: item.referenceType,
           description: item.description,
           tags: item.tags,
           categoryId: item.categoryId,
@@ -2730,6 +2721,7 @@ export function Chat({
         .map((item) => ({
           id: item.id,
           name: item.name,
+          referenceType: item.referenceType,
           description: item.description,
           tags: item.tags,
           categoryId: item.categoryId,
@@ -2822,6 +2814,8 @@ export function Chat({
   const selectSession = async (sessionId: string) => {
     if (!isActiveRef.current) return;
     setErrorNotice(null);
+    setConfirmRequest(null);
+    setResolvingConfirmationCallId(null);
     messagesSessionIdRef.current = null;
     currentSessionIdRef.current = sessionId;
     setCurrentSessionId(sessionId);
@@ -2846,7 +2840,7 @@ export function Chat({
       const shouldRecoverRuntime = coldRecoveryPendingRef.current;
       coldRecoveryPendingRef.current = false;
       debugUi('select_session:start', { sessionId, shouldRecoverRuntime });
-      const [history, runtimeStateRaw, incrementalRuntimeEventsRaw] = await uiMeasure('chat', 'select_session:load', async () => {
+      const [history, runtimeStateRaw, incrementalRuntimeEventsRaw, pendingConfirmation] = await uiMeasure('chat', 'select_session:load', async () => {
         if (fixedSessionId && sessionId === fixedSessionId) {
           let inflight = fixedSessionInflightLoads.get(sessionId);
           if (!inflight) {
@@ -2862,7 +2856,8 @@ export function Chat({
                 runId: cachedRun?.runId,
                 afterSequence: cachedRun?.sequence,
               }).catch(() => []),
-            ]) as Promise<[unknown[], ChatRuntimeState | null, unknown[]]>;
+              window.ipcRenderer.chat.getPendingToolConfirmation(sessionId).catch(() => null),
+            ]) as Promise<[unknown[], ChatRuntimeState | null, unknown[], ToolConfirmRequest | null]>;
             fixedSessionInflightLoads.set(sessionId, inflight);
             void inflight.finally(() => {
               if (fixedSessionInflightLoads.get(sessionId) === inflight) {
@@ -2884,7 +2879,8 @@ export function Chat({
             runId: cachedRun?.runId,
             afterSequence: cachedRun?.sequence,
           }).catch(() => []),
-        ]) as Promise<[unknown[], ChatRuntimeState | null, unknown[]]>;
+          window.ipcRenderer.chat.getPendingToolConfirmation(sessionId).catch(() => null),
+        ]) as Promise<[unknown[], ChatRuntimeState | null, unknown[], ToolConfirmRequest | null]>;
       }, { sessionId, shouldRecoverRuntime });
       if (requestId !== selectSessionRequestRef.current) {
         return;
@@ -2892,6 +2888,7 @@ export function Chat({
       if (localMessageMutationRef.current !== mutationVersionAtStart) {
         return;
       }
+      setConfirmRequest(pendingConfirmation);
       const runtimeState = runtimeStateRaw as ChatRuntimeState;
       const runtimeEventsRaw = mergeChatRuntimeEvents(
         cachedRuntimeEvents,
@@ -3028,11 +3025,12 @@ export function Chat({
       messagesSessionIdRef.current = sessionId;
       setMessages(uiMessages);
       writeFixedSessionWarmSnapshot(sessionId, { messages: uiMessages });
-      setIsProcessing(shouldSetProcessing);
+      const approvalIsExecuting = pendingConfirmation?.status === 'executing';
+      setIsProcessing(shouldSetProcessing || approvalIsExecuting);
       debugUi('select_session:done', {
         sessionId,
         messageCount: uiMessages.length,
-        recoveredProcessing: shouldSetProcessing,
+        recoveredProcessing: shouldSetProcessing || approvalIsExecuting,
       });
     } catch (error) {
       console.error('Failed to load messages:', error);
@@ -3065,6 +3063,7 @@ export function Chat({
       flushPendingStreamingUpdates();
       setIsProcessing(false);
       setConfirmRequest(null);
+      setResolvingConfirmationCallId(null);
       setCliEscalationRequest(null);
       setErrorNotice(null);
       setMessages([]);
@@ -3073,15 +3072,48 @@ export function Chat({
     }
   };
 
+  const resolveToolConfirmation = useCallback(async (callId: string, confirmed: boolean) => {
+    if (resolvingConfirmationCallId) return;
+    const sessionId = currentSessionIdRef.current;
+    setResolvingConfirmationCallId(callId);
+    setErrorNotice(null);
+    if (confirmed) {
+      setIsProcessing(true);
+    }
+    setConfirmRequest((current) => current?.callId === callId
+      ? { ...current, status: confirmed ? 'executing' : current.status }
+      : current);
+    try {
+      const result = await window.ipcRenderer.chat.confirmTool(callId, confirmed);
+      if (!result.success && result.status !== 'executing') {
+        setErrorNotice(result.message || result.error || '无法处理分镜确认');
+      }
+      if (result.status !== 'pending' && result.status !== 'executing') {
+        setConfirmRequest(null);
+      }
+      if (sessionId && currentSessionIdRef.current === sessionId) {
+        await selectSession(sessionId);
+      }
+    } catch (error) {
+      if (confirmed) {
+        setIsProcessing(false);
+      }
+      setErrorNotice(error instanceof Error ? error.message : String(error));
+      setConfirmRequest((current) => current?.callId === callId
+        ? { ...current, status: 'pending' }
+        : current);
+    } finally {
+      setResolvingConfirmationCallId(null);
+    }
+  }, [resolvingConfirmationCallId]);
+
   const handleConfirmTool = useCallback((callId: string) => {
-    window.ipcRenderer.chat.confirmTool(callId, true);
-    setConfirmRequest(null);
-  }, []);
+    void resolveToolConfirmation(callId, true);
+  }, [resolveToolConfirmation]);
 
   const handleCancelTool = useCallback((callId: string) => {
-    window.ipcRenderer.chat.confirmTool(callId, false);
-    setConfirmRequest(null);
-  }, []);
+    void resolveToolConfirmation(callId, false);
+  }, [resolveToolConfirmation]);
 
   const handleApproveCliEscalation = useCallback(async (
     escalationId: string,
@@ -4347,6 +4379,18 @@ export function Chat({
       });
     };
 
+    const handleToolConfirmationUpdated = (_: unknown, result: ToolConfirmationResolution) => {
+      const sessionId = String(result?.sessionId || '').trim();
+      if (!isActiveRef.current || !sessionId || sessionId !== currentSessionIdRef.current) return;
+      setResolvingConfirmationCallId(null);
+      if (result.status !== 'pending' && result.status !== 'executing') {
+        setConfirmRequest(null);
+      }
+      void selectSession(sessionId);
+    };
+
+    window.ipcRenderer.chat.onToolConfirmationUpdated(handleToolConfirmationUpdated);
+
     const disposeRuntimeEvents = subscribeRuntimeEventStream({
       getActiveSessionId: () => currentSessionIdRef.current,
       onPhaseStart: ({ phase }) => {
@@ -4516,6 +4560,7 @@ export function Chat({
     return () => {
       debugUi('runtime_subscription:dispose', { sessionId: currentSessionIdRef.current });
       disposeRuntimeEvents();
+      window.ipcRenderer.chat.offToolConfirmationUpdated(handleToolConfirmationUpdated);
 
       // Cleanup timer
       if (updateTimerRef.current) {
@@ -4675,6 +4720,7 @@ export function Chat({
     const assetReferencesForSend = assetMentions.map((item) => ({
       id: item.id,
       name: item.name,
+      referenceType: item.referenceType,
     }));
     const processingStartedAt = Date.now();
     const memberActor: ChatMessageMemberActor | undefined = memberMention ? {
@@ -5243,7 +5289,12 @@ export function Chat({
         onApprove={handleApproveCliEscalation}
         onDeny={handleDenyCliEscalation}
       />
-      <ToolConfirmDialog request={confirmRequest} onConfirm={handleConfirmTool} onCancel={handleCancelTool} />
+      <ToolConfirmDialog
+        request={confirmRequest}
+        onConfirm={handleConfirmTool}
+        onCancel={handleCancelTool}
+        isResolving={resolvingConfirmationCallId === confirmRequest?.callId}
+      />
       <ChatComposer
         ref={composerRef}
         theme={composerTheme}
@@ -5251,7 +5302,20 @@ export function Chat({
         className={options?.className}
         value={input}
         onValueChange={setInput}
-        onSubmit={() => sendMessage(input, pendingAttachments, selectedMemberMention, selectedKnowledgeMentions, selectedSkillMentions, selectedAssetMentions)}
+        onSubmit={() => {
+          const submittedContent = composerRef.current?.getValue() ?? input;
+          const unresolvedAssetMentionNames = composerRef.current?.getUnresolvedAssetMentionNames() || [];
+          if (unresolvedAssetMentionNames.length > 0) {
+            setErrorNotice(`检测到尚未绑定资产 ID 的 @引用：${unresolvedAssetMentionNames.map((name) => `@${name}`).join('、')}。请从 @ 列表中选择商品后再发送。`);
+            return;
+          }
+          const submittedAssetMentions = resolveSubmittedAssetMentions(
+            composerRef.current?.getAssetMentionIds() || [],
+            assetMentionOptions,
+            selectedAssetMentions,
+          );
+          void sendMessage(submittedContent, pendingAttachments, selectedMemberMention, selectedKnowledgeMentions, selectedSkillMentions, submittedAssetMentions);
+        }}
         placeholder={activeComposerMode?.placeholder || placeholder}
         attachment={pendingAttachment}
         attachments={pendingAttachments}
@@ -5282,6 +5346,9 @@ export function Chat({
         assetMentionOptions={assetMentionOptions}
         selectedAssetMentions={selectedAssetMentions}
         onSelectedAssetMentionsChange={setSelectedAssetMentions}
+        onAssetMentionPasteIssue={(names) => {
+          setErrorNotice(`存在同名资产，无法自动恢复 @引用：${names.map((name) => `@${name}`).join('、')}。请从 @ 列表中明确选择。`);
+        }}
         knowledgeMentionOptions={knowledgeMentionOptions}
         selectedKnowledgeMentions={selectedKnowledgeMentions}
         onSelectedKnowledgeMentionsChange={setSelectedKnowledgeMentions}

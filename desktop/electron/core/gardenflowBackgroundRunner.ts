@@ -50,6 +50,7 @@ import {
   normalizeAutomationTaskSource,
   type AutomationTaskSource,
 } from '../../shared/automationTask';
+import { gardenFlowHeartbeatSessionBinding } from '../../shared/gardenflowHeartbeat';
 
 type RunResult = 'success' | 'error' | 'skipped';
 type ScheduleMode = 'interval' | 'daily' | 'weekly' | 'once';
@@ -2722,6 +2723,26 @@ export class GardenFlowBackgroundRunner extends EventEmitter {
     };
   }
 
+  private ensureHeartbeatSession() {
+    const binding = gardenFlowHeartbeatSessionBinding(getActiveSpaceId());
+
+    let session = getChatSessionByContext(binding.contextId, binding.contextType);
+    if (!session) {
+      session = createChatSession(
+        binding.sessionId,
+        binding.title,
+        {
+          contextId: binding.contextId,
+          contextType: binding.contextType,
+          contextContent: 'GardenFlow 后台心跳报告专用会话，不承载用户任务或人工确认。',
+          isContextBound: true,
+        },
+      );
+    }
+
+    return session;
+  }
+
   private ensureMainGardenFlowSession() {
     const activeSpaceId = getActiveSpaceId();
     const contextId = `gardenflow-singleton:${activeSpaceId}`;
@@ -2807,7 +2828,7 @@ export class GardenFlowBackgroundRunner extends EventEmitter {
       }
 
       if (heartbeat.reportToMainSession) {
-        const session = this.ensureMainGardenFlowSession();
+        const session = this.ensureHeartbeatSession();
         addChatMessage({
           id: `msg_gardenflow_hb_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
           session_id: session.id,
@@ -2824,7 +2845,7 @@ export class GardenFlowBackgroundRunner extends EventEmitter {
         runtime.addArtifact(runtimeTaskId, {
           type: 'heartbeat-report',
           label: 'GardenFlow 心跳汇报',
-          metadata: { sessionId: session.id, reason },
+          metadata: { sessionId: session.id, reason, isolated: true },
         });
       }
 

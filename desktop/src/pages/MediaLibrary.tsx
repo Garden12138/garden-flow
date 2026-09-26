@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ExternalLink, Link2, RefreshCw, Save, FolderOpen, ImagePlus, Sparkles, Search, SlidersHorizontal, Image, X, Clapperboard, Trash2, Music2 } from 'lucide-react';
+import { ExternalLink, Link2, RefreshCw, Save, FolderOpen, ImagePlus, Sparkles, Search, SlidersHorizontal, Image, X, Clapperboard, Trash2, Music2, Download } from 'lucide-react';
 import clsx from 'clsx';
 import type { GenerationIntent } from '../features/app-shell/types';
 import { resolveAssetUrl } from '../utils/pathManager';
@@ -822,6 +822,15 @@ export function MediaLibrary({
         }
     }, []);
 
+    const handleDownloadAsset = useCallback(async (asset: MediaAsset) => {
+        try {
+            const result = await window.ipcRenderer.media.download({ assetId: asset.id }) as { success?: boolean; canceled?: boolean; error?: string };
+            if (!result.success) void appAlert(result.error || '下载失败');
+        } catch (error) {
+            void appAlert(error instanceof Error ? error.message : '下载失败');
+        }
+    }, []);
+
     const openAssetContextMenu = useCallback((event: React.MouseEvent, asset: MediaAsset) => {
         event.preventDefault();
         setContextMenu({
@@ -1359,6 +1368,17 @@ export function MediaLibrary({
                     style={{ left: contextMenu.x, top: contextMenu.y }}
                     onClick={(event) => event.stopPropagation()}
                 >
+                    <button
+                        type="button"
+                        onClick={() => {
+                            const asset = contextMenu.asset;
+                            setContextMenu({ visible: false, x: 0, y: 0, asset: null });
+                            if (asset) void handleDownloadAsset(asset);
+                        }}
+                        className={getLiquidGlassMenuItemClassName()}
+                    >
+                        <Download className="h-4 w-4" />下载到本地
+                    </button>
                     {!isVideoAsset(contextMenu.asset) && !isAudioAsset(contextMenu.asset) && contextMenu.asset.exists && onNavigateToGenerationStudio && (
                         <button
                             type="button"
@@ -1403,7 +1423,10 @@ export function MediaLibrary({
                     </button>
                 </LiquidGlassMenuPanel>
             )}
-            <MediaAssetPreviewOverlay preview={previewAsset} onClose={() => setPreviewAsset(null)} />
+            <MediaAssetPreviewOverlay preview={previewAsset} onClose={() => setPreviewAsset(null)} onDownload={(assetId) => {
+                const asset = previewAsset?.asset;
+                if (asset?.id === assetId) void handleDownloadAsset(asset);
+            }} />
             {expandedAssetId && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
                     <div className="w-full max-w-2xl rounded-2xl border border-border bg-surface-primary shadow-2xl">

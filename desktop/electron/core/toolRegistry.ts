@@ -6,7 +6,11 @@
  */
 
 import { z } from 'zod';
-import { satisfiesUserAcknowledgement, shouldRequestToolConfirmation } from '../../shared/toolConfirmationPolicy';
+import {
+    buildDeferredToolConfirmationData,
+    satisfiesUserAcknowledgement,
+    shouldRequestToolConfirmation,
+} from '../../shared/toolConfirmationPolicy';
 import { attachLocalImagesToToolResult } from './toolImageAttachments';
 
 // ========== Tool Types ==========
@@ -85,6 +89,8 @@ export interface ToolConfirmationDetails {
     requiresUserAcknowledgement?: boolean;
     /** 操作影响说明 */
     impact?: string;
+    /** 非阻断的人工核对提示 */
+    warnings?: string[];
 }
 
 /**
@@ -94,6 +100,7 @@ export enum ToolConfirmationOutcome {
     ProceedOnce = 'proceed_once',
     ProceedAlways = 'proceed_always',
     ProceedAfterUserAcknowledgement = 'proceed_after_user_acknowledgement',
+    Defer = 'defer',
     Cancel = 'cancel',
 }
 
@@ -665,6 +672,20 @@ export class ToolExecutor {
             }
 
             const outcome = await this.onConfirmRequest(callId, tool, params, confirmationDetails);
+
+            if (outcome === ToolConfirmationOutcome.Defer) {
+                return {
+                    callId,
+                    name,
+                    result: {
+                        success: true,
+                        llmContent: 'Waiting for explicit user approval.',
+                        display: '等待用户确认分镜',
+                        data: buildDeferredToolConfirmationData({ callId, toolName: name, params }),
+                    },
+                    durationMs: Date.now() - startTime,
+                };
+            }
 
             if (outcome === ToolConfirmationOutcome.Cancel) {
                 return {

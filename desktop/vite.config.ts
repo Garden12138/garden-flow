@@ -150,6 +150,8 @@ export default defineConfig({
                 || id.startsWith('canvas/')
                 || id === '@weixin-claw/core'
                 || id.startsWith('@weixin-claw/core/')
+                || id === '@remotion/renderer'
+                || id.startsWith('@remotion/renderer/')
               ),
             },
           },

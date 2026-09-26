@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { ProductVideoComposeParamsSchema, ProductVideoEditCommandSchema } from '../shared/productVideoProposal.ts';
 import { buildVideoEditorV2RemotionComposition } from '../shared/videoAutoEditRemotion.ts';
+import { migrateProductVideoVoiceoverProject, productVideoNarrationHash, resolveProductVoiceoverPlacement } from '../shared/productVideoVoiceoverTimeline.ts';
+import { productSceneFrameRanges } from '../shared/productVideoTiming.ts';
 import type { VideoEditorV2Project } from '../shared/videoAutoEdit.ts';
 
 test('Remotion packages stay pinned to one exact version', () => {
@@ -90,6 +92,28 @@ test('product video edit commands reject untyped project mutations', () => {
     sceneId: 'scene-1',
     durationMs: Number.NaN,
   }).success, false);
+  assert.equal(ProductVideoEditCommandSchema.safeParse({
+    type: 'scene.narration-text', sceneId: 'scene-1', text: '新的朗读文案',
+  }).success, true);
+  assert.equal(ProductVideoEditCommandSchema.safeParse({
+    type: 'voiceover.remove', sceneId: 'scene-1',
+  }).success, true);
+});
+
+test('voiceover placement ends naturally and reports overlong or stale audio without clipping', () => {
+  const scene = {
+    ...proposal.scenes[0], generationStatus: 'ready' as const,
+    narrationText: '可信文字 1', voiceoverStatus: 'ready' as const,
+    voiceoverAssetId: 'voice-1', voiceoverDurationMs: 2400,
+    voiceoverTextHash: productVideoNarrationHash('可信文字 1'),
+  };
+  assert.deepEqual(resolveProductVoiceoverPlacement(scene, 3000), { clipDurationMs: 2400, status: 'ready' });
+  assert.deepEqual(resolveProductVoiceoverPlacement({ ...scene, voiceoverDurationMs: 3600 }, 3000), {
+    clipDurationMs: 0, status: 'duration-conflict',
+  });
+  assert.deepEqual(resolveProductVoiceoverPlacement({ ...scene, narrationText: '修改后的文案', voiceoverStatus: 'duration-conflict' }, 3000), {
+    clipDurationMs: 2400, status: 'stale',
+  });
 });
 
 test('product video Remotion composition keeps image fit, overlays, muted video, and BGM defaults together', () => {
@@ -120,6 +144,10 @@ test('product video Remotion composition keeps image fit, overlays, muted video,
         id: 'bgm', kind: 'audio', title: 'BGM', sourcePath: '/tmp/bgm.mp3', projectPath: '/tmp/bgm-copy.mp3',
         relativePath: 'assets/bgm.mp3', hash: 'bgm-hash', createdAt: now, updatedAt: now,
       },
+      {
+        id: 'voice-1', kind: 'audio', title: '旁白', sourcePath: '/tmp/voice.mp3', projectPath: '/tmp/voice-copy.mp3',
+        relativePath: 'assets/voice.mp3', hash: 'voice-hash', createdAt: now, updatedAt: now,
+      },
     ],
     transcriptTracks: [],
     timeline: {
@@ -137,6 +165,12 @@ test('product video Remotion composition keeps image fit, overlays, muted video,
             id: `text-${index + 1}`, sceneId: scene.id, sourceStartMs: 0, sourceEndMs: 3000,
             timelineStartMs: index * 3000, timelineEndMs: (index + 1) * 3000, text: scene.overlayText,
           })),
+        },
+        {
+          id: 'voiceover', kind: 'voiceover', name: '旁白', clips: [{
+            id: 'voice-scene-1', sceneId: 'scene-1', assetId: 'voice-1', sourceStartMs: 0, sourceEndMs: 2400,
+            timelineStartMs: 0, timelineEndMs: 2400, volume: 1,
+          }],
         },
         {
           id: 'music', kind: 'music', name: 'BGM', clips: [{
@@ -165,8 +199,46 @@ test('product video Remotion composition keeps image fit, overlays, muted video,
   assert.equal(composition.scenes[0].fitMode, 'contain-blur');
   assert.equal(composition.scenes[0].muted, true);
   assert.equal(composition.scenes[0].overlays?.[0]?.text, '可信文字 1');
-  const music = composition.scenes.find((scene) => scene.assetKind === 'audio');
+  const voiceover = composition.scenes.find((scene) => scene.id === 'voiceover_voice-scene-1');
+  assert.equal(voiceover?.volume, 1);
+  assert.equal(voiceover?.durationInFrames, 72);
+  assert.equal(voiceover?.startFrame, 0);
+  const music = composition.scenes.find((scene) => scene.id === 'music_music-1');
   assert.equal(music?.volume, 0.2);
+  assert.equal(music?.durationInFrames, 450);
   assert.equal(music?.fadeInFrames, 15);
   assert.equal(music?.fadeOutFrames, 15);
+
+  const tinyRanges = productSceneFrameRanges(project.productVideo!.scenes.map((scene, index) => ({
+    id: scene.id, durationMs: Math.round((index + 1) * 1000 / project.canvas.fps),
+  })), project.canvas.fps);
+  const tinyComposition = buildVideoEditorV2RemotionComposition({
+    ...project,
+    timeline: {
+      ...project.timeline,
+      durationMs: tinyRanges.at(-1)!.endMs,
+      tracks: project.timeline.tracks.filter((track) => track.kind === 'primary-video' || track.kind === 'subtitle').map((track) => ({
+        ...track,
+        clips: track.clips.map((clip, index) => ({ ...clip, timelineStartMs: tinyRanges[index].startMs, timelineEndMs: tinyRanges[index].endMs })),
+      })),
+    },
+  });
+  assert.equal(tinyComposition?.durationInFrames, 15);
+  tinyComposition!.scenes.forEach((scene, index) => {
+    assert.equal(scene.durationInFrames, index + 1);
+    assert.equal(scene.startFrame, tinyRanges[index].startFrame);
+    assert.equal(scene.overlays?.[0]?.durationInFrames, scene.durationInFrames);
+    if (index) assert.equal(scene.startFrame, tinyComposition!.scenes[index - 1].startFrame + tinyComposition!.scenes[index - 1].durationInFrames);
+  });
+
+  const oldProductProject = {
+    ...project,
+    timeline: { ...project.timeline, tracks: project.timeline.tracks.filter((track) => track.kind !== 'voiceover') },
+  };
+  const migrated = migrateProductVideoVoiceoverProject(oldProductProject);
+  assert.equal(migrated.timeline.tracks.filter((track) => track.kind === 'voiceover').length, 1);
+  assert.equal(migrated.timeline.tracks.find((track) => track.kind === 'music')?.clips.length, 1);
+  assert.equal(migrated.productVideo?.scenes[0]?.narrationText, '可信文字 1');
+  assert.equal(migrated.productVideo?.scenes[0]?.voiceoverStatus, 'needs-configuration');
+  assert.equal(migrateProductVideoVoiceoverProject(migrated).timeline.tracks.filter((track) => track.kind === 'voiceover').length, 1);
 });

@@ -16,6 +16,7 @@ import {
     Check,
     ChevronDown,
     Clapperboard,
+    Download,
     FolderOpen,
     Grid2X2,
     ImagePlus,
@@ -728,7 +729,7 @@ function VideoMediaThumb({
     );
 }
 
-function MediaAssetPreviewDialog({ asset, onClose }: { asset: MediaAsset; onClose: () => void }) {
+function MediaAssetPreviewDialog({ asset, onClose, onDownload }: { asset: MediaAsset; onClose: () => void; onDownload: (asset: MediaAsset) => void }) {
     const sourceUrl = mediaAssetSourceUrl(asset);
     const resolvedSourceUrl = sourceUrl ? resolveAssetUrl(sourceUrl) : '';
     const resolvedFallbackUrl = asset.thumbnailUrl ? resolveAssetUrl(asset.thumbnailUrl) : resolvedSourceUrl;
@@ -743,6 +744,13 @@ function MediaAssetPreviewDialog({ asset, onClose }: { asset: MediaAsset; onClos
                 className="relative flex max-h-[78vh] max-w-[82vw] items-center justify-center"
                 onMouseDown={(event) => event.stopPropagation()}
             >
+                <button
+                    type="button"
+                    onClick={() => onDownload(asset)}
+                    className="absolute right-12 top-3 z-10 inline-flex h-8 items-center gap-1 rounded-full bg-black/60 px-3 text-xs text-white transition hover:bg-black/80"
+                >
+                    <Download className="h-4 w-4" />下载
+                </button>
                 <button
                     type="button"
                     onClick={onClose}
@@ -2635,6 +2643,15 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
         }
     }, []);
 
+    const handleDownloadMediaAsset = useCallback(async (asset: MediaAsset) => {
+        try {
+            const result = await window.ipcRenderer.media.download({ assetId: asset.id }) as { success?: boolean; canceled?: boolean; error?: string };
+            if (!result.success) void appAlert(result.error || '下载失败');
+        } catch (downloadError) {
+            void appAlert(downloadError instanceof Error ? downloadError.message : '下载失败');
+        }
+    }, []);
+
     const handleDeleteMediaAsset = useCallback(async (asset: MediaAsset) => {
         const label = asset.title || asset.id;
         if (!(await appConfirm(`删除媒体“${label}”？`, { title: '删除媒体', confirmLabel: '删除', tone: 'danger' }))) return;
@@ -3566,6 +3583,17 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
                     style={{ left: mediaContextMenu.x, top: mediaContextMenu.y }}
                     onClick={(event) => event.stopPropagation()}
                 >
+                    <button
+                        type="button"
+                        onClick={() => {
+                            const asset = mediaContextMenu.asset;
+                            setMediaContextMenu({ visible: false, x: 0, y: 0, asset: null });
+                            if (asset) void handleDownloadMediaAsset(asset);
+                        }}
+                        className={getLiquidGlassMenuItemClassName()}
+                    >
+                        <Download className="h-4 w-4" />下载到本地
+                    </button>
                     <button
                         type="button"
                         onClick={() => {
@@ -4538,6 +4566,7 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
                 <MediaAssetPreviewDialog
                     asset={previewMediaAsset}
                     onClose={() => setPreviewMediaAsset(null)}
+                    onDownload={(asset) => { void handleDownloadMediaAsset(asset); }}
                 />
             )}
 

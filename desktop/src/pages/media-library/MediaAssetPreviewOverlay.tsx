@@ -1,4 +1,4 @@
-import { X } from 'lucide-react';
+import { Download, X } from 'lucide-react';
 import { resolveAssetUrl } from '../../utils/pathManager';
 import { formatTimestampDateTime } from '../../utils/time';
 
@@ -47,9 +47,11 @@ function isAudioAsset(asset: Pick<MediaAssetLike, 'mimeType' | 'relativePath' | 
 export function MediaAssetPreviewOverlay({
     preview,
     onClose,
+    onDownload,
 }: {
     preview: PreviewState | null;
     onClose: () => void;
+    onDownload: (assetId: string) => void;
 }) {
     if (!preview) return null;
 
@@ -62,6 +64,16 @@ export function MediaAssetPreviewOverlay({
             className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/70 p-6"
             onClick={onClose}
         >
+            <button
+                type="button"
+                onClick={(event) => {
+                    event.stopPropagation();
+                    onDownload(asset.id);
+                }}
+                className="absolute right-16 top-5 z-[9999] inline-flex h-10 items-center gap-2 rounded-full border border-white/14 bg-black/38 px-4 text-sm text-white/88 backdrop-blur hover:bg-black/56"
+            >
+                <Download className="h-4 w-4" />下载
+            </button>
             <button
                 type="button"
                 onClick={(event) => {
@@ -97,6 +109,22 @@ export function MediaAssetPreviewOverlay({
                                     {asset.relativePath}
                                 </div>
                             )}
+                            <div className="flex gap-2 pt-3">
+                                <button
+                                    type="button"
+                                    onClick={() => onDownload(asset.id)}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-white/25 bg-white/15 px-3 py-2 text-xs text-white hover:bg-white/25"
+                                >
+                                    <Download className="h-3.5 w-3.5" />下载
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={onClose}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-white/25 bg-white/10 px-3 py-2 text-xs text-white hover:bg-white/20"
+                                >
+                                    <X className="h-3.5 w-3.5" />关闭
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

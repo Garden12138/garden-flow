@@ -7,6 +7,13 @@ import {
     type ToolDefinition,
     type ToolResult,
 } from './toolRegistry';
+import type { WorkflowKind } from './ai/types';
+import {
+    collectProductVideoReviewWarnings,
+    evaluateProductVideoToolPolicy,
+} from './productVideoRuntimePolicy';
+import { evaluateVideoGenerationApprovalPolicy } from './videoGenerationApprovalPolicy';
+import type { ProductVideoVisualGroundingEvidence } from './productVideoVisualGrounding';
 
 export interface RuntimePermissionContext {
     sessionId: string;
@@ -14,6 +21,9 @@ export interface RuntimePermissionContext {
     runtimeMode?: string;
     interactive?: boolean;
     requiresHumanApproval?: boolean;
+    workflowKind?: WorkflowKind;
+    explicitProductRefs?: Array<{ productId: string; name: string; updatedAt: string }>;
+    productAssetVisualGrounding?: ProductVideoVisualGroundingEvidence;
 }
 
 export interface RuntimePermissionDecision {
@@ -63,6 +73,44 @@ export const evaluateRuntimeToolPermission = (params: {
     const descriptor = getBuiltinToolDescriptor(toolName);
     const interactive = context.interactive !== false;
     const runtimeMode = String(context.runtimeMode || '').trim();
+
+    const productVideoPolicy = evaluateProductVideoToolPolicy({
+        workflowKind: context.workflowKind,
+        toolName,
+        args,
+        explicitProductRefs: context.explicitProductRefs,
+        productAssetVisualGrounding: context.productAssetVisualGrounding,
+    });
+    if (productVideoPolicy) {
+        return {
+            outcome: 'deny',
+            reason: productVideoPolicy.reason,
+            source: 'runtime-policy',
+        };
+    }
+    const productVideoWarnings = toolName === 'product_video_compose'
+        ? collectProductVideoReviewWarnings({
+            args,
+            productAssetVisualGrounding: context.productAssetVisualGrounding,
+        }).map((warning) => warning.message)
+        : [];
+
+    const videoGenerationPolicy = evaluateVideoGenerationApprovalPolicy({ toolName, interactive });
+    if (videoGenerationPolicy) {
+        return {
+            outcome: videoGenerationPolicy.outcome,
+            reason: videoGenerationPolicy.reason,
+            details: interactive
+                ? buildConfirmationDetails(
+                    tool,
+                    args,
+                    videoGenerationPolicy.reason,
+                    videoGenerationPolicy.requiresUserAcknowledgement,
+                )
+                : null,
+            source: 'runtime-policy',
+        };
+    }
 
     if (toolName === 'workspace') {
         const action = String(args.action || '').trim();
@@ -194,23 +242,28 @@ export const evaluateRuntimeToolPermission = (params: {
         };
     }
 
+    if (tool.requiresConfirmation) {
+        const details = tool.getConfirmationDetails?.(args)
+            || buildGenericConfirmationDetails(tool, args, '该工具已声明需要人工确认。');
+        return {
+            outcome: interactive ? 'confirm' : 'deny',
+            reason: `工具 ${toolName} 自身声明需要人工确认。`,
+            details: interactive
+                ? {
+                    ...details,
+                    ...(productVideoWarnings.length > 0 ? { warnings: productVideoWarnings } : {}),
+                }
+                : null,
+            source: 'tool',
+        };
+    }
+
     if (context.requiresHumanApproval && isMutatorTool(tool)) {
         return {
             outcome: interactive ? 'confirm' : 'deny',
             reason: '当前任务被标记为需要人工审批，变更型工具必须人工确认。',
             details: interactive ? buildGenericConfirmationDetails(tool, args, '当前任务需要人工审批。') : null,
             source: 'runtime-policy',
-        };
-    }
-
-    if (tool.requiresConfirmation) {
-        return {
-            outcome: interactive ? 'confirm' : 'deny',
-            reason: `工具 ${toolName} 自身声明需要人工确认。`,
-            details: interactive
-                ? tool.getConfirmationDetails?.(args) || buildGenericConfirmationDetails(tool, args, '该工具已声明需要人工确认。')
-                : null,
-            source: 'tool',
         };
     }
 

@@ -51,6 +51,20 @@ test('desktop distributions include project licensing and vendored attribution',
         item.from === 'src/vendor/freecut/ATTRIBUTION.md'
         && item.to === 'ATTRIBUTION-FreeCut.md'
     )));
+    assert.ok(resources.some((item) => (
+        item.from === '.remotion-render-bundle'
+        && item.to === 'remotion-render-bundle'
+    )));
+    assert.ok(resources.some((item) => (
+        item.from === '.remotion-compositor'
+        && item.to === 'remotion-compositor'
+    )));
+    assert.match(packageConfig.scripts.dev, /prepare:remotion-bundle/);
+    for (const [name, command] of Object.entries(packageConfig.scripts as Record<string, string>)) {
+        if (name === 'build' || name.startsWith('build:')) {
+            assert.match(command, /prepare:remotion-bundle/, `${name} must include the render bundle`);
+        }
+    }
 });
 
 test('release workflow gates stable tags and publishes the complete installer set', async () => {

@@ -1739,6 +1739,9 @@ declare global {
         listProjects: () => Promise<{ success?: boolean; error?: string; projects?: VideoEditorV2ProjectSummary[] }>;
         applyProductCommand: (payload: Record<string, unknown>) => Promise<{ success?: boolean; error?: string; project?: VideoEditorV2ProjectSummary }>;
         setProductMusic: (payload: { projectId: string; sourcePath?: string }) => Promise<{ success?: boolean; canceled?: boolean; error?: string; project?: VideoEditorV2ProjectSummary }>;
+        getProductVoiceoverConfig: () => Promise<{ success?: boolean; config?: { configured: boolean; model: string; voiceId: string; reason?: string } }>;
+        generateProductVoiceover: (payload: { projectId: string; sceneId: string }) => Promise<{ success?: boolean; error?: string; project?: VideoEditorV2ProjectSummary }>;
+        setProductVoiceover: (payload: { projectId: string; sceneId: string; sourceAssetId?: string }) => Promise<{ success?: boolean; canceled?: boolean; error?: string; project?: VideoEditorV2ProjectSummary }>;
         retryProductScene: (payload: { projectId: string; sceneId: string }) => Promise<{ success?: boolean; error?: string; project?: VideoEditorV2ProjectSummary }>;
         importAssets: (payload: { projectId: string; sourcePaths?: string[] }) => Promise<{ success?: boolean; canceled?: boolean; error?: string; project?: VideoEditorV2ProjectSummary }>;
         importSrt: (payload: { projectId: string; assetId?: string; srtPath?: string; srtContent?: string; language?: string }) => Promise<{ success?: boolean; canceled?: boolean; error?: string; project?: VideoEditorV2ProjectSummary }>;
@@ -2013,7 +2016,10 @@ declare global {
         discardAttachments: (payload: { sessionId?: string; attachments: unknown[] }) => Promise<{ success?: boolean; error?: string }>;
         transcribeAudio: (payload: { audioBase64: string; mimeType?: string; fileName?: string }) => Promise<{ success?: boolean; text?: string; error?: string; reason?: string; diagnostic?: string }>;
         cancel: (data?: { sessionId?: string } | string) => void;
-        confirmTool: (callId: string, confirmed: boolean) => void;
+        confirmTool: (callId: string, confirmed: boolean) => Promise<ToolConfirmationResolution>;
+        getPendingToolConfirmation: (sessionId: string) => Promise<ToolConfirmRequest | null>;
+        onToolConfirmationUpdated: (listener: (...args: any[]) => void) => void;
+        offToolConfirmationUpdated: (listener: (...args: any[]) => void) => void;
         getSessions: () => Promise<ChatSession[]>;
         createSession: (title?: string) => Promise<ChatSession>;
         createDiagnosticsSession: (payload?: { title?: string; contextId?: string; contextType?: string }) => Promise<ChatSession>;
@@ -2067,6 +2073,7 @@ declare global {
         delete: <T = unknown>(payload: Record<string, unknown>) => Promise<T>;
         open: <T = unknown>(payload: { assetId: string }) => Promise<T>;
         openRoot: <T = unknown>() => Promise<T>;
+        download: <T = unknown>(payload: { assetId: string }) => Promise<T>;
         importFiles: <T = unknown>(payload?: { kind?: 'image' | 'video'; multiple?: boolean }) => Promise<T>;
       };
       accounts: {
@@ -2848,6 +2855,8 @@ declare global {
     title: string;
     description: string;
     impact?: string;
+    warnings?: string[];
+    requiresUserAcknowledgement?: boolean;
   }
 
   interface ToolConfirmRequest {
@@ -2855,5 +2864,17 @@ declare global {
     name: string;
     params?: Record<string, unknown>;
     details: ToolConfirmationDetails;
+    status?: 'pending' | 'executing';
+  }
+
+  interface ToolConfirmationResolution {
+    success: boolean;
+    status: 'pending' | 'executing' | 'completed' | 'cancelled' | 'failed';
+    sessionId?: string;
+    callId: string;
+    message?: string;
+    projectId?: string;
+    uri?: string;
+    error?: string;
   }
 }

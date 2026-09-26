@@ -11,6 +11,9 @@ export function createVideoEditorBridge(core: BridgeCore) {
       listProjects: () => core.invokeChannel('videoEditorV2:list-projects'),
       applyProductCommand: (payload: Record<string, unknown>) => core.invokeChannel('videoEditorV2:apply-product-command', payload),
       setProductMusic: (payload: { projectId: string; sourcePath?: string }) => core.invokeChannel('videoEditorV2:set-product-music', payload),
+      getProductVoiceoverConfig: () => core.invokeChannel('videoEditorV2:get-product-voiceover-config'),
+      generateProductVoiceover: (payload: { projectId: string; sceneId: string }) => core.invokeChannel('videoEditorV2:generate-product-voiceover', payload),
+      setProductVoiceover: (payload: { projectId: string; sceneId: string; sourceAssetId?: string }) => core.invokeChannel('videoEditorV2:set-product-voiceover', payload),
       retryProductScene: (payload: { projectId: string; sceneId: string }) => core.invokeChannel('videoEditorV2:retry-product-scene', payload),
       importAssets: (payload: { projectId: string; sourcePaths?: string[] }) =>
         core.invokeChannel('videoEditorV2:import-assets', payload),

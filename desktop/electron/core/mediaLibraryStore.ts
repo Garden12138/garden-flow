@@ -11,6 +11,7 @@ export interface MediaAsset {
   id: string;
   source: MediaAssetSource;
   projectId?: string;
+  renderId?: string;
   title?: string;
   prompt?: string;
   provider?: string;
@@ -470,6 +471,54 @@ export async function listMediaAssets(limit = 200): Promise<MediaAsset[]> {
     return bt - at;
   });
   return sorted.slice(0, Math.max(1, limit));
+}
+
+export async function getMediaAssetById(assetId: string): Promise<MediaAsset | null> {
+  const catalog = await readCatalog();
+  return catalog.assets.find((asset) => asset.id === assetId) || null;
+}
+
+export async function registerRenderedVideoAsset(input: {
+  projectId: string;
+  renderId: string;
+  sourcePath: string;
+  title: string;
+}): Promise<MediaAsset> {
+  if (!/^[a-zA-Z0-9_-]+$/.test(input.projectId) || !/^[a-zA-Z0-9_-]+$/.test(input.renderId)) {
+    throw new Error('Invalid video render identity');
+  }
+  const sourcePath = path.resolve(input.sourcePath);
+  if (path.extname(sourcePath).toLowerCase() !== '.mp4') throw new Error('Only MP4 exports can enter the media library');
+  const stat = await fs.stat(sourcePath);
+  if (!stat.isFile() || stat.size === 0) throw new Error('Exported MP4 is empty');
+  await ensureMediaDirs();
+  const catalog = await readCatalog();
+  const existing = catalog.assets.find((asset) => asset.projectId === input.projectId && asset.renderId === input.renderId);
+  if (existing) return existing;
+  const id = `media_${Date.now()}_${randomUUID().slice(0, 8)}`;
+  const relativePath = normalizePathForStore(path.join('generated', `${id}.mp4`));
+  const destination = getAbsoluteMediaPath(relativePath);
+  await fs.copyFile(sourcePath, destination);
+  const timestamp = nowIso();
+  const asset: MediaAsset = {
+    id,
+    source: 'generated',
+    projectId: input.projectId,
+    renderId: input.renderId,
+    title: input.title.trim() || '商品视频',
+    mimeType: 'video/mp4',
+    relativePath,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+  try {
+    catalog.assets.push(asset);
+    await writeCatalog(catalog);
+    return asset;
+  } catch (error) {
+    await fs.rm(destination, { force: true });
+    throw error;
+  }
 }
 
 export async function createGeneratedMediaAsset(input: {

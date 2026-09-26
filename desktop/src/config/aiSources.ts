@@ -17,6 +17,7 @@ export interface AiSourceConfig {
   modelsMeta?: Array<{
     id: string;
     capabilities?: string[];
+    inputCapabilities?: string[];
   }>;
   model: string;
   protocol?: 'openai' | 'anthropic' | 'gemini';

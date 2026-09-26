@@ -1,5 +1,6 @@
 import { assembleRuntimeSystemPrompt } from './contextAssembler';
 import { routeIntent } from './intentRouter';
+import { applyProductVideoWorkflowPolicy } from './productVideoWorkflowPolicy';
 import { requiredCapabilitiesForIntent } from './intentRoutePolicy';
 import {
   readSkipSubagentOrchestration,
@@ -194,7 +195,7 @@ const buildDirectRoute = (context: RuntimeContext): IntentRoute => {
     hints,
   });
 
-  return {
+  return applyProductVideoWorkflowPolicy({
     intent,
     secondaryIntents: [],
     goal: String(context.userInput || '').trim() || '处理当前用户请求',
@@ -209,7 +210,7 @@ const buildDirectRoute = (context: RuntimeContext): IntentRoute => {
     confidence: 1,
     reasoning: `runtime-mode-default:${runtimeMode}; intent=${intent}; role=${recommendedRole}`,
     source: 'rule',
-  };
+  }, context);
 };
 
 const resolveThinkingBudget = (runtimeMode: RuntimeMode, route: IntentRoute): ThinkingBudget => {
@@ -278,13 +279,17 @@ export class AgentRuntime {
       skipSubagentOrchestration: skipOrchestration,
     });
     const runtime = getTaskGraphRuntime();
+    const taskMetadata = {
+      ...(params.runtimeContext.metadata || {}),
+      ...(route.workflowKind ? { workflowKind: route.workflowKind } : {}),
+    };
     const task = runtime.createInteractiveTask({
       runtimeMode: params.runtimeContext.runtimeMode,
       ownerSessionId: params.runtimeContext.sessionId,
       userInput: params.runtimeContext.userInput,
       route,
       roleId: role.roleId,
-      metadata: params.runtimeContext.metadata,
+      metadata: taskMetadata,
     });
 
     runtime.startNode(task.id, 'route', route.reasoning);
@@ -412,6 +417,14 @@ export class AgentRuntime {
       }
     }
     runtime.completeTask(taskId, '运行完成');
+  }
+
+  pauseExecution(taskId: string, summary = '等待用户确认商品视频分镜', payload?: unknown) {
+    const runtime = getTaskGraphRuntime();
+    if (payload !== undefined) {
+      runtime.addCheckpoint(taskId, 'execute_tools', summary, payload);
+    }
+    runtime.pauseTask(taskId, summary);
   }
 
   failExecution(taskId: string, error: string) {

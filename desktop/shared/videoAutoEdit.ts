@@ -16,6 +16,7 @@ export type ProductVideoFitMode = 'contain-blur' | 'cover';
 export type ProductVideoMotionPreset = 'static' | 'slow-zoom-in' | 'slow-zoom-out' | 'pan-left' | 'pan-right';
 export type ProductVideoSceneSource = 'product-asset' | 'ai-motion';
 export type ProductVideoGenerationStatus = 'not-required' | 'pending' | 'generating' | 'ready' | 'failed';
+export type ProductVideoVoiceoverStatus = 'not-required' | 'needs-configuration' | 'queued' | 'generating' | 'ready' | 'failed' | 'duration-conflict' | 'stale';
 export type SrtSegmentTag = 'keep' | 'remove' | 'highlight' | 'hook' | 'filler' | 'unclear';
 
 export interface VideoCanvasSpec {
@@ -90,10 +91,23 @@ export interface ProductVideoSceneState extends ProductVideoProposalScene {
   generationJobId?: string;
   generatedAssetId?: string;
   error?: string;
+  narrationText?: string;
+  voiceoverStatus?: ProductVideoVoiceoverStatus;
+  voiceoverJobId?: string;
+  voiceoverAttachedJobId?: string;
+  voiceoverRequestId?: string;
+  voiceoverAssetId?: string;
+  voiceoverDurationMs?: number;
+  voiceoverSource?: 'tts' | 'imported';
+  voiceoverError?: string;
+  voiceoverModel?: string;
+  voiceoverVoiceId?: string;
+  voiceoverTextHash?: string;
 }
 
 export interface ProductVideoProjectMetadata {
   proposal: ProductVideoProposal;
+  voiceoverAutoApprovedAt?: string;
   productSnapshot: {
     id: string;
     name: string;
@@ -174,6 +188,7 @@ export interface VideoTimelineClip {
   fitMode?: ProductVideoFitMode;
   motionPreset?: ProductVideoMotionPreset;
   volume?: number;
+  musicNormalizationDb?: number;
   fadeInMs?: number;
   fadeOutMs?: number;
 }
@@ -251,6 +266,7 @@ export interface RemotionSnapshotRecord {
 export interface RenderOutputRecord {
   id: string;
   path: string;
+  mediaAssetId?: string;
   createdAt: string;
   durationMs?: number;
 }
@@ -283,6 +299,8 @@ export type ProductVideoEditCommand =
   | { type: 'scene.fit'; sceneId: string; fitMode: ProductVideoFitMode }
   | { type: 'scene.motion'; sceneId: string; motionPreset: ProductVideoMotionPreset }
   | { type: 'scene.text'; sceneId: string; text: string }
+  | { type: 'scene.narration-text'; sceneId: string; text: string }
   | { type: 'scene.asset'; sceneId: string; assetId: string }
   | { type: 'scene.delete'; sceneId: string }
+  | { type: 'voiceover.remove'; sceneId: string }
   | { type: 'music.remove' };

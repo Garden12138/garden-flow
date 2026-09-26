@@ -2,11 +2,16 @@ import { app } from 'electron';
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { randomUUID } from 'node:crypto';
+import { createRequire } from 'node:module';
 import { buildVideoEditorV2RemotionComposition, VIDEO_EDITOR_V2_REMOTION_COMPOSITION_ID } from '../../../shared/videoAutoEditRemotion';
+import type { VideoEditorV2RemotionComposition } from '../../../shared/videoAutoEditRemotion';
 import type { RenderOutputRecord, SrtSegment, VideoEditorV2Project } from '../../../shared/videoAutoEdit';
 import { serializeSegmentsToSrt } from '../video-auto-edit/srtParser';
-import { getVideoEditorV2Project, saveVideoEditorV2Project } from './videoEditorV2ProjectStore';
+import { ensureProductVideoMusicAudible, saveVideoEditorV2Project } from './videoEditorV2ProjectStore';
+import { stageRemotionAssets } from './remotionAssetStaging';
+import { registerRenderedVideoAsset } from '../mediaLibraryStore';
 
 type RenderProgressPayload = {
   projectId: string;
@@ -96,117 +101,114 @@ async function writeTimelineSrt(project: VideoEditorV2Project): Promise<string |
   return srtPath;
 }
 
-function findDesktopRoot(): string | null {
+function findRemotionBundleDirectory(): string {
   const candidates = [
-    app.getAppPath(),
-    process.cwd(),
-    path.resolve(__dirname, '..'),
-    path.resolve(__dirname, '../..'),
-    path.resolve(__dirname, '../../..'),
+    path.join(process.resourcesPath, 'remotion-render-bundle'),
+    path.join(app.getAppPath(), '.remotion-render-bundle'),
+    path.join(process.cwd(), '.remotion-render-bundle'),
   ];
-  const seen = new Set<string>();
   for (const candidate of candidates) {
-    const root = path.resolve(candidate);
-    if (seen.has(root)) continue;
-    seen.add(root);
-    if (
-      fsSync.existsSync(path.join(root, 'package.json'))
-      && fsSync.existsSync(path.join(root, 'src', 'remotion', 'index.ts'))
-    ) {
-      return root;
-    }
+    if (fsSync.existsSync(path.join(candidate, 'index.html'))) return candidate;
   }
-  return null;
+  throw new Error('缺少 Remotion 渲染资源。请重新安装应用，或在开发环境执行 pnpm --dir desktop prepare:remotion-bundle。');
 }
 
-function resolveRemotionEntryPoint(): { desktopRoot: string; entryPoint: string } {
-  const desktopRoot = findDesktopRoot();
-  if (!desktopRoot) {
-    throw new Error('无法找到 Remotion 渲染入口 src/remotion/index.ts。请确认桌面端源码已随运行环境可用。');
+function findInstalledChrome(): string | undefined {
+  const candidates = [
+    process.env.CHROME_PATH,
+    process.platform === 'darwin' ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' : undefined,
+    process.platform === 'darwin' ? '/Applications/Chromium.app/Contents/MacOS/Chromium' : undefined,
+    process.platform === 'win32' ? path.join(process.env.PROGRAMFILES || 'C:\\Program Files', 'Google', 'Chrome', 'Application', 'chrome.exe') : undefined,
+    process.platform === 'linux' ? '/usr/bin/google-chrome' : undefined,
+    process.platform === 'linux' ? '/usr/bin/chromium' : undefined,
+  ];
+  for (const candidate of candidates) {
+    if (candidate && fsSync.existsSync(candidate)) return candidate;
   }
-  return {
-    desktopRoot,
-    entryPoint: path.join(desktopRoot, 'src', 'remotion', 'index.ts'),
-  };
+  return undefined;
+}
+
+function findRemotionCompositorDirectory(): string {
+  const platformDirectory = `${process.platform}-${process.arch}`;
+  const executable = process.platform === 'win32' ? 'remotion.exe' : 'remotion';
+  const candidates = [
+    path.join(process.resourcesPath, 'remotion-compositor', platformDirectory),
+    path.join(app.getAppPath(), '.remotion-compositor', platformDirectory),
+    path.join(process.cwd(), '.remotion-compositor', platformDirectory),
+  ];
+  const found = candidates.find((candidate) => fsSync.existsSync(path.join(candidate, executable)));
+  if (!found) throw new Error(`缺少 ${platformDirectory} Remotion 合成器。请重新安装应用，或执行 pnpm --dir desktop prepare:remotion-bundle。`);
+  return found;
 }
 
 async function renderRemotionComposition(input: {
   project: VideoEditorV2Project;
-  composition: Record<string, unknown>;
+  composition: VideoEditorV2RemotionComposition;
   outputPath: string;
   onProgress?: VideoEditorV2RenderProgress;
 }): Promise<void> {
-  const { desktopRoot, entryPoint } = resolveRemotionEntryPoint();
-  const [{ bundle }, { renderMedia, selectComposition }] = await Promise.all([
-    import('@remotion/bundler') as Promise<any>,
-    import('@remotion/renderer') as Promise<any>,
-  ]);
-  const inputProps = {
-    composition: input.composition,
-    runtime: 'render',
-  };
+  const renderDir = await fs.mkdtemp(path.join(os.tmpdir(), 'gardenflow-remotion-render-'));
+  try {
+    input.onProgress?.({
+      projectId: input.project.id,
+      stage: '准备渲染素材',
+      percent: 10,
+      status: 'running',
+    });
+    await fs.cp(findRemotionBundleDirectory(), renderDir, { recursive: true });
+    const stagedComposition = await stageRemotionAssets(input.project.assets, input.composition, renderDir);
+    const { renderMedia, selectComposition } = createRequire(import.meta.url)('@remotion/renderer') as typeof import('@remotion/renderer');
+    const inputProps = { composition: stagedComposition, runtime: 'render' as const };
+    const browserExecutable = findInstalledChrome();
+    const binariesDirectory = findRemotionCompositorDirectory();
 
-  input.onProgress?.({
-    projectId: input.project.id,
-    stage: '打包 Remotion 渲染入口',
-    percent: 10,
-    status: 'running',
-  });
+    input.onProgress?.({
+      projectId: input.project.id,
+      stage: '读取 Remotion composition',
+      percent: 40,
+      status: 'running',
+    });
+    const composition = await selectComposition({
+      serveUrl: renderDir,
+      id: VIDEO_EDITOR_V2_REMOTION_COMPOSITION_ID,
+      inputProps,
+      browserExecutable,
+      binariesDirectory,
+    });
 
-  const serveUrl = await bundle({
-    entryPoint,
-    rootDir: desktopRoot,
-    publicDir: path.join(desktopRoot, 'public'),
-    ignoreRegisterRootWarning: true,
-    onProgress: (progress: number) => {
-      input.onProgress?.({
-        projectId: input.project.id,
-        stage: '打包 Remotion 渲染入口',
-        percent: Math.round(10 + Math.max(0, Math.min(1, progress)) * 25),
-        status: 'running',
-      });
-    },
-  });
-
-  input.onProgress?.({
-    projectId: input.project.id,
-    stage: '读取 Remotion composition',
-    percent: 40,
-    status: 'running',
-  });
-  const composition = await selectComposition({
-    serveUrl,
-    id: VIDEO_EDITOR_V2_REMOTION_COMPOSITION_ID,
-    inputProps,
-  });
-
-  await renderMedia({
-    composition,
-    serveUrl,
-    codec: 'h264',
-    imageFormat: 'jpeg',
-    outputLocation: input.outputPath,
-    inputProps,
-    overwrite: true,
-    logLevel: 'warn',
-    onProgress: (progress: { progress?: number }) => {
-      input.onProgress?.({
-        projectId: input.project.id,
-        stage: '渲染 MP4',
-        percent: Math.round(45 + Math.max(0, Math.min(1, Number(progress.progress) || 0)) * 50),
-        status: 'running',
-      });
-    },
-  });
+    await renderMedia({
+      composition,
+      serveUrl: renderDir,
+      browserExecutable,
+      binariesDirectory,
+      codec: 'h264',
+      imageFormat: 'jpeg',
+      outputLocation: input.outputPath,
+      inputProps,
+      overwrite: true,
+      logLevel: 'warn',
+      onProgress: (progress: { progress?: number }) => {
+        input.onProgress?.({
+          projectId: input.project.id,
+          stage: '渲染 MP4',
+          percent: Math.round(45 + Math.max(0, Math.min(1, Number(progress.progress) || 0)) * 50),
+          status: 'running',
+        });
+      },
+    });
+  } finally {
+    await fs.rm(renderDir, { recursive: true, force: true });
+  }
 }
 
 export async function renderVideoEditorV2Project(input: RenderVideoEditorV2ProjectInput): Promise<{
   project: VideoEditorV2Project;
   outputPath?: string;
+  mediaAssetId?: string;
   compositionPath: string;
   subtitlePath?: string | null;
 }> {
-  const project = await getVideoEditorV2Project(input.projectId);
+  const project = await ensureProductVideoMusicAudible(input.projectId);
   if (!project) {
     throw new Error('Video editor V2 project not found');
   }
@@ -265,9 +267,19 @@ export async function renderVideoEditorV2Project(input: RenderVideoEditorV2Proje
       onProgress: input.onProgress,
     });
 
+    const mediaAsset = updatedProject.projectKind === 'product-video'
+      ? await registerRenderedVideoAsset({
+        projectId: updatedProject.id,
+        renderId,
+        sourcePath: outputPath,
+        title: updatedProject.title,
+      })
+      : null;
+
     const renderOutput: RenderOutputRecord = {
       id: renderId,
       path: outputPath,
+      mediaAssetId: mediaAsset?.id,
       createdAt: nowIso(),
       durationMs: updatedProject.timeline.durationMs,
     };
@@ -287,6 +299,7 @@ export async function renderVideoEditorV2Project(input: RenderVideoEditorV2Proje
     return {
       project: updatedProject,
       outputPath,
+      mediaAssetId: mediaAsset?.id,
       compositionPath,
       subtitlePath,
     };

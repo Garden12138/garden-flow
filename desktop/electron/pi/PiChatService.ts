@@ -5,6 +5,7 @@
  */
 
 import { BrowserWindow } from 'electron';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -21,6 +22,7 @@ import {
   getWorkspacePaths,
   getChatSession,
   getChatMessages,
+  createOrReusePendingToolApproval,
   updateChatSessionMetadata,
 } from '../db';
 import { SkillManager } from '../core/skillManager';
@@ -31,6 +33,7 @@ import {
   type ToolCallRequest,
   type ToolCallResponse,
   ToolConfirmationOutcome,
+  ToolErrorType,
   type ToolConfirmationDetails,
   type ToolResult,
 } from '../core/toolRegistry';
@@ -55,7 +58,11 @@ import { normalizeApiBaseUrl, safeUrlJoin } from '../core/urlUtils';
 import { logDebugEvent } from '../core/debugLogger';
 import { loadPrompt, renderPrompt } from '../prompts/runtime';
 import { getAgentRuntime, getTaskGraphRuntime, type PreparedRuntimeExecution, type RuntimeMode } from '../core/ai';
-import { validateRuntimeCompletion, type XhsMediaCompletionState } from '../core/ai/runtimeCompletion';
+import {
+  validateRuntimeCompletion,
+  type ProductVideoCompletionState,
+  type XhsMediaCompletionState,
+} from '../core/ai/runtimeCompletion';
 import { getXhsNoteProject } from '../core/xhsNoteProjectStore';
 import type { RuntimeEvent, RuntimeMessageContentPart } from '../core/runtimeTypes';
 import { getSessionRuntimeStore } from '../core/sessionRuntimeStore';
@@ -66,6 +73,8 @@ import { parseChatRunMessageMetadata } from '../../shared/chatRunState';
 import { resolveVideoProvider } from '../../shared/videoProvider';
 import { normalizeGeneratedMediaMarkup } from '../../shared/generatedMediaMarkup';
 import { getXhsPublisherService } from '../core/xhsPublisherService';
+import type { ProductVideoVisualGroundingEvidence } from '../core/productVideoVisualGrounding';
+import { resolveProductVideoVisualPreparation } from '../core/ai/productVideoWorkflowPolicy';
 
 interface SessionMetadata {
   associatedFilePath?: string;
@@ -179,7 +188,14 @@ interface PiChatServiceOptions {
   interactiveToolConfirmation?: boolean;
 }
 
-const TOOL_CONFIRMATION_TIMEOUT_MS = 3 * 60 * 1000;
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map((item) => stableJson(item)).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
 
 interface TextualToolCall {
   raw: string;
@@ -235,6 +251,12 @@ interface ChatModelOverrideConfig {
 interface ChatAttachmentRuntimeOptions {
   userInputContent?: string | RuntimeMessageContentPart[];
   runtimeMetadata?: Record<string, unknown>;
+  prepareProductVideoVisualInput?: (input: {
+    signal: AbortSignal;
+  }) => Promise<{
+    userInputContent: RuntimeMessageContentPart[];
+    grounding: ProductVideoVisualGroundingEvidence;
+  }>;
 }
 
 type PersistedRuntimeEvent = {
@@ -339,7 +361,13 @@ export class PiChatService {
   private readonly interactiveToolConfirmation: boolean;
   private readonly pendingToolConfirmations = new Map<string, {
     resolve: (outcome: ToolConfirmationOutcome) => void;
-    timeoutId: NodeJS.Timeout;
+    request: {
+      callId: string;
+      name: string;
+      params: unknown;
+      details: ToolConfirmationDetails;
+      status: 'pending';
+    };
   }>();
   private runtimeState: SessionRuntimeState = {
     isProcessing: false,
@@ -386,26 +414,72 @@ export class PiChatService {
       return Promise.resolve(ToolConfirmationOutcome.ProceedOnce);
     }
 
-    return new Promise<ToolConfirmationOutcome>((resolve) => {
-      const timeoutId = setTimeout(() => {
-        this.pendingToolConfirmations.delete(callId);
-        resolve(ToolConfirmationOutcome.Cancel);
-      }, TOOL_CONFIRMATION_TIMEOUT_MS);
-      this.pendingToolConfirmations.set(callId, { resolve, timeoutId });
+    if (toolName === 'product_video_compose') {
+      const paramsRecord = params && typeof params === 'object' && !Array.isArray(params)
+        ? params as Record<string, unknown>
+        : {};
+      const proposalId = String(paramsRecord.proposalId || '').trim();
+      const proposalDigest = createHash('sha256').update(stableJson(paramsRecord)).digest('hex');
+      const pending = createOrReusePendingToolApproval({
+        callId,
+        sessionId: this.sessionId,
+        taskId: this.activeRuntimeExecution?.task.id || null,
+        toolName,
+        proposalId: proposalId || null,
+        proposalDigest,
+        params: paramsRecord,
+        details: details as unknown as Record<string, unknown>,
+      });
+      for (const taskId of pending.supersededTaskIds) {
+        getTaskGraphRuntime().cancelTask(taskId);
+      }
+      if (pending.conflict) {
+        this.emitDebugLog('warn', 'product-video-approval:proposal-conflict', {
+          proposalId,
+          approvalCallId: pending.approval.call_id,
+        });
+      }
+      if (pending.approval.status === 'completed') {
+        return Promise.resolve(ToolConfirmationOutcome.ProceedAfterUserAcknowledgement);
+      }
       this.sendToUI('chat:tool-confirm-request', {
+        callId: pending.approval.call_id,
+        name: pending.approval.tool_name,
+        params: pending.approval.params,
+        details: pending.approval.details,
+        status: pending.approval.status,
+      });
+      return Promise.resolve(ToolConfirmationOutcome.Defer);
+    }
+
+    return new Promise<ToolConfirmationOutcome>((resolve) => {
+      const request = {
         callId,
         name: toolName,
         params,
         details,
-      });
+        status: 'pending' as const,
+      };
+      this.pendingToolConfirmations.set(callId, { resolve, request });
+      this.sendToUI('chat:tool-confirm-request', request);
     });
+  }
+
+  getPendingToolConfirmation(): {
+    callId: string;
+    name: string;
+    params: unknown;
+    details: ToolConfirmationDetails;
+    status: 'pending';
+  } | null {
+    const pending = Array.from(this.pendingToolConfirmations.values()).at(-1);
+    return pending?.request || null;
   }
 
   /** 返回 true 表示该确认由本会话处理。 */
   resolveToolConfirmation(callId: string, confirmed: boolean): boolean {
     const pending = this.pendingToolConfirmations.get(callId);
     if (!pending) return false;
-    clearTimeout(pending.timeoutId);
     this.pendingToolConfirmations.delete(callId);
     pending.resolve(confirmed ? ToolConfirmationOutcome.ProceedAfterUserAcknowledgement : ToolConfirmationOutcome.Cancel);
     return true;
@@ -945,11 +1019,67 @@ export class PiChatService {
       const generatedVideos: GeneratedVideoPreview[] = [];
       const generatedAudios: GeneratedAudioPreview[] = [];
       const xhsArtifacts: XhsArtifactPreview[] = [];
-      const preparedTaskMetadata = preparedExecution.task.metadata
+      const productVideoCompletion = {
+        state: { status: 'not-called' } as ProductVideoCompletionState,
+      };
+      let preparedTaskMetadata = preparedExecution.task.metadata
         && typeof preparedExecution.task.metadata === 'object'
         && !Array.isArray(preparedExecution.task.metadata)
         ? preparedExecution.task.metadata as Record<string, unknown>
         : {};
+      let runtimeUserInputContent = attachmentRuntime?.userInputContent;
+      let productAssetVisualGrounding = preparedTaskMetadata.productAssetVisualGrounding
+        && typeof preparedTaskMetadata.productAssetVisualGrounding === 'object'
+        && !Array.isArray(preparedTaskMetadata.productAssetVisualGrounding)
+        ? preparedTaskMetadata.productAssetVisualGrounding as ProductVideoVisualGroundingEvidence
+        : undefined;
+
+      const visualPreparation = resolveProductVideoVisualPreparation({
+        workflowKind: preparedExecution.route.workflowKind,
+        metadata: preparedTaskMetadata,
+      });
+      if (visualPreparation.action === 'require-product-selection') {
+        const response = visualPreparation.productRefs.length > 1
+          ? '当前请求引用了多个商品。请只保留一个主商品后重新提交，系统不会默认选择第一个商品。'
+          : '当前商品视频请求缺少有效的主商品引用，请重新选择一个商品后提交。';
+        this.emitLocalAssistantResponse(sessionId, response);
+        getAgentRuntime().completeExecution(preparedExecution.task.id, {
+          responseLength: response.length,
+          productSelectionRequired: true,
+        });
+        return;
+      }
+      if (visualPreparation.action === 'prepare') {
+        if (!attachmentRuntime?.prepareProductVideoVisualInput) {
+          const error = Object.assign(new Error('商品视频视觉输入准备器未接入，已阻止无图分镜。'), {
+            chatErrorMessage: '商品图片理解未启动',
+            chatErrorHint: '商品视频路由已经建立，但没有启动图片理解。请重试；系统不会在看不到商品素材时生成分镜。',
+            chatErrorCategory: 'product-video-runtime',
+          });
+          getAgentRuntime().failExecution(preparedExecution.task.id, error.message);
+          throw error;
+        }
+        try {
+          const visualInput = await attachmentRuntime.prepareProductVideoVisualInput({ signal });
+          runtimeUserInputContent = visualInput.userInputContent;
+          productAssetVisualGrounding = visualInput.grounding;
+          const updatedTask = getTaskGraphRuntime().mergeMetadata(preparedExecution.task.id, {
+            productAssetVisualGrounding,
+          });
+          if (updatedTask?.metadata && typeof updatedTask.metadata === 'object' && !Array.isArray(updatedTask.metadata)) {
+            preparedTaskMetadata = updatedTask.metadata as Record<string, unknown>;
+          } else {
+            preparedTaskMetadata = {
+              ...preparedTaskMetadata,
+              productAssetVisualGrounding,
+            };
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          getAgentRuntime().failExecution(preparedExecution.task.id, message);
+          throw error;
+        }
+      }
       let lastMediaToolError = '';
       let lastMediaToolErrorIsTerminal = false;
       const captureTask = isXhsAutoCaptureTask({
@@ -964,6 +1094,32 @@ export class PiChatService {
           onEvent: (event) => this.handleQueryRuntimeEvent(event, generatedImages, generatedVideos, generatedAudios, xhsArtifacts),
           onToolResult: (toolName, result, command) => {
             this.maybeRegisterArtifactFromRuntimeToolResult(toolName, result, command);
+            if (toolName === 'product_video_compose') {
+              const productData = result.data && typeof result.data === 'object' && !Array.isArray(result.data)
+                ? result.data as Record<string, unknown>
+                : {};
+              if (productData.kind === 'tool-confirmation-pending') {
+                productVideoCompletion.state = {
+                  status: 'awaiting-approval',
+                  callId: String(productData.callId || '').trim() || undefined,
+                  proposalId: String(productData.proposalId || '').trim() || undefined,
+                };
+              } else if (result.success && productData.kind === 'product-video-project') {
+                productVideoCompletion.state = {
+                  status: 'succeeded',
+                  projectId: String(productData.projectId || '').trim(),
+                  uri: String(productData.uri || '').trim(),
+                  projectStatus: String(productData.status || '').trim() || undefined,
+                };
+              } else if (result.error?.type === ToolErrorType.CANCELLED) {
+                productVideoCompletion.state = { status: 'cancelled' };
+              } else {
+                productVideoCompletion.state = {
+                  status: 'failed',
+                  error: String(result.error?.message || result.llmContent || result.display || '商品视频工程创建失败').trim(),
+                };
+              }
+            }
             if (toolName === 'image_generate' || toolName === 'video_generate' || toolName === 'audio_generate') {
               if (result.success) {
                 lastMediaToolError = '';
@@ -1061,6 +1217,7 @@ export class PiChatService {
               metadata: taskMetadata,
               artifacts: task?.artifacts || [],
               xhsMediaState,
+              productVideoState: productVideoCompletion.state,
             });
             if (!completion.complete && lastMediaToolError) {
               return {
@@ -1084,13 +1241,18 @@ export class PiChatService {
           model: modelName,
           systemPrompt,
           messages: runtimeMessages,
-          userInputContent: attachmentRuntime?.userInputContent,
+          userInputContent: runtimeUserInputContent,
           signal,
           maxTurns,
           maxTimeMinutes: captureTask ? Math.max(maxTimeMinutes, 20) : maxTimeMinutes,
           temperature,
           toolPack: 'gardenflow',
           runtimeMode,
+          workflowKind: preparedExecution.route.workflowKind,
+          explicitProductRefs: Array.isArray(preparedTaskMetadata.explicitProductRefs)
+            ? preparedTaskMetadata.explicitProductRefs as Array<{ productId: string; name: string; updatedAt: string }>
+            : undefined,
+          productAssetVisualGrounding,
           interactive: runtimeMode !== 'background-maintenance',
           requiresHumanApproval: preparedExecution.route.requiresHumanApproval,
           generationToolConstraints: preparedTaskMetadata.generationToolConstraints,
@@ -1122,6 +1284,15 @@ export class PiChatService {
       }
 
       let fullResponse = runResult.response || '';
+      if (
+        productVideoCompletion.state.status === 'succeeded'
+        && productVideoCompletion.state.uri
+        && !fullResponse.includes(productVideoCompletion.state.uri)
+      ) {
+        fullResponse = [fullResponse, `[打开商品视频工程](${productVideoCompletion.state.uri})`]
+          .filter(Boolean)
+          .join('\n\n');
+      }
       if (generatedImages.length > 0) {
         fullResponse = this.appendGeneratedImagesMarkdown(fullResponse, generatedImages);
       }
@@ -1141,12 +1312,14 @@ export class PiChatService {
           responsePreview: fullResponse.slice(0, 160),
         });
         this.setRuntimeState({ partialResponse: fullResponse });
-        addChatMessage({
-          id: `msg_${Date.now()}`,
-          session_id: sessionId,
-          role: 'assistant',
-          content: fullResponse,
-        });
+        if (!this.chatRunEventSink) {
+          addChatMessage({
+            id: `msg_${Date.now()}`,
+            session_id: sessionId,
+            role: 'assistant',
+            content: fullResponse,
+          });
+        }
       } else {
         console.warn('[PiChatService] Empty assistant response', {
           sessionId,
@@ -1170,6 +1343,15 @@ export class PiChatService {
         streamedChunks: true,
         responseLength: fullResponse.length,
       });
+      if (runResult.awaitingApproval) {
+        getAgentRuntime().pauseExecution(
+          preparedExecution.task.id,
+          '等待用户确认商品视频分镜',
+          runResult.awaitingApproval,
+        );
+        this.sendToUI('chat:response-end', { content: fullResponse });
+        return;
+      }
       getAgentRuntime().completeExecution(preparedExecution.task.id, {
         responseLength: fullResponse.length,
         streamedChunks: true,
@@ -1410,6 +1592,33 @@ export class PiChatService {
         model: modelName,
       },
     });
+    let preparedSystemPrompt = preparedExecution.systemPrompt;
+    if (preparedExecution.route.workflowKind === 'product-video-compose') {
+      const skillName = 'video-director';
+      const skill = this.skillManager.getSkill(skillName);
+      if (!skill || skill.disabled) {
+        throw new Error('商品视频工作流需要 video-director 技能，但该技能当前不可用。');
+      }
+      const wasActive = this.skillManager.isSkillActive(skillName);
+      const skillContent = await this.skillManager.activateSkill(skillName);
+      if (!skillContent) {
+        throw new Error('商品视频工作流无法加载 video-director 技能。');
+      }
+      if (!wasActive) {
+        preparedSystemPrompt = [
+          preparedSystemPrompt,
+          '<forced_skill name="video-director">',
+          skillContent,
+          '</forced_skill>',
+        ].join('\n\n');
+        if (emitSkillActivation) {
+          this.sendToUI('chat:skill-activated', {
+            name: skill.name,
+            description: skill.description,
+          });
+        }
+      }
+    }
 
     const runtimeMessages = this.historyToRuntimeMessages(sessionId, content, metadata);
     this.emitDebugLog('info', 'runtime:prepare:done', {
@@ -1429,14 +1638,15 @@ export class PiChatService {
       modelName,
       runtimeMode,
       metadata,
-      systemPrompt: preparedExecution.systemPrompt,
+      systemPrompt: preparedSystemPrompt,
       runtimeMessages,
       preparedExecution,
       temperature: 0.6,
       maxTurns: 100,
-      maxTimeMinutes: preparedExecution.route.requiredCapabilities.some((capability) => (
-        capability === 'image-generation' || capability === 'video-generation'
-      )) ? 45 : 12,
+      maxTimeMinutes: preparedExecution.route.workflowKind === 'product-video-compose'
+        || preparedExecution.route.requiredCapabilities.some((capability) => (
+          capability === 'image-generation' || capability === 'video-generation'
+        )) ? 45 : 12,
     };
   }
 
@@ -2037,6 +2247,28 @@ export class PiChatService {
     const details = wrapped?.details;
     const data = (details?.data || null) as Record<string, unknown> | null;
     if (!details || details.success === false) return;
+
+    if (toolName === 'product_video_compose' && data?.kind === 'product-video-project') {
+      const projectId = String(data.projectId || '').trim();
+      const uri = String(data.uri || '').trim();
+      if (projectId && uri) {
+        getTaskGraphRuntime().startNode(taskId, 'save_artifact', '检测到商品视频工程');
+        getTaskGraphRuntime().addArtifact(taskId, {
+          type: 'product-video-project',
+          label: String(data.title || projectId).trim() || projectId,
+          metadata: {
+            toolName,
+            command: command || '',
+            projectId,
+            uri,
+            status: String(data.status || '').trim(),
+            proposalId: String(data.proposalId || '').trim(),
+            data,
+          },
+        });
+      }
+      return;
+    }
 
     if (toolName === 'app_cli' && data?.kind === 'manuscript-write') {
       const relativePath = String(data.path || data.relativePath || '').trim();

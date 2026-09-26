@@ -39,8 +39,11 @@ export type RoleId =
 
 export type ThinkingBudget = 'minimal' | 'low' | 'medium' | 'high';
 
+export type WorkflowKind = 'product-video-compose';
+
 export interface IntentRoute {
   intent: IntentName;
+  workflowKind?: WorkflowKind;
   secondaryIntents?: IntentName[];
   goal: string;
   deliverables?: string[];

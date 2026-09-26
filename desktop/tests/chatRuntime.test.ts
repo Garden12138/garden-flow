@@ -27,6 +27,7 @@ import {
   buildChatRunMessageMetadata,
   parseChatRunMessageMetadata,
 } from '../shared/chatRunState.ts';
+import { shouldPreserveFixedSessionWarmMessages } from '../shared/chatWarmSnapshotPolicy.ts';
 import { reduceChatRunEnvelope } from '../src/runtime/chatSessionStore.ts';
 import { formatProcessingElapsed, resolveProcessingEndAt } from '../src/utils/processingElapsed.ts';
 import {
@@ -68,6 +69,58 @@ const imageRoute: IntentRoute = {
   requiredCapabilities: ['image-generation'],
   recommendedRole: 'image-director',
 };
+
+test('persisted terminal chat state overrides a stale streaming warm snapshot', () => {
+  const warm = {
+    messages: [{
+      id: 'assistant-1',
+      role: 'ai',
+      content: '正在逐张理解商品图片...',
+      isStreaming: true,
+      runSequence: 4,
+    }],
+  };
+  const failedHistory = [{
+    id: 'assistant-1',
+    content: '处理未完成：商品图片无法解码。',
+    metadata: buildChatRunMessageMetadata({
+      messageKind: 'chat-run',
+      runId: 'run-1',
+      status: 'failed',
+      startedAt: 1,
+      finishedAt: 2,
+      sequence: 4,
+    }),
+  }];
+
+  assert.equal(shouldPreserveFixedSessionWarmMessages(warm, failedHistory), false);
+  assert.equal(shouldPreserveFixedSessionWarmMessages({
+    messages: [...warm.messages, { id: 'local-only', role: 'user', content: 'draft' }],
+  }, failedHistory), false);
+});
+
+test('a genuinely newer running warm snapshot is still preserved', () => {
+  const runningHistory = [{
+    id: 'assistant-1',
+    content: '',
+    metadata: buildChatRunMessageMetadata({
+      messageKind: 'chat-run',
+      runId: 'run-1',
+      status: 'running',
+      startedAt: 1,
+      sequence: 2,
+    }),
+  }];
+  assert.equal(shouldPreserveFixedSessionWarmMessages({
+    messages: [{
+      id: 'assistant-1',
+      role: 'ai',
+      content: '正在逐张理解商品图片...',
+      isStreaming: true,
+      runSequence: 3,
+    }],
+  }, runningHistory), true);
+});
 
 test('keeps video generation as an explicit routed intent and enforces its execution policy', () => {
   assert.ok(INTENT_NAMES.includes('video_creation'));

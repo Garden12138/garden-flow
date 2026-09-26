@@ -28,6 +28,11 @@ import {
     videoModeReferenceRange,
 } from '../../shared/videoGenerationCapabilities';
 import { normalizeMediaValueForRemote as resolveHostedMediaValue } from './imageHosting/service.ts';
+import { transcodeProductVideoImageToJpeg } from './productVideoImageDecode.ts';
+import {
+    normalizeAliyunVideoReferenceImages,
+    resolveAliyunReferenceFfmpegCommand,
+} from './aliyunVideoReferenceImages.ts';
 
 export interface GenerateVideosInput {
     prompt: string;
@@ -967,7 +972,19 @@ async function generateViaAliyunBailianVideoRoute(input: {
         throw new Error(`${input.model} 是参考图生视频模型，至少需要 1 张参考图；请在参考图模式上传素材，或改用文生视频模型。`);
     }
 
-    const normalizedRefs = (await Promise.all(refs.map((item) => normalizeMediaValueForRemote(item)))).filter(Boolean);
+    let ffmpegCommand: string | undefined;
+    const normalizedRefs = await normalizeAliyunVideoReferenceImages({
+        references: refs,
+        normalize: normalizeMediaValueForRemote,
+        transcodeLocalImage: (inputPath) => {
+            ffmpegCommand ||= resolveAliyunReferenceFfmpegCommand();
+            return transcodeProductVideoImageToJpeg({
+                ffmpegCommand,
+                inputPath,
+                maxEdge: 1536,
+            });
+        },
+    });
     const assets: MediaAsset[] = [];
     let effectiveEndpoint = aliyunEndpointFallbacks.get(configuredCreateUrl) || configuredCreateUrl;
 

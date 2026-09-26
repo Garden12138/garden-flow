@@ -26,6 +26,11 @@ import {
   applyXhsAutoCaptureCompletionGate,
   validateXhsAutoCaptureCompletion,
 } from './xhsAutoCaptureCompletion';
+import {
+  assertProductVideoRuntimeVisualInput,
+  summarizeProductVideoRuntimeVisualInput,
+} from './productVideoVisualGrounding';
+import { collectProductVideoReviewWarnings } from './productVideoRuntimePolicy';
 
 type LlmToolCall = {
   id: string;
@@ -42,6 +47,12 @@ type LlmResponse = {
     completionTokens?: number;
     totalTokens?: number;
   };
+};
+
+export type AwaitingToolApproval = {
+  callId: string;
+  toolName: string;
+  proposalId?: string;
 };
 
 const now = () => Date.now();
@@ -167,10 +178,37 @@ export class QueryRuntime {
     });
   }
 
-  async run(userInput: string): Promise<{ response: string; error?: string }> {
+  async run(userInput: string): Promise<{
+    response: string;
+    error?: string;
+    awaitingApproval?: AwaitingToolApproval;
+  }> {
     const startedAt = now();
     const maxTurns = this.config.maxTurns || 24;
     const maxTimeMs = (this.config.maxTimeMinutes || 12) * 60 * 1000;
+
+    let productVideoVisualSummary: ReturnType<typeof summarizeProductVideoRuntimeVisualInput> | null = null;
+    if (this.config.workflowKind === 'product-video-compose') {
+      try {
+        productVideoVisualSummary = assertProductVideoRuntimeVisualInput({
+          content: this.config.userInputContent,
+          evidence: this.config.productAssetVisualGrounding,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.adapter.onEvent({ type: 'error', message });
+        this.store.addCheckpoint({
+          sessionId: this.config.sessionId,
+          checkpointType: 'product-video.visual-input.rejected',
+          summary: message,
+          payload: summarizeProductVideoRuntimeVisualInput({
+            content: this.config.userInputContent,
+            evidence: this.config.productAssetVisualGrounding,
+          }),
+        });
+        return { response: '', error: message };
+      }
+    }
 
     let messages: RuntimeMessage[] = [
       { role: 'system', content: this.config.systemPrompt },
@@ -190,7 +228,11 @@ export class QueryRuntime {
       sessionId: this.config.sessionId,
       checkpointType: 'query.start',
       summary: '用户消息已进入统一运行时',
-      payload: { model: this.config.model, toolPack: this.config.toolPack },
+      payload: {
+        model: this.config.model,
+        toolPack: this.config.toolPack,
+        ...(productVideoVisualSummary ? { productVideoVisualInput: productVideoVisualSummary } : {}),
+      },
     });
 
     await executeRuntimeHooks({
@@ -404,6 +446,88 @@ export class QueryRuntime {
           this.adapter.onEvent({ type: 'thinking', phase: 'tooling', content: thoughtText });
         }
         const toolResponses = await this.executeToolCalls(llmResponse.toolCalls);
+        const awaitingApproval = toolResponses.map((response) => {
+          const data = response.result.data && typeof response.result.data === 'object' && !Array.isArray(response.result.data)
+            ? response.result.data as Record<string, unknown>
+            : null;
+          if (data?.kind !== 'tool-confirmation-pending') return null;
+          const item: AwaitingToolApproval = {
+            callId: String(data.callId || response.callId).trim(),
+            toolName: String(data.toolName || response.name).trim(),
+          };
+          const proposalId = String(data.proposalId || '').trim();
+          if (proposalId) item.proposalId = proposalId;
+          return item;
+        }).find((item): item is AwaitingToolApproval => Boolean(item));
+        if (awaitingApproval) {
+          const pendingToolCall = llmResponse.toolCalls.find((call) => call.id === awaitingApproval.callId);
+          const reviewWarnings = awaitingApproval.toolName === 'product_video_compose' && pendingToolCall
+            ? collectProductVideoReviewWarnings({
+              args: pendingToolCall.args,
+              productAssetVisualGrounding: this.config.productAssetVisualGrounding,
+            }).map((warning) => `- ${warning.message}`)
+            : [];
+          responseText = [
+            String(llmResponse.content || '').trim(),
+            reviewWarnings.length > 0
+              ? ['请在确认前核对以下非阻断提示：', ...reviewWarnings].join('\n')
+              : '',
+            '分镜确认卡已准备好，当前分镜提案处于等待确认状态。确认卡会保留到你明确确认、取消或提交新的修改方案；等待期间不会创建工程，也不会提交 AI 生成任务。',
+          ].filter(Boolean).join('\n\n');
+          this.adapter.onEvent({ type: 'response_chunk', content: responseText });
+          this.adapter.onEvent({ type: 'response_end', content: responseText });
+          this.adapter.onEvent({ type: 'done', response: responseText });
+          this.store.appendTranscript({
+            sessionId: this.config.sessionId,
+            recordType: 'assistant.awaiting_approval',
+            role: 'assistant',
+            content: responseText,
+            payload: {
+              kind: 'assistant.awaiting_approval',
+              data: awaitingApproval,
+            },
+          });
+          this.store.addCheckpoint({
+            sessionId: this.config.sessionId,
+            checkpointType: 'tool.awaiting_approval',
+            summary: `${awaitingApproval.toolName} 正在等待用户确认`,
+            payload: awaitingApproval,
+          });
+          return { response: responseText, awaitingApproval };
+        }
+        const cancelledVideoApproval = toolResponses.find((response) => (
+          response.name === 'video_generate'
+          && response.result.error?.type === ToolErrorType.CANCELLED
+        ));
+        if (cancelledVideoApproval) {
+          responseText = '已取消视频生成。本轮没有提交新的视频生成任务；你可以修改脚本、素材或分镜后重新发起。';
+          this.adapter.onEvent({ type: 'response_chunk', content: responseText });
+          this.adapter.onEvent({ type: 'response_end', content: responseText });
+          this.adapter.onEvent({ type: 'done', response: responseText });
+          this.store.appendTranscript({
+            sessionId: this.config.sessionId,
+            recordType: 'assistant.video_generation_cancelled',
+            role: 'assistant',
+            content: responseText,
+            payload: {
+              kind: 'assistant.video_generation_cancelled',
+              data: {
+                callId: cancelledVideoApproval.callId,
+                toolName: cancelledVideoApproval.name,
+              },
+            },
+          });
+          this.store.addCheckpoint({
+            sessionId: this.config.sessionId,
+            checkpointType: 'tool.confirmation.cancelled',
+            summary: '用户取消了视频生成确认',
+            payload: {
+              callId: cancelledVideoApproval.callId,
+              toolName: cancelledVideoApproval.name,
+            },
+          });
+          return { response: responseText };
+        }
         const terminalToolFailure = toolResponses
           .map((response) => ({ response, message: terminalToolFailureMessage(response) }))
           .find((item) => item.message);
@@ -837,6 +961,9 @@ export class QueryRuntime {
         sessionId: this.config.sessionId,
         toolPack: this.config.toolPack,
         runtimeMode: this.config.runtimeMode,
+        workflowKind: this.config.workflowKind,
+        explicitProductRefs: this.config.explicitProductRefs,
+        productAssetVisualGrounding: this.config.productAssetVisualGrounding,
         interactive: this.config.interactive !== false,
         requiresHumanApproval: this.config.requiresHumanApproval,
       },

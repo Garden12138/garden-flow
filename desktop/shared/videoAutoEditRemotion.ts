@@ -149,14 +149,14 @@ export function buildVideoEditorV2RemotionComposition(project: VideoEditorV2Proj
       overlays,
     };
   });
-  const musicScenes: VideoEditorV2RemotionScene[] = timeline.tracks
-    .filter((track) => track.kind === 'music' && !track.muted)
-    .flatMap((track) => track.clips)
-    .filter((clip) => !clip.disabled && clip.assetId)
-    .map((clip) => {
+  const audioScenes: VideoEditorV2RemotionScene[] = timeline.tracks
+    .filter((track) => (track.kind === 'music' || track.kind === 'voiceover') && !track.muted)
+    .flatMap((track) => track.clips.map((clip) => ({ clip, kind: track.kind })))
+    .filter(({ clip }) => !clip.disabled && clip.assetId)
+    .map(({ clip, kind }) => {
       const asset = project.assets.find((item) => item.id === clip.assetId);
       return {
-        id: `music_${clip.id}`,
+        id: `${kind}_${clip.id}`,
         clipId: clip.id,
         assetId: clip.assetId,
         assetKind: 'audio' as const,
@@ -165,7 +165,7 @@ export function buildVideoEditorV2RemotionComposition(project: VideoEditorV2Proj
         durationInFrames: clipDurationFrames(clip, fps),
         trimInFrames: msToFrames(clip.sourceStartMs, fps),
         motionPreset: 'static' as const,
-        volume: Math.max(0, Math.min(1, Number(clip.volume ?? 0.2))),
+        volume: Math.max(0, Math.min(1, Number(clip.volume ?? (kind === 'music' ? 0.2 : 1)))),
         fadeInFrames: msToFrames(Number(clip.fadeInMs || 0), fps),
         fadeOutFrames: msToFrames(Number(clip.fadeOutMs || 0), fps),
       };
@@ -181,7 +181,7 @@ export function buildVideoEditorV2RemotionComposition(project: VideoEditorV2Proj
     durationInFrames: Math.max(1, msToFrames(timeline.durationMs, fps)),
     backgroundColor: '#0d1117',
     renderMode: 'full',
-    scenes: [...scenes, ...musicScenes],
+    scenes: [...scenes, ...audioScenes],
     transitions: [],
     baseMedia: {
       sourceAssetIds: project.assets.map((asset) => asset.id),

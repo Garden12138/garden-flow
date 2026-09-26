@@ -51,12 +51,15 @@ export const ProductVideoComposeParamsSchema = z.object({
 
 export const ProductVideoEditCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('scene.reorder'), sceneId: z.string().min(1), targetSceneId: z.string().min(1), position: z.enum(['before', 'after']) }).strict(),
-  z.object({ type: z.literal('scene.duration'), sceneId: z.string().min(1), durationMs: z.number().int().min(500).max(30_000) }).strict(),
+  // The main process snaps this positive millisecond request to the project's frame rate.
+  z.object({ type: z.literal('scene.duration'), sceneId: z.string().min(1), durationMs: z.number().int().min(1).max(30_000) }).strict(),
   z.object({ type: z.literal('scene.fit'), sceneId: z.string().min(1), fitMode: z.enum(['contain-blur', 'cover']) }).strict(),
   z.object({ type: z.literal('scene.motion'), sceneId: z.string().min(1), motionPreset: z.enum(['static', 'slow-zoom-in', 'slow-zoom-out', 'pan-left', 'pan-right']) }).strict(),
   z.object({ type: z.literal('scene.text'), sceneId: z.string().min(1), text: z.string().max(120) }).strict(),
+  z.object({ type: z.literal('scene.narration-text'), sceneId: z.string().min(1), text: z.string().max(500) }).strict(),
   z.object({ type: z.literal('scene.asset'), sceneId: z.string().min(1), assetId: z.string().min(1) }).strict(),
   z.object({ type: z.literal('scene.delete'), sceneId: z.string().min(1) }).strict(),
+  z.object({ type: z.literal('voiceover.remove'), sceneId: z.string().min(1) }).strict(),
   z.object({ type: z.literal('music.remove') }).strict(),
 ]);
 

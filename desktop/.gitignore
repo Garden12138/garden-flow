@@ -1,6 +1,8 @@
 node_modules/
 dist/
 dist-electron/
+.remotion-render-bundle/
+.remotion-compositor/
 release/
 .private-runtime/
 .plugin-runtime/

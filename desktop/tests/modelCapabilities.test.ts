@@ -20,8 +20,20 @@ test('image and video families remain outside chat lists', () => {
 
 test('embedding models resolve to embedding without product aliases', () => {
     assert.deepEqual(inferModelCapabilities('qwen3.7-text-embedding'), ['embedding']);
+    assert.deepEqual(getModelInputCapabilities('qwen3.7-text-embedding'), []);
     assert.deepEqual(inferModelCapabilities('text-embedding-3-small'), ['embedding']);
     assert.deepEqual(inferModelCapabilities('qwen3.7-plus'), ['chat']);
+});
+
+test('current Qwen multimodal chat models accept image and file input', () => {
+    assert.deepEqual(getModelInputCapabilities('qwen3.8-max'), ['image', 'file']);
+    assert.deepEqual(getModelInputCapabilities('qwen3.7-plus'), ['image', 'file']);
+    assert.deepEqual(getModelInputCapabilities('qwen3.6-flash'), ['image', 'file']);
+});
+
+test('known text-only model profiles do not inherit unknown-model image input defaults', () => {
+    assert.deepEqual(getModelInputCapabilities('qwen3-235b-a22b'), []);
+    assert.deepEqual(getModelInputCapabilities('minimax-m2.1'), []);
 });
 
 test('omni models advertise rich inputs and remain outside chat selection', () => {

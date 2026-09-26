@@ -16,7 +16,11 @@ export function createChatBridge(core: BridgeCore) {
       transcribeAudio: (payload: Record<string, unknown>) => core.invokeChannel('chat:transcribe-audio', payload),
       cancel: (data?: { sessionId?: string; runId?: string } | string) => core.sendChannel('chat:cancel', data),
       confirmTool: (callId: string, confirmed: boolean) =>
-        core.sendChannel('chat:confirm-tool', { callId, confirmed }),
+        core.invokeChannel('chat:confirm-tool', { callId, confirmed }),
+      getPendingToolConfirmation: (sessionId: string) =>
+        core.invokeChannel('chat:get-pending-tool-confirmation', { sessionId }),
+      onToolConfirmationUpdated: (listener: Listener) => core.on('chat:tool-confirmation-updated', listener),
+      offToolConfirmationUpdated: (listener: Listener) => core.off('chat:tool-confirmation-updated', listener),
       getSessions: () => core.invokeChannel('chat:get-sessions'),
       createSession: (title?: string) => core.invokeChannel('chat:create-session', title),
       createDiagnosticsSession: (payload?: { title?: string; contextId?: string; contextType?: string }) =>

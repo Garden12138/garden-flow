@@ -224,18 +224,26 @@
         "notes": "Current official compatibility doc does not advertise image input support."
     },
     {
-        "id": "qwen-3.5-chat-multimodal",
+        "id": "qwen-3.5-plus-chat-multimodal",
         "vendor": "qwen",
-        "displayName": "Qwen 3.5 multimodal chat",
+        "displayName": "Qwen 3.5+ multimodal chat",
         "matchers": [
-            "\\bqwen3\\.5\\b",
-            "\\bqwen3\\.5-plus\\b",
-            "\\bqwen-3\\.5\\b",
-            "\\bqwen[-_ ]3\\.5\\b"
+            "\\bqwen3\\.8(?![-_ ]?(?:text-)?embedding\\b)",
+            "\\bqwen-3\\.8(?![-_ ]?(?:text-)?embedding\\b)",
+            "\\bqwen[-_ ]3\\.8(?![-_ ]?(?:text-)?embedding\\b)",
+            "\\bqwen3\\.7(?![-_ ]?(?:text-)?embedding\\b)",
+            "\\bqwen-3\\.7(?![-_ ]?(?:text-)?embedding\\b)",
+            "\\bqwen[-_ ]3\\.7(?![-_ ]?(?:text-)?embedding\\b)",
+            "\\bqwen3\\.6(?![-_ ]?(?:text-)?embedding\\b)",
+            "\\bqwen-3\\.6(?![-_ ]?(?:text-)?embedding\\b)",
+            "\\bqwen[-_ ]3\\.6(?![-_ ]?(?:text-)?embedding\\b)",
+            "\\bqwen3\\.5(?![-_ ]?(?:text-)?embedding\\b)",
+            "\\bqwen-3\\.5(?![-_ ]?(?:text-)?embedding\\b)",
+            "\\bqwen[-_ ]3\\.5(?![-_ ]?(?:text-)?embedding\\b)"
         ],
         "capabilities": ["chat"],
         "inputCapabilities": ["image", "file"],
-        "notes": "General Qwen 3.5 chat is treated as image/file input only; direct video input requires an omni model name."
+        "notes": "Qwen 3.5 through 3.8 chat models support image/file input; direct video input remains gated separately in this app."
     },
     {
         "id": "qwen-text-embedding",
@@ -258,7 +266,7 @@
             "\\bqwen-max\\b",
             "\\bqwen-plus\\b",
             "\\bqwen-turbo\\b",
-            "\\bqwen3\\b",
+            "\\bqwen3(?:$|[-_:])",
             "\\bqwen2\\.5\\b",
             "\\bqwen2\\b"
         ],

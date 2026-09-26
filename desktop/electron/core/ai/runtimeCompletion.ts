@@ -20,6 +20,13 @@ export interface XhsMediaCompletionState {
   }>;
 }
 
+export type ProductVideoCompletionState =
+  | { status: 'not-called' }
+  | { status: 'awaiting-approval'; callId?: string; proposalId?: string }
+  | { status: 'cancelled' }
+  | { status: 'failed'; error: string }
+  | { status: 'succeeded'; projectId: string; uri: string; projectStatus?: string };
+
 const NON_DELIVERABLE_ARTIFACT_TYPES = new Set([
   'runtime-result',
 ]);
@@ -48,7 +55,53 @@ export function validateRuntimeCompletion(input: {
   metadata?: Record<string, unknown> | null;
   artifacts?: AgentTaskArtifactRecord[];
   xhsMediaState?: XhsMediaCompletionState | null;
+  productVideoState?: ProductVideoCompletionState | null;
 }): RuntimeCompletionValidation {
+  if (input.route.workflowKind === 'product-video-compose') {
+    const state = input.productVideoState || { status: 'not-called' };
+    if (state.status === 'awaiting-approval') {
+      return { complete: true };
+    }
+    if (state.status === 'cancelled') {
+      return { complete: true };
+    }
+    if (state.status === 'failed') {
+      return { complete: true };
+    }
+    if (state.status === 'not-called') {
+      return {
+        complete: false,
+        maxRecoveryAttempts: 3,
+        feedback: [
+          '商品视频工作流尚未提交结构化分镜。',
+          '请直接调用 product_video_compose 提交完整提案；该工具的确认卡就是分镜审核步骤，不要先用普通文本结束，也不要调用 image_generate 或 video_generate。',
+        ].join('\n'),
+      };
+    }
+
+    const productProject = (input.artifacts || []).find((artifact) => (
+      String(artifact.type || '').trim() === 'product-video-project'
+    ));
+    if (!productProject) {
+      return {
+        complete: false,
+        feedback: 'product_video_compose 已返回成功，但当前任务尚未登记商品视频工程产物。请保留工程回执并完成 product-video-project 登记；独立 MP4 不能替代商品视频工程。',
+      };
+    }
+    const metadata = productProject.metadata && typeof productProject.metadata === 'object'
+      ? productProject.metadata as Record<string, unknown>
+      : {};
+    const artifactProjectId = String(metadata.projectId || '').trim();
+    const artifactUri = String(metadata.uri || '').trim();
+    if (artifactProjectId !== state.projectId || artifactUri !== state.uri) {
+      return {
+        complete: false,
+        feedback: '商品视频工程产物与本轮 product_video_compose 回执不一致，请重新登记正确的 projectId 和 video-project:// URI。',
+      };
+    }
+    return { complete: true };
+  }
+
   let completedXhsMediaType: 'image' | 'video' | null = null;
   if (input.xhsMediaState) {
     const state = input.xhsMediaState;

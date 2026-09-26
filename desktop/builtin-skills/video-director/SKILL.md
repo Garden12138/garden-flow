@@ -36,17 +36,19 @@ The storyboard contact-sheet preview is mandatory after the first shot script is
 
 ## Product Material Composition Workflow
 
-When the request comes from an `@商品` reference and asks for an editable product video, use this workflow instead of the generic contact-sheet and project-pack flow above. The confirmation card itself is the visual storyboard gate and must use the real product thumbnails; do not generate replacement product stills.
+Whenever the current turn contains a validated `@商品` reference and the user asks to create a video, use this workflow instead of the generic contact-sheet and project-pack flow above. The user does not need to say “editable” or explicitly ask for a project. The confirmation card itself is the visual storyboard gate and must use the real product thumbnails; do not generate replacement product stills.
 
 1. If more than one product is referenced, stop and ask the user to choose exactly one primary product. Never select the first product implicitly.
-2. Read the primary product with `app_cli(command="products get --id <productId>")`. Treat only its returned facts, SKU data, source records, and asset IDs as trusted. Never invent price, specifications, materials, certification, efficacy, or promotions.
-3. If the product is missing or has no images, explain the blocker. Do not create a project or submit generation.
-4. Build one complete proposal. Defaults are 1080×1920, 30fps, 15 seconds, five scenes, exactly two `ai-motion` scenes, and three `product-asset` scenes. Explicit user requirements override these defaults.
-5. Every scene must reference real asset IDs from that product. Show the actual thumbnails, scene duration, screen text, material type, fit mode, motion preset, and AI generation prompt before or as part of submitting the proposal.
-6. Keep all screen copy on the text track. AI generation prompts must explicitly request clean imagery without baked-in text, captions, prices, logos added by the model, or watermarks.
-7. Put every product reference seen in the conversation into `referencedProductIds`; the tool will reject the proposal unless this contains exactly the chosen `productId`. Submit the full proposal once through `product_video_compose`. This tool owns the human confirmation gate. Words such as “确认”, “可以”, or “继续” in a chat message never bypass the tool confirmation.
-8. A cancellation creates no project and submits no model task. Continue revising the proposal in chat, then resubmit it with the same `proposalId` for the same logical proposal or a new ID for a materially new proposal.
-9. After approval, the tool creates the durable Video Editor V2 product-video project, snapshots source assets, generates the two reference-guided silent AI clips in parallel, and returns a `video-project://<projectId>` link. Do not separately call `video.generate` for those scenes.
+2. Read the verified `<selected_product_assets>` block already supplied by the main process. Treat its facts, SKU data, source records, and asset IDs as the canonical structured facts. Image-visible text from the verified visual analysis may be used as provisional copy, but it is not automatically promoted to a canonical fact: keep it faithful to the image and let the confirmation card warn the user to verify it. Do not search the filesystem, catalog files, or conversation text to reconstruct a missing product reference. If that structured block is absent, ask the user to reselect `@商品`; the runtime will reject `product_video_compose` without it.
+3. Inspect every image in the paired `<product_asset_visuals>` input by its adjacent `assetId` label before assigning scenes, and use the paired `<verified_product_asset_analysis>` produced by the main-process visual preflight. Do not infer image contents from capture order, `primary`/`gallery`, filenames, the product title, a shell listing, or catalog paths. If the verified analysis is absent, stop instead of calling `bash`, `app_cli`, or `product_video_compose`.
+4. Prefer to omit coupon instructions, subsidy rules, event-date posters, stale price cards, and unrelated policy/help screens from the generic product-video timeline. Visual `exclude` classifications are review warnings rather than hard blockers because the visual model may misclassify an image. If a visually flagged image is still useful, it may remain in the proposal; the confirmation card must identify the risk and the user can approve it or revise the proposal. Do not assert a price/date as current unless it is still a trusted structured fact.
+5. If the product is missing, has no readable images, the visual proof was not verified, or the current model did not receive the paired visual input, explain the blocker. Do not create a proposal, project, or generation task. Never replace failed image delivery with filenames or file listings.
+6. Build one complete proposal. Defaults are 1080×1920, 30fps, 15 seconds, five scenes, exactly two `ai-motion` scenes, and three `product-asset` scenes. Explicit user requirements override these defaults.
+7. Every scene must reference real asset IDs from that product, and its title/prompt must match the actual referenced image. Show the actual thumbnails, scene duration, screen text, material type, fit mode, motion preset, and AI generation prompt before or as part of submitting the proposal.
+8. Keep all screen copy on the text track. AI generation prompts must explicitly request clean imagery without baked-in text, captions, prices, logos added by the model, or watermarks.
+9. Put every product reference from the current turn's `explicitProductRefs` into `referencedProductIds`; the runtime will reject the proposal unless the user selected exactly one product and both `productId` and `productUpdatedAt` match. Submit the full proposal once through `product_video_compose`. This tool owns the human confirmation gate. Words such as “确认”, “可以”, or “继续” in a chat message never bypass the tool confirmation.
+10. A cancellation creates no project and submits no model task. Continue revising the proposal in chat, then resubmit it with the same `proposalId` for the same logical proposal or a new ID for a materially new proposal.
+11. After approval, the tool creates the durable Video Editor V2 product-video project, snapshots source assets, generates the two reference-guided silent AI clips in parallel, and returns a `video-project://<projectId>` link. Do not separately call `video.generate` for those scenes.
 
 Use `contain-blur` by default for landscape and square product images, and apply a restrained motion preset such as `slow-zoom-in`, `slow-zoom-out`, `pan-left`, or `pan-right` to original stills. Use `cover` only where cropping is safe. Keep generated and source-video audio muted; BGM is optional post-production material and defaults to 20% volume with short fades.
 
@@ -185,7 +187,7 @@ Create one only when:
 - the user explicitly asks to continue later inside the video editor / project workbench
 - the task is already bound to an existing video project pack
 
-Do not create one only because the request has multiple shots, long context, continuity risk, storyboard needs, or possible revisions.
+Do not create one only because the request has multiple shots, long context, continuity risk, storyboard needs, or possible revisions. This restriction does not apply to the Product Material Composition Workflow: validated `@商品` + video intent always produces its Video Editor V2 product-video project through `product_video_compose`.
 
 When it is explicitly needed, create it with:
 

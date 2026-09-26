@@ -15,6 +15,7 @@ import {
     extractLocalAssetPathCandidate,
     isLocalAssetSource,
 } from '../../../../shared/localAsset';
+import { shouldRenderVisualPlaceholder } from '../../../../shared/videoMotionLayerPolicy';
 import { resolveAssetUrl } from '../../../utils/pathManager';
 import type {
     RemotionCompositionConfig,
@@ -968,7 +969,7 @@ function SceneLayerContent({
                         endAt={(scene.trimInFrames || 0) + scene.durationInFrames}
                     />
                 )
-            ) : showBaseMedia ? (
+            ) : shouldRenderVisualPlaceholder(scene.assetKind, showBaseMedia) ? (
                 <AbsoluteFill
                     style={{
                         alignItems: 'center',

@@ -79,6 +79,7 @@ export interface PendingChatMessage {
   assetReferences?: Array<{
     id: string;
     name: string;
+    referenceType?: 'product' | 'subject';
     description?: string;
     tags?: string[];
     categoryId?: string;

@@ -9,6 +9,7 @@ export function createMediaBridge(core: BridgeCore) {
       delete: <T = unknown>(payload: Record<string, unknown>) => core.invokeChannel('media:delete', payload) as Promise<T>,
       open: <T = unknown>(payload: { assetId: string }) => core.invokeChannel('media:open', payload) as Promise<T>,
       openRoot: <T = unknown>() => core.invokeChannel('media:open-root') as Promise<T>,
+      download: <T = unknown>(payload: { assetId: string }) => core.invokeChannel('media:download', payload) as Promise<T>,
       importFiles: <T = unknown>(payload?: { kind?: 'image' | 'video'; multiple?: boolean }) => core.invokeChannel('media:import-files', payload || {}) as Promise<T>,
     },
     imageGeneration: {

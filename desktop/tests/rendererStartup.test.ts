@@ -40,4 +40,6 @@ test('desktop window stays hidden until the renderer commits and uses only curre
     assert.doesNotMatch(rendererMain, /storageBootstrap|brandCompatibility/);
     assert.doesNotMatch(localAsset, /brandCompatibility|canonicalValue|canonicalKey/);
     assert.doesNotMatch(ipcRenderer, new RegExp(['official', 'Auth'].join('')));
+    assert.match(appMain, /persistedChatRun\.publishChannelEvent\('chat:error', errorPayload\)/);
+    assert.doesNotMatch(appMain, /persistedChatRun\.fail\(raw\)/);
 });

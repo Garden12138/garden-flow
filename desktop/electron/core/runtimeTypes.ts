@@ -1,4 +1,6 @@
 import type { ToolDefinition, ToolResult } from './toolRegistry';
+import type { WorkflowKind } from './ai/types';
+import type { ProductVideoVisualGroundingEvidence } from './productVideoVisualGrounding';
 
 export type RuntimeEvent =
   | { type: 'query_start'; sessionId: string; message: string }
@@ -65,6 +67,9 @@ export interface RuntimeConfig {
   temperature?: number;
   toolPack: string;
   runtimeMode?: string;
+  workflowKind?: WorkflowKind;
+  explicitProductRefs?: Array<{ productId: string; name: string; updatedAt: string }>;
+  productAssetVisualGrounding?: ProductVideoVisualGroundingEvidence;
   interactive?: boolean;
   requiresHumanApproval?: boolean;
   generationToolConstraints?: unknown;

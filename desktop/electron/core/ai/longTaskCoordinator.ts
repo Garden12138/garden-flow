@@ -164,11 +164,30 @@ const registerCoordinatorMediaArtifact = (
   result: ToolResult,
   command?: string,
 ): void => {
-  if (!['app_cli', 'image_generate', 'video_generate', 'audio_generate'].includes(toolName) || result.success === false) return;
+  if (!['app_cli', 'image_generate', 'video_generate', 'audio_generate', 'product_video_compose'].includes(toolName) || result.success === false) return;
   const data = result.data && typeof result.data === 'object' && !Array.isArray(result.data)
     ? result.data as Record<string, unknown>
     : null;
   const kind = String(data?.kind || '').trim();
+  if (toolName === 'product_video_compose' && kind === 'product-video-project') {
+    const projectId = String(data?.projectId || '').trim();
+    const uri = String(data?.uri || '').trim();
+    if (projectId && uri) {
+      getTaskGraphRuntime().addArtifact(taskId, {
+        type: 'product-video-project',
+        label: String(data?.title || projectId).trim() || projectId,
+        metadata: {
+          toolName,
+          projectId,
+          uri,
+          status: String(data?.status || '').trim(),
+          proposalId: String(data?.proposalId || '').trim(),
+          data,
+        },
+      });
+    }
+    return;
+  }
   const artifactType = kind === 'generated-videos'
     ? 'video'
     : kind === 'generated-images'
@@ -1039,6 +1058,10 @@ export class LongTaskCoordinator {
         temperature: 0.3,
         toolPack: executionToolPack,
         runtimeMode: task.runtimeMode,
+        workflowKind: task.route.workflowKind,
+        explicitProductRefs: Array.isArray((task.metadata as Record<string, unknown> | undefined)?.explicitProductRefs)
+          ? (task.metadata as Record<string, unknown>).explicitProductRefs as Array<{ productId: string; name: string; updatedAt: string }>
+          : undefined,
         interactive: true,
         requiresHumanApproval: task.route.requiresHumanApproval,
       },

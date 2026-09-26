@@ -30,6 +30,10 @@ import {
   X,
 } from 'lucide-react';
 import { clsx } from 'clsx';
+import {
+  findPlainAssetMentionNames,
+  planPastedAssetMentions,
+} from '../../shared/chatAssetReferences';
 import { enforceModelCapabilityPolicy, getForcedModelCapabilities, inferModelCapabilities, normalizeModelCapabilities, type ModelCapability } from '../../shared/modelCapabilities';
 import { resolveAssetUrl } from '../utils/pathManager';
 import { isChatComposerTextEditable } from '../utils/chatComposerState';
@@ -107,6 +111,9 @@ export interface ChatComposerHandle {
   syncHeight: () => void;
   resetHeight: () => void;
   getTextarea: () => HTMLElement | null;
+  getValue: () => string;
+  getAssetMentionIds: () => string[];
+  getUnresolvedAssetMentionNames: () => string[];
   insertTextAtEnd: (text: string, options?: { separator?: string }) => void;
 }
 
@@ -144,6 +151,7 @@ export interface ChatSkillMentionOption {
 export interface ChatAssetMentionOption {
   id: string;
   name: string;
+  referenceType?: 'product' | 'subject';
   description?: string;
   tags?: string[];
   categoryId?: string;
@@ -213,6 +221,7 @@ export interface ChatComposerProps {
   assetMentionOptions?: ChatAssetMentionOption[];
   selectedAssetMentions?: ChatAssetMentionOption[];
   onSelectedAssetMentionsChange?: (items: ChatAssetMentionOption[]) => void;
+  onAssetMentionPasteIssue?: (names: string[]) => void;
 }
 
 const IMAGE_ATTACHMENT_EXT_RE = /\.(png|jpe?g|webp|gif|bmp|svg|avif)(?:[?#].*)?$/i;
@@ -496,6 +505,27 @@ function readEditorText(root: HTMLElement | null): string {
   return text.replace(/\u00a0/g, ' ');
 }
 
+function readEditorPlainText(root: HTMLElement | null): string {
+  if (!root) return '';
+  let text = '';
+  const visit = (node: Node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      text += node.textContent || '';
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    const element = node as HTMLElement;
+    if (element.dataset.inlineMention) return;
+    if (element.tagName === 'BR') {
+      if (!element.dataset.editorSentinel) text += '\n';
+      return;
+    }
+    node.childNodes.forEach(visit);
+  };
+  root.childNodes.forEach(visit);
+  return text.replace(/\u00a0/g, ' ');
+}
+
 function readEditorMentionKeys(root: HTMLElement | null, kind: 'member' | 'skill' | 'asset'): string[] {
   if (!root) return [];
   return Array.from(root.querySelectorAll<HTMLElement>(`[data-inline-mention="${kind}"]`))
@@ -639,6 +669,30 @@ function insertNodeAtCurrentSelection(root: HTMLElement, node: Node): Node | nul
   range.insertNode(node);
   placeEditorCaretAfterNode(root, spacer);
   return spacer;
+}
+
+function insertNodesAtCurrentSelection(root: HTMLElement, nodes: Node[]): Node | null {
+  if (nodes.length === 0) return null;
+  const selection = window.getSelection();
+  const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+  const canUseSelection = Boolean(range && root.contains(range.startContainer));
+  const fragment = document.createDocumentFragment();
+  let lastNode: Node | null = null;
+  for (const node of nodes) {
+    fragment.appendChild(node);
+    lastNode = node;
+  }
+  if (!lastNode) return null;
+  root.querySelector<HTMLElement>('[data-editor-sentinel="true"]')?.remove();
+  if (!range || !canUseSelection) {
+    root.appendChild(fragment);
+    placeEditorCaretAfterNode(root, lastNode);
+    return lastNode;
+  }
+  range.deleteContents();
+  range.insertNode(fragment);
+  placeEditorCaretAfterNode(root, lastNode);
+  return lastNode;
 }
 
 function placeEditorCaretAtStart(root: HTMLElement | null) {
@@ -1221,6 +1275,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
   assetMentionOptions = [],
   selectedAssetMentions = [],
   onSelectedAssetMentionsChange,
+  onAssetMentionPasteIssue,
 }, ref) {
   const textareaRef = useRef<HTMLDivElement>(null);
   const modelPickerRef = useRef<HTMLDivElement>(null);
@@ -1480,8 +1535,14 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
     syncHeight,
     resetHeight,
     getTextarea: () => textareaRef.current,
+    getValue: () => readEditorText(textareaRef.current),
+    getAssetMentionIds: () => readEditorMentionKeys(textareaRef.current, 'asset'),
+    getUnresolvedAssetMentionNames: () => findPlainAssetMentionNames(
+      readEditorPlainText(textareaRef.current),
+      assetMentionOptions,
+    ),
     insertTextAtEnd,
-  }), [insertTextAtEnd, resetHeight, syncHeight]);
+  }), [assetMentionOptions, insertTextAtEnd, resetHeight, syncHeight]);
 
   const handleFormSubmit = useCallback((event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1855,7 +1916,33 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
           }
           event.preventDefault();
           const text = event.clipboardData.getData('text/plain');
-          document.execCommand('insertText', false, text);
+          const plan = planPastedAssetMentions(text, assetMentionOptions);
+          if (plan.matchedAssets.length === 0) {
+            document.execCommand('insertText', false, text);
+          } else {
+            const nodes = plan.segments.flatMap((segment): Node[] => {
+              if (segment.type === 'text') {
+                return segment.text ? [document.createTextNode(segment.text)] : [];
+              }
+              return [createMentionTokenElement(
+                'asset',
+                segment.asset.id,
+                segment.asset.name,
+                darkEmbedded,
+              )];
+            });
+            const lastSegment = plan.segments[plan.segments.length - 1];
+            if (lastSegment?.type === 'mention') nodes.push(document.createTextNode(' '));
+            insertNodesAtCurrentSelection(event.currentTarget, nodes);
+          }
+          if (plan.ambiguousNames.length > 0) {
+            onAssetMentionPasteIssue?.(plan.ambiguousNames);
+          }
+          window.requestAnimationFrame(() => {
+            const editor = textareaRef.current;
+            syncEditorState();
+            updateMentionTrigger(readEditorText(editor), editorCaretTextOffset(editor));
+          });
         }}
         className={clsx(
           textareaClass,

@@ -373,6 +373,27 @@ export class TaskGraphRuntime {
     return this.getTask(taskId);
   }
 
+  pauseTask(taskId: string, summary = '等待用户确认'): AgentTaskSnapshot | null {
+    const task = this.getTask(taskId);
+    if (!task) return null;
+    updateAgentTask(taskId, {
+      status: 'paused',
+      last_error: null,
+      completed_at: null,
+    });
+    this.addTrace(taskId, 'task.paused', { summary });
+    const workItemId = resolveWorkItemId(task);
+    if (workItemId) {
+      void getWorkItemStore().updateWorkItem(workItemId, {
+        status: 'waiting',
+        summary,
+      }).catch((workItemError) => {
+        console.warn('[TaskGraphRuntime] failed to update paused work item:', workItemError);
+      });
+    }
+    return this.getTask(taskId);
+  }
+
   resumeTask(taskId: string): AgentTaskSnapshot | null {
     const task = this.getTask(taskId);
     if (!task) return null;
