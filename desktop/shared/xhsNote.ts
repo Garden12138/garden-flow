@@ -84,6 +84,12 @@ export interface XhsNoteDocument {
     subtitles: XhsSubtitleItem[];
     generationStatus: XhsGenerationStatus;
     generationError?: string;
+    sourceVideoExport?: {
+        projectId: string;
+        renderId: string;
+        mediaAssetId: string;
+        renderFingerprint: string;
+    };
     createdAt: string;
     updatedAt: string;
 }
@@ -417,6 +423,15 @@ function normalizeSlot(value: unknown, fallback: Pick<XhsMediaSlot, 'id' | 'role
 
 export function normalizeXhsNoteDocument(value: unknown, forcedType?: XhsNoteType): XhsNoteDocument {
     const input = asRecord(value);
+    const sourceExport = asRecord(input.sourceVideoExport);
+    const sourceVideoExport = ['projectId', 'renderId', 'mediaAssetId', 'renderFingerprint'].every((key) => asString(sourceExport[key]))
+        ? {
+            projectId: asString(sourceExport.projectId),
+            renderId: asString(sourceExport.renderId),
+            mediaAssetId: asString(sourceExport.mediaAssetId),
+            renderFingerprint: asString(sourceExport.renderFingerprint),
+        }
+        : undefined;
     const now = new Date().toISOString();
     const noteType: XhsNoteType = forcedType || (asString(input.noteType) === 'video' ? 'video' : 'image');
     const rawPages = Array.isArray(input.imagePages)
@@ -519,6 +534,7 @@ export function normalizeXhsNoteDocument(value: unknown, forcedType?: XhsNoteTyp
         subtitles: noteType === 'video' ? subtitles : [],
         generationStatus: normalizeGenerationStatus(input.generationStatus),
         generationError: asString(input.generationError) || undefined,
+        sourceVideoExport: noteType === 'video' ? sourceVideoExport : undefined,
         createdAt: asString(input.createdAt) || now,
         updatedAt: asString(input.updatedAt) || now,
     };

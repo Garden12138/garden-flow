@@ -15,6 +15,7 @@ import {
   Video,
 } from 'lucide-react';
 import clsx from 'clsx';
+import { XhsPublisherSettings } from './settings/XhsPublisherSettings';
 import {
   AI_SOURCE_PRESETS,
   DEFAULT_AI_PRESET_ID,
@@ -515,6 +516,9 @@ export function Settings({
                   <button type="button" onClick={() => void window.ipcRenderer.browserPlugin.openDir()} className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm text-text-secondary hover:bg-surface-secondary"><FolderOpen className="h-4 w-4" />打开插件目录</button>
                 </div>
                 {pluginMessage ? <p className="mt-3 break-all text-xs text-text-tertiary">{pluginMessage}</p> : null}
+              </SectionCard>
+              <SectionCard title="小红书发布浏览器" description="选择已连接的独立发布插件，指定用于小红书发布的浏览器实例。">
+                <XhsPublisherSettings isActive={isActive} />
               </SectionCard>
             </>
           ) : null}

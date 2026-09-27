@@ -437,6 +437,38 @@ type RpcResponse = {
     error?: { data?: { code?: string } };
 };
 
+test('publisher reconnect wait targets the same browser and old socket cleanup preserves replacement', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(),'gardenflow-publisher-reconnect-'));
+    const previous = process.env.GARDENFLOW_BROWSER_CONTROL_STATE_DIR;
+    process.env.GARDENFLOW_BROWSER_CONTROL_STATE_DIR = root;
+    const service = new BrowserCaptureBridgeService({appVersion:'0.0.1',handleRequest:async()=>({ok:true})});
+    const old = new DesktopBridgeHostClient({origin:XHS_PUBLISHER_EXTENSION_ORIGIN});
+    const replacement = new DesktopBridgeHostClient({origin:XHS_PUBLISHER_EXTENSION_ORIGIN});
+    const options = {extensionInstanceId:'same-publisher',extensionKind:'xhs-publisher' as const,requiredCapability:XHS_PUBLISHER_CAPABILITY,timeoutMs:1000};
+    const registration = {extensionId:XHS_PUBLISHER_EXTENSION_ID,extensionInstanceId:options.extensionInstanceId,extensionKind:'xhs-publisher',version:'0.0.1',browser:'chrome'};
+    try {
+        await service.start();
+        const waiting = service.waitForExtensionInstance(options);
+        await old.call('extension.register',registration);
+        assert.equal((await waiting).extensionInstanceId,options.extensionInstanceId);
+        await replacement.call('extension.register',registration);
+        const newHost = service.getStatus().instances[0]?.hostInstanceId;
+        old.close();
+        await new Promise(resolve=>setTimeout(resolve,20));
+        assert.equal(service.getStatus().instances[0]?.hostInstanceId,newHost);
+        assert.equal((await service.waitForExtensionInstance(options)).extensionInstanceId,options.extensionInstanceId);
+        await assert.rejects(service.waitForExtensionInstance({...options,extensionInstanceId:'another-browser',timeoutMs:5}),{code:'BROWSER_INSTANCE_UNAVAILABLE'});
+        const controller = new AbortController();
+        const cancelled = service.waitForExtensionInstance({...options,extensionInstanceId:'missing',signal:controller.signal});
+        controller.abort();
+        await assert.rejects(cancelled,{code:'BROWSER_WAIT_CANCELLED'});
+    } finally {
+        old.close();replacement.close();await service.stop();
+        if(previous===undefined)delete process.env.GARDENFLOW_BROWSER_CONTROL_STATE_DIR;else process.env.GARDENFLOW_BROWSER_CONTROL_STATE_DIR=previous;
+        await fs.rm(root,{recursive:true,force:true});
+    }
+});
+
 async function openBridgeClient(descriptor: BrowserCaptureBridgeDescriptor): Promise<{
     request: (method: string, params: Record<string, unknown>) => Promise<RpcResponse>;
     close: () => void;

@@ -38,6 +38,7 @@ import {
   type ToolResult,
 } from '../core/toolRegistry';
 import { createBuiltinTools } from '../core/tools';
+import { validateXhsPublishCompletion } from '../core/ai/xhsPublishWorkflowPolicy';
 import type { BuiltinToolPack } from '../core/tools/catalog';
 import { createCompressionService } from '../core/compressionService';
 import { QueryRuntime } from '../core/queryRuntime';
@@ -383,6 +384,7 @@ export class PiChatService {
     this.workspacePathsOverride = options.workspacePathsOverride || null;
     const tools = createBuiltinTools({
       pack: this.toolPack,
+      getSessionId: () => this.sessionId,
       skillManager: this.skillManager,
       workspaceRootOverride: this.workspacePathsOverride?.base,
       onSkillActivated: (payload) => {
@@ -1022,6 +1024,7 @@ export class PiChatService {
       const productVideoCompletion = {
         state: { status: 'not-called' } as ProductVideoCompletionState,
       };
+      let xhsPublishState: 'not-called' | 'inspected' | 'awaiting-confirmation' | 'blocked' = 'not-called';
       let preparedTaskMetadata = preparedExecution.task.metadata
         && typeof preparedExecution.task.metadata === 'object'
         && !Array.isArray(preparedExecution.task.metadata)
@@ -1094,6 +1097,11 @@ export class PiChatService {
           onEvent: (event) => this.handleQueryRuntimeEvent(event, generatedImages, generatedVideos, generatedAudios, xhsArtifacts),
           onToolResult: (toolName, result, command) => {
             this.maybeRegisterArtifactFromRuntimeToolResult(toolName, result, command);
+            if (toolName === 'xhs_publish_prepare') {
+              const data = result.data && typeof result.data === 'object' ? result.data as Record<string, unknown> : {};
+              xhsPublishState = data.kind === 'xhs-publish-prepared' ? 'awaiting-confirmation'
+                : data.kind === 'xhs-publish-source' || data.kind === 'xhs-publish-validation-error' ? 'inspected' : 'blocked';
+            }
             if (toolName === 'product_video_compose') {
               const productData = result.data && typeof result.data === 'object' && !Array.isArray(result.data)
                 ? result.data as Record<string, unknown>
@@ -1142,6 +1150,7 @@ export class PiChatService {
             return `${contentText.slice(0, 22000)}\n\n[tool result truncated]`;
           },
           validateCompletion: async ({ response }) => {
+            if (preparedExecution.route.workflowKind === 'xhs-publish') return validateXhsPublishCompletion(xhsPublishState, preparedExecution.route.xhsPublishAction);
             const task = getTaskGraphRuntime().getTask(preparedExecution.task.id);
             const taskMetadata = task?.metadata && typeof task.metadata === 'object'
               ? task.metadata as Record<string, unknown>
@@ -1453,17 +1462,14 @@ export class PiChatService {
       || resolveScopedModelName(settings, modelScope, (settings.openaiModel as string) || 'gpt-4o'),
     ).trim();
 
-    const pendingPublishReply = await getXhsPublisherService().handlePendingChatReply(sessionId, content, {
-      apiKey,
-      baseURL,
-      model: modelName,
-    });
-    if (pendingPublishReply.handled) {
-      return {
-        kind: 'handled',
-        localResponse: pendingPublishReply.response || '',
-      };
-    }
+    const interactivePublication = allowInteractiveOnboarding && runtimeMode === 'gardenflow'
+      && !metadata.headless && !metadata.isBackgroundSession && !runtimeMetadata?.scheduledTaskId && !metadata.builtinTaskId;
+    const publicationContext = interactivePublication ? getXhsPublisherService().getConversationContext(
+      sessionId, typeof metadata.activeXhsNotePath === 'string' ? metadata.activeXhsNotePath : undefined,
+    ) : undefined;
+    // Persisted jobs supply context, never authorization. Semantics are decided
+    // once by routeIntent, and its action is consumed below in this same turn.
+    const publicationRuntimeMetadata = { ...(runtimeMetadata || {}), xhsPublishContext: publicationContext };
 
     const workspacePaths = this.workspacePathsOverride || getWorkspacePaths();
     const workspace = workspacePaths.base;
@@ -1568,7 +1574,7 @@ export class PiChatService {
     const sessionMetadata = metadata as Record<string, unknown>;
     const executionMetadata: Record<string, unknown> = {
       ...sessionMetadata,
-      ...(runtimeMetadata || {}),
+      ...publicationRuntimeMetadata,
       // The persisted session owns its binding identity. Per-turn task hints may
       // refine execution contracts, but must never redirect the active context.
       contextType: sessionMetadata.contextType,
@@ -1577,6 +1583,7 @@ export class PiChatService {
       editorBindingKind: sessionMetadata.editorBindingKind,
     };
     const preparedExecution = await getAgentRuntime().prepareExecution({
+      signal: this.abortController?.signal,
       runtimeContext: {
         sessionId,
         runtimeMode,
@@ -1593,6 +1600,40 @@ export class PiChatService {
       },
     });
     let preparedSystemPrompt = preparedExecution.systemPrompt;
+    if (preparedExecution.route.workflowKind === 'xhs-publish') {
+      const action = preparedExecution.route.xhsPublishAction;
+      const result = await getXhsPublisherService().handleRoutedConversationAction(sessionId, preparedExecution.route, interactivePublication,
+        publicationContext && typeof publicationContext.projectPath === 'string' ? publicationContext.projectPath : undefined, this.abortController?.signal);
+      getTaskGraphRuntime().addTrace(preparedExecution.task.id, 'xhs.conversation.action', {
+        action, handled: result.handled, failed: result.failed === true,
+        routingFailure: preparedExecution.route.routingFailure, jobId: result.job?.id,
+        routingDiagnostic: preparedExecution.route.routingDiagnostic,
+      }, 'execute_tools');
+      if (result.handled) {
+        if (result.failed) getAgentRuntime().failExecution(preparedExecution.task.id, result.response || '发布动作未执行');
+        else {
+          getTaskGraphRuntime().addArtifact(preparedExecution.task.id, {
+            type: 'xhs-publish-action', label: '小红书发布动作回执',
+            metadata: { action, jobId: result.job?.id, status: result.job?.status, response: result.response },
+          });
+          getAgentRuntime().completeExecution(preparedExecution.task.id);
+        }
+        return { kind: 'handled', localResponse: result.response || '' };
+      }
+      if (result.runtimeMetadata) {
+        getTaskGraphRuntime().mergeMetadata(preparedExecution.task.id, result.runtimeMetadata);
+        preparedSystemPrompt += `\n<current_publication_context>\n${JSON.stringify(result.runtimeMetadata.xhsPublishContext)}\n用户核实记录只用于安全恢复，不是平台回执或本轮发布授权；已保存的核实记录无需要求用户重复声明。\n</current_publication_context>`;
+      }
+      preparedSystemPrompt = [preparedSystemPrompt,
+        '<xhs_publish_workflow>',
+        '当前是发布已有视频，不是创作视频。只调用 xhs_publish_prepare，先 operation=inspect 读取当前会话工程的成片和可信商品事实；无需查 app_cli help、文件系统或浏览器。',
+        '根据可信事实准备适合小红书的标题、正文和话题，再 operation=prepare 创建结构化稿件和持久化确认卡。若是修改已有发布文案，inspect 后保留未要求修改的内容。',
+        '发布标题最多 20 个 UTF-16 字符，标点、数字和空格也计入；若工具返回 TITLE_TOO_LONG，请缩短后重新 prepare，不要把工程名或长商品名原样作为发布标题。',
+        'inspect 无成片、多个工程或旧成片不能核验时，说明错误并等待用户操作，不生成或重新导出视频。prepare 后结束回复，不轮询、不等待用户、不声称已经发布。发布确认卡只是可选入口，用户也可在当前对话明确要求“重新发布当前版本”；由运行时绑定最新版本并执行，不让用户回找旧卡片或虚构入口。',
+        '若用户修改标题/正文/话题，只改所要求的字段并保留其他文案和已有视频。工具会尝试原地更新已核验归属的发布页，不清空或重新上传媒体；本轮只修改，不同时提交。提交结果未知时先提示用户检查笔记管理，用户明确核实未发布后可在对话恢复并重发。',
+        '</xhs_publish_workflow>',
+      ].join('\n\n');
+    }
     if (preparedExecution.route.workflowKind === 'product-video-compose') {
       const skillName = 'video-director';
       const skill = this.skillManager.getSkill(skillName);
@@ -1642,7 +1683,7 @@ export class PiChatService {
       runtimeMessages,
       preparedExecution,
       temperature: 0.6,
-      maxTurns: 100,
+      maxTurns: preparedExecution.route.workflowKind === 'xhs-publish' ? 8 : 100,
       maxTimeMinutes: preparedExecution.route.workflowKind === 'product-video-compose'
         || preparedExecution.route.requiredCapabilities.some((capability) => (
           capability === 'image-generation' || capability === 'video-generation'
@@ -2247,6 +2288,14 @@ export class PiChatService {
     const details = wrapped?.details;
     const data = (details?.data || null) as Record<string, unknown> | null;
     if (!details || details.success === false) return;
+    if (toolName === 'xhs_publish_prepare' && data?.kind === 'xhs-publish-prepared') {
+      const projectPath = String(data.projectPath || '');
+      const uri = String(data.uri || '');
+      getTaskGraphRuntime().mergeMetadata(taskId, { activeXhsNotePath: projectPath, activeXhsNoteUri: uri, artifactType: 'xiaohongshu-note', xhsNoteType: 'video' });
+      updateChatSessionMetadata(this.sessionId, { ...this.getSessionMetadata(this.sessionId), activeXhsNotePath: projectPath, activeXhsNoteUri: uri, artifactType: 'xiaohongshu-note', xhsNoteType: 'video' });
+      getTaskGraphRuntime().addArtifact(taskId, { type: 'xhs-publish-job', label: '小红书发布确认', metadata: data });
+      return;
+    }
 
     if (toolName === 'product_video_compose' && data?.kind === 'product-video-project') {
       const projectId = String(data.projectId || '').trim();

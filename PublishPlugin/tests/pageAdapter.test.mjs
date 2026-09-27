@@ -17,6 +17,9 @@ import {
   publishModeMatches,
   validatePublishRequest,
   verifyPreparedEditorSnapshot,
+  XHS_TITLE_MAX_LENGTH,
+  editorValidationFailure,
+  validateDraftRecovery,
 } from '../src/pageAdapter.js';
 
 function request(overrides = {}) {
@@ -35,6 +38,35 @@ function request(overrides = {}) {
     ...overrides,
   };
 }
+
+test('blocks the reported 23-character title before upload and accepts the edited 20-character title', () => {
+  assert.equal(XHS_TITLE_MAX_LENGTH, 20);
+  const oldTitle = '原料透明的成猫粮｜伟嘉海洋鱼夹心10kg大袋装';
+  const newTitle = '原料透明的成猫粮｜伟嘉海洋鱼夹心10kg';
+  assert.equal(validatePublishRequest(request({ title: oldTitle })).code, 'TITLE_TOO_LONG');
+  assert.equal(validatePublishRequest(request({ title: newTitle })).ok, true);
+  assert.equal(validatePublishRequest(request({ title: '😀'.repeat(11) })).code, 'TITLE_TOO_LONG');
+});
+
+test('only explicit field-validation evidence counts as rejected validation', () => {
+  assert.equal(editorValidationFailure({ pageState: 'draft', alert: '网络错误' }), null);
+  assert.deepEqual(editorValidationFailure({ validationErrors: ['标题字数超过限制'] }), { code: 'EDITOR_VALIDATION_FAILED', message: '标题字数超过限制' });
+});
+
+test('recovery requires explicit review and exact old-task ownership/content, including legacy long titles', () => {
+  const old = request({ title: '原料透明的成猫粮｜伟嘉海洋鱼夹心10kg大袋装' });
+  const payload = { jobId: old.jobId, contentDigest: old.contentDigest, noteType: old.noteType, request: old, acknowledgedNotPublished: true };
+  const owner = { jobId: old.jobId, contentDigest: old.contentDigest, noteType: old.noteType, status: 'submitting', mediaSources: ['blob:owned'] };
+  const snapshot = { titleValue: old.title, bodyValue: buildBody(old.body, old.hashtags), mediaSources: ['blob:owned'], hasDraft: true };
+  assert.equal(validateDraftRecovery(snapshot, owner, payload).ok, true);
+  assert.equal(validateDraftRecovery(snapshot, owner, { ...payload, acknowledgedNotPublished: false }).ok, false);
+  assert.equal(validateDraftRecovery(snapshot, { ...owner, jobId: 'other' }, payload).ok, false);
+  assert.equal(validateDraftRecovery({ ...snapshot, titleValue: '用户手动改过' }, owner, payload).ok, false);
+  assert.equal(validateDraftRecovery({ ...snapshot, mediaSources: ['blob:other'] }, owner, payload).ok, false);
+  assert.equal(validateDraftRecovery({ ...snapshot, mediaBusy: true }, owner, payload).ok, false);
+  assert.equal(validateDraftRecovery(snapshot, null, payload).ok, false);
+  assert.equal(validateDraftRecovery({ hasDraft: false, pageReady: true }, null, payload).ok, true);
+});
 
 test('normalizes and deduplicates hashtags', () => {
   assert.deepEqual(normalizeHashtags(['#布偶猫', ' 布偶猫 ', '猫粮']), ['布偶猫', '猫粮']);
@@ -66,6 +98,12 @@ test('does not append hashtags already present in the body', () => {
 test('normalizes rich-editor whitespace without changing visible characters', () => {
   assert.equal(normalizeEditorText('正文\r\n\u200b\n#布偶猫\u00a0 #猫咪'), '正文 #布偶猫 #猫咪');
   assert.notEqual(normalizeEditorText('正文 A'), normalizeEditorText('正文 B'));
+});
+
+test('topic chip decoration normalizes without equating distinct topic names', () => {
+  const payload = { title: '标题', expectedBody: '正文\n#原料透明猫粮' };
+  assert.equal(verifyPreparedEditorSnapshot({ titleValue: '标题', bodyValue: '正文\n#原料透明猫粮 [话题]#' }, payload).ok, true);
+  assert.equal(verifyPreparedEditorSnapshot({ titleValue: '标题', bodyValue: '正文\n#原料透明[话题]#' }, payload).ok, false);
 });
 
 test('verifies a prepared rich-editor snapshot after DOM whitespace normalization', () => {
@@ -190,11 +228,13 @@ test('maps the exact enabled publish button from the accessibility tree', () => 
     102: { model: { content: [760, 680, 880, 680, 880, 724, 760, 724] } },
   }, 800);
   assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].hitTestable, false); // a layout box is not a pointer hit test
   assert.deepEqual(
     { x: candidates[0].x, y: candidates[0].y, role: candidates[0].role, disabled: candidates[0].disabled, bottomHalf: candidates[0].bottomHalf },
     { x: 820, y: 702, role: 'button', disabled: false, bottomHalf: true },
   );
   assert.equal(choosePublishTargetCandidate(candidates).ok, true);
+  assert.equal(choosePublishTargetCandidate(candidates).backendDOMNodeId, 102);
 });
 
 test('ignores accessibility labels that are not the exact publish action', () => {

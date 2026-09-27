@@ -4590,6 +4590,15 @@ ipcMain.handle('xhs-publisher:retry', async (_, payload: { jobId?: string }) => 
   }
 });
 
+ipcMain.handle('xhs-publisher:recover-unpublished', async (_, payload: { jobId?: string; acknowledgedNotPublished?: boolean }) => {
+  try {
+    const { getXhsPublisherService } = await import('./core/xhsPublisherService');
+    return { success: true, job: await getXhsPublisherService().recoverUnpublished(String(payload?.jobId || ''), payload?.acknowledgedNotPublished === true) };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
 ipcMain.handle('app:check-update', async (_, payload?: { force?: boolean }) => {
   const force = Boolean(payload?.force);
   return checkForAppUpdate(force, force);

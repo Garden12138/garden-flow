@@ -6,6 +6,7 @@ export const INTENT_NAMES: IntentName[] = [
   'manuscript_creation',
   'image_creation',
   'video_creation',
+  'xhs_publishing',
   'audio_creation',
   'cover_generation',
   'knowledge_retrieval',
@@ -26,6 +27,8 @@ export const recommendedRoleForIntent = (intent: IntentName): RoleId => {
       return 'image-director';
     case 'video_creation':
       return 'video-director';
+    case 'xhs_publishing':
+      return 'copywriter';
     case 'audio_creation':
       return 'audio-director';
     case 'automation':
@@ -52,6 +55,8 @@ export const requiredCapabilitiesForIntent = (intent: IntentName): string[] => {
       return ['planning', 'image-generation', 'artifact-save'];
     case 'video_creation':
       return ['planning', 'video-generation', 'artifact-save'];
+    case 'xhs_publishing':
+      return ['writing', 'artifact-save', 'xhs-publish-prepare'];
     case 'audio_creation':
       return ['planning', 'audio-generation', 'artifact-save'];
     case 'knowledge_retrieval':

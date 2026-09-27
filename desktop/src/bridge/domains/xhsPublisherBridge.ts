@@ -1,4 +1,5 @@
 import type { BridgeCore, Listener } from '../types';
+import type { XhsPublishRecoveryInput } from '../../../shared/xhsPublisher';
 
 export function createXhsPublisherBridge(core: BridgeCore) {
     return {
@@ -11,6 +12,7 @@ export function createXhsPublisherBridge(core: BridgeCore) {
             confirm: (payload: { jobId: string }) => core.invokeChannel('xhs-publisher:confirm', payload),
             cancel: (payload: { jobId: string }) => core.invokeChannel('xhs-publisher:cancel', payload),
             retry: (payload: { jobId: string }) => core.invokeChannel('xhs-publisher:retry', payload),
+            recoverUnpublished: (payload: XhsPublishRecoveryInput) => core.invokeChannel('xhs-publisher:recover-unpublished', payload),
             onJobChanged: (listener: Listener) => core.on('xhs-publisher:job-changed', listener),
             offJobChanged: (listener: Listener) => core.off('xhs-publisher:job-changed', listener),
         },

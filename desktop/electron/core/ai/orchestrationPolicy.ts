@@ -24,7 +24,7 @@ export function shouldRunSubagentOrchestration(params: {
   route?: Pick<IntentRoute, 'intent' | 'requiresMultiAgent' | 'workflowKind'>;
   skipSubagentOrchestration?: boolean;
 }): boolean {
-  if (params.route?.workflowKind === 'product-video-compose') {
+  if (params.route?.workflowKind === 'product-video-compose' || params.route?.workflowKind === 'xhs-publish') {
     return false;
   }
   if (params.skipSubagentOrchestration) {
@@ -44,7 +44,7 @@ export function shouldUseCoordinator(params: {
   route?: Pick<IntentRoute, 'intent' | 'requiresMultiAgent' | 'workflowKind'>;
   skipSubagentOrchestration?: boolean;
 }): boolean {
-  if (params.route?.workflowKind === 'product-video-compose') {
+  if (params.route?.workflowKind === 'product-video-compose' || params.route?.workflowKind === 'xhs-publish') {
     return false;
   }
   if (params.skipSubagentOrchestration) {

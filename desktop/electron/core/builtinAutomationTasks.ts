@@ -373,7 +373,7 @@ const BUILTIN_AUTOMATION_DEFINITIONS: BuiltinAutomationDefinition[] = [
                     label: '发布浏览器绑定',
                     status: bound ? 'ok' : 'failed',
                     detail: bound ? `${bound.browser || '浏览器'} · ${bound.extensionInstanceId}` : '尚未绑定已连接的发布浏览器',
-                    hint: bound ? undefined : '请先在设置页绑定一个专用发布插件实例。',
+                    hint: bound ? undefined : '请在设置 → 隐私与诊断 → 小红书发布浏览器中，选择已连接的发布插件实例并点击“绑定此浏览器”。',
                 },
             ];
             if (bound) {

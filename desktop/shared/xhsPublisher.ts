@@ -2,6 +2,39 @@ export const XHS_PUBLISH_PROTOCOL_VERSION = 1 as const;
 export const XHS_PUBLISHER_EXTENSION_ID = 'jafdjmajegkaabbohedhmmlhogdejkpb';
 export const XHS_PUBLISHER_EXTENSION_ORIGIN = `chrome-extension://${XHS_PUBLISHER_EXTENSION_ID}/`;
 export const XHS_PUBLISHER_CAPABILITY = 'xiaohongshu.publish.v1' as const;
+export const XHS_TITLE_MAX_LENGTH = 20;
+
+// Use the same conservative UTF-16 count as a browser input's maxlength.
+export function xhsTitleValidationError(title: string): string | null {
+    const length = title.trim().length;
+    return length > XHS_TITLE_MAX_LENGTH
+        ? `小红书标题最多 ${XHS_TITLE_MAX_LENGTH} 个字符，当前 ${length} 个，请缩短标题后重新准备发布`
+        : null;
+}
+
+export interface XhsPublishRecoveryInput {
+    jobId: string;
+    acknowledgedNotPublished: boolean;
+}
+
+// A user's review is not a platform receipt. Keep it even if page amendment
+// fails, but do not unlock submission until ownership/media checks succeed.
+export interface XhsUnpublishedReview {
+    kind: 'user-verified-not-published';
+    sessionId: string;
+    reviewedAt: number;
+}
+
+export function hasXhsUnpublishedReview(job: XhsPublishJob): boolean {
+    return job.unpublishedReview?.kind === 'user-verified-not-published'
+        && job.unpublishedReview.sessionId === job.sessionId
+        && Number.isFinite(job.unpublishedReview.reviewedAt) && job.unpublishedReview.reviewedAt > 0;
+}
+
+export function xhsSubmissionNeedsReview(job: XhsPublishJob): boolean {
+    return (job.publishStatus === 'unknown' || job.publishStatus === 'submitted')
+        && !(job.status === 'superseded' && job.errorCode === 'USER_VERIFIED_NOT_PUBLISHED');
+}
 
 export type BrowserExtensionKind = 'capture' | 'xhs-publisher';
 
@@ -13,6 +46,20 @@ export interface XhsPublishMediaV1 {
     path: string;
     mimeType: string;
     order: number;
+}
+
+// Match flat media protocol records independently of JSON object key order.
+// Array order, missing/extra fields and field values remain significant.
+export function sameXhsPublishMedia(left: unknown, right: unknown): boolean {
+    return Array.isArray(left) && Array.isArray(right) && left.length === right.length
+        && left.every((item, index) => {
+            const other = right[index];
+            if (!item || !other || typeof item !== 'object' || typeof other !== 'object'
+                || Array.isArray(item) || Array.isArray(other)) return false;
+            const keys = Object.keys(item);
+            return keys.length === Object.keys(other).length
+                && keys.every(key => Object.prototype.hasOwnProperty.call(other, key) && item[key] === other[key]);
+        });
 }
 
 export interface XhsPublishRequestV1 {
@@ -27,6 +74,16 @@ export interface XhsPublishRequestV1 {
     body: string;
     hashtags: string[];
     media: XhsPublishMediaV1[];
+}
+
+export interface XhsDraftAmendmentV1 {
+    phase: 'amend';
+    acknowledgedNotPublished: boolean;
+    // This names an explicitly requested latest copy, not permission to
+    // replace media, disregard task ownership or submit without consent.
+    copyPolicy?: 'replace-confirmed-copy';
+    previous: Pick<XhsPublishRequestV1, 'jobId' | 'contentDigest' | 'sessionId' | 'projectPath' | 'noteType' | 'title' | 'body' | 'hashtags' | 'media'>;
+    request: XhsPublishRequestV1;
 }
 
 export type XhsPublishJobStatus =
@@ -49,6 +106,7 @@ export type XhsPublishResetStatus = 'not_started' | 'returning' | 'ready' | 'fai
 
 export interface XhsPublishJob {
     id: string;
+    triggerOrigin?: 'artifact-ready' | 'explicit-request';
     sessionId: string;
     projectPath: string;
     revision: number;
@@ -71,6 +129,7 @@ export interface XhsPublishJob {
     submittedAt?: number;
     publishedAt?: number;
     completedAt?: number;
+    unpublishedReview?: XhsUnpublishedReview;
 }
 
 export interface XhsPublisherBrowserStatus {
@@ -113,7 +172,17 @@ export type XhsPublishConsentMetadata = {
     publishStatus: XhsPublishStatus;
     resetStatus: XhsPublishResetStatus;
     errorMessage?: string;
+    body?: string;
+    hashtags?: string[];
+    videoPreviewUrl?: string;
+    noteUri?: string;
+    projectPath?: string;
+    requiresButtonConfirmation?: boolean;
 };
+
+export function canExecuteXhsPublication(job: Pick<XhsPublishJob, 'triggerOrigin'>, automationEnabled: boolean): boolean {
+    return job.triggerOrigin === 'explicit-request' || automationEnabled;
+}
 
 export function isXhsPublishJobStatus(value: unknown): value is XhsPublishJobStatus {
     return [

@@ -1,4 +1,122 @@
 export const PUBLISH_URL = 'https://creator.xiaohongshu.com/publish/publish?source=official&from=tab_switch';
+export const XHS_TITLE_MAX_LENGTH = 20;
+
+export function editorValidationFailure(snapshot) {
+  const errors = Array.isArray(snapshot?.validationErrors)
+    ? snapshot.validationErrors.filter((item) => typeof item === 'string' && item.trim()) : [];
+  return errors.length ? { code: 'EDITOR_VALIDATION_FAILED', message: errors.join('；').slice(0, 1000) } : null;
+}
+
+export function validateDraftRecovery(snapshot, ownership, payload) {
+  if (!payload?.jobId || !/^[a-f0-9]{64}$/i.test(String(payload.contentDigest || ''))
+    || (ownership && (ownership.jobId !== payload.jobId || ownership.contentDigest !== payload.contentDigest))) {
+    return { ok: false, code: 'PREPARED_JOB_NOT_FOUND', message: '旧任务归属不匹配，不会清理其他草稿' };
+  }
+  if (ownership?.status === 'submitting' && payload.acknowledgedNotPublished !== true) {
+    return { ok: false, code: 'SUBMISSION_REVIEW_REQUIRED', message: '请先在笔记管理核实该任务未发布' };
+  }
+  if (snapshot?.hasDraft === false && snapshot?.pageReady === true) return { ok: true };
+  const request = payload.request;
+  if (!ownership || !request || request.jobId !== payload.jobId || request.contentDigest !== payload.contentDigest
+    || typeof request.title !== 'string' || typeof request.body !== 'string' || !Array.isArray(request.hashtags)
+    || request.noteType !== ownership.noteType) {
+    return { ok: false, code: 'PREPARED_JOB_NOT_FOUND', message: '没有可核验的旧任务内容，请人工检查发布页' };
+  }
+  const verified = verifyPreparedEditorSnapshot(snapshot, { title: request.title, expectedBody: buildBody(request.body, request.hashtags) });
+  const originalMedia = ownership.mediaSources;
+  const mediaMatches = !Array.isArray(originalMedia) || JSON.stringify(originalMedia) === JSON.stringify(snapshot.mediaSources);
+  if (!verified.titleMatches || !verified.bodyMatches || snapshot.mediaBusy === true || !mediaMatches) {
+    return { ok: false, code: 'PREPARED_EDITOR_CHANGED', message: '旧任务页面已被修改或媒体仍在处理，不会覆盖；请人工检查并清理这次的旧草稿' };
+  }
+  return { ok: true };
+}
+
+// Media records are flat protocol data. Storage/JSON can reorder object keys;
+// compare their values while keeping media array order and every field strict.
+export function samePublishMedia(left, right) {
+  return Array.isArray(left) && Array.isArray(right) && left.length === right.length
+    && left.every((item, index) => {
+      const other = right[index];
+      if (!item || !other || typeof item !== 'object' || typeof other !== 'object'
+        || Array.isArray(item) || Array.isArray(other)) return false;
+      const keys = Object.keys(item);
+      return keys.length === Object.keys(other).length
+        && keys.every(key => Object.prototype.hasOwnProperty.call(other, key) && item[key] === other[key]);
+    });
+}
+
+export function validateDraftAmendment(snapshot, ownership, payload) {
+  const previous = payload?.previous;
+  const request = payload?.request;
+  if (!previous || !request || !ownership || ownership.jobId !== previous.jobId
+    || ownership.contentDigest !== previous.contentDigest || ownership.noteType !== request.noteType
+    || previous.noteType !== request.noteType || previous.sessionId !== request.sessionId
+    || previous.projectPath !== request.projectPath
+    || (ownership.sessionId && ownership.sessionId !== request.sessionId)
+    || (ownership.projectPath && ownership.projectPath !== request.projectPath)
+    || !samePublishMedia(previous.media, request.media)
+    || (ownership.media && !samePublishMedia(ownership.media, request.media))) {
+    return { ok: false, code: 'PREPARED_JOB_NOT_FOUND', message: '发布页不是当前会话的同一稿件/媒体，未覆盖' };
+  }
+  if (ownership.status === 'submitting' && payload.acknowledgedNotPublished !== true) {
+    return { ok: false, code: 'SUBMISSION_REVIEW_REQUIRED', message: '请先在笔记管理核实该任务未发布，再更新发布页' };
+  }
+  if (!['prepared', 'preparing', 'submitting'].includes(ownership.status)) {
+    return { ok: false, code: 'PREPARED_JOB_NOT_FOUND', message: '旧任务不处于可修改状态，未覆盖' };
+  }
+  if (snapshot?.mediaBusy === true) return { ok: false, code: 'MEDIA_PROCESSING', message: '已上传媒体仍在处理，文案已保存，请处理完成后在对话重试' };
+  const replaceConfirmedCopy = payload.copyPolicy === 'replace-confirmed-copy';
+  if (ownership.mediaSources?.length || ownership.mediaFileNames?.length) {
+    if (!preparedMediaMatches(snapshot, ownership)) {
+      return { ok: false, code: 'PREPARED_MEDIA_CHANGED', message: '发布页媒体已被替换，未覆盖；请核对当前任务的视频' };
+    }
+  } else {
+    // Legacy drafts need independent copy AND media anchors. A reviewed,
+    // explicit replacement can restore a changed topic footer, never treat a
+    // different topic name as equivalent or ignore changes to the prose.
+    const anchor = verifyPreparedEditorSnapshot(snapshot, { title: previous.title, expectedBody: buildBody(previous.body, previous.hashtags) });
+    const video = request.noteType === 'video' && request.media.filter((item) => item.role === 'video');
+    const fileNames = snapshot?.mediaFileNames;
+    const sameVideoFile = request.media.length === 1 && video?.length === 1 && Array.isArray(fileNames) && fileNames.length === 1
+      && fileNames[0] === video[0].path.split(/[\\/]/).pop();
+    const reviewedFooterReplacement = replaceConfirmedCopy && payload.acknowledgedNotPublished === true
+      && sameVideoFile && originalProseMatches(snapshot?.bodyValue, previous.body);
+    if (!anchor.bodyMatches && !reviewedFooterReplacement) {
+      return { ok: false, code: 'LEGACY_BODY_CHANGED', message: '旧草稿正文与原稿不一致，未覆盖；请在对话明确要采用的正文版本' };
+    }
+    if (!sameVideoFile && (!Array.isArray(snapshot?.mediaSources) || !snapshot.mediaSources.length)) {
+      return { ok: false, code: 'LEGACY_MEDIA_UNVERIFIED', message: '未读到旧草稿的视频预览或上传文件名，未覆盖；请保持原视频发布页打开' };
+    }
+    if (Array.isArray(fileNames) && fileNames.length && !sameVideoFile && request.noteType === 'video') {
+      return { ok: false, code: 'PREPARED_MEDIA_CHANGED', message: '发布页视频文件名与当前任务不一致，未覆盖' };
+    }
+  }
+  const titleChanged = previous.title !== request.title;
+  const bodyChanged = buildBody(previous.body, previous.hashtags) !== buildBody(request.body, request.hashtags);
+  const expected = verifyPreparedEditorSnapshot(snapshot, { title: request.title, expectedBody: buildBody(request.body, request.hashtags) });
+  if (!replaceConfirmedCopy && (!titleChanged && !expected.titleMatches || !bodyChanged && !expected.bodyMatches)) {
+    return { ok: false, code: 'UNREQUESTED_COPY_CHANGED', message: '未要求修改的字段与稿件不一致，未覆盖；请在对话明确需要保留或修改的内容' };
+  }
+  return { ok: true, titleChanged: titleChanged || (replaceConfirmedCopy && !expected.titleMatches),
+    bodyChanged: bodyChanged || (replaceConfirmedCopy && !expected.bodyMatches) };
+}
+
+function originalProseMatches(editorBody, originalBody) {
+  const prose = normalizeEditorText(originalBody);
+  const actual = normalizeEditorText(editorBody);
+  if (!prose || !actual.startsWith(`${prose} `)) return false;
+  // Only a trailing topic list is recoverable. No substring/semantic matching
+  // of arbitrary user edits, product facts, prices or links.
+  return /^(?:#[^#\s\[\]]+(?:\s*\[话题\]#)?\s*)+$/u.test(actual.slice(prose.length).trim());
+}
+
+export function preparedMediaMatches(snapshot, baseline) {
+  for (const key of ['mediaSources', 'mediaFileNames']) {
+    if (Array.isArray(baseline?.[key])
+      && JSON.stringify(baseline[key]) !== JSON.stringify(snapshot?.[key])) return false;
+  }
+  return true;
+}
 
 export function publishTargetForNoteType(noteType) {
   return noteType === 'image' || noteType === 'video' ? noteType : '';
@@ -42,6 +160,7 @@ export function normalizeEditorText(value) {
     .replace(/\r\n?/g, '\n')
     .replace(/\u00a0/g, ' ')
     .replace(/[\u200b-\u200d\ufeff]/gi, '')
+    .replace(/#([^#\s\[\]]+)\s*\[话题\]#/gu, '#$1')
     .replace(/\s+/gu, ' ')
     .trim();
 }
@@ -142,6 +261,7 @@ export function choosePublishTargetCandidate(candidates) {
     y: Number(best.y),
     score: best.score,
     candidateCount: ranked.length,
+    backendDOMNodeId: best.backendDOMNodeId,
   };
 }
 
@@ -179,7 +299,8 @@ function publishCandidateFromBox(backendDOMNodeId, model, viewportHeight, detail
     interactive: true,
     nearDraftControl: false,
     bottomHalf: Number(viewportHeight) > 0 && y >= Number(viewportHeight) / 2,
-    hitTestable: true,
+    // Layout boxes identify candidates, not actual pointer hit targets.
+    hitTestable: false,
     disabled: details.disabled === true,
     backendDOMNodeId,
   };
@@ -359,6 +480,9 @@ export function validatePublishRequest(payload) {
     || payload.hashtags.length > 30
     || payload.hashtags.some((item) => typeof item !== 'string')) {
     return { ok: false, code: 'INVALID_REQUEST', message: '笔记内容格式无效' };
+  }
+  if (payload.title.trim().length > XHS_TITLE_MAX_LENGTH) {
+    return { ok: false, code: 'TITLE_TOO_LONG', message: `小红书标题最多 ${XHS_TITLE_MAX_LENGTH} 个字符，当前 ${payload.title.trim().length} 个，请缩短后重新确认` };
   }
   if (!Array.isArray(payload.media) || payload.media.length === 0 || payload.media.length > 18) {
     return { ok: false, code: 'INVALID_REQUEST', message: '媒体清单为空或数量超限' };

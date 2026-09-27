@@ -180,6 +180,30 @@ export class BrowserCaptureBridgeService {
         };
     }
 
+    async waitForExtensionInstance(options: {
+        extensionInstanceId: string;
+        extensionKind: BrowserExtensionKind;
+        requiredCapability: string;
+        timeoutMs?: number;
+        signal?: AbortSignal;
+    }): Promise<BrowserCaptureExtensionInstance> {
+        const deadline = Date.now() + Math.max(0, Math.min(35000, options.timeoutMs ?? 35000));
+        for (;;) {
+            if (options.signal?.aborted) throw Object.assign(new Error('当前执行已停止，未更新发布页或提交'), { code: 'BROWSER_WAIT_CANCELLED' });
+            const instance = this.instances.get(options.extensionInstanceId);
+            if (instance?.extensionKind === options.extensionKind && instance.capabilities.includes(options.requiredCapability)
+                && this.hostSockets.get(instance.extensionInstanceId)?.destroyed === false) return instance;
+            const remaining = deadline - Date.now();
+            if (remaining <= 0) throw Object.assign(new Error('绑定的发布插件尚未连接。请保持 GardenFlow 和原专用发布浏览器打开，并在该浏览器启用或重新加载“小红书发布插件”，待显示已连接后再重发；未更新发布页或提交'), { code: 'BROWSER_INSTANCE_UNAVAILABLE' });
+            await new Promise<void>((resolve, reject) => {
+                const cleanup = () => options.signal?.removeEventListener('abort', onAbort);
+                const timer = setTimeout(() => { cleanup(); resolve(); }, Math.min(200, remaining));
+                const onAbort = () => { clearTimeout(timer); cleanup(); reject(Object.assign(new Error('当前执行已停止，未更新发布页或提交'), { code: 'BROWSER_WAIT_CANCELLED' })); };
+                options.signal?.addEventListener('abort', onAbort, { once: true });
+            });
+        }
+    }
+
     async start(): Promise<void> {
         if (this.server?.listening) return;
         const stateRoot = browserCaptureStateRoot();
@@ -309,11 +333,11 @@ export class BrowserCaptureBridgeService {
         });
         const cleanup = () => {
             this.sockets.delete(socket);
-            if (state.extensionInstanceId) {
+            // A replacement native host may have registered the same browser ID
+            // before the old socket's close event arrives.
+            if (state.extensionInstanceId && this.hostSockets.get(state.extensionInstanceId) === socket) {
                 this.instances.delete(state.extensionInstanceId);
-                if (this.hostSockets.get(state.extensionInstanceId) === socket) {
-                    this.hostSockets.delete(state.extensionInstanceId);
-                }
+                this.hostSockets.delete(state.extensionInstanceId);
             }
         };
         socket.on('close', cleanup);

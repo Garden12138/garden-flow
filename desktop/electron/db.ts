@@ -159,6 +159,8 @@ const initDb = () => {
       id TEXT PRIMARY KEY,
       session_id TEXT NOT NULL,
       project_path TEXT NOT NULL,
+      trigger_origin TEXT NOT NULL DEFAULT 'artifact-ready',
+      unpublished_review_json TEXT,
       revision INTEGER NOT NULL,
       content_digest TEXT NOT NULL,
       note_type TEXT NOT NULL,
@@ -419,6 +421,13 @@ const initDb = () => {
     CREATE INDEX IF NOT EXISTS idx_acp_artifacts_run
       ON acp_artifacts(run_id, created_at ASC);
   `);
+
+  if (!hasColumn('xhs_publish_jobs', 'trigger_origin')) {
+    db.exec("ALTER TABLE xhs_publish_jobs ADD COLUMN trigger_origin TEXT NOT NULL DEFAULT 'artifact-ready'");
+  }
+  if (!hasColumn('xhs_publish_jobs', 'unpublished_review_json')) {
+    db.exec('ALTER TABLE xhs_publish_jobs ADD COLUMN unpublished_review_json TEXT');
+  }
 
   // User Memory tables
   db.exec(`
@@ -2135,6 +2144,8 @@ export const deleteChatMessage = (id: string): boolean => {
 };
 
 type XhsPublishJobRow = {
+  trigger_origin: string;
+  unpublished_review_json: string | null;
   id: string;
   session_id: string;
   project_path: string;
@@ -2170,10 +2181,22 @@ function parseXhsJsonArray(value: string): unknown[] {
 }
 
 function xhsPublishJobFromRow(row: XhsPublishJobRow): XhsPublishJob {
+  let unpublishedReview: XhsPublishJob['unpublishedReview'];
+  try {
+    const value: unknown = JSON.parse(row.unpublished_review_json || 'null');
+    if (value && typeof value === 'object' && 'kind' in value && value.kind === 'user-verified-not-published'
+      && 'sessionId' in value && value.sessionId === row.session_id && 'reviewedAt' in value
+      && typeof value.reviewedAt === 'number' && Number.isFinite(value.reviewedAt) && value.reviewedAt > 0) {
+      unpublishedReview = { kind: value.kind, sessionId: value.sessionId, reviewedAt: value.reviewedAt };
+    }
+  } catch {
+    // Legacy/corrupt review data must never grant recovery authorization.
+  }
   return {
     id: row.id,
     sessionId: row.session_id,
     projectPath: row.project_path,
+    triggerOrigin: row.trigger_origin === 'explicit-request' ? 'explicit-request' : 'artifact-ready',
     revision: row.revision,
     contentDigest: row.content_digest,
     noteType: row.note_type === 'video' ? 'video' : 'image',
@@ -2196,23 +2219,26 @@ function xhsPublishJobFromRow(row: XhsPublishJobRow): XhsPublishJob {
     submittedAt: row.submitted_at ?? undefined,
     publishedAt: row.published_at ?? undefined,
     completedAt: row.completed_at ?? undefined,
+    unpublishedReview,
   };
 }
 
 export const upsertXhsPublishJob = (job: XhsPublishJob): void => {
   db.prepare(`
     INSERT INTO xhs_publish_jobs (
-      id, session_id, project_path, revision, content_digest, note_type, title, body,
+      id, session_id, project_path, trigger_origin, revision, content_digest, note_type, title, body,
       hashtags_json, media_json, extension_instance_id, status, publish_status, reset_status,
       message_id, error_code, error_message, created_at, updated_at, confirmed_at,
-      submitted_at, published_at, completed_at
+      submitted_at, published_at, completed_at, unpublished_review_json
     ) VALUES (
-      @id, @session_id, @project_path, @revision, @content_digest, @note_type, @title, @body,
+      @id, @session_id, @project_path, @trigger_origin, @revision, @content_digest, @note_type, @title, @body,
       @hashtags_json, @media_json, @extension_instance_id, @status, @publish_status, @reset_status,
       @message_id, @error_code, @error_message, @created_at, @updated_at, @confirmed_at,
-      @submitted_at, @published_at, @completed_at
+      @submitted_at, @published_at, @completed_at, @unpublished_review_json
     )
     ON CONFLICT(id) DO UPDATE SET
+      trigger_origin = excluded.trigger_origin,
+      unpublished_review_json = excluded.unpublished_review_json,
       extension_instance_id = excluded.extension_instance_id,
       status = excluded.status,
       publish_status = excluded.publish_status,
@@ -2228,6 +2254,7 @@ export const upsertXhsPublishJob = (job: XhsPublishJob): void => {
     id: job.id,
     session_id: job.sessionId,
     project_path: job.projectPath,
+    trigger_origin: job.triggerOrigin || 'artifact-ready',
     revision: job.revision,
     content_digest: job.contentDigest,
     note_type: job.noteType,
@@ -2248,6 +2275,7 @@ export const upsertXhsPublishJob = (job: XhsPublishJob): void => {
     submitted_at: job.submittedAt ?? null,
     published_at: job.publishedAt ?? null,
     completed_at: job.completedAt ?? null,
+    unpublished_review_json: job.unpublishedReview ? JSON.stringify(job.unpublishedReview) : null,
   });
 };
 

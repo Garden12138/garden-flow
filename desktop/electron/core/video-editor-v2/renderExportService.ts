@@ -12,6 +12,7 @@ import { serializeSegmentsToSrt } from '../video-auto-edit/srtParser';
 import { ensureProductVideoMusicAudible, saveVideoEditorV2Project } from './videoEditorV2ProjectStore';
 import { stageRemotionAssets } from './remotionAssetStaging';
 import { registerRenderedVideoAsset } from '../mediaLibraryStore';
+import { videoRenderFingerprint } from './videoPublicationPolicy';
 
 type RenderProgressPayload = {
   projectId: string;
@@ -280,6 +281,7 @@ export async function renderVideoEditorV2Project(input: RenderVideoEditorV2Proje
       id: renderId,
       path: outputPath,
       mediaAssetId: mediaAsset?.id,
+      renderFingerprint: videoRenderFingerprint(project),
       createdAt: nowIso(),
       durationMs: updatedProject.timeline.durationMs,
     };

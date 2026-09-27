@@ -8,7 +8,9 @@ import {
   resolveIntentExecutionPolicy,
 } from './intentRoutePolicy';
 import { applyProductVideoWorkflowPolicy } from './productVideoWorkflowPolicy';
-import type { IntentName, IntentRoute, RoleId, RuntimeContext } from './types';
+import { applyXhsPublishWorkflowPolicy } from './xhsPublishWorkflowPolicy';
+import { parseXhsPublishReply } from '../xhsPublishConversation';
+import type { IntentName, IntentRoute, IntentRoutingDiagnostic, IntentRoutingFailure, RoleId, RuntimeContext } from './types';
 
 export { applyProductVideoWorkflowPolicy, readExplicitProductRefs } from './productVideoWorkflowPolicy';
 
@@ -21,7 +23,13 @@ type RuntimeLlmConfig = {
 
 const ROUTE_INTENT_SYSTEM_PROMPT_PATH = 'runtime/ai/route_intent_system.txt';
 const ROUTE_INTENT_USER_PROMPT_PATH = 'runtime/ai/route_intent_user.txt';
-const DEFAULT_ROUTE_TIMEOUT_MS = 20000;
+const DEFAULT_ROUTE_TIMEOUT_MS = 90000;
+
+class IntentRouterError extends Error {
+  constructor(readonly failure: IntentRoutingFailure, readonly diagnostic: IntentRoutingDiagnostic) {
+    super(`intent-router ${failure}`);
+  }
+}
 
 const ROLE_IDS: RoleId[] = [
   'planner',
@@ -88,6 +96,7 @@ const inferStructuredIntent = (context: RuntimeContext): IntentName => {
     : {};
   const forcedIntent = normalizeIntentName(metadata.intent);
   if (forcedIntent) return forcedIntent;
+  if (context.runtimeMode === 'gardenflow' && metadata.xhsPublishContext) return 'xhs_publishing';
   switch (context.runtimeMode) {
     case 'background-maintenance':
       return 'automation';
@@ -183,6 +192,12 @@ const validateLlmRoute = (parsed: Record<string, unknown>, fallback: IntentRoute
     recommendedRole,
   });
   const secondaryIntents = normalizeIntentList(parsed.secondary_intents);
+  const xhsAction = parseXhsPublishReply(
+    parsed.xhs_publish_action && typeof parsed.xhs_publish_action === 'object' && !Array.isArray(parsed.xhs_publish_action)
+      ? parsed.xhs_publish_action as Record<string, unknown> : null,
+  );
+  xhsAction.confidence = Math.min(xhsAction.confidence,
+    typeof parsed.confidence === 'number' && Number.isFinite(parsed.confidence) ? confidence : 0);
   const requiredCapabilities = Array.from(new Set([
     ...executionPolicy.requiredCapabilities,
     ...secondaryIntents.flatMap((secondaryIntent) => requiredCapabilitiesForIntent(secondaryIntent)),
@@ -191,6 +206,7 @@ const validateLlmRoute = (parsed: Record<string, unknown>, fallback: IntentRoute
   return {
     intent,
     secondaryIntents,
+    ...(intent === 'xhs_publishing' ? { xhsPublishAction: xhsAction } : {}),
     goal: goal || fallback.goal,
     deliverables: normalizeStringList(parsed.deliverables),
     requiredCapabilities,
@@ -214,7 +230,22 @@ const callLlmRouter = async (params: {
   context: RuntimeContext;
   llm: RuntimeLlmConfig;
   fallback: IntentRoute;
-}): Promise<IntentRoute | null> => {
+  signal?: AbortSignal;
+}): Promise<{ route: IntentRoute | null; diagnostic: IntentRoutingDiagnostic }> => {
+  const startedAt = Date.now();
+  const requestedTimeout = Number(params.llm.timeoutMs);
+  const timeoutMs = Number.isFinite(requestedTimeout) && requestedTimeout > 0
+    ? Math.min(180000, Math.max(8000, requestedTimeout)) : DEFAULT_ROUTE_TIMEOUT_MS;
+  let endpointHost = '';
+  try { endpointHost = new URL(params.llm.baseURL).hostname; } catch { /* Invalid configuration is handled by the request. */ }
+  let attempts = 0;
+  let httpStatus: number | undefined;
+  const diagnostic = (): IntentRoutingDiagnostic => ({
+    model: params.llm.model.replace(/[^\w.\-:/]/g, '').slice(0, 128), endpointHost,
+    elapsedMs: Math.max(0, Date.now() - startedAt), timeoutMs, attempts,
+    ...(httpStatus === undefined ? {} : { httpStatus }),
+  });
+  if (params.signal?.aborted) throw new IntentRouterError('cancelled', diagnostic());
   const systemPrompt = loadAndRenderPrompt(ROUTE_INTENT_SYSTEM_PROMPT_PATH, {}, [
     'You are the intent router for GardenFlow.',
     'Return strict JSON only.',
@@ -225,6 +256,7 @@ const callLlmRouter = async (params: {
     context_type: String((params.context.metadata?.contextType as string) || ''),
     context_id: String((params.context.metadata?.contextId as string) || ''),
     associated_file_path: String((params.context.metadata?.associatedFilePath as string) || ''),
+    xhs_publish_context: JSON.stringify(params.context.metadata?.xhsPublishContext || null),
     fallback_intent: params.fallback.intent,
     fallback_role: params.fallback.recommendedRole,
     fallback_reasoning: params.fallback.reasoning,
@@ -235,8 +267,6 @@ const callLlmRouter = async (params: {
     '{{user_input}}',
   ].join('\n'));
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), Math.max(8000, Number(params.llm.timeoutMs || DEFAULT_ROUTE_TIMEOUT_MS)));
   try {
     const commonMessages = [
       { role: 'system', content: systemPrompt },
@@ -244,19 +274,41 @@ const callLlmRouter = async (params: {
     ];
 
     const attempt = async (body: Record<string, unknown>) => {
-      const response = await fetchLlmWithRetry(safeUrlJoin(normalizeApiBaseUrl(params.llm.baseURL), '/chat/completions'), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${params.llm.apiKey}`,
-        },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      }, {
-        maxAttempts: 1,
-      });
-      const rawText = await response.text().catch(() => '');
-      return { response, rawText };
+      if (params.signal?.aborted) throw new IntentRouterError('cancelled', diagnostic());
+      // A compatibility retry gets its own deadline, including response-body reads.
+      const controller = new AbortController();
+      const onAbort = () => controller.abort();
+      params.signal?.addEventListener('abort', onAbort, { once: true });
+      let timedOut = false;
+      const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
+      attempts += 1;
+      httpStatus = undefined;
+      try {
+        const response = await fetchLlmWithRetry(safeUrlJoin(normalizeApiBaseUrl(params.llm.baseURL), '/chat/completions'), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${params.llm.apiKey}`,
+          },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        }, {
+          maxAttempts: 1,
+        });
+        httpStatus = response.status;
+        const rawText = await response.text();
+        if (params.signal?.aborted) throw new IntentRouterError('cancelled', diagnostic());
+        if (timedOut) throw new IntentRouterError('timeout', diagnostic());
+        return { response, rawText };
+      } catch (error) {
+        if (params.signal?.aborted) throw new IntentRouterError('cancelled', diagnostic());
+        if (timedOut) throw new IntentRouterError('timeout', diagnostic());
+        if (error instanceof IntentRouterError) throw error;
+        throw new IntentRouterError('network-error', diagnostic());
+      } finally {
+        clearTimeout(timeout);
+        params.signal?.removeEventListener('abort', onAbort);
+      }
     };
 
     let firstAttempt = await attempt({
@@ -269,7 +321,7 @@ const callLlmRouter = async (params: {
     if (!firstAttempt.response.ok) {
       const lower = `${firstAttempt.rawText} ${firstAttempt.response.statusText}`.toLowerCase();
       const responseFormatRejected = lower.includes('response_format') || lower.includes('json_object');
-      if (responseFormatRejected) {
+      if ([400, 422].includes(firstAttempt.response.status) && responseFormatRejected) {
         firstAttempt = await attempt({
           model: params.llm.model,
           temperature: 0,
@@ -279,30 +331,33 @@ const callLlmRouter = async (params: {
     }
 
     if (!firstAttempt.response.ok) {
-      throw new Error(`intent-router failed (${firstAttempt.response.status}): ${firstAttempt.rawText || firstAttempt.response.statusText}`);
+      throw new IntentRouterError('http-error', diagnostic());
     }
 
     const parsedOuter = parseJsonObject(firstAttempt.rawText);
-    const content = parsedOuter
-      ? String((parsedOuter.choices as any)?.[0]?.message?.content || '')
-      : '';
+    const first = Array.isArray(parsedOuter?.choices) ? parsedOuter.choices[0] as unknown : null;
+    const message = first && typeof first === 'object' && 'message' in first ? first.message : null;
+    const content = message && typeof message === 'object' && 'content' in message && typeof message.content === 'string'
+      ? message.content : '';
     const parsed = parseJsonObject(content);
     if (!parsed) {
-      throw new Error(`intent-router returned non-json content: ${content.slice(0, 400)}`);
+      throw new IntentRouterError('invalid-output', diagnostic());
     }
-    return validateLlmRoute(parsed, params.fallback);
-  } finally {
-    clearTimeout(timeout);
+    return { route: validateLlmRoute(parsed, params.fallback), diagnostic: diagnostic() };
+  } catch (error) {
+    if (error instanceof IntentRouterError) throw error;
+    throw new IntentRouterError('request-failed', diagnostic());
   }
 };
 
 export const routeIntent = async (params: {
   context: RuntimeContext;
   llm?: RuntimeLlmConfig;
+  signal?: AbortSignal;
 }): Promise<IntentRoute> => {
-  const fallback = applyProductVideoWorkflowPolicy(buildFallbackRoute(params.context), params.context);
+  const fallback = applyXhsPublishWorkflowPolicy(applyProductVideoWorkflowPolicy(buildFallbackRoute(params.context), params.context), params.context);
   if (!params.llm?.apiKey || !params.llm.baseURL || !params.llm.model) {
-    return fallback;
+    return { ...fallback, routingFailure: 'unavailable' };
   }
 
   try {
@@ -310,18 +365,21 @@ export const routeIntent = async (params: {
       context: params.context,
       llm: params.llm,
       fallback,
+      signal: params.signal,
     });
-    if (routed) {
-      return applyProductVideoWorkflowPolicy(routed, params.context);
+    if (routed.route) {
+      return { ...applyXhsPublishWorkflowPolicy(applyProductVideoWorkflowPolicy(routed.route, params.context), params.context), routingDiagnostic: routed.diagnostic };
     }
+    return { ...fallback, routingFailure: 'invalid-output', routingDiagnostic: routed.diagnostic };
   } catch (error) {
     console.warn('[IntentRouter] llm-route-failed', {
       sessionId: params.context.sessionId,
       runtimeMode: params.context.runtimeMode,
-      error: error instanceof Error ? error.message : String(error),
+      failure: error instanceof IntentRouterError ? error.failure : 'request-failed',
+      diagnostic: error instanceof IntentRouterError ? error.diagnostic : undefined,
       fallbackIntent: fallback.intent,
     });
+    return { ...fallback, routingFailure: error instanceof IntentRouterError ? error.failure : 'request-failed',
+      ...(error instanceof IntentRouterError ? { routingDiagnostic: error.diagnostic } : {}) };
   }
-
-  return fallback;
 };

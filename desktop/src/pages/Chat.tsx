@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMe
 import { flushSync } from 'react-dom';
 import { Check, ChevronDown, Clapperboard, Image as ImageIcon, Sparkles, Trash2, X } from 'lucide-react';
 import { clsx } from 'clsx';
+import { toGardenFlowAssetUrl } from '../../shared/localAsset';
 import { supportsAttachmentKindDirectInput } from '../../shared/modelCapabilities';
 import { attachmentParticipatesInChatRuntime } from '../../shared/chatAttachmentDelivery';
 import { parseChatRunMessageMetadata, type ChatSendReceipt } from '../../shared/chatRunState';
@@ -1924,6 +1925,11 @@ export function Chat({
         publishStatus: job.publishStatus,
         resetStatus: job.resetStatus,
         errorMessage: job.errorMessage || undefined,
+        body: job.body,
+        hashtags: job.hashtags,
+        videoPreviewUrl: toGardenFlowAssetUrl(job.media.find((media) => media.role === 'video')?.path || '') || undefined,
+        projectPath: job.projectPath,
+        requiresButtonConfirmation: false,
       };
       const content = `《${job.title}》已经制作完成。是否将当前第 ${job.revision} 版${job.noteType === 'video' ? '视频笔记' : '图片笔记'}发布到小红书？`;
       localMessageMutationRef.current += 1;

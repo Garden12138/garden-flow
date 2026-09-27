@@ -13,6 +13,7 @@ import {
     evaluateProductVideoToolPolicy,
 } from './productVideoRuntimePolicy';
 import { evaluateVideoGenerationApprovalPolicy } from './videoGenerationApprovalPolicy';
+import { isXhsPublishWorkflowTool } from './ai/xhsPublishWorkflowPolicy';
 import type { ProductVideoVisualGroundingEvidence } from './productVideoVisualGrounding';
 
 export interface RuntimePermissionContext {
@@ -73,6 +74,15 @@ export const evaluateRuntimeToolPermission = (params: {
     const descriptor = getBuiltinToolDescriptor(toolName);
     const interactive = context.interactive !== false;
     const runtimeMode = String(context.runtimeMode || '').trim();
+    if (toolName === 'xhs_publish_prepare' && context.workflowKind !== 'xhs-publish') {
+        return { outcome: 'deny', reason: '该工具仅用于结构化小红书发布工作流，创作请求不能自行转为发布。', source: 'runtime-policy' };
+    }
+    if (toolName === 'xhs_publish_prepare' && (!interactive || runtimeMode === 'background-maintenance')) {
+        return { outcome: 'deny', reason: '主动发布准备只能在前台用户会话执行。', source: 'runtime-policy' };
+    }
+    if (context.workflowKind === 'xhs-publish' && !isXhsPublishWorkflowTool(toolName)) {
+        return { outcome: 'deny', reason: '小红书发布工作流只能通过 xhs_publish_prepare 准备已有成片和持久化确认卡，禁止重新生成媒体或自行操作浏览器发布。', source: 'runtime-policy' };
+    }
 
     const productVideoPolicy = evaluateProductVideoToolPolicy({
         workflowKind: context.workflowKind,

@@ -5,6 +5,8 @@ import {
     normalizeXhsHashtags,
     reconcileInterruptedXhsPublishJob,
     xhsPublishRetryMode,
+    xhsTitleValidationError,
+    xhsSubmissionNeedsReview,
     type XhsPublishJob,
 } from '../shared/xhsPublisher.ts';
 
@@ -38,6 +40,19 @@ function job(overrides: Partial<XhsPublishJob> = {}): XhsPublishJob {
         ...overrides,
     };
 }
+
+test('title limits include punctuation, English digits and spaces, without automatic truncation', () => {
+    assert.match(xhsTitleValidationError('原料透明的成猫粮｜伟嘉海洋鱼夹心10kg大袋装')!, /23/);
+    assert.equal(xhsTitleValidationError('原料透明的成猫粮｜伟嘉海洋鱼夹心10kg'), null);
+    assert.ok(xhsTitleValidationError('😀'.repeat(11)));
+});
+
+test('only explicitly reviewed unknown receipts allow a later revision, not published receipts or arbitrary error text', () => {
+    assert.equal(xhsSubmissionNeedsReview(job({ status: 'submit_result_unknown', publishStatus: 'unknown' })), true);
+    assert.equal(xhsSubmissionNeedsReview(job({ status: 'superseded', publishStatus: 'unknown', errorCode: 'USER_VERIFIED_NOT_PUBLISHED' })), false);
+    assert.equal(xhsSubmissionNeedsReview(job({ status: 'submit_result_unknown', publishStatus: 'unknown', errorCode: 'USER_VERIFIED_NOT_PUBLISHED' })), true);
+    assert.equal(xhsSubmissionNeedsReview(job({ status: 'superseded', publishStatus: 'unknown', errorMessage: '用户说没有发布' })), true);
+});
 
 test('normalizes Xiaohongshu hashtags without duplicates', () => {
     assert.deepEqual(normalizeXhsHashtags(['#布偶猫', ' 布偶猫 ', '猫 粮', '', null]), ['布偶猫', '猫 粮']);
@@ -74,4 +89,3 @@ test('restart while returning only allows restoring the publish page', () => {
     assert.equal(recovered?.resetStatus, 'failed');
     assert.equal(recovered && xhsPublishRetryMode(recovered), 'restore');
 });
-

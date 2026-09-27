@@ -1,6 +1,7 @@
 import { assembleRuntimeSystemPrompt } from './contextAssembler';
 import { routeIntent } from './intentRouter';
 import { applyProductVideoWorkflowPolicy } from './productVideoWorkflowPolicy';
+import { applyXhsPublishWorkflowPolicy } from './xhsPublishWorkflowPolicy';
 import { requiredCapabilitiesForIntent } from './intentRoutePolicy';
 import {
   readSkipSubagentOrchestration,
@@ -54,6 +55,7 @@ const normalizeIntentHint = (value: unknown): IntentName | null => {
     || normalized === 'manuscript_creation'
     || normalized === 'image_creation'
     || normalized === 'video_creation'
+    || normalized === 'xhs_publishing'
     || normalized === 'audio_creation'
     || normalized === 'cover_generation'
     || normalized === 'knowledge_retrieval'
@@ -195,7 +197,7 @@ const buildDirectRoute = (context: RuntimeContext): IntentRoute => {
     hints,
   });
 
-  return applyProductVideoWorkflowPolicy({
+  return applyXhsPublishWorkflowPolicy(applyProductVideoWorkflowPolicy({
     intent,
     secondaryIntents: [],
     goal: String(context.userInput || '').trim() || '处理当前用户请求',
@@ -210,7 +212,7 @@ const buildDirectRoute = (context: RuntimeContext): IntentRoute => {
     confidence: 1,
     reasoning: `runtime-mode-default:${runtimeMode}; intent=${intent}; role=${recommendedRole}`,
     source: 'rule',
-  }, context);
+  }, context), context);
 };
 
 const resolveThinkingBudget = (runtimeMode: RuntimeMode, route: IntentRoute): ThinkingBudget => {
@@ -250,6 +252,7 @@ export class AgentRuntime {
   async prepareExecution(params: {
     runtimeContext: RuntimeContext;
     baseSystemPrompt: string;
+    signal?: AbortSignal;
     llm?: {
       apiKey: string;
       baseURL: string;
@@ -259,10 +262,11 @@ export class AgentRuntime {
   }): Promise<PreparedRuntimeExecution> {
     const hints = extractHints(params.runtimeContext);
     const baseline = this.analyzeRuntimeContext({ runtimeContext: params.runtimeContext });
-    const route = !hints.forcedIntent && params.runtimeContext.runtimeMode === 'gardenflow'
+    const route = (!hints.forcedIntent || Boolean(params.runtimeContext.metadata?.xhsPublishContext)) && params.runtimeContext.runtimeMode === 'gardenflow'
       ? await routeIntent({
         context: params.runtimeContext,
         llm: params.llm,
+        signal: params.signal,
       })
       : baseline.route;
     const role = getRoleSpec(route.recommendedRole);

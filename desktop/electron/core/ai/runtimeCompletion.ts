@@ -1,5 +1,6 @@
 import type { AgentTaskArtifactRecord } from '../../db';
 import type { IntentRoute } from './types';
+import { validateXhsPublishCompletion } from './xhsPublishWorkflowPolicy.ts';
 
 export interface RuntimeCompletionValidation {
   complete: boolean;
@@ -56,7 +57,11 @@ export function validateRuntimeCompletion(input: {
   artifacts?: AgentTaskArtifactRecord[];
   xhsMediaState?: XhsMediaCompletionState | null;
   productVideoState?: ProductVideoCompletionState | null;
+  xhsPublishState?: 'not-called' | 'inspected' | 'awaiting-confirmation' | 'blocked';
 }): RuntimeCompletionValidation {
+  if (input.route.workflowKind === 'xhs-publish') {
+    return validateXhsPublishCompletion(input.xhsPublishState || 'not-called', input.route.xhsPublishAction);
+  }
   if (input.route.workflowKind === 'product-video-compose') {
     const state = input.productVideoState || { status: 'not-called' };
     if (state.status === 'awaiting-approval') {

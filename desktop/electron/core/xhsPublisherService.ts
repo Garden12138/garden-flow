@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
+import { createReadStream } from 'node:fs';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { BrowserWindow } from 'electron';
@@ -14,13 +15,14 @@ import {
     updateChatMessage,
     upsertXhsPublishJob,
 } from '../db';
-import { fetchLlmWithRetry } from './llmFetchRetry';
 import { getBrowserCaptureBridgeService } from './browserCaptureBridgeService';
-import { isPathWithinRoots } from './localAssetManager';
+import { isPathWithinRoots, toAppAssetUrl } from './localAssetManager';
 import { getAbsoluteMediaPath } from './mediaLibraryStore';
-import { getXhsNoteProject } from './xhsNoteProjectStore';
-import { normalizeApiBaseUrl, safeUrlJoin } from './urlUtils';
+import { getXhsNoteProject, saveXhsNoteProject } from './xhsNoteProjectStore';
+import { assertXhsSourceExportCurrent } from './xhsVideoPublishSource';
 import { XHS_AUTO_PUBLISH_TASK_ID } from './builtinAutomationTasks';
+import { canAmendXhsDraft, parseXhsPublishReply, selectXhsConversationJob, type XhsPublishReplyClassification } from './xhsPublishConversation';
+import type { IntentRoute } from './ai/types';
 import { isXhsMediaCompatible, type XhsNoteProjectSnapshot } from '../../shared/xhsNote';
 import {
     XHS_PUBLISHER_CAPABILITY,
@@ -29,28 +31,21 @@ import {
     normalizeXhsHashtags,
     reconcileInterruptedXhsPublishJob,
     xhsPublishRetryMode,
+    canExecuteXhsPublication,
+    xhsTitleValidationError,
+    xhsSubmissionNeedsReview,
+    hasXhsUnpublishedReview,
+    sameXhsPublishMedia,
     type XhsPublishConsentMetadata,
     type XhsPublishJob,
     type XhsPublishJobStatus,
     type XhsPublishMediaV1,
     type XhsPublishRequestV1,
+    type XhsDraftAmendmentV1,
     type XhsPublisherBrowserStatus,
     type XhsPublisherExecutionResult,
     type XhsPublisherStatus,
 } from '../../shared/xhsPublisher';
-
-type PublishReplyIntent = 'confirm' | 'reject' | 'modify' | 'unrelated' | 'unclear';
-
-type PublishReplyClassification = {
-    intent: PublishReplyIntent;
-    confidence: number;
-};
-
-type PublisherLlmConfig = {
-    apiKey: string;
-    baseURL: string;
-    model: string;
-};
 
 type Candidate = Omit<XhsPublishJob, 'id' | 'messageId' | 'status' | 'publishStatus' | 'resetStatus' | 'errorCode' | 'errorMessage' | 'createdAt' | 'updatedAt' | 'extensionInstanceId'>;
 
@@ -68,29 +63,6 @@ const ACTIVE_JOB_STATUSES: XhsPublishJobStatus[] = [
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
-
-function readJsonObject(text: string): Record<string, unknown> | null {
-    const candidates = [String(text || '').trim()];
-    const fenced = candidates[0].match(/```(?:json)?\s*([\s\S]*?)```/i);
-    if (fenced?.[1]) candidates.unshift(fenced[1].trim());
-    for (const candidate of candidates) {
-        try {
-            const parsed: unknown = JSON.parse(candidate);
-            if (isRecord(parsed)) return parsed;
-        } catch {
-            // Try the next representation.
-        }
-    }
-    return null;
-}
-
-function responseTextFromChatCompletion(raw: string): string {
-    const parsed = readJsonObject(raw);
-    if (!parsed || !Array.isArray(parsed.choices)) return '';
-    const first = parsed.choices[0];
-    if (!isRecord(first) || !isRecord(first.message)) return '';
-    return String(first.message.content || '').trim();
 }
 
 function errorShape(error: unknown): { code: string; message: string } {
@@ -122,6 +94,13 @@ function consentMetadata(job: XhsPublishJob): XhsPublishConsentMetadata {
         publishStatus: job.publishStatus,
         resetStatus: job.resetStatus,
         errorMessage: job.errorMessage || undefined,
+        body: job.body,
+        hashtags: job.hashtags,
+        videoPreviewUrl: job.media.find((media) => media.role === 'video')?.path
+            ? toAppAssetUrl(job.media.find((media) => media.role === 'video')!.path) : undefined,
+        noteUri: `manuscripts://${path.relative(getWorkspacePaths().manuscripts, job.projectPath).replace(/\\/g, '/')}`,
+        projectPath: job.projectPath,
+        requiresButtonConfirmation: false,
     };
 }
 
@@ -160,6 +139,7 @@ function statusResultFromUnknown(value: unknown, jobId: string): XhsPublisherExe
 
 export class XhsPublisherService extends EventEmitter {
     private queue: Promise<void> = Promise.resolve();
+    private recoveringJobs = new Set<string>();
 
     constructor() {
         super();
@@ -196,6 +176,11 @@ export class XhsPublisherService extends EventEmitter {
         return tasks.some((task) => task.id === XHS_AUTO_PUBLISH_TASK_ID && task.enabled);
     }
 
+    private async publicationEnabled(job: XhsPublishJob): Promise<boolean> {
+        // Explicit requests are independent of the background runner/config.
+        return canExecuteXhsPublication(job, false) || await this.automationEnabled();
+    }
+
     getJob(jobId: string): XhsPublishJob | null {
         return getXhsPublishJob(String(jobId || '').trim());
     }
@@ -203,6 +188,12 @@ export class XhsPublisherService extends EventEmitter {
     private async buildCandidate(sessionId: string, projectPath: string): Promise<Candidate> {
         const snapshot = await getXhsNoteProject(projectPath);
         const document = snapshot.document;
+        if (document.sourceVideoExport) {
+            await assertXhsSourceExportCurrent(document.sourceVideoExport);
+            if (document.mediaSlots.find((slot) => slot.id === 'final-video')?.assetId !== document.sourceVideoExport.mediaAssetId) {
+                throw new Error('发布稿件的视频与工程成片不一致，请重新准备发布');
+            }
+        }
         if (document.generationStatus !== 'generated') {
             throw Object.assign(new Error('笔记媒体尚未全部制作完成'), { code: 'ARTIFACT_NOT_READY' });
         }
@@ -211,6 +202,8 @@ export class XhsPublisherService extends EventEmitter {
         if (!title || !body) {
             throw Object.assign(new Error('标题或正文为空，暂不能发布'), { code: 'ARTIFACT_NOT_READY' });
         }
+        const titleError = xhsTitleValidationError(title);
+        if (titleError) throw Object.assign(new Error(titleError), { code: 'TITLE_TOO_LONG' });
 
         const mediaRoot = path.resolve(getWorkspacePaths().media);
         const pageOrder = new Map(document.imagePages.map((page) => [page.mediaSlotId, page.index]));
@@ -257,6 +250,12 @@ export class XhsPublisherService extends EventEmitter {
             throw Object.assign(new Error('没有可发布的最终媒体'), { code: 'ARTIFACT_NOT_READY' });
         }
         const hashtags = normalizeXhsHashtags(document.hashtags);
+        const mediaHashes: string[] = [];
+        for (const item of media) {
+            const hash = createHash('sha256');
+            for await (const chunk of createReadStream(item.path)) hash.update(chunk);
+            mediaHashes.push(hash.digest('hex'));
+        }
         const contentDigest = createHash('sha256').update(JSON.stringify({
             projectPath: snapshot.projectPath,
             revision: snapshot.version,
@@ -264,6 +263,8 @@ export class XhsPublisherService extends EventEmitter {
             body,
             hashtags,
             media: media.map((item) => ({ ...item, path: path.normalize(item.path) })),
+            mediaHashes,
+            sourceVideoExport: document.sourceVideoExport,
         })).digest('hex');
         return {
             sessionId,
@@ -280,16 +281,40 @@ export class XhsPublisherService extends EventEmitter {
 
     async considerCompletedArtifact(sessionId: string, projectPath: string): Promise<XhsPublishJob | null> {
         if (!sessionId || !projectPath || !await this.automationEnabled()) return null;
-        let candidate: Candidate;
         try {
-            candidate = await this.buildCandidate(sessionId, projectPath);
+            return await this.requestPublication(sessionId, projectPath, 'artifact-ready');
         } catch (error) {
-            const { code } = errorShape(error);
-            if (code === 'ARTIFACT_NOT_READY') return null;
+            if (errorShape(error).code === 'ARTIFACT_NOT_READY') return null;
             throw error;
         }
-        const existing = findXhsPublishJobByCandidate(candidate.projectPath, candidate.revision, candidate.contentDigest);
-        if (existing) return existing;
+    }
+
+    async requestPublication(sessionId: string, projectPath: string, triggerOrigin: 'artifact-ready' | 'explicit-request'): Promise<XhsPublishJob> {
+        if (!sessionId || !projectPath) throw new Error('发布请求缺少会话或稿件');
+        const candidate = await this.buildCandidate(sessionId, projectPath);
+        // Preserve pre-fingerprint published/unknown receipts. A digest-format
+        // upgrade must not make an already submitted note look unpublished.
+        const submitted = listXhsPublishJobs().find((job) => job.projectPath === candidate.projectPath
+            && job.revision === candidate.revision && job.publishStatus !== 'not_submitted'
+            && !(job.status === 'superseded' && job.errorCode === 'USER_VERIFIED_NOT_PUBLISHED'));
+        const existing = submitted || findXhsPublishJobByCandidate(candidate.projectPath, candidate.revision, candidate.contentDigest);
+        if (existing) {
+            if (existing.sessionId !== sessionId) throw new Error('该版本已有发布记录，请在原会话查看，不能重复发布');
+            if (existing.status === 'superseded' && existing.publishStatus === 'unknown' && existing.errorCode === 'USER_VERIFIED_NOT_PUBLISHED') {
+                // Resume after a restart between resolving the old receipt and
+                // creating the new revision. Never reuse the cached unknown job ID.
+                const note = await getXhsNoteProject(candidate.projectPath);
+                await saveXhsNoteProject({ path: note.projectPath, noteType: note.noteType, document: note.document, expectedRevision: note.version });
+                return this.requestPublication(sessionId, candidate.projectPath, triggerOrigin);
+            }
+            const reusable = ['cancelled', 'superseded'].includes(existing.status) && existing.publishStatus === 'not_submitted';
+            return this.save({
+                ...existing,
+                triggerOrigin: triggerOrigin === 'explicit-request' ? triggerOrigin : existing.triggerOrigin,
+                ...(reusable ? { status: 'awaiting_confirmation' as const, confirmedAt: undefined, errorCode: '', errorMessage: '' } : {}),
+                updatedAt: Date.now(),
+            });
+        }
         for (const stale of listXhsPublishJobs(['awaiting_confirmation'])) {
             if (stale.projectPath === candidate.projectPath && stale.contentDigest !== candidate.contentDigest) {
                 this.save({ ...stale, status: 'superseded', updatedAt: Date.now() });
@@ -300,6 +325,7 @@ export class XhsPublisherService extends EventEmitter {
         const messageId = `msg_xhs_publish_${randomUUID()}`;
         const job: XhsPublishJob = {
             ...candidate,
+            triggerOrigin,
             id,
             messageId,
             extensionInstanceId: getXhsPublisherBinding(),
@@ -373,19 +399,23 @@ export class XhsPublisherService extends EventEmitter {
         return id;
     }
 
-    async confirm(jobId: string): Promise<XhsPublishJob> {
+    async confirm(jobId: string, signal?: AbortSignal): Promise<XhsPublishJob> {
         let job = getXhsPublishJob(jobId);
         if (!job) throw new Error('发布任务不存在');
         if (job.status !== 'awaiting_confirmation' && job.status !== 'blocked') {
             throw new Error('当前发布任务不能确认');
         }
+        if (listXhsPublishJobs().some((item) => item.projectPath === job!.projectPath && xhsSubmissionNeedsReview(item))) {
+            throw new Error('该稿件旧版本的提交结果尚未核实。请先检查小红书笔记管理，再在对话中明确告知“已核实未发布”；不能直接重发');
+        }
+        if (this.recoveringJobs.size) throw new Error('正在恢复发布页，请完成后重新确认');
         const fresh = await this.buildCandidate(job.sessionId, job.projectPath);
         if (fresh.revision !== job.revision || fresh.contentDigest !== job.contentDigest) {
             this.save({ ...job, status: 'superseded', updatedAt: Date.now() });
-            await this.considerCompletedArtifact(job.sessionId, job.projectPath);
+            await this.requestPublication(job.sessionId, job.projectPath, job.triggerOrigin || 'artifact-ready');
             throw new Error('笔记内容已变化，已为新版本重新发起确认');
         }
-        const stillEnabled = await this.automationEnabled();
+        const stillEnabled = await this.publicationEnabled(job);
         job = getXhsPublishJob(jobId) || job;
         if (!stillEnabled || job.status === 'cancelled') {
             if (job.status !== 'cancelled') this.save({ ...job, status: 'cancelled', updatedAt: Date.now() });
@@ -396,6 +426,8 @@ export class XhsPublisherService extends EventEmitter {
         }
         const binding = getXhsPublisherBinding();
         if (!binding) throw new Error('请先绑定专用发布浏览器');
+        await this.waitForPublisherConnection(binding, signal);
+        if (signal?.aborted) throw new Error('当前执行已停止，未提交发布');
         const queued = this.save({
             ...job,
             extensionInstanceId: binding,
@@ -425,6 +457,7 @@ export class XhsPublisherService extends EventEmitter {
     cancelPendingJobs(): number {
         let cancelled = 0;
         for (const job of listXhsPublishJobs(['awaiting_confirmation', 'queued', 'preflighting', 'uploading', 'blocked'])) {
+            if (job.triggerOrigin === 'explicit-request') continue;
             const cancelledJob = this.save({ ...job, status: 'cancelled', updatedAt: Date.now() });
             if (job.status === 'blocked') void this.discardPreparedPage(cancelledJob);
             cancelled += 1;
@@ -448,9 +481,114 @@ export class XhsPublisherService extends EventEmitter {
         return await this.confirm(job.id);
     }
 
+    // Review and copy amendment are separate from submission. Preserve the
+    // historical unknown receipt and the uploaded media, not an empty page.
+    async recoverUnpublished(jobId: string, acknowledgedNotPublished: boolean, signal?: AbortSignal): Promise<XhsPublishJob> {
+        if (acknowledgedNotPublished !== true) throw new Error('请先在小红书笔记管理核实未发布，并明确确认');
+        let job = getXhsPublishJob(jobId);
+        if (!job || job.status !== 'submit_result_unknown' || job.publishStatus !== 'unknown') throw new Error('只有结果未知的任务可使用人工核验恢复');
+        job = this.recordUnpublishedReview(job);
+        if (this.recoveringJobs.size || listXhsPublishJobs().some((item) => ['queued', 'preflighting', 'uploading', 'submitting', 'returning'].includes(item.status))) {
+            throw new Error('有发布或恢复操作正在执行，请稍后再试');
+        }
+        this.recoveringJobs.add(job.id);
+        try {
+            if (!job.extensionInstanceId || job.extensionInstanceId !== getXhsPublisherBinding()) throw new Error('旧任务与当前绑定浏览器不一致，未更新或提交；请选择原发布浏览器');
+            await this.waitForPublisherConnection(job.extensionInstanceId, signal);
+            // Check the latest copy/export before touching the browser page.
+            await this.buildCandidate(job.sessionId, job.projectPath);
+            const note = await getXhsNoteProject(job.projectPath);
+            if (note.version === job.revision) {
+                // A fresh revision avoids reusing the plugin's cached unknown result.
+                await saveXhsNoteProject({ path: note.projectPath, noteType: note.noteType, document: note.document, expectedRevision: note.version });
+            }
+            const latest = await this.requestPublication(job.sessionId, job.projectPath, 'explicit-request');
+            await this.amendOwnedDraft(job, latest, true, signal);
+            this.save({ ...job, status: 'superseded', errorCode: 'USER_VERIFIED_NOT_PUBLISHED', errorMessage: '用户已在笔记管理核实未发布；旧提交结果记录保留，当前发布页文案已更新，可在对话中重新发布', updatedAt: Date.now() });
+            if (latest.status === 'blocked' && latest.publishStatus === 'not_submitted') {
+                return this.save({ ...latest, status: 'awaiting_confirmation', confirmedAt: undefined, errorCode: '', errorMessage: '', updatedAt: Date.now() });
+            }
+            return latest;
+        } finally {
+            this.recoveringJobs.delete(job.id);
+        }
+    }
+
+    private recordUnpublishedReview(job: XhsPublishJob): XhsPublishJob {
+        if (!xhsSubmissionNeedsReview(job) || job.publishStatus !== 'unknown') throw new Error('当前任务不接受未发布核实，不能覆盖已有提交或成功回执');
+        if (hasXhsUnpublishedReview(job)) return job;
+        return this.save({ ...job, unpublishedReview: { kind: 'user-verified-not-published', sessionId: job.sessionId, reviewedAt: Date.now() }, updatedAt: Date.now() });
+    }
+
+    private async waitForPublisherConnection(extensionInstanceId: string, signal?: AbortSignal): Promise<void> {
+        const bridge = getBrowserCaptureBridgeService();
+        if (!bridge) throw Object.assign(new Error('浏览器桥接未启动，未更新发布页或提交'), { code: 'BROWSER_INSTANCE_UNAVAILABLE' });
+        await bridge.waitForExtensionInstance({ extensionInstanceId, extensionKind: 'xhs-publisher', requiredCapability: XHS_PUBLISHER_CAPABILITY, signal });
+    }
+
+    private async amendOwnedDraft(previous: XhsPublishJob, next: XhsPublishJob, acknowledgedNotPublished = false, signal?: AbortSignal): Promise<void> {
+        if (next.publishStatus !== 'not_submitted') throw new Error('当前版本已有提交记录，不能覆盖或重发');
+        if (previous.sessionId !== next.sessionId || previous.projectPath !== next.projectPath || previous.noteType !== next.noteType
+            || !sameXhsPublishMedia(previous.media, next.media) || !previous.extensionInstanceId
+            || previous.extensionInstanceId !== getXhsPublisherBinding()) {
+            throw new Error('旧任务的浏览器、稿件或媒体已变化，不能原地覆盖；请明确选择正确的发布任务');
+        }
+        const bridge = getBrowserCaptureBridgeService();
+        if (!bridge) throw new Error('浏览器桥接未启动，未修改发布页');
+        await this.waitForPublisherConnection(previous.extensionInstanceId, signal);
+        const amendment: XhsDraftAmendmentV1 = {
+            phase: 'amend', acknowledgedNotPublished,
+            ...(next.triggerOrigin === 'explicit-request' ? { copyPolicy: 'replace-confirmed-copy' as const } : {}),
+            previous: { jobId: previous.id, contentDigest: previous.contentDigest, sessionId: previous.sessionId,
+                projectPath: previous.projectPath, noteType: previous.noteType, title: previous.title, body: previous.body,
+                hashtags: previous.hashtags, media: previous.media },
+            request: { protocolVersion: XHS_PUBLISH_PROTOCOL_VERSION, jobId: next.id, sessionId: next.sessionId,
+                projectPath: next.projectPath, revision: next.revision, contentDigest: next.contentDigest,
+                noteType: next.noteType, title: next.title, body: next.body, hashtags: next.hashtags, media: next.media },
+        };
+        const raw = await bridge.invokeBrowserControl('publisher.publish', amendment as unknown as Record<string, unknown>,
+            { extensionInstanceId: previous.extensionInstanceId, extensionKind: 'xhs-publisher', requiredCapability: XHS_PUBLISHER_CAPABILITY, timeoutMs: 30_000 });
+        if (!isRecord(raw) || raw.ok !== true || (raw.prepared !== true && raw.empty !== true)) {
+            throw Object.assign(new Error(isRecord(raw) && typeof raw.message === 'string' ? raw.message : '未能核验当前任务发布页，未覆盖文案'),
+                { code: isRecord(raw) && typeof raw.code === 'string' ? raw.code : 'DRAFT_AMEND_FAILED' });
+        }
+    }
+
+    async refreshPreparedDraft(next: XhsPublishJob): Promise<string | undefined> {
+        const unresolved = listXhsPublishJobs().filter((job) => job.projectPath === next.projectPath && xhsSubmissionNeedsReview(job));
+        if (unresolved.length) {
+            if (unresolved.length !== 1 || unresolved[0].sessionId !== next.sessionId || !hasXhsUnpublishedReview(unresolved[0])) {
+                return '旧版本提交结果仍未知。请检查笔记管理，核实未发布后在对话中告诉我；不会直接覆盖或重发。';
+            }
+            try {
+                await this.recoverUnpublished(unresolved[0].id, true);
+                return '核实未发布的记录已保留，当前发布页文案已更新，媒体保留；尚未提交发布。';
+            } catch (error) {
+                return `稿件和核实未发布的记录已保存，但发布页未更新：${errorShape(error).message}`;
+            }
+        }
+        const predecessors = listXhsPublishJobs().filter((job) => canAmendXhsDraft(job, next, getXhsPublisherBinding()));
+        if (!predecessors.length) return undefined;
+        try {
+            const page = await getBrowserCaptureBridgeService()?.invokeBrowserControl('publisher.status', {}, {
+                extensionInstanceId: getXhsPublisherBinding(), extensionKind: 'xhs-publisher', requiredCapability: XHS_PUBLISHER_CAPABILITY, timeoutMs: 8_000,
+            });
+            const previous = predecessors.find((job) => isRecord(page) && page.ownedJobId === job.id);
+            if (!previous) return undefined;
+            await this.amendOwnedDraft(previous, next, previous.errorCode === 'USER_VERIFIED_NOT_PUBLISHED');
+            return '当前发布页文案已原地更新，已上传媒体保留，尚未提交发布。';
+        } catch (error) {
+            return `稿件已保存，但发布页未更新：${errorShape(error).message}`;
+        }
+    }
+
     private async executePublish(jobId: string): Promise<void> {
         const job = getXhsPublishJob(jobId);
         if (!job || job.status !== 'queued') return;
+        if (listXhsPublishJobs().some((item) => item.projectPath === job.projectPath && xhsSubmissionNeedsReview(item))) {
+            this.block(job, 'PRIOR_SUBMISSION_UNRESOLVED', '旧版本提交结果尚未核实，请先检查笔记管理，再在对话中确认未发布');
+            return;
+        }
         const bridge = getBrowserCaptureBridgeService();
         if (!bridge) {
             this.block(job, 'DESKTOP_BRIDGE_UNAVAILABLE', '浏览器桥接未启动');
@@ -459,7 +597,7 @@ export class XhsPublisherService extends EventEmitter {
         const fresh = await this.buildCandidate(job.sessionId, job.projectPath).catch(() => null);
         if (!fresh || fresh.contentDigest !== job.contentDigest || fresh.revision !== job.revision) {
             this.save({ ...job, status: 'superseded', updatedAt: Date.now() });
-            await this.considerCompletedArtifact(job.sessionId, job.projectPath);
+            await this.requestPublication(job.sessionId, job.projectPath, job.triggerOrigin || 'artifact-ready');
             return;
         }
         let current = this.save({ ...job, status: 'preflighting', updatedAt: Date.now() });
@@ -477,8 +615,9 @@ export class XhsPublisherService extends EventEmitter {
             media: current.media,
         };
         try {
+            await this.waitForPublisherConnection(current.extensionInstanceId);
             current = this.save({ ...current, status: 'uploading', updatedAt: Date.now() });
-            const prepareRaw = await bridge.invokeBrowserControl('publisher.publish', {
+            let prepareRaw = await bridge.invokeBrowserControl('publisher.publish', {
                 phase: 'prepare',
                 request: request as unknown as Record<string, unknown>,
             }, {
@@ -487,6 +626,18 @@ export class XhsPublisherService extends EventEmitter {
                 requiredCapability: XHS_PUBLISHER_CAPABILITY,
                 timeoutMs: 10 * 60_000,
             });
+            if (isRecord(prepareRaw) && prepareRaw.code === 'EXISTING_DRAFT') {
+                const page = await bridge.invokeBrowserControl('publisher.status', {}, {
+                    extensionInstanceId: current.extensionInstanceId, extensionKind: 'xhs-publisher', requiredCapability: XHS_PUBLISHER_CAPABILITY, timeoutMs: 8_000,
+                });
+                const owner = isRecord(page) && typeof page.ownedJobId === 'string' ? getXhsPublishJob(page.ownedJobId) : null;
+                if (owner && canAmendXhsDraft(owner, current, current.extensionInstanceId)) {
+                    await this.amendOwnedDraft(owner, current, owner.errorCode === 'USER_VERIFIED_NOT_PUBLISHED');
+                    prepareRaw = await bridge.invokeBrowserControl('publisher.publish', { phase: 'prepare', request: request as unknown as Record<string, unknown> }, {
+                        extensionInstanceId: current.extensionInstanceId, extensionKind: 'xhs-publisher', requiredCapability: XHS_PUBLISHER_CAPABILITY, timeoutMs: 10 * 60_000,
+                    });
+                }
+            }
             const prepareResult = statusResultFromUnknown(prepareRaw, current.id);
             current = getXhsPublishJob(current.id) || current;
             if (this.applyExecutionResult(current, prepareResult)) return;
@@ -495,7 +646,7 @@ export class XhsPublisherService extends EventEmitter {
                 return;
             }
 
-            if (current.status === 'cancelled' || !await this.automationEnabled()) {
+            if (current.status === 'cancelled' || !await this.publicationEnabled(current)) {
                 if (current.status !== 'cancelled') {
                     current = this.save({ ...current, status: 'cancelled', updatedAt: Date.now() });
                 }
@@ -507,11 +658,11 @@ export class XhsPublisherService extends EventEmitter {
             if (!latest || latest.revision !== current.revision || latest.contentDigest !== current.contentDigest) {
                 this.save({ ...current, status: 'superseded', updatedAt: Date.now() });
                 await this.discardPreparedPage(current);
-                await this.considerCompletedArtifact(current.sessionId, current.projectPath);
+                await this.requestPublication(current.sessionId, current.projectPath, current.triggerOrigin || 'artifact-ready');
                 return;
             }
 
-            const stillEnabled = await this.automationEnabled();
+            const stillEnabled = await this.publicationEnabled(current);
             current = getXhsPublishJob(current.id) || current;
             if (current.status === 'cancelled' || !stillEnabled) {
                 if (current.status !== 'cancelled') {
@@ -564,6 +715,7 @@ export class XhsPublisherService extends EventEmitter {
             jobId: job.id,
             contentDigest: job.contentDigest,
             noteType: job.noteType,
+            request: { jobId: job.id, contentDigest: job.contentDigest, title: job.title, body: job.body, hashtags: job.hashtags, noteType: job.noteType },
         }, {
             extensionInstanceId: job.extensionInstanceId,
             extensionKind: 'xhs-publisher',
@@ -679,79 +831,129 @@ export class XhsPublisherService extends EventEmitter {
         });
     }
 
-    async handlePendingChatReply(
-        sessionId: string,
-        content: string,
-        llm: PublisherLlmConfig,
-    ): Promise<{ handled: boolean; response?: string }> {
-        const pending = listXhsPublishJobs(['awaiting_confirmation'])
-            .filter((job) => job.sessionId === sessionId)
-            .sort((left, right) => right.createdAt - left.createdAt)[0];
-        if (!pending) return { handled: false };
-        const classification = await this.classifyReply(content, pending, llm);
-        if (classification.intent === 'confirm' && classification.confidence >= 0.8) {
-            await this.confirm(pending.id);
-            return { handled: true, response: '已确认，发布任务已进入队列。我会在对话中更新发布结果。' };
-        }
-        if (classification.intent === 'reject' && classification.confidence >= 0.8) {
-            this.cancel(pending.id);
-            return { handled: true, response: '已取消这次发布，当前版本不会发送到小红书。' };
-        }
-        if (classification.intent === 'modify') {
-            this.save({ ...pending, status: 'superseded', updatedAt: Date.now() });
-            return { handled: false };
-        }
-        if (classification.intent === 'unrelated') return { handled: false };
-        return { handled: true, response: '我没有识别到明确的纯发布确认。请点击“确认发布”，或只回复是否发布；如果需要修改内容，请直接说明修改要求。' };
+    getConversationContext(sessionId: string, projectPath?: string): Record<string, unknown> | undefined {
+        const pending = selectXhsConversationJob(listXhsPublishJobs(), sessionId, projectPath);
+        if (!pending) return undefined;
+        return { jobId: pending.id, projectPath: pending.projectPath, revision: pending.revision,
+            title: pending.title, status: pending.status, publishStatus: pending.publishStatus,
+            unresolved: listXhsPublishJobs().filter(job => job.projectPath === pending.projectPath && xhsSubmissionNeedsReview(job))
+                .map(job => ({ jobId: job.id, revision: job.revision, publishStatus: job.publishStatus, userVerifiedNotPublished: hasXhsUnpublishedReview(job) })) };
     }
 
-    private async classifyReply(
-        content: string,
-        job: XhsPublishJob,
-        llm: PublisherLlmConfig,
-    ): Promise<PublishReplyClassification> {
-        if (!llm.apiKey || !llm.baseURL || !llm.model) return { intent: 'unclear', confidence: 0 };
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 12_000);
+    // The single intent router owns semantics. This service only validates and
+    // executes its typed, current-turn action against trusted persisted jobs.
+    async handleRoutedConversationAction(sessionId: string, route: IntentRoute, interactive: boolean, projectPath?: string, signal?: AbortSignal): Promise<{
+        handled: boolean; response?: string; failed?: boolean; job?: XhsPublishJob; runtimeMetadata?: Record<string, unknown>;
+    }> {
+        if (route.workflowKind !== 'xhs-publish') return { handled: false };
+        if (!interactive) return route.xhsPublishAction?.publicationRequested
+            ? { handled: true, failed: true, response: '发布当前版本需要前台用户明确授权，后台任务不会提交。' }
+            : { handled: false };
+        if (signal?.aborted) return { handled: true, failed: true, response: '当前执行已停止，未提交发布。' };
+        if (route.routingFailure) {
+            const diagnosis = route.routingDiagnostic;
+            const reasons: Record<NonNullable<IntentRoute['routingFailure']>, string> = {
+                timeout: `发布动作识别的模型响应超时（每次请求最多 ${Math.round((diagnosis?.timeoutMs || 90000) / 1000)} 秒），不是你的指令不明确。可以稍后重试；持续超时请检查当前模型和代理连接。`,
+                cancelled: '发布动作识别已停止。',
+                'http-error': `发布动作识别的模型服务返回 HTTP ${diagnosis?.httpStatus || '错误'}。请检查当前模型服务、代理和账户配置后重试。`,
+                'network-error': '发布动作识别的模型连接失败。请检查当前模型或代理网络连接后重试。',
+                unavailable: '发布动作识别缺少可用模型配置。请检查当前模型配置后重试。',
+                'invalid-output': '模型未返回有效的发布动作识别结果。可以重试；持续失败请检查当前模型的结构化输出支持。',
+                'request-failed': '发布动作识别请求失败。请检查当前模型连接后重试。',
+            };
+            return { handled: true, failed: true, response: `${reasons[route.routingFailure]}未修改稿件或提交发布。` };
+        }
+        return this.handleConversationAction(sessionId, route.xhsPublishAction || parseXhsPublishReply(null), projectPath, signal);
+    }
+
+    async handleConversationAction(
+        sessionId: string,
+        classification: XhsPublishReplyClassification,
+        projectPath?: string,
+        signal?: AbortSignal,
+    ): Promise<{ handled: boolean; response?: string; failed?: boolean; job?: XhsPublishJob; runtimeMetadata?: Record<string, unknown> }> {
+        if (classification.intent === 'unrelated') return { handled: false };
+        if (classification.confidence < 0.8 || classification.intent === 'unclear') {
+            return { handled: true, failed: true, response: '本轮发布动作未能可靠识别，未修改稿件或提交发布。请明确说明是修改文案、核实未发布，还是发布当前版本；若仍失败请检查模型连接。' };
+        }
+        const pending = selectXhsConversationJob(listXhsPublishJobs(), sessionId, projectPath);
+        if (!pending) {
+            if (classification.intent === 'prepare') return { handled: false };
+            return { handled: true, failed: true, response: '没有唯一可绑定的当前发布任务，请先准备稿件或明确选择稿件；未提交发布。' };
+        }
+        const context = this.getConversationContext(sessionId, pending.projectPath);
+        const runtimeMetadata = { workflowKind: 'xhs-publish', activeXhsNotePath: pending.projectPath, xhsPublishContext: context };
         try {
-            const response = await fetchLlmWithRetry(safeUrlJoin(normalizeApiBaseUrl(llm.baseURL), '/chat/completions'), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${llm.apiKey}` },
-                body: JSON.stringify({
-                    model: llm.model,
-                    temperature: 0,
-                    response_format: { type: 'json_object' },
-                    messages: [
-                        {
-                            role: 'system',
-                            content: [
-                                'Classify the user reply to a pending Xiaohongshu publish consent.',
-                                'Return JSON only: {"intent":"confirm|reject|modify|unrelated|unclear","confidence":0..1}.',
-                                'confirm is allowed only when the reply is a pure affirmative with no content changes or extra request.',
-                                'Any requested title/body/media/tag change is modify, even if the reply also says yes.',
-                            ].join('\n'),
-                        },
-                        {
-                            role: 'user',
-                            content: JSON.stringify({ pendingTitle: job.title, pendingRevision: job.revision, reply: content }),
-                        },
-                    ],
-                }),
-                signal: controller.signal,
-            }, { maxAttempts: 1 });
-            if (!response.ok) return { intent: 'unclear', confidence: 0 };
-            const raw = await response.text();
-            const parsed = readJsonObject(responseTextFromChatCompletion(raw));
-            const intent = String(parsed?.intent || 'unclear');
-            if (!['confirm', 'reject', 'modify', 'unrelated', 'unclear'].includes(intent)) {
-                return { intent: 'unclear', confidence: 0 };
+            if (['queued', 'preflighting', 'uploading', 'submitting', 'returning'].includes(pending.status)
+                && (classification.intent === 'confirm' || classification.intent === 'recover' || classification.acknowledgedNotPublished)) {
+                return { handled: true, response: pending.status === 'submitting'
+                    ? '当前版本正在执行发布点击并等待平台反馈，不会重复点击；此时无需核实旧任务，请等待本次结果。'
+                    : '当前发布任务正在执行，不会重复入队；请等待本次结果。' };
             }
-            const confidence = Math.max(0, Math.min(1, Number(parsed?.confidence) || 0));
-            return { intent: intent as PublishReplyIntent, confidence };
-        } catch {
-            return { intent: 'unclear', confidence: 0 };
-        } finally {
-            clearTimeout(timer);
+            const unresolved = listXhsPublishJobs().filter((job) => job.projectPath === pending.projectPath && xhsSubmissionNeedsReview(job));
+            if (classification.acknowledgedNotPublished && unresolved.length) {
+                if (unresolved.length !== 1 || unresolved[0].sessionId !== sessionId) {
+                    return { handled: true, failed: true, response: '未找到唯一属于当前会话的未知提交任务，不能把核实结论应用到其他任务；未提交发布。' };
+                }
+                unresolved[0] = this.recordUnpublishedReview(unresolved[0]);
+            }
+            if (classification.intent === 'modify' || classification.intent === 'resume' || classification.intent === 'prepare') {
+                return { handled: false, runtimeMetadata: { ...runtimeMetadata, xhsPublishContext: this.getConversationContext(sessionId, pending.projectPath) } };
+            }
+            if (classification.intent === 'status') {
+                const reviewRecorded = unresolved.length === 1 && unresolved[0].sessionId === sessionId && hasXhsUnpublishedReview(unresolved[0]);
+                const priorReview = unresolved.some(job => job.id !== pending.id);
+                const unknownStatus = reviewRecorded ? '平台提交回执仍未知；你核实未发布的记录已保存，发布页尚待安全恢复，无需重复核实' : '提交结果未知，需先在笔记管理核实';
+                return { handled: true, response: `当前第 ${pending.revision} 版标题：${pending.title}\n发布状态：${pending.publishStatus === 'unknown' ? unknownStatus : pending.publishStatus === 'published' ? '已确认发布成功' : pending.publishStatus === 'submitted' ? '正在提交，请勿重复发布' : '当前版本尚未提交'}。${priorReview ? `\n旧版本${reviewRecorded ? unknownStatus : '提交结果仍未知，不能视为未发布，需先核实'}。` : ''}${pending.errorMessage ? `\n${pending.errorMessage}` : ''}\n可以直接在对话中提出文案修改；无需寻找旧卡片。` };
+            }
+            if (classification.intent === 'reject') {
+                this.cancel(pending.id);
+                return { handled: true, response: '已取消这次发布，当前版本不会发送到小红书。' };
+            }
+            let latest = pending;
+            if (latest.publishStatus === 'published' && classification.intent === 'recover') {
+                if (latest.status === 'published_reset_failed') {
+                    await this.retry(latest.id);
+                    return { handled: true, response: '该版本已发布，只恢复发布页，不会再次发帖。' };
+                }
+                return { handled: true, response: '该版本已有发布成功记录，无需未发布恢复，不会重复发帖。' };
+            }
+            if (unresolved.length) {
+                if (unresolved.length !== 1 || unresolved[0].sessionId !== sessionId || !hasXhsUnpublishedReview(unresolved[0])) {
+                    const subject = unresolved.some((job) => job.id !== pending.id) ? '旧版本' : `当前第 ${pending.revision} 版这次`;
+                    return { handled: true, failed: true, response: `${subject}提交结果尚未核实，暂不重发。${pending.errorMessage ? `${pending.errorMessage}。` : ''}请先检查小红书笔记管理；若确认这次没有发布，请在这里明确告诉我“已核实未发布”。视频和修改后的稿件都会保留。` };
+                }
+                latest = await this.recoverUnpublished(unresolved[0].id, true, signal);
+            }
+            if (classification.intent === 'recover' && !unresolved.length) {
+                return { handled: true, response: '当前没有待人工核实的未知提交任务；稿件保留，尚未再次提交，可继续修改或明确要求发布当前版本。' };
+            }
+            if (classification.intent === 'confirm' && classification.publicationRequested) {
+                if (latest.publishStatus === 'published') return { handled: true, response: '当前版本已有发布成功记录，不会重复提交。' };
+                if (['queued', 'preflighting', 'uploading', 'submitting', 'returning'].includes(latest.status)) {
+                    return { handled: true, response: '当前发布任务正在执行，不会重复入队。' };
+                }
+                if (['cancelled', 'superseded'].includes(latest.status)) latest = await this.requestPublication(sessionId, latest.projectPath, 'explicit-request');
+                if (latest.triggerOrigin !== 'explicit-request') {
+                    latest = this.save({ ...latest, triggerOrigin: 'explicit-request', updatedAt: Date.now() });
+                }
+                if (signal?.aborted) return { handled: true, failed: true, response: '当前执行已停止，未提交发布。核实记录和稿件保留。' };
+                const queued = await this.confirm(latest.id, signal);
+                return { handled: true, job: queued, response: `已按你的明确发布要求，将第 ${queued.revision} 版《${queued.title}》加入发布队列；会在对话中更新结果。尚未收到成功回执，不代表已经发布。` };
+            }
+            return { handled: true, response: `当前第 ${latest.revision} 版标题：${latest.title}。文案和已上传视频保留，尚未再次提交。需要发布时可直接说“重新发布当前版本”；也可以继续提出修改。` };
+        } catch (error) {
+            const reviewSaved = listXhsPublishJobs().some(job => job.sessionId === sessionId && job.projectPath === pending.projectPath && xhsSubmissionNeedsReview(job) && hasXhsUnpublishedReview(job));
+            const failure = errorShape(error);
+            const current = selectXhsConversationJob(listXhsPublishJobs(), sessionId, pending.projectPath);
+            if (failure.code !== 'BROWSER_WAIT_CANCELLED' && current?.publishStatus === 'not_submitted'
+                && ['awaiting_confirmation', 'blocked'].includes(current.status)) {
+                this.block(current, failure.code, failure.message);
+            }
+            if (failure.code === 'BROWSER_INSTANCE_UNAVAILABLE' || failure.code === 'BROWSER_WAIT_CANCELLED') {
+                return { handled: true, failed: true, response: `${failure.message}。${reviewSaved ? '最新文案及已核实未发布的记录保留，无需再修改标题或重复核实。' : '最新文案保留。'}` };
+            }
+            return { handled: true, failed: true, response: `未提交新的发布：${failure.message}。${reviewSaved ? '你已核实未发布的记录已保存；页面问题解决后可直接要求重新发布，无需重复核实。' : ''}` };
         }
     }
 }

@@ -267,6 +267,7 @@ export interface RenderOutputRecord {
   id: string;
   path: string;
   mediaAssetId?: string;
+  renderFingerprint?: string;
   createdAt: string;
   durationMs?: number;
 }

@@ -14,6 +14,10 @@ import {
   publishModeMatches,
   validatePublishRequest,
   verifyPreparedEditorSnapshot,
+  editorValidationFailure,
+  validateDraftRecovery,
+  validateDraftAmendment,
+  preparedMediaMatches,
 } from './pageAdapter.js';
 
 const NATIVE_HOST = 'com.gardenflow.browser_control';
@@ -29,6 +33,8 @@ const PUBLISH_TAB_PATTERN = 'https://creator.xiaohongshu.com/*';
 let nativePort = null;
 let requestSequence = 0;
 let nativeConnected = false;
+let nativeConnectionAttempt = null;
+let nativeConnectionError = '';
 const pending = new Map();
 const inFlightJobs = new Set();
 
@@ -79,25 +85,42 @@ function settleResponse(message) {
 }
 
 async function connectNative() {
-  if (nativePort) return;
+  if (nativeConnectionAttempt) return nativeConnectionAttempt;
+  nativeConnectionAttempt = refreshNativeConnection().finally(() => { nativeConnectionAttempt = null; });
+  return nativeConnectionAttempt;
+}
+
+async function refreshNativeConnection() {
+  // A Native Messaging port can survive a desktop restart. Probe and register
+  // again without changing this browser's identity or its prepared draft.
+  await chrome.alarms.create(RECONNECT_ALARM, { periodInMinutes: 0.5 });
   try {
-    const port = chrome.runtime.connectNative(NATIVE_HOST);
-    nativePort = port;
-    port.onMessage.addListener((message) => {
-      if (settleResponse(message)) return;
-      if (message?.method && message?.id != null) void handleDesktopRequest(message);
-    });
-    port.onDisconnect.addListener(() => {
-      if (nativePort === port) nativePort = null;
+    if (!nativePort) {
+      const port = chrome.runtime.connectNative(NATIVE_HOST);
+      nativePort = port;
+      port.onMessage.addListener((message) => {
+        if (nativePort !== port) return;
+        if (settleResponse(message)) return;
+        if (message?.method && message?.id != null) void handleDesktopRequest(message);
+      });
+      port.onDisconnect.addListener(() => {
+        if (nativePort !== port) return;
+        nativePort = null;
+        nativeConnected = false;
+        nativeConnectionError = '发布插件与 Native Host 的连接已断开';
+        for (const item of pending.values()) {
+          clearTimeout(item.timer);
+          item.reject(Object.assign(new Error('Native transport disconnected'), { code: 'NATIVE_DISCONNECTED' }));
+        }
+        pending.clear();
+      });
+    }
+    const handshake = await sendRequest('ping', {}, 4000);
+    if (handshake?.desktopBridge?.connected !== true) {
       nativeConnected = false;
-      for (const item of pending.values()) {
-        clearTimeout(item.timer);
-        item.reject(Object.assign(new Error('Native transport disconnected'), { code: 'NATIVE_DISCONNECTED' }));
-      }
-      pending.clear();
-      void chrome.alarms.create(RECONNECT_ALARM, { delayInMinutes: 0.08 });
-    });
-    await sendRequest('ping', {}, 4000);
+      nativeConnectionError = 'GardenFlow 桌面尚未连接，正在等待恢复';
+      return;
+    }
     const manifest = chrome.runtime.getManifest();
     await sendRequest('extension.register', {
       extensionId: chrome.runtime.id,
@@ -108,8 +131,10 @@ async function connectNative() {
       browser: navigator.userAgent.includes('Edg/') ? 'edge' : navigator.userAgent.includes('Brave') ? 'brave' : 'chrome',
     }, 4000);
     nativeConnected = true;
+    nativeConnectionError = '';
   } catch (error) {
     nativeConnected = false;
+    nativeConnectionError = messageError(error).message;
     if (nativePort) {
       try { nativePort.disconnect(); } catch {}
       nativePort = null;
@@ -178,19 +203,34 @@ function probePage() {
     videoUploadPrompt: /拖拽视频到此(?:或|，)?点击上传|点击上传视频/.test(text),
   };
   const titleValue = titleInput ? String(titleInput.value || '').trim() : '';
+  const validationErrors = Array.from(document.querySelectorAll('input,textarea,[aria-invalid="true"]'))
+    .filter(visible)
+    .flatMap((item) => {
+      if (item.validity?.valid === false && item.validationMessage) return [item.validationMessage];
+      if (item.getAttribute('aria-invalid') !== 'true') return [];
+      return String(item.getAttribute('aria-errormessage') || item.getAttribute('aria-describedby') || '').split(/\s+/)
+        .map((id) => document.getElementById(id)).filter((node) => node && visible(node)).map((node) => node.textContent.trim()).filter(Boolean);
+    });
   const bodyValue = editable.map((item) => String(item.value || item.textContent || '').trim()).sort((a, b) => b.length - a.length)[0] || '';
   const editorRoot = titleInput?.closest('main,[class*="publish"],[class*="editor"]') || document.body;
   const mediaPreview = editorReady && Boolean(editorRoot?.querySelector('[class*="upload"] img,[class*="preview"] img,[class*="upload"] video,[class*="preview"] video'));
   const successHeading = headings.some((item) => item === '发布成功') || statusLabels.some((item) => item === '发布成功');
   const returnControl = controls.some((item) => item === '立即返回' || /返回发布页/.test(item));
   const autoReturnNotice = /\d+\s*秒后将返回发布页/.test(text);
+  const pageAlerts = Array.from(document.querySelectorAll('[role="alert"],[class*="toast"],[class*="message-content"]'))
+    .filter(visible).map((item) => String(item.innerText || item.textContent || '').trim())
+    // This parses platform error feedback, not user intent. Progress/success
+    // notices must not terminate the success wait as an ambiguous failure.
+    .filter((value) => value && value.length <= 500 && /失败|错误|异常|繁忙|超出|超限|不能为空|未通过|不符合|不支持|请.{0,30}(?:填写|添加|上传|声明|选择)/u.test(value));
   return {
     editorReady,
     uploadLandingEvidence,
     hasDraft: Boolean(titleValue || bodyValue || mediaPreview),
     titleValue,
     bodyValue,
-    successPage: successHeading && returnControl && autoReturnNotice && !editorReady,
+    validationErrors,
+    pageAlerts,
+    successPage: successHeading && (returnControl || autoReturnNotice) && !editorReady,
     loginRequired: location.pathname.includes('/login') || (/登录/.test(text) && !editorReady && !successHeading),
     securityChallenge: /安全验证|验证身份|滑块验证|请完成验证/.test(text),
     href: location.href,
@@ -294,6 +334,7 @@ async function currentStatus() {
   };
   return {
     nativeConnected,
+    nativeConnectionError,
     publishTabCount: 1,
     pageState: state.pageState,
     publishTarget,
@@ -348,10 +389,10 @@ function fillEditor(payload) {
     element.dispatchEvent(new Event('input', { bubbles: true }));
     element.dispatchEvent(new Event('change', { bubbles: true }));
   };
-  setNativeValue(title, payload.title);
-  if (body instanceof HTMLTextAreaElement) {
+  if (typeof payload.title === 'string') setNativeValue(title, payload.title);
+  if (typeof payload.body === 'string' && body instanceof HTMLTextAreaElement) {
     setNativeValue(body, payload.body);
-  } else {
+  } else if (typeof payload.body === 'string') {
     body.focus();
     document.execCommand('selectAll', false);
     document.execCommand('insertText', false, payload.body);
@@ -379,10 +420,46 @@ function readPreparedEditorSnapshot() {
   const bodyValue = String(body?.value || body?.innerText || body?.textContent || '').trim();
   const pageText = document.body?.innerText || '';
   const mediaBusy = /上传中|处理中|转码中|正在生成/.test(pageText);
+  const validationErrors = Array.from(document.querySelectorAll('input,textarea,[aria-invalid="true"]'))
+    .filter(visible)
+    .flatMap((item) => {
+      if (item.validity?.valid === false && item.validationMessage) return [item.validationMessage];
+      if (item.getAttribute('aria-invalid') !== 'true') return [];
+      return String(item.getAttribute('aria-errormessage') || item.getAttribute('aria-describedby') || '').split(/\s+/)
+        .map((id) => document.getElementById(id)).filter((node) => node && visible(node)).map((node) => node.textContent.trim()).filter(Boolean);
+    });
+  const editorRoot = title?.closest('main,[class*="publish"],[class*="editor"]') || document.body;
+  const mediaSources = Array.from(editorRoot.querySelectorAll('[class*="upload"] img,[class*="preview"] img,[class*="upload"] video,[class*="preview"] video'))
+    .map((node) => String(node.currentSrc || node.src || '')).filter(Boolean);
+  // Older publisher pages do not always wrap the video in upload/preview
+  // classes. A unique visible video is a legacy anchor, not a media override.
+  if (!mediaSources.length) {
+    const videos = Array.from(document.querySelectorAll('video')).filter(visible);
+    if (videos.length === 1) {
+      const source = String(videos[0].currentSrc || videos[0].src || '');
+      if (source) mediaSources.push(source);
+    }
+  }
+  // The video upload card can show only a file name/cover, with no playable
+  // <video> URL. Read exact visible file labels, excluding the copy editor;
+  // never infer media identity from arbitrary prose or preview text.
+  const mediaFileNames = [...new Set([
+    ...Array.from(document.querySelectorAll('input[type="file"]')).flatMap((input) => Array.from(input.files || [], (file) => file.name)),
+    ...Array.from(document.querySelectorAll('span,div,p,[title]'))
+      .filter((node) => visible(node) && node !== title && !body?.contains(node))
+      .flatMap((node) => [
+        Array.from(node.childNodes || []).filter((child) => child.nodeType === 3).map((child) => child.textContent || '').join('')
+          || (!node.children.length ? node.innerText || node.textContent : ''),
+        node.getAttribute('title'),
+      ].map((value) => String(value || '').trim())),
+  ].filter((name) => /^[^/\\\r\n]+\.(?:mp4|mov|m4v|webm|avi)$/i.test(name)))].sort();
   return {
     titleValue,
     bodyValue,
     mediaBusy,
+    validationErrors,
+    mediaSources,
+    mediaFileNames,
   };
 }
 
@@ -459,32 +536,110 @@ async function inspectTrustedPublishTarget(tabId) {
 
 async function dispatchTrustedPublishClick(tabId) {
   await chrome.debugger.attach({ tabId }, '1.3');
+  const observationKey = `gardenflowPublishClick_${crypto.randomUUID()}`;
+  let objectId;
+  let mayHaveDispatched = false;
+  const call = async (fn, ...args) => {
+    const value = await chrome.debugger.sendCommand({ tabId }, 'Runtime.callFunctionOn', {
+      objectId, functionDeclaration: fn.toString(), arguments: args.map((value) => ({ value })), returnByValue: true,
+    });
+    if (value?.exceptionDetails) throw new Error('无法核验发布按钮事件');
+    return value?.result?.value;
+  };
   try {
+    const initial = choosePublishTargetCandidate(await readAccessibilityPublishCandidates(tabId));
+    if (!initial.ok) return initial;
+    await chrome.debugger.sendCommand({ tabId }, 'DOM.scrollIntoViewIfNeeded', { backendNodeId: initial.backendDOMNodeId });
+    // Scroll/hover may change layout or replace controls. Resolve the fresh
+    // unique node, not a cached coordinate, including closed shadow buttons.
     const selected = choosePublishTargetCandidate(await readAccessibilityPublishCandidates(tabId));
     if (!selected.ok) return selected;
+    const resolved = await chrome.debugger.sendCommand({ tabId }, 'DOM.resolveNode', {
+      backendNodeId: selected.backendDOMNodeId, objectGroup: observationKey,
+    });
+    objectId = resolved?.object?.objectId;
+    if (!objectId) return { ok: false, code: 'PUBLISH_BUTTON_NOT_FOUND', message: '发布按钮已变化，未点击' };
+    const armed = await call(armTrustedPublishClick, observationKey);
+    if (!armed?.ok) return armed || { ok: false, code: 'PUBLISH_BUTTON_UNVERIFIED', message: '无法核验发布按钮，未点击' };
     await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
-      type: 'mouseMoved',
-      x: selected.x,
-      y: selected.y,
+      type: 'mouseMoved', x: armed.x, y: armed.y, buttons: 0,
+    });
+    const beforePress = await call(readTrustedPublishClick, observationKey);
+    if (!beforePress?.hitTestable) return { ok: false, code: 'PUBLISH_BUTTON_OBSCURED', message: '发布按钮被遮挡或位置已变化，未点击' };
+    // Mark uncertainty BEFORE dispatch: a transport error is not proof that
+    // the browser did not receive the event. Never retry a click here.
+    mayHaveDispatched = true;
+    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+      type: 'mousePressed', x: armed.x, y: armed.y, button: 'left', buttons: 1, clickCount: 1,
     });
     await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
-      type: 'mousePressed',
-      x: selected.x,
-      y: selected.y,
-      button: 'left',
-      clickCount: 1,
+      type: 'mouseReleased', x: armed.x, y: armed.y, button: 'left', buttons: 0, clickCount: 1,
     });
-    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
-      type: 'mouseReleased',
-      x: selected.x,
-      y: selected.y,
-      button: 'left',
-      clickCount: 1,
-    });
-    return { ok: true, candidateCount: selected.candidateCount };
+    const deadline = Date.now() + 1500;
+    do {
+      const observed = await call(readTrustedPublishClick, observationKey);
+      if (observed?.clickObserved) return { ok: true, clickObserved: true, mayHaveDispatched: true, candidateCount: selected.candidateCount };
+      await sleep(100);
+    } while (Date.now() < deadline);
+    return { ok: true, clickObserved: false, mayHaveDispatched: true };
+  } catch (error) {
+    return { ok: false, mayHaveDispatched, code: mayHaveDispatched ? 'PUBLISH_CLICK_UNVERIFIED' : 'PUBLISH_BUTTON_UNVERIFIED',
+      message: mayHaveDispatched ? '点击传输中断，不能确认网页是否收到；不会自动再点' : `未点击发布：${messageError(error).message}` };
   } finally {
+    if (objectId) await call(clearTrustedPublishClick, observationKey).catch(() => {});
+    await chrome.debugger.sendCommand({ tabId }, 'Runtime.releaseObjectGroup', { objectGroup: observationKey }).catch(() => {});
     await chrome.debugger.detach({ tabId }).catch(() => {});
   }
+}
+
+// Self-contained functions called on the selected DOM object by CDP. The
+// listener lives on the actual button (including inside closed shadow DOM),
+// never prevents events, and is removed with its ephemeral observation key.
+function armTrustedPublishClick(key) {
+  if (window !== window.top || !this.isConnected) return { ok: false, code: 'PUBLISH_BUTTON_UNVERIFIED', message: '无法核验主页面发布按钮，未点击' };
+  const name = String(this.getAttribute('aria-label') || this.textContent || '').replace(/\s+/gu, ' ').trim();
+  if (name !== '发布') return { ok: false, code: 'PUBLISH_BUTTON_CHANGED', message: '发布按钮内容已变化，未点击' };
+  const style = getComputedStyle(this);
+  const rect = this.getBoundingClientRect();
+  const left = Math.max(0, rect.left), right = Math.min(window.innerWidth, rect.right);
+  const top = Math.max(0, rect.top), bottom = Math.min(window.innerHeight, rect.bottom);
+  if (right <= left || bottom <= top || style.display === 'none' || style.visibility === 'hidden') {
+    return { ok: false, code: 'PUBLISH_BUTTON_OFFSCREEN', message: '发布按钮不在可见区域，未点击' };
+  }
+  const x = (left + right) / 2, y = (top + bottom) / 2;
+  const monitor = { clickObserved: false, x, y };
+  monitor.check = () => {
+    if (!this.isConnected || this.disabled || this.getAttribute('aria-disabled') === 'true' || this.getAttribute('aria-busy') === 'true') return false;
+    const current = this.getBoundingClientRect();
+    const currentStyle = getComputedStyle(this);
+    if (currentStyle.pointerEvents === 'none' || currentStyle.visibility === 'hidden' || currentStyle.display === 'none'
+      || x < current.left || x >= current.right || y < current.top || y >= current.bottom) return false;
+    const root = this.getRootNode();
+    const hit = root.elementFromPoint?.(x, y);
+    let outer = this;
+    for (let scope = root; scope?.host; scope = outer.getRootNode()) outer = scope.host;
+    const documentHit = this.ownerDocument.elementFromPoint(x, y);
+    return Boolean(hit && (hit === this || this.contains(hit))
+      && documentHit && (documentHit === outer || outer.contains(documentHit)));
+  };
+  if (!monitor.check()) return { ok: false, code: 'PUBLISH_BUTTON_OBSCURED', message: '发布按钮被遮挡或不可用，未点击' };
+  monitor.listener = (event) => {
+    if (event.isTrusted && event.button === 0 && Math.abs(event.clientX - x) <= 2 && Math.abs(event.clientY - y) <= 2) monitor.clickObserved = true;
+  };
+  Object.defineProperty(this, key, { configurable: true, value: monitor });
+  this.addEventListener('click', monitor.listener, { capture: true, passive: true });
+  return { ok: true, x, y };
+}
+
+function readTrustedPublishClick(key) {
+  const monitor = this[key];
+  return { clickObserved: monitor?.clickObserved === true, hitTestable: monitor?.check() === true };
+}
+
+function clearTrustedPublishClick(key) {
+  const monitor = this[key];
+  if (monitor) this.removeEventListener('click', monitor.listener, true);
+  delete this[key];
 }
 
 function clickImmediateReturn() {
@@ -587,6 +742,8 @@ async function waitForPreparedEditor(tabId, payload, timeoutMs) {
     try {
       const snapshot = await execute(tabId, readPreparedEditorSnapshot);
       const state = verifyPreparedEditorSnapshot(snapshot, verificationPayload);
+      const validationError = editorValidationFailure(snapshot);
+      if (validationError) return { ...state, ok: false, validationError };
       if (state?.ok) return state;
     } catch {}
     await sleep(750);
@@ -631,6 +788,8 @@ async function preparePublish(payload) {
         snapshot = await execute(tabId, readPreparedEditorSnapshot);
       }
       let verified = verifyPreparedEditorSnapshot(snapshot, verificationPayload);
+      const initialValidationError = editorValidationFailure(snapshot);
+      if (initialValidationError) return result(payload.jobId, false, 'not_submitted', 'not_started', initialValidationError.code, initialValidationError.message);
       if (!verified?.ok && verified?.titleMatches && verified?.bodyMatches && verified?.mediaBusy) {
         const prepared = await waitForPreparedEditor(
           tabId,
@@ -644,8 +803,10 @@ async function preparePublish(payload) {
           verified = verifyPreparedEditorSnapshot(latestSnapshot, verificationPayload);
         }
       }
+      if (verified?.validationError) return result(payload.jobId, false, 'not_submitted', 'not_started', verified.validationError.code, verified.validationError.message);
       if (verified?.ok) {
-        await savePreparedOwnership({ ...ownership, noteType: payload.noteType, status: 'prepared', preparedAt: ownership.preparedAt || Date.now() });
+        if (!preparedMediaMatches(verified, ownership)) return result(payload.jobId, false, 'not_submitted', 'not_started', 'PREPARED_MEDIA_CHANGED', '已准备的媒体发生变化，未提交');
+        await savePreparedOwnership({ ...ownership, noteType: payload.noteType, status: 'prepared', preparedAt: ownership.preparedAt || Date.now(), mediaSources: verified.mediaSources, mediaFileNames: verified.mediaFileNames });
         return preparedResult(payload.jobId);
       }
       const failure = preparedEditorFailure(verified);
@@ -666,6 +827,9 @@ async function preparePublish(payload) {
       noteType: payload.noteType,
       status: 'preparing',
       preparedAt: 0,
+      sessionId: payload.sessionId,
+      projectPath: payload.projectPath,
+      media: payload.media,
     });
     const images = payload.media.filter((item) => item.role !== 'video').sort((a, b) => a.order - b.order).map((item) => item.path);
     const videos = payload.media.filter((item) => item.role === 'video').sort((a, b) => a.order - b.order).map((item) => item.path);
@@ -685,6 +849,9 @@ async function preparePublish(payload) {
       return result(payload.jobId, false, 'not_submitted', 'not_started', filled?.code || 'EDITOR_VERIFICATION_FAILED', filled?.message || '标题或正文回读校验失败');
     }
     const prepared = await waitForPreparedEditor(tabId, payload, payload.noteType === 'video' ? 8 * 60_000 : 2 * 60_000);
+    if (prepared?.validationError) {
+      return result(payload.jobId, false, 'not_submitted', 'not_started', prepared.validationError.code, prepared.validationError.message);
+    }
     if (!prepared) {
       return result(payload.jobId, false, 'not_submitted', 'not_started', 'UPLOAD_OR_VALIDATION_TIMEOUT', '媒体处理或页面校验未在限定时间内完成');
     }
@@ -695,6 +862,11 @@ async function preparePublish(payload) {
       noteType: payload.noteType,
       status: 'prepared',
       preparedAt: Date.now(),
+      mediaSources: prepared.mediaSources,
+      mediaFileNames: prepared.mediaFileNames,
+      sessionId: payload.sessionId,
+      projectPath: payload.projectPath,
+      media: payload.media,
     });
     return preparedResult(payload.jobId);
   } catch (error) {
@@ -737,18 +909,38 @@ async function submitPrepared(payload) {
       return result(jobId, false, 'not_submitted', 'not_started', 'PUBLISH_MODE_CHANGED', '发布页的图文/视频模式在提交前发生变化，未点击发布');
     }
     const snapshot = await execute(ownership.tabId, readPreparedEditorSnapshot);
+    const validationError = editorValidationFailure(snapshot);
+    if (validationError) return result(jobId, false, 'not_submitted', 'not_started', validationError.code, validationError.message);
     const verified = verifyPreparedEditorSnapshot(snapshot, editorVerificationPayload(request));
     if (!verified?.ok) return result(jobId, false, 'not_submitted', 'not_started', 'PREPARED_EDITOR_CHANGED', '发布页内容在提交前发生变化，未点击发布');
+    if (!preparedMediaMatches(snapshot, ownership)) return result(jobId, false, 'not_submitted', 'not_started', 'PREPARED_MEDIA_CHANGED', '发布页媒体在提交前发生变化，未点击发布');
     await savePreparedOwnership({ ...ownership, status: 'submitting', submittedAt: Date.now() });
     const clicked = await dispatchTrustedPublishClick(ownership.tabId);
-    if (!clicked?.ok) {
+    submitted = clicked?.mayHaveDispatched === true || clicked?.ok === true;
+    if (!submitted) {
       await savePreparedOwnership(ownership);
       return result(jobId, false, 'not_submitted', 'not_started', clicked?.code, clicked?.message);
     }
-    submitted = true;
-    const success = await waitFor(ownership.tabId, (state) => state.pageState === 'success', 60_000, 750);
-    if (!success) {
-      const unknown = result(jobId, false, 'unknown', 'not_started', 'SUBMIT_RESULT_UNKNOWN', '已点击发布，但未能确认成功页面，请人工检查笔记管理页');
+    const originalAlerts = new Set(submitState.probe?.pageAlerts || []);
+    const success = await waitFor(ownership.tabId, (state) => state.pageState === 'success'
+      || state.pageState === 'security_challenge'
+      || (state.probe?.editorReady && editorValidationFailure(state.probe))
+      || state.probe?.pageAlerts?.some((alert) => !originalAlerts.has(alert)), 60_000, 750);
+    if (success?.pageState !== 'success' && editorValidationFailure(success?.probe)) {
+      // Only explicit field validity failures are proof of rejected validation;
+      // a generic server alert or unchanged page is still an unknown result.
+      const rejected = editorValidationFailure(success.probe);
+      await savePreparedOwnership(ownership);
+      return result(jobId, false, 'not_submitted', 'not_started', rejected.code, rejected.message);
+    }
+    if (success?.pageState !== 'success') {
+      const alert = success?.probe?.pageAlerts?.find((item) => !originalAlerts.has(item));
+      const code = success?.pageState === 'security_challenge' ? 'SECURITY_CHALLENGE_AFTER_CLICK'
+        : alert ? 'SUBMISSION_PAGE_ALERT' : clicked?.clickObserved === true ? 'SUBMISSION_FEEDBACK_MISSING' : 'PUBLISH_CLICK_UNVERIFIED';
+      const evidence = clicked?.clickObserved === true ? '已观察到发布按钮收到点击' : '已发送点击指令，但未观察到按钮点击事件';
+      const detail = success?.pageState === 'security_challenge' ? '页面要求安全验证'
+        : alert ? `页面提示：${alert}` : '未识别到平台成功或明确表单拒绝反馈';
+      const unknown = result(jobId, false, 'unknown', 'not_started', code, `${evidence}；${detail}。不能确认是否提交，不会自动再点，请检查笔记管理`);
       await saveResult(jobId, unknown);
       return unknown;
     }
@@ -784,6 +976,12 @@ async function discardPrepared(payload) {
     return { ok: false, jobId, discarded: false, code: 'INVALID_REQUEST', message: '缺少用于恢复发布页的笔记类型' };
   }
   const current = await inspectTab(ownership.tabId).catch(() => null);
+  if (!current || !publishModeMatches(current.probe?.uploadLandingEvidence, noteType)) {
+    return { ok: false, jobId, discarded: false, code: 'PUBLISH_MODE_CHANGED', message: '无法核验旧任务页面类型，不会清理' };
+  }
+  const editor = await execute(ownership.tabId, readPreparedEditorSnapshot);
+  const verification = validateDraftRecovery({ ...editor, hasDraft: current.probe?.hasDraft, pageReady: publishModeReady(current, noteType) }, ownership, payload);
+  if (!verification.ok) return { ...verification, jobId, discarded: false };
   await chrome.tabs.update(ownership.tabId, {
     url: buildPublishModeUrl(noteType, current?.probe?.href || PUBLISH_URL),
   });
@@ -797,7 +995,97 @@ async function publish(payload) {
   if (payload?.phase === 'prepare') return preparePublish(payload.request);
   if (payload?.phase === 'submit') return submitPrepared(payload);
   if (payload?.phase === 'discard') return discardPrepared(payload);
+  if (payload?.phase === 'recover') return recoverOwnedDraft(payload);
+  if (payload?.phase === 'amend') return amendOwnedDraft(payload);
   return result(String(payload?.jobId || ''), false, 'not_submitted', 'not_started', 'INVALID_REQUEST', '缺少明确的发布执行阶段');
+}
+
+async function amendOwnedDraft(payload) {
+  const request = payload?.request;
+  const validation = validatePublishRequest(request);
+  const jobId = String(request?.jobId || '');
+  if (!validation.ok) return result(jobId, false, 'not_submitted', 'not_started', validation.code, validation.message);
+  const receipt = await cachedResult(payload.previous?.jobId);
+  const latestReceipt = await cachedResult(jobId);
+  if (latestReceipt && latestReceipt.publishStatus !== 'not_submitted') return latestReceipt;
+  if (receipt?.publishStatus === 'published') return result(jobId, false, 'published', 'not_started', 'ALREADY_PUBLISHED', '旧任务已有平台发布成功回执，不会重发');
+  if (receipt && receipt.publishStatus !== 'not_submitted' && payload.acknowledgedNotPublished !== true) {
+    return result(jobId, false, 'not_submitted', 'not_started', 'SUBMISSION_REVIEW_REQUIRED', '旧任务有未核实提交回执，请先在笔记管理核实未发布');
+  }
+  const ownership = await preparedOwnership();
+  if (ownership?.status === 'submitting' && payload.acknowledgedNotPublished !== true) {
+    return result(jobId, false, 'not_submitted', 'not_started', 'SUBMISSION_REVIEW_REQUIRED', '旧任务处于已尝试提交状态，请先核实未发布');
+  }
+  const tabs = await publishTabs();
+  if (tabs.length !== 1 || !tabs[0]?.id || (ownership && tabs[0].id !== ownership.tabId)) {
+    return result(jobId, false, 'not_submitted', 'not_started', 'PUBLISH_TAB_CHANGED', '当前发布页不是唯一旧任务标签页，未覆盖');
+  }
+  const tabId = tabs[0].id;
+  const current = await inspectTab(tabId);
+  if (current.pageState === 'success') return result(jobId, false, 'published', 'not_started', 'ALREADY_PUBLISHED', '当前页面显示发布成功，不会重发');
+  if (!publishModeMatches(current.probe?.uploadLandingEvidence, request.noteType)) {
+    return result(jobId, false, 'not_submitted', 'not_started', 'PUBLISH_MODE_CHANGED', '发布页类型已变化，未覆盖');
+  }
+  if (!current.probe?.hasDraft && publishModeReady(current, request.noteType)) {
+    if (ownership && (ownership.jobId !== payload.previous?.jobId || ownership.contentDigest !== payload.previous?.contentDigest)) {
+      return result(jobId, false, 'not_submitted', 'not_started', 'PREPARED_JOB_NOT_FOUND', '空白页仍关联另一任务，未修改');
+    }
+    await clearPreparedOwnership(payload.previous?.jobId);
+    return { ...result(jobId, true, 'not_submitted', 'not_started'), empty: true };
+  }
+  if (inFlightJobs.size) return result(jobId, false, 'not_submitted', 'not_started', 'JOB_ALREADY_RUNNING', '发布操作正在执行，未修改页面');
+  const snapshot = await execute(tabId, readPreparedEditorSnapshot);
+  // Same completed amendment is idempotent; it never clicks submit or uploads.
+  if (ownership?.jobId === jobId && ownership.contentDigest === request.contentDigest && ownership.status === 'prepared') {
+    const verified = verifyPreparedEditorSnapshot(snapshot, editorVerificationPayload(request));
+    if (verified.ok && preparedMediaMatches(snapshot, ownership)) return preparedResult(jobId);
+    return result(jobId, false, 'not_submitted', 'not_started', 'PREPARED_EDITOR_CHANGED', '更新后的页面再次变化，未自动覆盖');
+  }
+  const check = validateDraftAmendment(snapshot, ownership, payload);
+  if (!check.ok) return result(jobId, false, 'not_submitted', 'not_started', check.code, check.message);
+  const flightKey = `${jobId}:amend`;
+  inFlightJobs.add(flightKey);
+  try {
+    const filled = await execute(tabId, fillEditor, [{
+      ...(check.titleChanged ? { title: request.title } : {}),
+      ...(check.bodyChanged ? { body: buildBody(request.body, request.hashtags) } : {}),
+    }]);
+    if (!filled?.ok) return result(jobId, false, 'not_submitted', 'not_started', filled?.code || 'EDITOR_FIELDS_NOT_FOUND', filled?.message);
+    const after = await execute(tabId, readPreparedEditorSnapshot);
+    const verified = verifyPreparedEditorSnapshot(after, editorVerificationPayload(request));
+    const fieldError = editorValidationFailure(after);
+    if (!verified.ok || fieldError || !preparedMediaMatches(after, snapshot)) {
+      return result(jobId, false, 'not_submitted', 'not_started', fieldError?.code || 'EDITOR_VERIFICATION_FAILED', fieldError?.message || '修改后的文案或媒体回读不一致，未提交');
+    }
+    await savePreparedOwnership({ ...ownership, jobId, contentDigest: request.contentDigest, noteType: request.noteType,
+      sessionId: request.sessionId, projectPath: request.projectPath, media: request.media,
+      status: 'prepared', submittedAt: undefined, preparedAt: Date.now(), mediaSources: after.mediaSources, mediaFileNames: after.mediaFileNames });
+    return preparedResult(jobId);
+  } finally {
+    inFlightJobs.delete(flightKey);
+  }
+}
+
+async function recoverOwnedDraft(payload) {
+  const jobId = String(payload?.jobId || '');
+  const ownership = await preparedOwnership();
+  const tabs = await publishTabs();
+  if (tabs.length !== 1 || !tabs[0]?.id || (ownership && tabs[0].id !== ownership.tabId)) {
+    return { ok: false, jobId, discarded: false, code: 'PUBLISH_TAB_CHANGED', message: '无法核验唯一旧任务发布页，未清理页面' };
+  }
+  const tabId = tabs[0].id;
+  const current = await inspectTab(tabId);
+  if (!publishModeMatches(current.probe?.uploadLandingEvidence, payload.noteType)) {
+    return { ok: false, jobId, discarded: false, code: 'PUBLISH_MODE_CHANGED', message: '旧任务页面类型已变化，不会清理' };
+  }
+  const editor = await execute(tabId, readPreparedEditorSnapshot);
+  const verification = validateDraftRecovery({ ...editor, hasDraft: current.probe?.hasDraft, pageReady: publishModeReady(current, payload.noteType) }, ownership, payload);
+  if (!verification.ok) return { ...verification, jobId, discarded: false };
+  if (!current.probe?.hasDraft && publishModeReady(current, payload.noteType)) {
+    await clearPreparedOwnership(jobId);
+    return { ok: true, jobId, discarded: true };
+  }
+  return discardPrepared(payload);
 }
 
 async function restore(payload) {
@@ -830,7 +1118,7 @@ async function handleDesktopRequest(message) {
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type !== 'publisher.status') return undefined;
-  void currentStatus().then(sendResponse).catch((error) => sendResponse({ nativeConnected, detail: messageError(error).message }));
+  void connectNative().then(currentStatus).then(sendResponse).catch((error) => sendResponse({ nativeConnected, detail: messageError(error).message }));
   return true;
 });
 

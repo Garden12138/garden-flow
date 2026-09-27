@@ -43,6 +43,7 @@ import { BashTool } from './bashTool';
 import { AppCliTool } from './appCliTool';
 import { AudioGenerateTool, ImageGenerateTool, VideoGenerateTool } from './mediaGenerationTools';
 import { ProductVideoComposeTool } from './productVideoComposeTool';
+import { XhsPublishPrepareTool } from './xhsPublishPrepareTool';
 import { WorkspaceTool } from './workspaceTool';
 import {
     createBuiltinToolInstances,
@@ -171,6 +172,17 @@ const ensureBuiltinToolDescriptorsRegistered = (): void => {
         create: () => new AudioGenerateTool(),
     });
     register({
+        name: 'xhs_publish_prepare',
+        displayName: 'Prepare Xiaohongshu Publication',
+        description: 'Resolve existing video and create a durable publication confirmation; never submits or generates media.',
+        kind: ToolKind.Other,
+        contexts: ['gardenflow'],
+        visibility: 'public',
+        requiresContext: null,
+        artifactOutput: ['xiaohongshu-note-project', 'xhs-publish-job'],
+        create: ({ getSessionId }) => getSessionId ? new XhsPublishPrepareTool(getSessionId) : null,
+    });
+    register({
         name: 'skill',
         displayName: 'Skill',
         description: 'Load a specialized skill into the current run.',
@@ -227,6 +239,7 @@ const ensureBuiltinToolDescriptorsRegistered = (): void => {
  * 注意：核心文件操作工具 (read, write, list 等) 现在由 ChatServiceV2 内部的 Vercel AI SDK 工具处理
  */
 export function createBuiltinTools(options: {
+    getSessionId?: () => string;
     chatService?: any;
     skillManager?: any;
     onSkillActivated?: (payload: { name: string; description: string }) => void;

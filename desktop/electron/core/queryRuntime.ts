@@ -31,6 +31,7 @@ import {
   summarizeProductVideoRuntimeVisualInput,
 } from './productVideoVisualGrounding';
 import { collectProductVideoReviewWarnings } from './productVideoRuntimePolicy';
+import { isXhsPublishWorkflowTool } from './ai/xhsPublishWorkflowPolicy';
 
 type LlmToolCall = {
   id: string;
@@ -446,6 +447,20 @@ export class QueryRuntime {
           this.adapter.onEvent({ type: 'thinking', phase: 'tooling', content: thoughtText });
         }
         const toolResponses = await this.executeToolCalls(llmResponse.toolCalls);
+        if (this.config.workflowKind === 'xhs-publish') {
+          const publicationReceipt = toolResponses.find((item) => {
+            const data = item.result.data as Record<string, unknown> | undefined;
+            return data?.kind === 'xhs-publish-prepared' || data?.kind === 'xhs-publish-blocked';
+          });
+          if (publicationReceipt) {
+            responseText = publicationReceipt.result.llmContent;
+            this.adapter.onEvent({ type: 'response_chunk', content: responseText });
+            this.adapter.onEvent({ type: 'response_end', content: responseText });
+            this.adapter.onEvent({ type: 'done', response: responseText });
+            this.store.appendTranscript({ sessionId: this.config.sessionId, recordType: 'assistant.publication_receipt', role: 'assistant', content: responseText });
+            return { response: responseText };
+          }
+        }
         const awaitingApproval = toolResponses.map((response) => {
           const data = response.result.data && typeof response.result.data === 'object' && !Array.isArray(response.result.data)
             ? response.result.data as Record<string, unknown>
@@ -840,7 +855,7 @@ export class QueryRuntime {
         model: this.config.model,
         temperature: this.config.temperature ?? 0.5,
         messages,
-        tools: this.registry.getToolSchemas(),
+        tools: this.registry.getToolSchemas().filter((tool) => this.config.workflowKind !== 'xhs-publish' || isXhsPublishWorkflowTool(tool.function.name)),
       }),
     }, {
       maxAttempts: 2,

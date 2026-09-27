@@ -18,6 +18,7 @@ export type IntentName =
   | 'manuscript_creation'
   | 'image_creation'
   | 'video_creation'
+  | 'xhs_publishing'
   | 'audio_creation'
   | 'cover_generation'
   | 'knowledge_retrieval'
@@ -39,11 +40,26 @@ export type RoleId =
 
 export type ThinkingBudget = 'minimal' | 'low' | 'medium' | 'high';
 
-export type WorkflowKind = 'product-video-compose';
+export type WorkflowKind = 'product-video-compose' | 'xhs-publish';
+
+export type IntentRoutingFailure = 'unavailable' | 'invalid-output' | 'request-failed' | 'timeout' | 'cancelled' | 'http-error' | 'network-error';
+
+// Persist transport facts, never credentials, request/response bodies or URL queries.
+export interface IntentRoutingDiagnostic {
+  model: string;
+  endpointHost: string;
+  elapsedMs: number;
+  timeoutMs: number;
+  attempts: number;
+  httpStatus?: number;
+}
 
 export interface IntentRoute {
   intent: IntentName;
   workflowKind?: WorkflowKind;
+  xhsPublishAction?: import('../xhsPublishConversation').XhsPublishReplyClassification;
+  routingFailure?: IntentRoutingFailure;
+  routingDiagnostic?: IntentRoutingDiagnostic;
   secondaryIntents?: IntentName[];
   goal: string;
   deliverables?: string[];

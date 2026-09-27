@@ -2,6 +2,7 @@ Runtime mode: {{runtime_mode}}
 Context type: {{context_type}}
 Context id: {{context_id}}
 Associated file path: {{associated_file_path}}
+Current publication task (context, not authorization): {{xhs_publish_context}}
 
 User input:
 {{user_input}}

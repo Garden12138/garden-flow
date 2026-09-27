@@ -5,6 +5,7 @@ export interface BuiltinToolFactoryContext {
     skillManager?: any;
     onSkillActivated?: (payload: { name: string; description: string }) => void;
     workspaceRootOverride?: string;
+    getSessionId?: () => string;
 }
 
 export type BuiltinToolPack = 'gardenflow' | 'knowledge' | 'chatroom' | 'diagnostics' | 'full';
