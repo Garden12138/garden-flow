@@ -1,5 +1,6 @@
 import path from 'node:path';
-import { getWorkspacePaths } from '../../db';
+import { getSettings, getWorkspacePaths } from '../../db';
+import { resolveProductVideoMotionCapability } from '../../../shared/productVideoCapability';
 import type { ProductVideoProposal } from '../../../shared/videoAutoEdit';
 import { ProductVideoComposeParamsSchema, type ProductVideoComposeParams } from '../../../shared/productVideoProposal';
 import { createBrandWorkspaceStore } from '../brandWorkspaceStore';
@@ -79,7 +80,7 @@ export class ProductVideoComposeTool extends DeclarativeTool<typeof ProductVideo
             if (project) {
                 if (project.status !== 'generating' || !project.productVideo) {
                     if (project.productVideo?.voiceoverAutoApprovedAt) {
-                        void submitApprovedProductVideoVoiceovers(project.id).catch((error) => {
+                        await submitApprovedProductVideoVoiceovers(project.id).catch((error) => {
                             console.error('[ProductVideoCompose] voiceover submission failed:', error);
                         });
                     }
@@ -91,38 +92,39 @@ export class ProductVideoComposeTool extends DeclarativeTool<typeof ProductVideo
                     .map((asset) => [String(asset.provenance?.sourceAssetId), asset.projectPath]));
             } else {
                 const store = createBrandWorkspaceStore(() => path.join(getWorkspacePaths().subjects, 'brand-workspace'));
-                const product = await store.getProductCreativeReference(params.productId);
-                if (product.updatedAt !== params.productUpdatedAt) {
-                    throw new Error('商品资料已更新，请重新生成并确认分镜');
-                }
-                if (product.assets.length === 0) throw new Error('商品没有可用于视频编排的图片素材');
-                const assetMap = new Map(product.assets.map((asset) => [asset.id, asset]));
-                const requestedAssetIds = Array.from(new Set(params.scenes.flatMap((scene) => scene.productAssetIds)));
-                requestedAssetIds.forEach((assetId) => {
-                    if (!assetMap.has(assetId)) throw new Error(`商品素材不存在或不属于当前商品：${assetId}`);
-                });
-                const sourceAssets = await store.resolveProductCreativeAssetPaths(product.id, product.assets.map((asset) => asset.id));
-                sourcePathMap = new Map(sourceAssets.map((asset) => [asset.assetId, asset.absolutePath]));
-                project = await createProductVideoProject({
-                    proposal,
-                    productSnapshot: {
-                        id: product.id,
-                        name: product.name,
-                        updatedAt: product.updatedAt,
-                        brandName: product.brandName,
-                        facts: product.facts,
-                        skus: product.skus,
-                        sources: product.sources,
-                    },
-                    sourceAssets,
+                project = await store.withProductCreativeSnapshot(params.productId, params.productUpdatedAt, async (product, sourceAssets, assertCurrent) => {
+                    if (product.assets.length === 0) throw new Error('商品没有可用于视频编排的图片素材');
+                    const assetMap = new Map(product.assets.map((asset) => [asset.id, asset]));
+                    const requestedAssetIds = Array.from(new Set(params.scenes.flatMap((scene) => scene.productAssetIds)));
+                    requestedAssetIds.forEach((assetId) => {
+                        if (!assetMap.has(assetId)) throw new Error(`商品素材不存在或不属于当前商品：${assetId}`);
+                    });
+                    sourcePathMap = new Map(sourceAssets.map((asset) => [asset.assetId, asset.absolutePath]));
+                    return createProductVideoProject({
+                        proposal,
+                        assertSnapshotCurrent: () => { assertCurrent(); signal.throwIfAborted(); },
+                        productSnapshot: {
+                            id: product.id,
+                            name: product.name,
+                            updatedAt: product.updatedAt,
+                            brandName: product.brandName,
+                            facts: product.facts,
+                            skus: product.skus,
+                            sources: product.sources,
+                        },
+                        sourceAssets,
+                    });
                 });
                 reused = false;
             }
 
             if (!project) throw new Error('商品视频工程创建失败');
             const activeProject = project;
+            sourcePathMap = new Map(activeProject.assets
+                .filter((asset) => asset.provenance?.sourceAssetId)
+                .map((asset) => [String(asset.provenance?.sourceAssetId), asset.projectPath]));
             if (activeProject.productVideo?.voiceoverAutoApprovedAt) {
-                void submitApprovedProductVideoVoiceovers(activeProject.id).catch((error) => {
+                await submitApprovedProductVideoVoiceovers(activeProject.id).catch((error) => {
                     console.error('[ProductVideoCompose] voiceover submission failed:', error);
                 });
             }
@@ -133,6 +135,8 @@ export class ProductVideoComposeTool extends DeclarativeTool<typeof ProductVideo
             ));
             await Promise.all(aiScenes.map(async (scene) => {
                 try {
+                    const capability = resolveProductVideoMotionCapability(getSettings() as unknown as Record<string, unknown>);
+                    if (!capability.available) throw new Error('当前没有可用的参考图视频模型，已保留原图动效；配置模型后可手动重试此镜头。');
                     await setProductVideoSceneGenerationState({ projectId: activeProject.id, sceneId: scene.id, status: 'generating' });
                     const references = scene.productAssetIds.map((assetId) => sourcePathMap.get(assetId)).filter((item): item is string => Boolean(item));
                     const result = await new VideoGenerateTool().execute({
@@ -169,7 +173,10 @@ export class ProductVideoComposeTool extends DeclarativeTool<typeof ProductVideo
             project = await getVideoEditorV2Project(activeProject.id) || activeProject;
             return this.successResult(project.id, project.title, project.status, reused, params.proposalId);
         } catch (error) {
-            return createErrorResult(error instanceof Error ? error.message : String(error), ToolErrorType.EXECUTION_FAILED);
+            return {
+                ...createErrorResult(error instanceof Error ? error.message : String(error), ToolErrorType.EXECUTION_FAILED),
+                data: { code: (error as { code?: string })?.code },
+            };
         }
     }
 

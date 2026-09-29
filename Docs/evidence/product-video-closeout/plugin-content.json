@@ -1,0 +1,16 @@
+[
+  {
+    "extension": "browser-extension",
+    "files": 34,
+    "exportedFilesMatch": true,
+    "missing": [],
+    "different": []
+  },
+  {
+    "extension": "xhs-publisher-extension",
+    "files": 10,
+    "exportedFilesMatch": true,
+    "missing": [],
+    "different": []
+  }
+]

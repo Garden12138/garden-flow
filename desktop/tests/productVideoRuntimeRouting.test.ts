@@ -17,6 +17,7 @@ import {
 } from '../electron/core/productVideoRuntimePolicy.ts';
 import { evaluateVideoGenerationApprovalPolicy } from '../electron/core/videoGenerationApprovalPolicy.ts';
 import { buildDeferredToolConfirmationData } from '../shared/toolConfirmationPolicy.ts';
+import { resolveProductVideoMotionCapability } from '../shared/productVideoCapability.ts';
 
 const explicitProductRefs = [{
   productId: 'product-001',
@@ -105,6 +106,17 @@ const proposal = {
     },
   ],
 };
+
+test('missing video configuration permits only original-image proposals and explicit replan selects the video workflow', () => {
+  const aiMotion = resolveProductVideoMotionCapability({});
+  assert.equal(aiMotion.available, false);
+  const input = { workflowKind: 'product-video-compose' as const, toolName: 'product_video_compose', args: proposal, explicitProductRefs, productAssetVisualGrounding: { ...productAssetVisualGrounding, aiMotion } };
+  assert.equal(evaluateProductVideoToolPolicy(input), null);
+  assert.equal(evaluateProductVideoToolPolicy({ ...input, args: { ...proposal, scenes: [{ ...proposal.scenes[0], source: 'ai-motion' }] } })?.outcome, 'deny');
+  const route = applyProductVideoWorkflowPolicy({ ...genericVideoRoute, intent: 'general_chat' }, { ...productContext, metadata: { explicitProductRefs, productVideoReplan: true } });
+  assert.equal(route.workflowKind, 'product-video-compose');
+  assert.equal(route.intent, 'video_creation');
+});
 
 test('routes selected product plus video intent to the foreground product-video workflow', () => {
   const route = applyProductVideoWorkflowPolicy(genericVideoRoute, productContext);

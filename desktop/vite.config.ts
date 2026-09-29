@@ -23,14 +23,16 @@ function copyPromptLibrary() {
 }
 
 function copyBuiltinSkillsOnce() {
-  const srcDir = path.resolve(__dirname, 'electron/builtin-skills')
   const destDir = path.resolve(__dirname, 'dist-electron/builtin-skills')
-
-  if (fs.existsSync(srcDir)) {
-    fs.cpSync(srcDir, destDir, { recursive: true })
-    console.log(`[copy-builtin-skills] Copied builtin skills from ${srcDir} to ${destDir}`)
-  } else {
-    console.warn(`[copy-builtin-skills] Source directory not found: ${srcDir}`)
+  // Match SkillManager's precedence: Electron skills override shared skills.
+  for (const source of ['builtin-skills', 'electron/builtin-skills']) {
+    const srcDir = path.resolve(__dirname, source)
+    if (fs.existsSync(srcDir)) {
+      fs.cpSync(srcDir, destDir, { recursive: true })
+      console.log(`[copy-builtin-skills] Copied builtin skills from ${srcDir} to ${destDir}`)
+    } else {
+      console.warn(`[copy-builtin-skills] Source directory not found: ${srcDir}`)
+    }
   }
 }
 

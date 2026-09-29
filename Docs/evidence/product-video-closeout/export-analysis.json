@@ -1,0 +1,63 @@
+{
+  "programs": [],
+  "stream_groups": [],
+  "streams": [
+    {
+      "codec_name": "h264",
+      "codec_type": "video",
+      "width": 1080,
+      "height": 1920,
+      "avg_frame_rate": "30/1",
+      "side_data_list": [
+        {}
+      ]
+    },
+    {
+      "codec_name": "aac",
+      "codec_type": "audio",
+      "sample_rate": "48000",
+      "channels": 2,
+      "avg_frame_rate": "0/0"
+    }
+  ],
+  "format": {
+    "duration": "16.554667",
+    "size": "2546216"
+  },
+  "sha256": "f2e475e7905000f86db48ddcf3711b2343a77002da589822b76f19f1cf246b23",
+  "fixture": "5 original-image scenes; scene 1 duration 4500 ms and moved to end; total timeline 16500 ms; 440 Hz mock speech + 220 Hz BGM; zero video provider calls",
+  "verifiedAt": "2026-09-29T14:33:23.709087+00:00",
+  "artifact": ".gardenflow-stage-closeout/render/pure-images-dual-audio.mp4",
+  "audioSamples": [
+    {
+      "at": 0.3,
+      "voice440Hz": 0.244081,
+      "bgm220Hz": 0.031094
+    },
+    {
+      "at": 1.8,
+      "voice440Hz": 2e-06,
+      "bgm220Hz": 0.047846
+    },
+    {
+      "at": 3.3,
+      "voice440Hz": 0.244,
+      "bgm220Hz": 0.047722
+    },
+    {
+      "at": 4.8,
+      "voice440Hz": 2e-06,
+      "bgm220Hz": 0.04784
+    },
+    {
+      "at": 12.3,
+      "voice440Hz": 0.244114,
+      "bgm220Hz": 0.047775
+    },
+    {
+      "at": 16.1,
+      "voice440Hz": 0.0,
+      "bgm220Hz": 0.0
+    }
+  ]
+}

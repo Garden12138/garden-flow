@@ -26,3 +26,9 @@
   - 覆盖等待、取消、提案不可变、恢复和幂等
   - 运行 `pnpm test`、`pnpm check`、`pnpm build`
   - _Requirements: 1-9_
+
+## 2026-09-29 收尾：商品变更后的分镜失效
+
+审批增加 invalidated 和更新/删除原因；事件、会话加载、恢复、确认多处复核；快照并发写入中止，新入口复用原始要求并产生新提案 ID。
+
+详细结果与未完成证据见 [商品视频流程收尾验收](../../Docs/PRODUCT_VIDEO_CLOSEOUT_ACCEPTANCE.md)。

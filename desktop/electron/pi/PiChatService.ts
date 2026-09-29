@@ -420,6 +420,8 @@ export class PiChatService {
       const paramsRecord = params && typeof params === 'object' && !Array.isArray(params)
         ? params as Record<string, unknown>
         : {};
+      const taskMetadata = this.activeRuntimeExecution?.task.metadata as Record<string, unknown> | undefined;
+      if (taskMetadata?.productVideoProposalId) paramsRecord.proposalId = String(taskMetadata.productVideoProposalId);
       const proposalId = String(paramsRecord.proposalId || '').trim();
       const proposalDigest = createHash('sha256').update(stableJson(paramsRecord)).digest('hex');
       const pending = createOrReusePendingToolApproval({
@@ -430,7 +432,7 @@ export class PiChatService {
         proposalId: proposalId || null,
         proposalDigest,
         params: paramsRecord,
-        details: details as unknown as Record<string, unknown>,
+        details: { ...details, spaceId: getWorkspacePaths().activeSpaceId, replanRequest: taskMetadata?.productVideoRequest } as unknown as Record<string, unknown>,
       });
       for (const taskId of pending.supersededTaskIds) {
         getTaskGraphRuntime().cancelTask(taskId);
@@ -441,6 +443,7 @@ export class PiChatService {
           approvalCallId: pending.approval.call_id,
         });
       }
+      if (pending.approval.status === 'invalidated') return Promise.resolve(ToolConfirmationOutcome.Cancel);
       if (pending.approval.status === 'completed') {
         return Promise.resolve(ToolConfirmationOutcome.ProceedAfterUserAcknowledgement);
       }
@@ -1068,6 +1071,7 @@ export class PiChatService {
           productAssetVisualGrounding = visualInput.grounding;
           const updatedTask = getTaskGraphRuntime().mergeMetadata(preparedExecution.task.id, {
             productAssetVisualGrounding,
+            productVideoVisualDiagnostic: productAssetVisualGrounding.diagnostic,
           });
           if (updatedTask?.metadata && typeof updatedTask.metadata === 'object' && !Array.isArray(updatedTask.metadata)) {
             preparedTaskMetadata = updatedTask.metadata as Record<string, unknown>;
@@ -1078,6 +1082,8 @@ export class PiChatService {
             };
           }
         } catch (error) {
+          const diagnostic = (error as { diagnostic?: unknown })?.diagnostic;
+          if (diagnostic) getTaskGraphRuntime().mergeMetadata(preparedExecution.task.id, { productVideoVisualDiagnostic: diagnostic });
           const message = error instanceof Error ? error.message : String(error);
           getAgentRuntime().failExecution(preparedExecution.task.id, message);
           throw error;

@@ -7,6 +7,7 @@ interface ToolConfirmDialogProps {
     request: ToolConfirmRequest | null;
     onConfirm: (callId: string) => void;
     onCancel: (callId: string) => void;
+    onReplan?: (callId: string) => void;
     isResolving?: boolean;
 }
 
@@ -39,7 +40,7 @@ type ProductProposalScene = {
     generationPrompt?: string;
 };
 
-export function ToolConfirmDialog({ request, onConfirm, onCancel, isResolving = false }: ToolConfirmDialogProps) {
+export function ToolConfirmDialog({ request, onConfirm, onCancel, onReplan, isResolving = false }: ToolConfirmDialogProps) {
     const [productReference, setProductReference] = useState<ProductReference | null>(null);
     const [voiceoverConfig, setVoiceoverConfig] = useState<{ configured: boolean; model: string; voiceId: string; reason?: string } | null>(null);
 
@@ -81,6 +82,8 @@ export function ToolConfirmDialog({ request, onConfirm, onCancel, isResolving = 
         .slice(0, 3)
         .join(' · ');
     const isExecuting = request.status === 'executing' || isResolving;
+    const isInvalidated = request.status === 'invalidated';
+    const productDeleted = request.invalidation?.reason === 'product-deleted';
     const confirmationCopy = request.name === 'product_video_compose'
         ? {
             idle: '确认并创建工程',
@@ -116,9 +119,13 @@ export function ToolConfirmDialog({ request, onConfirm, onCancel, isResolving = 
                     </div>
                     <p className="mt-1 text-xs text-text-tertiary">
                         {request.name === 'product_video_compose'
-                            ? isExecuting
-                                ? '已确认分镜，正在创建工程并提交 AI 动效与旁白任务。'
-                                : '请核对分镜、素材和旁白。确认后才会创建工程并提交可能计费的生成任务。'
+                            ? isInvalidated
+                                ? isExecuting
+                                    ? '正在按最新商品资料重新规划。新分镜需要再次确认后才会创建工程。'
+                                    : '旧分镜已失效。请按最新资料重新规划，或重新选择商品。'
+                                : isExecuting
+                                    ? '已确认分镜，正在创建工程并提交已选的生成任务。'
+                                    : '请核对分镜、素材和旁白。确认后才会创建工程并提交可能计费的生成任务。'
                             : request.name === 'video_generate'
                                 ? '请核对生成描述和规格。只有点击确认后才会提交视频模型任务并消耗生成额度。'
                                 : '检测到高风险或受限操作，执行前需要用户确认。'}
@@ -200,6 +207,9 @@ export function ToolConfirmDialog({ request, onConfirm, onCancel, isResolving = 
                 </div>
             </div>
 
+            {isInvalidated && <div className="px-4 py-3 text-sm text-amber-700 dark:text-amber-300" role="status">
+                {productDeleted ? '商品已删除，旧分镜已失效。请关闭此卡并重新选择商品。' : '商品资料已更新，旧分镜已失效。按最新资料重新规划后，需要再次确认。'}
+            </div>}
             <div className="px-4 py-3 bg-surface-secondary border-t border-border flex items-center justify-end gap-2">
                     <button
                         onClick={() => onCancel(request.callId)}
@@ -210,12 +220,12 @@ export function ToolConfirmDialog({ request, onConfirm, onCancel, isResolving = 
                         取消
                     </button>
                     <button
-                        onClick={() => onConfirm(request.callId)}
-                        disabled={isExecuting || (request.name === 'product_video_compose' && voiceoverConfig === null)}
+                        onClick={() => isInvalidated ? onReplan?.(request.callId) : onConfirm(request.callId)}
+                        disabled={isExecuting || (isInvalidated ? productDeleted || !onReplan : request.name === 'product_video_compose' && voiceoverConfig === null)}
                         className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-accent-primary hover:bg-accent-primary/90 rounded-xl transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                     >
                         <Check className="w-4 h-4" />
-                        {isExecuting ? confirmationCopy.executing : confirmationCopy.idle}
+                        {isInvalidated ? (isExecuting ? '正在重新规划…' : '按最新资料重新规划') : isExecuting ? confirmationCopy.executing : confirmationCopy.idle}
                     </button>
             </div>
         </div>

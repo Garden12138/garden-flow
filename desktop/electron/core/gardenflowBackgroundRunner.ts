@@ -150,6 +150,7 @@ export interface GardenFlowBuiltinTaskProjection extends GardenFlowBuiltinTaskSt
   settingsSchema: BuiltinAutomationDefinition['settingsSchema'];
   documentationUrl?: string;
   running?: boolean;
+  reportSessionId?: string;
 }
 
 interface GardenFlowBackgroundConfig {
@@ -1554,6 +1555,7 @@ export class GardenFlowBackgroundRunner extends EventEmitter {
       settingsSchema: definition.settingsSchema,
       documentationUrl: definition.documentationUrl,
       running: this.currentAutomationTaskId === definition.id,
+      reportSessionId: getChatSessionByContext(`gardenflow-capture:${getActiveSpaceId()}:${definition.id}`, 'gardenflow-capture')?.id,
     };
   }
 
@@ -2016,11 +2018,15 @@ export class GardenFlowBackgroundRunner extends EventEmitter {
     }
   }
 
-  private postAutomationReportToMainSession(content: string, displayContent: string): void {
+  private postCaptureReport(content: string, displayContent: string, taskId: string, spaceId: string): string | undefined {
     try {
       const text = String(content || '').trim();
       if (!text) return;
-      const mainSession = this.ensureMainGardenFlowSession();
+      const contextId = `gardenflow-capture:${spaceId}:${taskId}`;
+      const mainSession = getChatSessionByContext(contextId, 'gardenflow-capture') || createChatSession(
+        `session_gardenflow_capture_${spaceId}_${taskId}`, `采集报告 · ${taskId} · ${spaceId}`,
+        { contextId, contextType: 'gardenflow-capture', spaceId, isContextBound: true },
+      );
       addChatMessage({
         id: `msg_gardenflow_auto_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         session_id: mainSession.id,
@@ -2032,8 +2038,11 @@ export class GardenFlowBackgroundRunner extends EventEmitter {
         sessionId: mainSession.id,
         displayContent,
         source: 'automation',
+        taskId,
+        isolated: true,
         at: nowIso(),
       });
+      return mainSession.id;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.emit('log', { level: 'warn', message: `Post automation report failed: ${message}`, reason: 'scheduled', at: nowIso() });
@@ -2376,6 +2385,7 @@ export class GardenFlowBackgroundRunner extends EventEmitter {
       }
 
       if (definition.id === XHS_AUTO_CAPTURE_TASK_ID) {
+        const captureSpaceId = getActiveSpaceId();
         const launch = resolveXhsAutoCaptureLaunch(state.settings);
         this.emit('log', {
           level: 'info',
@@ -2393,7 +2403,8 @@ export class GardenFlowBackgroundRunner extends EventEmitter {
             this.emit('log', { level, message, reason, at: nowIso() });
           }),
         );
-        this.postAutomationReportToMainSession(round.summary, `[内置自动化结果:${definition.name}]`);
+        const reportSessionId = this.postCaptureReport(round.summary, `[内置自动化结果:${definition.name}]`, definition.id, captureSpaceId);
+        runtime.addArtifact(runtimeTaskId, { type: 'capture-report', label: `${definition.name}采集报告`, metadata: { sessionId: reportSessionId, isolated: true } });
         if (round.status === 'blocked') {
           state.lastRunAt = nowIso();
           state.lastResult = 'skipped';
@@ -2434,6 +2445,7 @@ export class GardenFlowBackgroundRunner extends EventEmitter {
       }
 
       if (definition.id === JD_AUTO_CAPTURE_TASK_ID) {
+        const captureSpaceId = getActiveSpaceId();
         const launch = resolveJdAutoCaptureLaunch(state.settings);
         this.emit('log', {
           level: 'info',
@@ -2453,7 +2465,8 @@ export class GardenFlowBackgroundRunner extends EventEmitter {
             this.emit('log', { level, message, reason, at: nowIso() });
           }),
         );
-        this.postAutomationReportToMainSession(round.summary, `[内置自动化结果:${definition.name}]`);
+        const reportSessionId = this.postCaptureReport(round.summary, `[内置自动化结果:${definition.name}]`, definition.id, captureSpaceId);
+        runtime.addArtifact(runtimeTaskId, { type: 'capture-report', label: `${definition.name}采集报告`, metadata: { sessionId: reportSessionId, isolated: true } });
         if (round.status === 'blocked') {
           state.lastRunAt = nowIso();
           state.lastResult = 'skipped';

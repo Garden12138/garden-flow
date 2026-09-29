@@ -54,3 +54,9 @@
 - 真实第 4 版插件 ownership.media 按 mimeType/order/path/role/slotId 返回，桌面第 5 版请求按 slotId/role/path/mimeType/order 构造。字段值完全一致，JSON.stringify 全串比较却失败，导致 PREPARED_JOB_NOT_FOUND。旧 legacy owner 没有 media 字段，首次恢复绕过此比较，第二次恢复才暴露。
 - 插件与桌面统一比较媒体列表长度、列表顺序、每条扁平协议记录的全部自有字段和值，不比较对象字段排列；不做字符串/数字转换，不忽略缺失或新增字段。页面媒体快照、任务/摘要/会话/稿件约束保持原有校验。
 - 测试 storage.get/set 深拷贝并重排对象字段，跨进程流程增加真实生命周期的第二次重发；平台成功只在本次预期点击后出现，不能沿用上一次点击计数伪造完成。
+
+## 2026-09-29 收尾：真实发布回执复核
+
+最新会话第 5 版任务已是 completed / published / ready。2026-09-29 只读核验账号“猫猫的猫”笔记管理同稿“共1篇笔记”，并保存空白视频发布页与确认卡截图。本轮未重发。
+
+详细结果与未完成证据见 [商品视频流程收尾验收](../../Docs/PRODUCT_VIDEO_CLOSEOUT_ACCEPTANCE.md)。

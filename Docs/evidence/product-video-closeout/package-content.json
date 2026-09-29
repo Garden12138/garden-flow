@@ -1,0 +1,10 @@
+{
+  "verifiedAt": "2026-09-29T14:31:15.511Z",
+  "canonicalDirectorMatchesSource": true,
+  "builtinSkillCount": 18,
+  "bundledExtensions": [
+    "/.plugin-runtime/xhs-publisher-extension/manifest.json",
+    "/.plugin-runtime/publish-extension/manifest.json",
+    "/.plugin-runtime/browser-extension/manifest.json"
+  ]
+}

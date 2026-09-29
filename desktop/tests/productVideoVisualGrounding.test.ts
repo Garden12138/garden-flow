@@ -7,6 +7,7 @@ import {
     parseProductVideoVisualGroundingResponse,
     requestProductVideoVisualGrounding,
     summarizeProductVideoRuntimeVisualInput,
+    ProductVideoVisualError,
     type ProductVideoVisualAssetPayload,
 } from '../electron/core/productVideoVisualGrounding.ts';
 import {
@@ -29,6 +30,38 @@ const assets: ProductVideoVisualAssetPayload[] = [
         dataUrl: 'data:image/jpeg;base64,cHJvbW8=',
     },
 ];
+
+test('visual diagnostics normalize only case and outer whitespace and never persist untrusted responses', async () => {
+    const body = (token: string) => ({ verificationToken: token, assets: assets.map((asset) => ({ assetId: asset.assetId, description: '白底商品包装实拍' })) });
+    let calls = 0;
+    const run = (token: string) => requestProductVideoVisualGrounding({
+        apiKey: 'secret-key', baseURL: 'https://private.invalid', modelName: 'fixture', productName: '商品',
+        productId: 'p1', productUpdatedAt: 'v1', assets, verificationToken: 'GF-ABC123DEF456', verificationImageDataUrl: 'data:image/png;base64,cHJvb2Y=',
+        fetchImpl: async () => { calls++; return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(body(token)) } }] })); },
+    });
+    assert.equal((await run('  gf-abc123def456\n')).diagnostic?.outcome, 'verified');
+    for (const token of ['GF-ABC123DEF45', 'GF-ABC123DEF457', 'GF-ABC 123DEF456', 'secret-key data:image/png;base64,AAAA /private/file']) {
+        await assert.rejects(run(token), (error: ProductVideoVisualError) => {
+            assert.equal(error.code, 'token-mismatch');
+            assert.equal(error.diagnostic?.responseParsed, true);
+            assert.doesNotMatch(JSON.stringify(error.diagnostic), /secret-key|private.invalid|base64|\/private/);
+            return true;
+        });
+    }
+    assert.equal(calls, 5, 'semantic failure must not trigger another model request');
+});
+
+test('visual diagnostics distinguish response, asset coverage, HTTP and cancellation failures', async () => {
+    const run = (content: unknown, status = 200, signal?: AbortSignal) => requestProductVideoVisualGrounding({
+        apiKey: 'secret', baseURL: 'https://private.invalid', modelName: 'fixture', productName: '商品',
+        productId: 'p1', productUpdatedAt: 'v1', assets, verificationToken: 'GF-ABC123DEF456', verificationImageDataUrl: 'data:image/png;base64,cHJvb2Y=', signal,
+        fetchImpl: async () => new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status }),
+    });
+    await assert.rejects(run('not JSON'), { code: 'invalid-response' });
+    await assert.rejects(run(JSON.stringify({ verificationToken: 'GF-ABC123DEF456', assets: [] })), { code: 'incomplete-assets' });
+    await assert.rejects(run('secret server response', 400), (error: ProductVideoVisualError) => error.code === 'request-failed' && !error.message.includes('secret'));
+    await assert.rejects(run('bad', 200, AbortSignal.abort()), { code: 'cancelled' });
+});
 
 const parseEvidence = () => parseProductVideoVisualGroundingResponse({
     rawContent: JSON.stringify({

@@ -1,11 +1,34 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { loadSkillsFromDir } from '../electron/core/skillLoader.ts';
 
 const desktopRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+test('packaged builtins include the canonical video workflow and preserve Electron overrides', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gardenflow-skill-package-'));
+    try {
+        for (const source of ['builtin-skills', 'electron/builtin-skills']) {
+            fs.cpSync(path.join(desktopRoot, source), path.join(root, source), { recursive: true });
+        }
+        const config = fs.readFileSync(path.join(desktopRoot, 'vite.config.ts'), 'utf8');
+        const copyFunction = config.slice(config.indexOf('function copyBuiltinSkillsOnce()'), config.indexOf('function copyBuiltinSkills()'));
+        vm.runInNewContext(`${copyFunction}\ncopyBuiltinSkillsOnce();`, { fs, path, __dirname: root, console: { log() {}, warn() {} } });
+        const output = path.join(root, 'dist-electron/builtin-skills');
+        const skills = await loadSkillsFromDir(output, 'builtin');
+        const director = skills.find((skill) => skill.name === 'video-director');
+        assert.ok(director, 'the packaged app must work without a local source checkout or user-installed skill');
+        assert.match(director.body || '', /aiMotion\.available/);
+        assert.ok(skills.some((skill) => skill.name === 'gardenflow-video-director'));
+        assert.equal(fs.readFileSync(path.join(output, 'skill-creator/SKILL.md'), 'utf8'), fs.readFileSync(path.join(root, 'electron/builtin-skills/skill-creator/SKILL.md'), 'utf8'));
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+});
 
 test('loads xhs-auto-capture from desktop electron builtin-skills', async () => {
     const skillsDir = path.join(desktopRoot, 'electron', 'builtin-skills');

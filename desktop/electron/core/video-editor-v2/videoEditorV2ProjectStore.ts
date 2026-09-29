@@ -1056,6 +1056,7 @@ export type CreateProductVideoProjectInput = {
   proposal: ProductVideoProposal;
   productSnapshot: ProductVideoProjectMetadata['productSnapshot'];
   sourceAssets: ProductVideoSourceAssetInput[];
+  assertSnapshotCurrent?: () => void;
 };
 
 async function createProductVideoProjectUnlocked(input: CreateProductVideoProjectInput): Promise<VideoEditorV2Project> {
@@ -1066,81 +1067,90 @@ async function createProductVideoProjectUnlocked(input: CreateProductVideoProjec
     projectKind: 'product-video',
     canvas: input.proposal.canvas,
   });
-  project = await importAssetsToVideoEditorV2Project(project.id, input.sourceAssets.map((asset) => asset.absolutePath));
-  const sourceByPath = new Map(input.sourceAssets.map((asset) => [path.resolve(asset.absolutePath), asset]));
-  const assets = project.assets.map((asset) => {
-    const source = sourceByPath.get(path.resolve(asset.sourcePath));
-    return source ? {
-      ...asset,
-      provenance: {
-        kind: 'brand-product' as const,
-        productId: input.proposal.productId,
-        sourceAssetId: source.assetId,
-      },
-    } : asset;
-  });
-  const importedBySourceId = new Map(assets
-    .filter((asset) => asset.provenance?.sourceAssetId)
-    .map((asset) => [String(asset.provenance?.sourceAssetId), asset]));
-  let cursor = 0;
-  const primaryClips: VideoTimelineClip[] = [];
-  const textClips: VideoTimelineClip[] = [];
-  for (const scene of input.proposal.scenes) {
-    const duration = Math.max(500, Math.round(scene.durationMs));
-    const sourceAsset = scene.productAssetIds.map((id) => importedBySourceId.get(id)).find(Boolean);
-    if (!sourceAsset) throw new Error(`分镜 ${scene.title} 缺少有效商品素材`);
-    primaryClips.push({
-      id: `clip_${Date.now()}_${randomUUID().slice(0, 8)}`,
-      sceneId: scene.id,
-      assetId: sourceAsset.id,
-      sourceStartMs: 0,
-      sourceEndMs: duration,
-      timelineStartMs: cursor,
-      timelineEndMs: cursor + duration,
-      fitMode: scene.fitMode,
-      motionPreset: scene.motionPreset,
-      text: scene.title,
+  try {
+    project = await importAssetsToVideoEditorV2Project(project.id, input.sourceAssets.map((asset) => asset.absolutePath));
+    const sourceByPath = new Map(input.sourceAssets.map((asset) => [path.resolve(asset.absolutePath), asset]));
+    const assets = project.assets.map((asset) => {
+      const source = sourceByPath.get(path.resolve(asset.sourcePath));
+      return source ? {
+        ...asset,
+        provenance: {
+          kind: 'brand-product' as const,
+          productId: input.proposal.productId,
+          sourceAssetId: source.assetId,
+        },
+      } : asset;
     });
-    if (String(scene.overlayText || '').trim()) {
-      textClips.push({
-        id: `text_${Date.now()}_${randomUUID().slice(0, 8)}`,
+    const importedBySourceId = new Map(assets
+      .filter((asset) => asset.provenance?.sourceAssetId)
+      .map((asset) => [String(asset.provenance?.sourceAssetId), asset]));
+    let cursor = 0;
+    const primaryClips: VideoTimelineClip[] = [];
+    const textClips: VideoTimelineClip[] = [];
+    for (const scene of input.proposal.scenes) {
+      const duration = Math.max(500, Math.round(scene.durationMs));
+      const sourceAsset = scene.productAssetIds.map((id) => importedBySourceId.get(id)).find(Boolean);
+      if (!sourceAsset) throw new Error(`分镜 ${scene.title} 缺少有效商品素材`);
+      primaryClips.push({
+        id: `clip_${Date.now()}_${randomUUID().slice(0, 8)}`,
         sceneId: scene.id,
+        assetId: sourceAsset.id,
         sourceStartMs: 0,
         sourceEndMs: duration,
         timelineStartMs: cursor,
         timelineEndMs: cursor + duration,
-        text: String(scene.overlayText || '').trim(),
+        fitMode: scene.fitMode,
+        motionPreset: scene.motionPreset,
+        text: scene.title,
       });
+      if (String(scene.overlayText || '').trim()) {
+        textClips.push({
+          id: `text_${Date.now()}_${randomUUID().slice(0, 8)}`,
+          sceneId: scene.id,
+          sourceStartMs: 0,
+          sourceEndMs: duration,
+          timelineStartMs: cursor,
+          timelineEndMs: cursor + duration,
+          text: String(scene.overlayText || '').trim(),
+        });
+      }
+      cursor += duration;
     }
-    cursor += duration;
+    const sceneStates = input.proposal.scenes.map((scene) => ({
+      ...scene,
+      generationStatus: scene.source === 'ai-motion' ? 'pending' as const : 'not-required' as const,
+      narrationText: String(scene.overlayText || '').trim(),
+      voiceoverStatus: String(scene.overlayText || '').trim() ? 'needs-configuration' as const : 'not-required' as const,
+    }));
+    input.assertSnapshotCurrent?.();
+    const saved = await saveVideoEditorV2Project({
+      ...project,
+      status: sceneStates.some((scene) => scene.generationStatus === 'pending') ? 'generating' : 'ready',
+      assets,
+      timeline: {
+        ...project.timeline,
+        durationMs: cursor,
+        tracks: [
+          { id: 'track_primary_video', kind: 'primary-video', name: '画面', clips: primaryClips },
+          { id: 'track_subtitle', kind: 'subtitle', name: '文字', clips: textClips },
+          { id: 'track_voiceover', kind: 'voiceover', name: '旁白', clips: [] },
+          { id: 'track_music', kind: 'music', name: 'BGM', clips: [] },
+        ],
+      },
+      productVideo: {
+        proposal: input.proposal,
+        voiceoverAutoApprovedAt: nowIso(),
+        productSnapshot: input.productSnapshot,
+        scenes: sceneStates,
+      },
+    });
+    input.assertSnapshotCurrent?.();
+    return saved;
+  } catch (error) {
+    // Only this newly allocated, unpublished project is removed on snapshot failure.
+    await fs.rm(project.projectDir, { recursive: true, force: true });
+    throw error;
   }
-  const sceneStates = input.proposal.scenes.map((scene) => ({
-    ...scene,
-    generationStatus: scene.source === 'ai-motion' ? 'pending' as const : 'not-required' as const,
-    narrationText: String(scene.overlayText || '').trim(),
-    voiceoverStatus: String(scene.overlayText || '').trim() ? 'needs-configuration' as const : 'not-required' as const,
-  }));
-  return saveVideoEditorV2Project({
-    ...project,
-    status: sceneStates.some((scene) => scene.generationStatus === 'pending') ? 'generating' : 'ready',
-    assets,
-    timeline: {
-      ...project.timeline,
-      durationMs: cursor,
-      tracks: [
-        { id: 'track_primary_video', kind: 'primary-video', name: '画面', clips: primaryClips },
-        { id: 'track_subtitle', kind: 'subtitle', name: '文字', clips: textClips },
-        { id: 'track_voiceover', kind: 'voiceover', name: '旁白', clips: [] },
-        { id: 'track_music', kind: 'music', name: 'BGM', clips: [] },
-      ],
-    },
-    productVideo: {
-      proposal: input.proposal,
-      voiceoverAutoApprovedAt: nowIso(),
-      productSnapshot: input.productSnapshot,
-      scenes: sceneStates,
-    },
-  });
 }
 
 export async function createProductVideoProject(input: CreateProductVideoProjectInput): Promise<VideoEditorV2Project> {

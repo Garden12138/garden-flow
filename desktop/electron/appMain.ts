@@ -6,7 +6,7 @@ import fsSync from 'node:fs'
 import { spawn } from 'node:child_process'
 import { Readable } from 'node:stream'
 import { Blob as NodeBlob } from 'node:buffer'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import {
   computeBrowserExtensionFingerprint,
   syncBrowserExtensionDirectory,
@@ -189,6 +189,7 @@ import {
   undoVideoEditorV2ProjectTimeline,
   updateVideoEditorV2SrtSegment,
 } from './core/video-editor-v2/videoEditorV2ProjectStore';
+import { resolveProductVideoMotionCapability } from '../shared/productVideoCapability';
 import { ProductVideoEditCommandSchema } from '../shared/productVideoProposal';
 import {
   getProductVideoVoiceoverConfig,
@@ -199,6 +200,10 @@ import {
 import {
   getProductVideoApprovalRequest,
   resolveProductVideoApproval,
+  invalidateProductVideoApprovals,
+  onProductVideoApprovalUpdated,
+  reconcileProductVideoApprovals,
+  getProductVideoReplanInput,
 } from './core/productVideoApprovalService';
 import { renderVideoEditorV2Project } from './core/video-editor-v2/renderExportService';
 import { transcribeMediaToSrt } from './core/video-auto-edit/asrSrtService';
@@ -303,6 +308,7 @@ import {
   buildVerifiedProductAssetAnalysisText,
   createProductVideoVisualVerificationToken,
   requestProductVideoVisualGrounding,
+  ProductVideoVisualError,
   type ProductVideoVisualAssetPayload,
   type ProductVideoVisualGroundingEvidence,
 } from './core/productVideoVisualGrounding';
@@ -343,6 +349,7 @@ import {
   type CapturedProductInput,
   type ProductCreativeReference,
 } from './core/brandWorkspaceStore';
+import { onProductChanged } from './core/brandWorkspaceStore';
 import {
   getRandomWanderItems,
   listWanderCommentCandidates,
@@ -956,6 +963,12 @@ const browserCaptureBridgeService = createBrowserCaptureBridgeService({
   handleRequest: handleBrowserCaptureBridgeRequest,
 });
 const brandWorkspaceStore = createBrandWorkspaceStore(() => path.join(getWorkspacePaths().subjects, 'brand-workspace'));
+onProductChanged(invalidateProductVideoApprovals);
+onProductVideoApprovalUpdated((resolution) => {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) window.webContents.send('chat:tool-confirmation-updated', resolution);
+  }
+});
 type GardenFlowAuthoringHints = {
   platform: 'xiaohongshu' | 'wechat_official_account';
   taskType: 'direct_write' | 'expand_from_xhs';
@@ -2674,6 +2687,7 @@ async function buildProductVideoVisualRuntimeInput(params: {
     });
   }
 
+  const visualStartedAt = Date.now();
   const sourceAssets = await brandWorkspaceStore.resolveProductCreativeAssetPaths(
     params.product.id,
     params.product.assets.slice(0, 12).map((asset) => asset.id),
@@ -2736,11 +2750,13 @@ async function buildProductVideoVisualRuntimeInput(params: {
     });
   }
 
-  if (visualAssets.length === 0) {
-    throw Object.assign(new Error('商品图片无法解码，不能进行可靠的视觉分镜。'), {
+  if (visualAssets.length !== sourceAssets.length || visualAssets.length === 0) {
+    throw Object.assign(new ProductVideoVisualError('image-decode', '商品图片无法完整解码，不能进行可靠的视觉分镜。'), {
+      diagnostic: { modelName: params.llm.modelName, productId: params.product.id, productUpdatedAt: params.product.updatedAt, imageCount: sourceAssets.length, assetIds: sourceAssets.map((asset) => asset.assetId), durationMs: Date.now() - visualStartedAt, outcome: 'image-decode', responseParsed: false },
       chatErrorMessage: '商品图片不可读取',
       chatErrorHint: '原生解码与内置图片解码器均未能读取商品素材，请重新采集商品图片或在商品库中替换图片后再试。',
-      chatErrorCategory: 'product-assets',
+      chatErrorCategory: 'product-video-visual',
+      chatErrorCode: 'image-decode',
     });
   }
 
@@ -2764,17 +2780,21 @@ async function buildProductVideoVisualRuntimeInput(params: {
     });
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    throw Object.assign(new Error(`商品图片视觉理解未通过：${reason}`), {
+    throw Object.assign(error instanceof ProductVideoVisualError ? error : new ProductVideoVisualError('request-failed', '商品图片理解连接失败'), {
       chatErrorMessage: '商品图片理解失败',
-      chatErrorHint: '当前视觉模型没有可靠地读取全部商品图片。系统已阻止猜测分镜，请检查模型的图片输入能力或切换视觉模型后重试。',
-      chatErrorCategory: 'model-capability',
+      chatErrorHint: `${reason} 可使用重试入口重新读取商品图片。`,
+      chatErrorCategory: 'product-video-visual',
+      chatErrorCode: error instanceof ProductVideoVisualError ? error.code : 'request-failed',
     });
   }
 
+  grounding.aiMotion = resolveProductVideoMotionCapability(getSettings() as unknown as Record<string, unknown>);
   const content: Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }> = [{
     type: 'text',
     text: [
       params.userText,
+      `<product_video_capabilities>${JSON.stringify({ aiMotion: grounding.aiMotion })}</product_video_capabilities>`,
+      grounding.aiMotion.available ? 'AI 动效可用，最多两个 AI 镜头。' : 'AI 动效不可用。所有镜头必须使用 product-asset 原图动效；默认五镜头、15秒、1080×1920、30fps，视频生成调用数为零。',
       '',
       '<product_asset_visuals>',
       '以下图片与 assetId 一一对应，是本轮商品视频分镜的视觉依据。图片已经通过独立视觉通道校验。',
@@ -3215,6 +3235,7 @@ app.whenReady().then(async () => {
   setTimeout(() => {
     void warmupBrowserPluginPrepared();
   }, 250);
+  void reconcileProductVideoApprovals().catch(() => console.warn('[ProductVideo] Approval recovery deferred until session load.'));
 
   // 先让窗口尽快可交互，再分阶段初始化重量后台服务
   let backgroundServicesScheduled = false;
@@ -8873,6 +8894,7 @@ async function executeChatMessage(
       } : {}),
       ...(productAssetContext.explicitProductRefs.length > 0 ? {
         explicitProductRefs: productAssetContext.explicitProductRefs,
+        productVideoRequest: { message: String(message || ''), spaceId: getWorkspacePaths().activeSpaceId },
       } : {}),
     };
     const forcedSkillNames = resolveForcedSkillNames(taskHints);
@@ -9136,6 +9158,45 @@ ipcMain.handle('chat:send-message', (event, payload) => new Promise<ChatSendRece
     });
   });
 }));
+
+const productVideoRetries = new Map<string, Promise<ChatSendReceipt>>();
+ipcMain.handle('chat:retry-product-video', (event, payload: { sessionId?: string; callId?: string; modelConfig?: unknown }) => {
+  const sessionId = String(payload?.sessionId || '').trim();
+  const existing = productVideoRetries.get(sessionId);
+  if (existing) return existing;
+  const operation = new Promise<ChatSendReceipt>((resolve) => {
+    void (async () => {
+      if (!sessionId || !getChatSession(sessionId)) throw new Error('创作会话不存在');
+      if (getActiveChatRun(sessionId)) throw new Error('请等待当前回复完成后重试');
+      let message: string;
+      let productId: string;
+      if (payload.callId) {
+        ({ message, productId } = await getProductVideoReplanInput(sessionId, payload.callId));
+      } else {
+        const task = getTaskGraphRuntime().listTasks({ ownerSessionId: sessionId, limit: 1 })[0];
+        const metadata = task?.metadata as Record<string, unknown> | undefined;
+        const diagnostic = metadata?.productVideoVisualDiagnostic as { outcome?: string } | undefined;
+        const request = metadata?.productVideoRequest as { message?: string; spaceId?: string } | undefined;
+        const refs = metadata?.explicitProductRefs as Array<{ productId: string }> | undefined;
+        if (task?.status !== 'failed' || !diagnostic || diagnostic.outcome === 'verified' || !request?.message || refs?.length !== 1) throw new Error('当前没有可重试的商品图片理解任务');
+        if (request.spaceId !== getWorkspacePaths().activeSpaceId) throw new Error('请切换回任务所属空间');
+        message = request.message;
+        productId = refs[0].productId;
+      }
+      const product = await brandWorkspaceStore.getProductCreativeReference(productId);
+      await executeChatMessage(event, {
+        sessionId, message, displayContent: payload.callId ? '按最新商品资料重新规划视频' : '重试商品图片理解',
+        modelConfig: payload.modelConfig,
+        assetReferences: [{ id: product.id, name: product.name, referenceType: 'product' }],
+        taskHints: { productVideoProposalId: `proposal-${randomUUID()}`, productVideoReplan: true },
+      }, resolve);
+      resolve({ accepted: false, sessionId, runId: '', userMessageId: '', assistantMessageId: '', error: '未能启动商品视频任务，请重试。' });
+    })().catch((error) => resolve({ accepted: false, sessionId, runId: '', userMessageId: '', assistantMessageId: '', error: error instanceof Error ? error.message : String(error) }));
+  });
+  productVideoRetries.set(sessionId, operation);
+  void operation.finally(() => { if (productVideoRetries.get(sessionId) === operation) productVideoRetries.delete(sessionId); });
+  return operation;
+});
 
 // 取消执行
 ipcMain.on('chat:cancel', (_, payload?: { sessionId?: string; runId?: string } | string) => {

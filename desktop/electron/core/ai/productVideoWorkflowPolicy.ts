@@ -47,7 +47,7 @@ export const applyProductVideoWorkflowPolicy = (
 ): IntentRoute => {
   if (
     context.runtimeMode !== 'gardenflow'
-    || route.intent !== 'video_creation'
+    || (route.intent !== 'video_creation' && context.metadata?.productVideoReplan !== true)
     || readExplicitProductRefs(context.metadata).length === 0
   ) {
     return route;
@@ -55,6 +55,7 @@ export const applyProductVideoWorkflowPolicy = (
 
   return {
     ...route,
+    intent: 'video_creation',
     workflowKind: 'product-video-compose',
     deliverables: ['可编辑商品视频工程', '商品视频分镜'],
     requiredCapabilities: ['planning', 'video-scripting', 'product-asset-grounding', 'artifact-save', 'product-video-compose'],

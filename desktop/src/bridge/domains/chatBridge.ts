@@ -17,6 +17,8 @@ export function createChatBridge(core: BridgeCore) {
       cancel: (data?: { sessionId?: string; runId?: string } | string) => core.sendChannel('chat:cancel', data),
       confirmTool: (callId: string, confirmed: boolean) =>
         core.invokeChannel('chat:confirm-tool', { callId, confirmed }),
+      retryProductVideo: (payload: { sessionId: string; callId?: string; modelConfig?: unknown }) =>
+        core.invokeChannel('chat:retry-product-video', payload) as Promise<ChatSendReceipt>,
       getPendingToolConfirmation: (sessionId: string) =>
         core.invokeChannel('chat:get-pending-tool-confirmation', { sessionId }),
       onToolConfirmationUpdated: (listener: Listener) => core.on('chat:tool-confirmation-updated', listener),

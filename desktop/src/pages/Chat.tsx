@@ -575,6 +575,7 @@ interface ChatErrorEventPayload {
 }
 
 interface StructuredChatErrorNotice {
+  productVideoRetry?: boolean;
   title: string;
   hint?: string;
   detail?: string;
@@ -1290,6 +1291,7 @@ function normalizeChatErrorNotice(payload: ChatErrorEventPayload | string | null
   ].filter(Boolean);
   return {
     title,
+    productVideoRetry: data.category === 'product-video-visual' || data.errorCode === 'image-decode',
     hint: friendlyHint || undefined,
     detail: detail || undefined,
     tone,
@@ -1753,6 +1755,7 @@ export function Chat({
   useEffect(() => {
     if (!errorNotice) return undefined;
     const structuredNotice = typeof errorNotice === 'string' ? null : errorNotice;
+    if (structuredNotice?.productVideoRetry) return undefined;
     const dismissAfter = structuredNotice?.action
       ? CHAT_ERROR_NOTICE_ACTION_AUTO_DISMISS_MS
       : CHAT_ERROR_NOTICE_AUTO_DISMISS_MS;
@@ -4607,6 +4610,23 @@ export function Chat({
     };
   }, [selectedChatModel]);
 
+  const retryProductVideo = async (callId?: string) => {
+    const sessionId = currentSessionIdRef.current;
+    if (!sessionId || isProcessing || resolvingConfirmationCallId) return;
+    setResolvingConfirmationCallId(callId || 'visual-retry');
+    setErrorNotice(null);
+    try {
+      const receipt = await window.ipcRenderer.chat.retryProductVideo({ sessionId, callId, modelConfig: getChatModelConfig() });
+      if (!receipt.accepted) throw new Error(receipt.error || '无法重新规划商品视频');
+      setConfirmRequest(null);
+      if (currentSessionIdRef.current === sessionId) await selectSession(sessionId);
+    } catch (error) {
+      setErrorNotice(error instanceof Error ? error.message : String(error));
+    } finally {
+      setResolvingConfirmationCallId(null);
+    }
+  };
+
   const transcribeAudioClip = useCallback(async (clip: AudioRecordingClip) => {
     setIsTranscribingAudio(true);
     setErrorNotice(null);
@@ -5299,6 +5319,7 @@ export function Chat({
         request={confirmRequest}
         onConfirm={handleConfirmTool}
         onCancel={handleCancelTool}
+        onReplan={(callId) => { void retryProductVideo(callId); }}
         isResolving={resolvingConfirmationCallId === confirmRequest?.callId}
       />
       <ChatComposer
@@ -5726,6 +5747,12 @@ export function Chat({
                               </div>
                             )}
                           </div>
+                          {structuredNotice?.productVideoRetry && (
+                            <button type="button" disabled={isProcessing || Boolean(resolvingConfirmationCallId)}
+                              onClick={() => { void retryProductVideo(); }} className="shrink-0 rounded-md border px-2 py-1 text-xs">
+                              重试图片理解
+                            </button>
+                          )}
                           {structuredNotice?.action?.target === 'settings-ai' && (
                             <button
                               type="button"

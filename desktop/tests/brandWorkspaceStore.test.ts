@@ -3,9 +3,42 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { createBrandWorkspaceStore, UNASSIGNED_BRAND_ID } from '../electron/core/brandWorkspaceStore.ts';
+import { createBrandWorkspaceStore, onProductChanged, UNASSIGNED_BRAND_ID } from '../electron/core/brandWorkspaceStore.ts';
 
 const ONE_PIXEL_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL1WQAAAABJRU5ErkJggg==';
+
+test('SKU/material mutations advance product versions and snapshots serialize across store instances', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'gardenflow-product-lock-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const a = createBrandWorkspaceStore(() => root);
+  const b = createBrandWorkspaceStore(() => root);
+  const events: Array<{ root: string; productId: string; reason: string }> = [];
+  t.after(onProductChanged((change) => { if (change.root === root) events.push(change); }));
+  const bundle = await a.upsertProduct({ name: '商品', images: [{ dataUrl: ONE_PIXEL_PNG }] });
+  const first = bundle.product;
+  await b.upsertSku({ productId: first.id, name: '500g' });
+  const second = await a.getProductCreativeReference(first.id);
+  assert.ok(second.updatedAt > first.updatedAt);
+  await assert.rejects(a.withProductCreativeSnapshot(first.id, first.updatedAt, async () => undefined), /更新/);
+  let release!: () => void;
+  let entered!: () => void;
+  const enteredPromise = new Promise<void>((resolve) => { entered = resolve; });
+  const copying = a.withProductCreativeSnapshot(first.id, second.updatedAt, async (_, assets) => {
+    entered();
+    await new Promise<void>((resolve) => { release = resolve; });
+    assert.ok(assets.length);
+    await fs.access(assets[0].absolutePath);
+  });
+  await enteredPromise;
+  let deleted = false;
+  const deletion = b.deleteProduct(first.id).then(() => { deleted = true; });
+  await Promise.resolve();
+  assert.equal(deleted, false);
+  release();
+  await copying;
+  await deletion;
+  assert.deepEqual(events.map((event) => event.reason), ['product-updated', 'product-updated', 'product-deleted']);
+});
 
 test('captured products keep source snapshots separate from user-confirmed edits', async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'gardenflow-brand-workspace-'));

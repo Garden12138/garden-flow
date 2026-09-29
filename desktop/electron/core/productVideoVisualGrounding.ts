@@ -2,6 +2,33 @@ import { randomBytes } from 'node:crypto';
 import { fetchLlmWithRetry } from './llmFetchRetry.ts';
 import { normalizeApiBaseUrl, safeUrlJoin } from './urlUtils.ts';
 import type { RuntimeMessageContentPart } from './runtimeTypes.ts';
+import type { ProductVideoMotionCapability } from '../../shared/productVideoCapability.ts';
+
+export type ProductVideoVisualErrorCode = 'image-decode' | 'request-failed' | 'invalid-response' | 'token-mismatch' | 'incomplete-assets' | 'cancelled';
+export type ProductVideoVisualDiagnostic = {
+    modelName: string;
+    productId: string;
+    productUpdatedAt: string;
+    imageCount: number;
+    assetIds: string[];
+    durationMs: number;
+    outcome: 'verified' | ProductVideoVisualErrorCode;
+    expectedToken?: string;
+    observedToken?: string;
+    responseParsed: boolean;
+};
+
+export class ProductVideoVisualError extends Error {
+    diagnostic?: ProductVideoVisualDiagnostic;
+    readonly code: ProductVideoVisualErrorCode;
+    readonly observedToken?: string;
+    constructor(code: ProductVideoVisualErrorCode, message: string, observedToken?: string) {
+        super(message);
+        this.code = code;
+        this.observedToken = observedToken;
+        this.name = 'ProductVideoVisualError';
+    }
+}
 
 export type ProductVideoVisualSuitability = 'safe' | 'exclude';
 
@@ -34,6 +61,8 @@ export interface ProductVideoVisualGroundingEvidence {
     imageCount: number;
     assets: ProductVideoVisualAssetInspection[];
     verifiedAt: string;
+    diagnostic?: ProductVideoVisualDiagnostic;
+    aiMotion?: ProductVideoMotionCapability;
 }
 
 export interface ProductVideoVisualGroundingRequest {
@@ -164,13 +193,15 @@ export function parseProductVideoVisualGroundingResponse(input: {
 }): ProductVideoVisualGroundingEvidence {
     const parsed = extractJsonObject(input.rawContent);
     if (!parsed) {
-        throw new Error('视觉模型没有返回可解析的结构化图片分析。');
+        throw new ProductVideoVisualError('invalid-response', '视觉模型没有返回可解析的结构化图片分析，请重试图片理解。');
     }
-    if (text(parsed.verificationToken) !== input.expectedVerificationToken) {
-        throw new Error('视觉通道校验失败：模型未正确读取校验图片。');
+    const observedToken = text(parsed.verificationToken).toUpperCase();
+    const safeToken = /^GF-[0-9A-F]{1,32}$/.test(observedToken) ? observedToken : undefined;
+    if (observedToken !== input.expectedVerificationToken.trim().toUpperCase()) {
+        throw new ProductVideoVisualError('token-mismatch', '视觉通道校验失败：模型未正确读取校验图片，请重试图片理解。', safeToken);
     }
     if (!Array.isArray(parsed.assets)) {
-        throw new Error('视觉模型返回结果缺少 assets。');
+        throw new ProductVideoVisualError('incomplete-assets', '视觉模型返回结果缺少 assets。', safeToken);
     }
 
     const expectedById = new Map(input.expectedAssets.map((asset) => [asset.assetId, asset]));
@@ -182,10 +213,12 @@ export function parseProductVideoVisualGroundingResponse(input: {
             : {};
         const assetId = text(record.assetId);
         const expected = expectedById.get(assetId);
-        if (!expected || seen.has(assetId)) continue;
+        if (!expected || seen.has(assetId)) {
+            throw new ProductVideoVisualError('incomplete-assets', '视觉模型返回了重复或未知的素材，请重试图片理解。', safeToken);
+        }
         const description = text(record.description);
         if (description.length < 4) {
-            throw new Error(`视觉模型没有描述商品素材：${assetId}`);
+            throw new ProductVideoVisualError('incomplete-assets', `视觉模型没有描述商品素材：${assetId}`, safeToken);
         }
         const visibleText = stringArray(record.visibleText).map((value) => value.slice(0, 240));
         const searchableVisualText = [description, ...visibleText].join(' ');
@@ -220,7 +253,7 @@ export function parseProductVideoVisualGroundingResponse(input: {
 
     const missing = input.expectedAssets.map((asset) => asset.assetId).filter((assetId) => !seen.has(assetId));
     if (missing.length > 0) {
-        throw new Error(`视觉模型未完成全部商品素材分析：${missing.join(', ')}`);
+        throw new ProductVideoVisualError('incomplete-assets', `视觉模型未完成全部商品素材分析：${missing.join(', ')}`, safeToken);
     }
 
     return {
@@ -304,45 +337,70 @@ export function assertProductVideoRuntimeVisualInput(input: {
 export async function requestProductVideoVisualGrounding(
     input: ProductVideoVisualGroundingRequest,
 ): Promise<ProductVideoVisualGroundingEvidence> {
-    const messages = buildProductVideoVisualGroundingMessages(input);
-    const response = await fetchLlmWithRetry(
-        safeUrlJoin(normalizeApiBaseUrl(input.baseURL), '/chat/completions'),
-        {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${input.apiKey}`,
-            },
-            signal: input.signal,
-            body: JSON.stringify({
-                model: input.modelName,
-                temperature: 0,
-                messages,
-            }),
-        },
-        {
-            maxAttempts: 2,
-            baseDelayMs: 600,
-            maxDelayMs: 3000,
-            fetchImpl: input.fetchImpl,
-            onRetry: ({ attempt, maxAttempts, reason }) => {
-                input.onRetry?.(`商品图片理解连接失败，正在重试（${attempt + 1}/${maxAttempts}）：${reason}`);
-            },
-        },
-    );
-    if (!response.ok) {
-        const errorText = await response.text().catch(() => '');
-        throw new Error(`商品图片理解请求失败（${response.status}）：${errorText || response.statusText}`);
-    }
-    const payload = await response.json().catch(() => ({})) as {
-        choices?: Array<{ message?: { content?: unknown } }>;
-    };
-    return parseProductVideoVisualGroundingResponse({
-        rawContent: payload.choices?.[0]?.message?.content,
-        expectedAssets: input.assets,
-        expectedVerificationToken: input.verificationToken,
+    const startedAt = Date.now();
+    const diagnostic = (outcome: ProductVideoVisualDiagnostic['outcome'], responseParsed: boolean, observedToken?: string): ProductVideoVisualDiagnostic => ({
         modelName: input.modelName,
         productId: input.productId,
         productUpdatedAt: input.productUpdatedAt,
+        imageCount: input.assets.length,
+        assetIds: input.assets.map((asset) => asset.assetId),
+        durationMs: Date.now() - startedAt,
+        outcome,
+        responseParsed,
+        expectedToken: /^GF-[0-9A-F]{1,32}$/i.test(input.verificationToken) ? input.verificationToken.toUpperCase() : undefined,
+        observedToken,
     });
+    let responseParsed = false;
+    try {
+        const messages = buildProductVideoVisualGroundingMessages(input);
+        const response = await fetchLlmWithRetry(
+            safeUrlJoin(normalizeApiBaseUrl(input.baseURL), '/chat/completions'),
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${input.apiKey}`,
+                },
+                signal: input.signal,
+                body: JSON.stringify({
+                    model: input.modelName,
+                    temperature: 0,
+                    messages,
+                }),
+            },
+            {
+                maxAttempts: 2,
+                baseDelayMs: 600,
+                maxDelayMs: 3000,
+                fetchImpl: input.fetchImpl,
+                onRetry: ({ attempt, maxAttempts, reason }) => {
+                    input.onRetry?.(`商品图片理解连接失败，正在重试（${attempt + 1}/${maxAttempts}）：${reason}`);
+                },
+            },
+        );
+        if (!response.ok) {
+            throw new ProductVideoVisualError('request-failed', `商品图片理解请求失败（HTTP ${response.status}），请检查当前模型连接后重试。`);
+        }
+        const payload = await response.json().catch(() => ({})) as {
+            choices?: Array<{ message?: { content?: unknown } }>;
+        };
+        responseParsed = Boolean(extractJsonObject(payload.choices?.[0]?.message?.content));
+        const evidence = parseProductVideoVisualGroundingResponse({
+            rawContent: payload.choices?.[0]?.message?.content,
+            expectedAssets: input.assets,
+            expectedVerificationToken: input.verificationToken,
+            modelName: input.modelName,
+            productId: input.productId,
+            productUpdatedAt: input.productUpdatedAt,
+        });
+        evidence.diagnostic = diagnostic('verified', true, input.verificationToken.toUpperCase());
+        return evidence;
+    } catch (error) {
+        const failure = input.signal?.aborted
+            ? new ProductVideoVisualError('cancelled', '已停止商品图片理解。')
+            : error instanceof ProductVideoVisualError ? error
+                : new ProductVideoVisualError('request-failed', '商品图片理解连接失败，请检查当前模型连接后重试。');
+        failure.diagnostic = diagnostic(failure.code, responseParsed, failure.observedToken);
+        throw failure;
+    }
 }

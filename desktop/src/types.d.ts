@@ -1046,6 +1046,7 @@ declare global {
   }
 
   interface GardenFlowBuiltinAutomationTask {
+    reportSessionId?: string;
     id: string;
     name: string;
     description: string;
@@ -2017,6 +2018,7 @@ declare global {
         transcribeAudio: (payload: { audioBase64: string; mimeType?: string; fileName?: string }) => Promise<{ success?: boolean; text?: string; error?: string; reason?: string; diagnostic?: string }>;
         cancel: (data?: { sessionId?: string } | string) => void;
         confirmTool: (callId: string, confirmed: boolean) => Promise<ToolConfirmationResolution>;
+        retryProductVideo: (payload: { sessionId: string; callId?: string; modelConfig?: unknown }) => Promise<import('../shared/chatRunState').ChatSendReceipt>;
         getPendingToolConfirmation: (sessionId: string) => Promise<ToolConfirmRequest | null>;
         onToolConfirmationUpdated: (listener: (...args: any[]) => void) => void;
         offToolConfirmationUpdated: (listener: (...args: any[]) => void) => void;
@@ -2864,12 +2866,13 @@ declare global {
     name: string;
     params?: Record<string, unknown>;
     details: ToolConfirmationDetails;
-    status?: 'pending' | 'executing';
+    status?: 'pending' | 'executing' | 'invalidated';
+    invalidation?: { reason: 'product-updated' | 'product-deleted'; updatedAt?: string };
   }
 
   interface ToolConfirmationResolution {
     success: boolean;
-    status: 'pending' | 'executing' | 'completed' | 'cancelled' | 'failed';
+    status: 'pending' | 'executing' | 'completed' | 'cancelled' | 'failed' | 'invalidated';
     sessionId?: string;
     callId: string;
     message?: string;

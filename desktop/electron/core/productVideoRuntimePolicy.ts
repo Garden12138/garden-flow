@@ -156,5 +156,8 @@ export function evaluateProductVideoToolPolicy(params: {
             reason: '商品图片尚未通过视觉模型校验，不能提交分镜确认卡。请先重新读取并理解真实商品图片。',
         };
     }
+    if (grounding.aiMotion?.available === false && proposalScenes(params.args).some((scene) => scene.source === 'ai-motion')) {
+        return { outcome: 'deny', reason: '当前未配置可用的参考图视频模型，请将全部镜头规划为 product-asset 原图动效后重新提交，不要调用视频生成。' };
+    }
     return null;
 }

@@ -165,6 +165,7 @@ async function submitSceneVoiceoverUnlocked(input: {
     let project = await getVideoEditorV2Project(input.projectId);
     const scene = project?.productVideo?.scenes.find((item) => item.id === input.sceneId);
     if (!project?.productVideo || !scene) throw new Error('商品视频分镜不存在');
+    if (input.automatic && !project.productVideo.voiceoverAutoApprovedAt) return project;
     const narrationText = String(scene.narrationText || '').trim();
     if (!narrationText) throw new Error('旁白文案为空，请先编辑文案。');
     const currentHash = textHash(narrationText);

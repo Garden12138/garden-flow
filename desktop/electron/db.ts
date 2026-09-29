@@ -1639,6 +1639,7 @@ export type PendingToolApprovalStatus =
   | 'completed'
   | 'cancelled'
   | 'failed'
+  | 'invalidated'
   | 'superseded';
 
 export interface PendingToolApprovalRecord {
@@ -2369,6 +2370,9 @@ export const createOrReusePendingToolApproval = (input: {
     : undefined;
 
   if (existing) {
+    if (existing.status === 'invalidated') {
+      return { approval: parsePendingToolApproval(existing)!, reused: true, conflict: true, supersededTaskIds: [] };
+    }
     const conflict = Boolean(
       proposalDigest
       && existing.proposal_digest
@@ -2470,6 +2474,24 @@ export const getPendingToolApprovalForSession = (sessionId: string): PendingTool
     `).get(sessionId) as PendingToolApprovalRecord | undefined,
   )
 );
+
+export const listProductVideoApprovals = (): PendingToolApprovalSnapshot[] => (
+  (db.prepare("SELECT * FROM pending_tool_approvals WHERE tool_name = 'product_video_compose' AND status IN ('pending', 'invalidated')").all() as PendingToolApprovalRecord[])
+    .map((row) => parsePendingToolApproval(row)!)
+);
+
+export const getLatestProductVideoApproval = (sessionId: string): PendingToolApprovalSnapshot | null => parsePendingToolApproval(
+  db.prepare("SELECT * FROM pending_tool_approvals WHERE session_id = ? AND tool_name = 'product_video_compose' ORDER BY created_at DESC, rowid DESC LIMIT 1")
+    .get(sessionId) as PendingToolApprovalRecord | undefined,
+);
+
+export const invalidateProductVideoApproval = (callId: string, reason: 'product-updated' | 'product-deleted', updatedAt?: string, expectedStatus: 'pending' | 'executing' = 'pending'): boolean => {
+  const now = Date.now();
+  return db.prepare(`UPDATE pending_tool_approvals SET status = 'invalidated', result_json = ?, updated_at = ?, resolved_at = ?
+    WHERE call_id = ? AND status = ?`).run(
+      JSON.stringify({ invalidation: { reason, updatedAt } }), now, now, callId, expectedStatus,
+    ).changes > 0;
+};
 
 export const claimPendingToolApproval = (callId: string): PendingToolApprovalSnapshot | null => {
   const now = Date.now();

@@ -717,7 +717,7 @@ export function Automation({ isActive = true, onOpenGardenFlowSession }: Automat
           ))}
         </nav>
 
-        {automationView === 'today' && <BuiltinAutomationSection isActive={isActive} />}
+        {automationView === 'today' && <BuiltinAutomationSection isActive={isActive} onOpenSession={onOpenGardenFlowSession} />}
 
         <section className="automation-section" aria-label="当前自动化">
           <div className="automation-section-title">

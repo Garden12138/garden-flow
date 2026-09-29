@@ -1,0 +1,45 @@
+{
+  "verifiedAt": "2026-09-29T14:37:15.726793+00:00",
+  "baseCommit": "4566aac",
+  "node": "22.23.2",
+  "pnpm": "10.28.2",
+  "desktopTests": {
+    "total": 317,
+    "passed": 317
+  },
+  "pluginSuites": [
+    {
+      "total": 28,
+      "passed": 28
+    },
+    {
+      "total": 6,
+      "passed": 6
+    },
+    {
+      "total": 29,
+      "passed": 29
+    }
+  ],
+  "publishPluginTests": {
+    "total": 51,
+    "passed": 51
+  },
+  "check": "passed",
+  "buildExitCode": 0,
+  "signed": false,
+  "artifacts": [
+    {
+      "file": "desktop/release/GardenFlow-0.0.1-arm64.dmg",
+      "bytes": 353560782,
+      "sha256": "51259a44d850f0a218ede630588ad4860911a45f8a650482cbf2e9108443c4c6"
+    },
+    {
+      "file": "desktop/release/GardenFlow-0.0.1-arm64.zip",
+      "bytes": 359131792,
+      "sha256": "298c09ed3e7e16b7ebbf129541ebc642365f15524047c9f09733662804c60429"
+    }
+  ],
+  "dmgIntegrity": "hdiutil verify: VALID",
+  "zipIntegrity": "unzip -tq: passed"
+}

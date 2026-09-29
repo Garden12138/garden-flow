@@ -37,3 +37,9 @@
 - `buildVideoEditorV2RemotionComposition` 把 `voiceover` 与 `music` 的音频片段都映射为 Remotion Audio 场景。旁白默认 100%、BGM 20%，视频自身音频仍静音；Player 和 MP4 导出使用这同一 composition。
 - 单元测试覆盖确认前零 TTS、取消、相同提案幂等、旧工程迁移、两个独立音轨、排序/时长/删除同步、超长音频不截断、重启对账及单段失败。
 - UI 测试覆盖确认卡的文案和任务数、旁白状态、逐镜头生成／替换／撤销；端到端检查双轨预览与导出音频一致。真实 TTS 调用只在明确人工确认后执行，自动化测试使用模拟 provider。
+
+## 2026-09-29 收尾：主进程集成与真实导出
+
+新增模拟 TTS + 真实任务登记/工程/SQLite 审批的集成测试，覆盖重开对账、失败恢复和双轨；实际 Remotion MP4 已导出并检查混音。人工试听与新版 UI 验收单独记录。
+
+详细结果与未完成证据见 [商品视频流程收尾验收](../../Docs/PRODUCT_VIDEO_CLOSEOUT_ACCEPTANCE.md)。

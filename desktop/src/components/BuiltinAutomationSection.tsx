@@ -9,6 +9,7 @@ type SettingField = GardenFlowBuiltinAutomationSettingField;
 
 interface BuiltinAutomationSectionProps {
     isActive?: boolean;
+    onOpenSession?: (sessionId: string) => void;
 }
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -68,7 +69,7 @@ function readError(result: unknown, fallback: string): string {
  * 自动化页的「内置任务」分组。
  * 内置任务定义在主进程注册表中，这里按 settingsSchema 渲染表单，不为单个任务写死 UI。
  */
-export function BuiltinAutomationSection({ isActive = true }: BuiltinAutomationSectionProps) {
+export function BuiltinAutomationSection({ isActive = true, onOpenSession }: BuiltinAutomationSectionProps) {
     const [tasks, setTasks] = useState<BuiltinTask[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -328,6 +329,12 @@ export function BuiltinAutomationSection({ isActive = true }: BuiltinAutomationS
                             </div>
 
                             <div className="mt-3 flex flex-wrap items-center gap-2">
+                                {task.reportSessionId && onOpenSession && (
+                                    <button type="button" onClick={() => onOpenSession(task.reportSessionId!)}
+                                        className="flex items-center gap-1.5 rounded-md border border-border/70 px-2.5 py-1 text-xs text-text-secondary hover:bg-surface-secondary">
+                                        <ExternalLink className="h-3.5 w-3.5" />查看采集报告
+                                    </button>
+                                )}
                                 {(task.settingsSchema.length > 0 || task.triggerKind === 'schedule') && (
                                     <button
                                         type="button"

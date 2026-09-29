@@ -2,9 +2,20 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import path from 'node:path';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { EventEmitter } from 'node:events';
 import { resolveAssetSourceToPath, toAppAssetUrl } from './localAssetManager.ts';
 
 export const UNASSIGNED_BRAND_ID = 'brand_unassigned';
+
+export type ProductChange = { root: string; productId: string; updatedAt?: string; reason: 'product-updated' | 'product-deleted' };
+const productEvents = new EventEmitter();
+const catalogQueues = new Map<string, Promise<void>>();
+const pendingCatalogWrites = new Map<string, number>();
+export function onProductChanged(listener: (change: ProductChange) => void): () => void {
+  productEvents.on('changed', listener);
+  return () => productEvents.off('changed', listener);
+}
 
 export type BrandWorkspaceImageInput = {
   id?: string;
@@ -529,7 +540,9 @@ function pathExtension(value: string): string {
   return ['png', 'jpg', 'jpeg', 'webp', 'gif', 'avif', 'bmp'].includes(extension) ? extension : 'jpg';
 }
 
-export function createBrandWorkspaceStore(rootProvider: () => string) {
+export function createBrandWorkspaceStore(resolveRoot: () => string) {
+  const operationRoot = new AsyncLocalStorage<string>();
+  const rootProvider = () => operationRoot.getStore() || path.resolve(resolveRoot());
   const catalogPath = () => path.join(rootProvider(), 'catalog.json');
   const assetsRoot = () => path.join(rootProvider(), 'assets');
 
@@ -544,11 +557,40 @@ export function createBrandWorkspaceStore(rootProvider: () => string) {
 
   async function writeCatalog(catalog: BrandWorkspaceCatalog): Promise<void> {
     const root = rootProvider();
+    const previous = await readCatalog();
+    const signature = (source: BrandWorkspaceCatalog, id: string) => {
+      const product = source.products.find((item) => item.id === id);
+      const skus = source.skus.filter((item) => item.productId === id);
+      const pages = source.detailPages.filter((item) => item.productId === id);
+      const snapshots = source.sourceSnapshots.filter((item) => item.productId === id);
+      const owners = new Set([id, ...skus.map((item) => item.id), ...pages.map((item) => item.id),
+        ...snapshots.flatMap((item) => item.reviewCapture?.reviews.map((review) => review.id) || [])]);
+      return JSON.stringify([product, source.brands.find((item) => item.id === product?.brandId), skus, pages, snapshots,
+        source.assets.filter((item) => owners.has(item.ownerId))]);
+    };
+    const changes: ProductChange[] = [];
+    for (const product of catalog.products) {
+      const old = previous.products.find((item) => item.id === product.id);
+      if (!old || signature(previous, product.id) !== signature(catalog, product.id)) {
+        // Monotonic even for repeated captures with the same/older source timestamp.
+        product.updatedAt = new Date(Math.max(Date.now(), (Date.parse(old?.updatedAt || '') || 0) + 1)).toISOString();
+        changes.push({ root, productId: product.id, updatedAt: product.updatedAt, reason: 'product-updated' });
+      }
+    }
+    for (const product of previous.products) {
+      if (!catalog.products.some((item) => item.id === product.id)) changes.push({ root, productId: product.id, reason: 'product-deleted' });
+    }
     await fs.mkdir(root, { recursive: true });
     const target = catalogPath();
     const temporary = `${target}.${process.pid}.${randomUUID().slice(0, 8)}.tmp`;
     await fs.writeFile(temporary, JSON.stringify(catalog, null, 2), 'utf8');
     await fs.rename(temporary, target);
+    for (const change of changes) {
+      for (const listener of productEvents.listeners('changed')) {
+        try { listener(change); }
+        catch { console.warn('[BrandWorkspace] Product change listener failed; approvals will be reconciled on load.'); }
+      }
+    }
   }
 
   function publicAsset(asset: StoredAssetRef): BrandWorkspaceAssetRef {
@@ -768,7 +810,7 @@ export function createBrandWorkspaceStore(rootProvider: () => string) {
     const catalog = await readCatalog();
     const id = cleanId(idInput);
     const product = catalog.products.find((item) => item.id === id);
-    if (!product) throw new Error('商品不存在');
+    if (!product) throw Object.assign(new Error('商品不存在'), { code: 'PRODUCT_NOT_FOUND' });
     const brand = product.brandId ? catalog.brands.find((item) => item.id === product.brandId) : undefined;
     const skus = catalog.skus.filter((sku) => sku.productId === product.id);
     const skuIds = new Set(skus.map((sku) => sku.id));
@@ -1257,40 +1299,47 @@ export function createBrandWorkspaceStore(rootProvider: () => string) {
     return { productCount: payload.products.length, path: path.join(rootProvider(), 'ai-index.json') };
   }
 
-  let mutationQueue: Promise<void> = Promise.resolve();
-  function enqueueMutation<T>(operation: () => Promise<T>): Promise<T> {
-    const result = mutationQueue.then(operation, operation);
-    mutationQueue = result.then(() => undefined, () => undefined);
+  function enqueueMutation<T>(operation: () => Promise<T>, writes = false): Promise<T> {
+    const root = path.resolve(resolveRoot());
+    if (writes) pendingCatalogWrites.set(root, (pendingCatalogWrites.get(root) || 0) + 1);
+    const previous = catalogQueues.get(root) || Promise.resolve();
+    const result = previous.then(() => operationRoot.run(root, operation)).finally(() => {
+      if (writes) {
+        const remaining = (pendingCatalogWrites.get(root) || 1) - 1;
+        if (remaining) pendingCatalogWrites.set(root, remaining);
+        else pendingCatalogWrites.delete(root);
+      }
+    });
+    const settled = result.then(() => undefined, () => undefined);
+    catalogQueues.set(root, settled);
+    void settled.then(() => { if (catalogQueues.get(root) === settled) catalogQueues.delete(root); });
     return result;
   }
 
   return {
-    list: async () => {
-      await mutationQueue;
-      return list();
-    },
-    get: async (id: string) => {
-      await mutationQueue;
-      return get(id);
-    },
-    getProductAiReference: async (id: string) => {
-      await mutationQueue;
-      return getProductAiReference(id);
-    },
-    getProductCreativeReference: async (id: string) => {
-      await mutationQueue;
-      return getProductCreativeReference(id);
-    },
-    resolveProductCreativeAssetPaths: async (id: string, assetIds: string[]) => {
-      await mutationQueue;
-      return resolveProductCreativeAssetPaths(id, assetIds);
-    },
-    upsertBrand: (input: Parameters<typeof upsertBrand>[0]) => enqueueMutation(() => upsertBrand(input)),
-    upsertProduct: (input: Parameters<typeof upsertProduct>[0]) => enqueueMutation(() => upsertProduct(input)),
-    upsertSku: (input: Parameters<typeof upsertSku>[0]) => enqueueMutation(() => upsertSku(input)),
-    upsertProductDetailPage: (input: Parameters<typeof upsertProductDetailPage>[0]) => enqueueMutation(() => upsertProductDetailPage(input)),
-    deleteProduct: (id: string) => enqueueMutation(() => deleteProduct(id)),
-    ingestProduct: (input: CapturedProductInput) => enqueueMutation(() => ingestProduct(input)),
+    list: () => enqueueMutation(list),
+    get: (id: string) => enqueueMutation(() => get(id)),
+    getProductAiReference: (id: string) => enqueueMutation(() => getProductAiReference(id)),
+    getProductCreativeReference: (id: string) => enqueueMutation(() => getProductCreativeReference(id)),
+    resolveProductCreativeAssetPaths: (id: string, assetIds: string[]) => enqueueMutation(() => resolveProductCreativeAssetPaths(id, assetIds)),
+    withProductCreativeSnapshot: <T>(id: string, version: string, operation: (product: ProductCreativeReference, assets: Awaited<ReturnType<typeof resolveProductCreativeAssetPaths>>, assertCurrent: () => void) => Promise<T>) => enqueueMutation(async () => {
+      const product = await getProductCreativeReference(id);
+      const assertCurrent = () => {
+        if (product.updatedAt !== version || pendingCatalogWrites.has(rootProvider())) {
+          throw Object.assign(new Error('商品资料已更新或正在写入，请按最新资料重新规划'), { code: 'PRODUCT_SNAPSHOT_CHANGED' });
+        }
+      };
+      assertCurrent();
+      const assets = await resolveProductCreativeAssetPaths(id, product.assets.map((asset) => asset.id));
+      // Protect source files while copying; a queued write must abort the unpublished snapshot.
+      return operation(product, assets, assertCurrent);
+    }),
+    upsertBrand: (input: Parameters<typeof upsertBrand>[0]) => enqueueMutation(() => upsertBrand(input), true),
+    upsertProduct: (input: Parameters<typeof upsertProduct>[0]) => enqueueMutation(() => upsertProduct(input), true),
+    upsertSku: (input: Parameters<typeof upsertSku>[0]) => enqueueMutation(() => upsertSku(input), true),
+    upsertProductDetailPage: (input: Parameters<typeof upsertProductDetailPage>[0]) => enqueueMutation(() => upsertProductDetailPage(input), true),
+    deleteProduct: (id: string) => enqueueMutation(() => deleteProduct(id), true),
+    ingestProduct: (input: CapturedProductInput) => enqueueMutation(() => ingestProduct(input), true),
     rebuildAiIndex: () => enqueueMutation(rebuildAiIndex),
     catalogExists: () => fsSync.existsSync(catalogPath()),
   };
