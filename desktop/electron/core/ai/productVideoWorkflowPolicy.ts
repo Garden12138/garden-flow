@@ -41,13 +41,24 @@ export const resolveProductVideoVisualPreparation = (input: {
   return { action: 'require-product-selection', productRefs };
 };
 
+export const isStructuredProductVideoCreation = (metadata?: Record<string, unknown>): boolean => Boolean(
+  metadata?.platform === 'xiaohongshu'
+  && metadata.xhsNoteType === 'video'
+  && !metadata.activeXhsNotePath
+  && !metadata.activeXhsNoteUri
+  && metadata.editorBindingKind !== 'xiaohongshu-note'
+  && readExplicitProductRefs(metadata).length > 0
+);
+
 export const applyProductVideoWorkflowPolicy = (
   route: IntentRoute,
   context: RuntimeContext,
 ): IntentRoute => {
   if (
     context.runtimeMode !== 'gardenflow'
-    || (route.intent !== 'video_creation' && context.metadata?.productVideoReplan !== true)
+    || (route.intent !== 'video_creation'
+      && context.metadata?.productVideoReplan !== true
+      && !isStructuredProductVideoCreation(context.metadata))
     || readExplicitProductRefs(context.metadata).length === 0
   ) {
     return route;

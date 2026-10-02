@@ -1,0 +1,119 @@
+{
+  "checkedAt": "2026-10-01T15:38:01.485Z",
+  "node": "v22.23.2",
+  "pnpm": "10.28.2",
+  "desktopVersion": "0.0.1",
+  "electron": "39.6.0",
+  "publisherVersion": "0.0.1.65535",
+  "checks": [
+    {
+      "command": "pnpm test",
+      "passed": 323,
+      "failed": 0
+    },
+    {
+      "command": "pnpm check",
+      "status": "passed",
+      "publisherTests": 68
+    },
+    {
+      "command": "pnpm build",
+      "status": "passed",
+      "architecture": "darwin-arm64",
+      "signed": false
+    }
+  ],
+  "executionOrder": [
+    "pnpm test",
+    "pnpm check",
+    "pnpm build"
+  ],
+  "artifacts": [
+    {
+      "file": "desktop/release/GardenFlow-0.0.1-arm64.dmg",
+      "bytes": 356569302,
+      "sha256": "f100f30b8155000fd0a2a1c23a1f848e1158328fcbe7d0f60fd97d16a638a1bf",
+      "integrity": "hdiutil verify passed"
+    },
+    {
+      "file": "desktop/release/GardenFlow-0.0.1-arm64.zip",
+      "bytes": 363564503,
+      "sha256": "fd40cfd8f99a722e604713ef894a88b277dffb7a7343dd459a7dd4c080efe967",
+      "integrity": "unzip -tq passed"
+    }
+  ],
+  "publisherFiles": [
+    {
+      "file": "background.js",
+      "sha256": "31fed297bce6e2f1f3e415fce52d3e24828a5ff19b21274b1874c0068714ca23",
+      "matchesSource": true
+    },
+    {
+      "file": "douyinAdapter.js",
+      "sha256": "fb49fe3b0fc243e65838d16c78f979804fd027808802289d8f2d38084622ea00",
+      "matchesSource": true
+    },
+    {
+      "file": "douyinCoverAdapter.js",
+      "sha256": "d1ef2fa57035491a5ed4ebfa32b386726a75580cd07ed15d16ab1a00c9be67fa",
+      "matchesSource": true
+    },
+    {
+      "file": "douyinPublisher.js",
+      "sha256": "485cf7bc80d42079fdc8336b19f27328596baf41a1b457264db7c60285368d51",
+      "matchesSource": true
+    },
+    {
+      "file": "icons/icon128.png",
+      "sha256": "c3caae519671bb0bcd8586164fe4cf35d1969d2351fb300954913d5d05d195e4",
+      "matchesSource": true
+    },
+    {
+      "file": "icons/icon16.png",
+      "sha256": "597605b2afe86b986d27f558b0a2d857cd96ae39ce17bedee7cc1c721ae626d9",
+      "matchesSource": true
+    },
+    {
+      "file": "icons/icon32.png",
+      "sha256": "e27464f1c2e534f02f6235bfc637bad0c5a9a99e3fedfe2708a5ac8b630696f1",
+      "matchesSource": true
+    },
+    {
+      "file": "icons/icon48.png",
+      "sha256": "b0c180b88f2c78c973c8c4f499523b634bceb8830790ee16dc855f5494ec9659",
+      "matchesSource": true
+    },
+    {
+      "file": "manifest.json",
+      "sha256": "2a4ab867f61e2610b01918062864acc35452e26ddd64f436bff72a5a0942078a",
+      "matchesSource": true
+    },
+    {
+      "file": "pageAdapter.js",
+      "sha256": "19cfd99778b8246bb39d70e0d51d09e361d4f062dcd8a7e8314631918e9a4217",
+      "matchesSource": true
+    },
+    {
+      "file": "popup.css",
+      "sha256": "00a109f530271739fef2bf940a700f3cb606ad4045c46528b7bb12fbbffbdccb",
+      "matchesSource": true
+    },
+    {
+      "file": "popup.html",
+      "sha256": "38bfc99b67f532102ab88b3e55673a58bbcbebf32f26faa13ecaffbb278b0ade",
+      "matchesSource": true
+    },
+    {
+      "file": "popup.js",
+      "sha256": "53cb2f97970bd4e97ce0b8a5fed65168d8e6f4763fd3f5110d67698de3ebb32e",
+      "matchesSource": true
+    }
+  ],
+  "mainSha256": "45874d43fc2e4fdc1dfdc43777a79d9b932b056144d13bc49f0dd33051b5666c",
+  "notes": [
+    "Final serial test/check/build passed after restoring frozen-lockfile Plugin dependencies.",
+    "Local socket checks required normal local permissions.",
+    "No plugin check or plugin build ran concurrently with desktop packaging.",
+    "Both saved covers are readable on the real page; full automated staging remains pending permission to discard only the temporary unowned QA web draft."
+  ]
+}

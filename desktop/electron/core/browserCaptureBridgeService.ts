@@ -20,7 +20,7 @@ import {
     type BrowserCaptureBridgeDescriptor,
     type BrowserCaptureBridgeEndpoint,
 } from './browserCaptureProtocol.ts';
-import type { BrowserExtensionKind } from '../../shared/xhsPublisher.ts';
+import { XHS_PUBLISHER_CAPABILITY, type BrowserExtensionKind } from '../../shared/xhsPublisher.ts';
 
 type JsonRpcRequest = {
     jsonrpc?: string;
@@ -484,6 +484,10 @@ export class BrowserCaptureBridgeService {
         if (requestedKind !== identity.extensionKind) {
             throw Object.assign(new Error('Extension kind does not match its signed origin'), { code: 'EXTENSION_IDENTITY_INVALID' });
         }
+        const advertisedCapabilities = Array.isArray(params.capabilities) ? params.capabilities.map(String)
+            : identity.extensionKind === 'xhs-publisher' ? [XHS_PUBLISHER_CAPABILITY] : identity.capabilities;
+        const grantedCapabilities = identity.capabilities.filter((capability) =>
+            capability === 'extension.register' || advertisedCapabilities.includes(capability));
         const now = Date.now();
         const existing = this.instances.get(extensionInstanceId);
         if (existing && (existing.extensionId !== extensionId || existing.extensionKind !== identity.extensionKind)) {
@@ -511,12 +515,12 @@ export class BrowserCaptureBridgeService {
             connectedAtMs: existing?.connectedAtMs || now,
             lastSeenAtMs: now,
             extensionKind: identity.extensionKind,
-            capabilities: [...identity.capabilities],
+            capabilities: grantedCapabilities,
             accessProblem,
         };
         state.extensionInstanceId = extensionInstanceId;
         state.extensionKind = identity.extensionKind;
-        state.capabilities = [...identity.capabilities];
+        state.capabilities = grantedCapabilities;
         this.instances.set(extensionInstanceId, instance);
         if (socket) {
             this.hostSockets.set(extensionInstanceId, socket);
@@ -528,7 +532,7 @@ export class BrowserCaptureBridgeService {
             captureProtocolVersion: BROWSER_CAPTURE_PROTOCOL_VERSION,
             appVersion: this.options.appVersion,
             extensionKind: identity.extensionKind,
-            acceptedCapabilities: [...identity.capabilities],
+            acceptedCapabilities: grantedCapabilities,
         };
     }
 

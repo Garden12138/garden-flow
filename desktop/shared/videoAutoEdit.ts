@@ -84,6 +84,8 @@ export interface ProductVideoProposal {
   canvas: VideoCanvasSpec;
   durationMs: number;
   scenes: ProductVideoProposalScene[];
+  /** Initial automatic narration; omitted preserves legacy approval behavior. */
+  voiceoverEnabled?: boolean;
 }
 
 export interface ProductVideoSceneState extends ProductVideoProposalScene {

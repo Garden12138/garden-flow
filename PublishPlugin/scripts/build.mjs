@@ -9,4 +9,4 @@ const output = path.join(pluginRoot, 'dist', 'extension');
 fs.rmSync(output, { recursive: true, force: true });
 fs.mkdirSync(path.dirname(output), { recursive: true });
 fs.cpSync(source, output, { recursive: true });
-console.log(`Built Xiaohongshu publisher extension into ${path.relative(pluginRoot, output)}`);
+console.log(`Built GardenFlow publisher extension into ${path.relative(pluginRoot, output)}`);

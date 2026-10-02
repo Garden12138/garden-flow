@@ -1,0 +1,101 @@
+{
+  "checkedAt": "2026-10-02T12:19:44.427127+00:00",
+  "scope": "remaining-stage2-new-product-ui-flows",
+  "packageDmgSha256": "836895616adf6d00ffdf70f1e4f19946ceb23da72b2d9f358d54b9299d0b88eb",
+  "qaBrand": {
+    "name": "界面验收专用｜2026-10-02",
+    "createdThroughUi": true,
+    "savedNameAndDescriptionReadBack": true,
+    "productCountBeforeAttempt": 0,
+    "id": "brand_1790926593742_9f1b5af5"
+  },
+  "qaProductForm": {
+    "name": "验收商品｜猫粮图片分镜｜不发布",
+    "fieldsEnteredAndReadBack": true,
+    "saved": true,
+    "imagesPrepared": 5,
+    "imageImportCompleted": true,
+    "id": "product_1790928026583_bc63ff8b",
+    "savedImageCount": 5,
+    "productVersion": "2026-10-02T08:05:03.847Z",
+    "repeatedImportRemovedThroughUi": true
+  },
+  "captureBlocker": {
+    "code": "ScreenCaptureKit -3812",
+    "gardenFlowReconnectAndCuaResetRecovered": true,
+    "chromeAccessibilityStillReadable": true,
+    "userAskedToShowGardenFlowAndCloseFilePicker": true,
+    "userReportedRestored": true
+  },
+  "videoSettingsChanged": true,
+  "newProposalCreated": true,
+  "newProjectCreated": true,
+  "productInvalidationReplanConfirm": "passed-real-packaged-ui",
+  "disabledVideoModelNewPureImageStoryboard": "passed-real-packaged-ui-with-edit-restart-export",
+  "douyinJobsReadOnlyRecheck": {
+    "totalCount": 2,
+    "original": "completed / published",
+    "qa": "awaiting_confirmation / not_submitted",
+    "qaErrorCode": "",
+    "qaConfirmedAt": null,
+    "qaSubmittedAt": null,
+    "publishClickedThisAttempt": false,
+    "browserPublishedCount": 1,
+    "refreshedBrowserResult": true
+  },
+  "history": [
+    {
+      "checkedAt": "2026-10-02T07:48:42Z",
+      "captureBlocker": {
+        "code": "ScreenCaptureKit -3812",
+        "gardenFlowReconnectAndCuaResetRecovered": true,
+        "chromeAccessibilityStillReadable": true,
+        "userAskedToShowGardenFlowAndCloseFilePicker": true,
+        "userReportedRestored": true
+      },
+      "productSaved": false,
+      "imageImportCompleted": false
+    }
+  ],
+  "videoSettings": {
+    "providerConfigUnchanged": true,
+    "baselineWasLegacyDefaultEnabled": true,
+    "restoration": "enabled-through-ui-after-qa",
+    "clearEndpointAttempt": "refused-by-ui-no-persisted-change",
+    "explicitVideoGenerationEnabled": false,
+    "finalEnabled": true,
+    "providerConfigHashMatchesBaseline": true
+  },
+  "routingRegression": {
+    "sessionId": "session_1790929710032",
+    "taskId": "task_1790929710121_wqs790",
+    "observed": "new-video-note-type-overwritten-by-empty-recovered-binding; visual-preparation-skipped",
+    "requestStoppedThroughUi": true,
+    "productVideoApprovalCount": 0,
+    "savedQaStructuredNote": "xiaohongshu/验收商品-猫粮图片分镜-不发布.redvideo",
+    "videoGenerationSubmitted": false,
+    "fix": "preserve-new-composer-type-and-route-validated-product-plus-structured-video-mode",
+    "packagedRetest": "passed-structured-product-video-routing-and-visual-preparation"
+  },
+  "newStoryboardSessionId": "session_1790930602714",
+  "visualPreflight": "failed-token-mismatch-then-user-entry-retry-verified",
+  "invalidationUi": {
+    "call_id": "call_d42de8b4595f4ed28705ef3a",
+    "session_id": "session_1790930602714",
+    "task_id": "task_1790930726898_uy3q8w",
+    "status": "invalidated",
+    "taskStatus": "cancelled",
+    "latestProductVersion": "2026-10-02T11:58:05.366Z",
+    "oldConfirmButtonReplaced": true,
+    "replanButtonShown": true,
+    "qaProductEditOnly": true
+  },
+  "silentProposalIssue": {
+    "observed": "explicit-no-narration-request-still-defaulted-screen-copy-to-five-speech-tasks",
+    "approvalNotConfirmed": true,
+    "fix": "optional-structured-voiceoverEnabled-false",
+    "packagedRetest": "passed-zero-ai-zero-voiceover"
+  },
+  "newProjectId": "video_edit_v2_1790943025095_fa59e526",
+  "newExportEvidence": "new-pure-image-packaged-export.json"
+}

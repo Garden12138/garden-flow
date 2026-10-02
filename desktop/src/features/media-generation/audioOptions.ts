@@ -24,6 +24,7 @@ export type SettingsShape = {
     image_aspect_ratio?: string;
     image_size?: string;
     image_quality?: string;
+    video_generation_enabled?: boolean;
     video_endpoint?: string;
     video_api_key?: string;
     video_model?: string;

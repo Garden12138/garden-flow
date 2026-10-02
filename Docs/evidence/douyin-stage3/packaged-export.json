@@ -1,0 +1,52 @@
+{
+  "checkedAt": "2026-10-01T07:22:11.657340+00:00",
+  "source": "Renderer dependency fix package UI export, project JSON and ffprobe",
+  "testedPackageDmgSha256": "b67ca03c1020c5ed5f41f81bd34d577ed8f0c263372ee88e8c9cb78f5a3d46ba",
+  "buildBoundary": "Export was verified before the subsequent cover and retained-draft protection changes. It is not a new export from later packages.",
+  "projectId": "video_edit_v2_1790838286888_da01b48d",
+  "versionId": "dyver_01a10592-35fb-4ebe-a89b-67705cd52a24",
+  "title": "安装包界面验收副本｜不发布",
+  "status": "exported",
+  "renderId": "render_1790839193566_2bd46994",
+  "mediaAssetId": "media_1790839250576_2e5b95d0",
+  "timelineDurationMs": 27333,
+  "visualKinds": [
+    "image",
+    "image",
+    "image",
+    "image",
+    "image"
+  ],
+  "voiceoverClips": 5,
+  "musicClips": 1,
+  "bytes": 19924611,
+  "sha256": "977a4619c8ad0100e3b159c48b93edfce130b3be1f3ebaa6670db4ae6da8640d",
+  "streams": [
+    {
+      "codec_type": "video",
+      "codec_name": "h264",
+      "width": 1080,
+      "height": 1920,
+      "r_frame_rate": "30/1",
+      "sample_rate": null,
+      "channels": null
+    },
+    {
+      "codec_type": "audio",
+      "codec_name": "aac",
+      "width": null,
+      "height": null,
+      "r_frame_rate": "0/0",
+      "sample_rate": "48000",
+      "channels": 2
+    }
+  ],
+  "duration": "27.349333",
+  "publishJobsForCopy": 0,
+  "uiObservations": [
+    "Reopened persisted subtitle and 190-frame first scene after app restart.",
+    "Clicked Save MP4 to assets from the final packaged app.",
+    "UI displayed exported and MP4 saved to media list."
+  ],
+  "manualListening": "Not performed for this test copy; prior user listening applies to the published source."
+}

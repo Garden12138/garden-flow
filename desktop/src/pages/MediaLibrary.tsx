@@ -105,6 +105,7 @@ interface SettingsShape {
     image_aspect_ratio?: string;
     image_size?: string;
     image_quality?: string;
+    video_generation_enabled?: boolean;
     video_endpoint?: string;
     video_api_key?: string;
     video_model?: string;
@@ -949,7 +950,7 @@ export function MediaLibrary({
     const resolvedVideoEndpoint = (settings.video_endpoint || '').trim();
     const resolvedVideoApiKey = (settings.video_api_key || '').trim();
     const effectiveVideoModel = (settings.video_model || '').trim();
-    const hasVideoConfig = Boolean(resolvedVideoEndpoint) && Boolean(resolvedVideoApiKey) && Boolean(effectiveVideoModel);
+    const hasVideoConfig = settings.video_generation_enabled !== false && Boolean(resolvedVideoEndpoint) && Boolean(resolvedVideoApiKey) && Boolean(effectiveVideoModel);
 
     const handleGenerateVideo = useCallback(async () => {
         const effectiveVideoReferenceImages = videoGenerationMode === 'reference-guided'

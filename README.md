@@ -172,7 +172,7 @@ Native Messaging ── browser extensions
 - `desktop/src/`：React、TypeScript、TailwindCSS renderer。
 - `desktop/electron/`：Electron 主进程、SQLite、AI runtime、工具、媒体和自动化服务。
 - `Plugin/`：内容采集与浏览器控制扩展。
-- `PublishPlugin/`：小红书发布辅助扩展。
+- `PublishPlugin/`：小红书与抖音发布辅助扩展。
 - `desktop/src/vendor/freecut/`：带独立归属声明的 FreeCut 工程能力。
 
 深入了解见[架构文档](./Docs/ARCHITECTURE.md)。

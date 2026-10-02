@@ -42,5 +42,23 @@ export function createVideoEditorBridge(core: BridgeCore) {
         core.invokeChannel('videoEditorV2:apply-auto-edit', payload),
       render: (payload: Record<string, unknown>) => core.invokeChannel('videoEditorV2:render', payload),
     },
+    douyinVideo: {
+      createVersion: (payload: { sourceProjectId: string; sourceNotePath?: string; duplicate?: boolean }) => core.invokeChannel('douyin:video-version-create', payload),
+      getVersion: (payload: { versionId?: string; projectId?: string; sourceProjectId?: string }) => core.invokeChannel('douyin:video-version-get', payload),
+      saveVersion: (payload: { versionId: string; expectedRevision: number; title: string; description: string; hashtags: string[]; coverAssetId?: string }) => core.invokeChannel('douyin:video-version-save', payload),
+    },
+    douyinPublisher: {
+      getStatus: () => core.invokeChannel('douyin-publisher:status'),
+      bindInstance: (payload: { extensionInstanceId: string }) => core.invokeChannel('douyin-publisher:bind-instance', payload),
+      prepare: (payload: { versionId: string; sessionId?: string }) => core.invokeChannel('douyin-publisher:prepare', payload),
+      getJob: (payload: { jobId?: string; versionId?: string }) => core.invokeChannel('douyin-publisher:get-job', payload),
+      confirm: (payload: { jobId: string }) => core.invokeChannel('douyin-publisher:confirm', payload),
+      stageDraft: (payload: { jobId: string }) => core.invokeChannel('douyin-publisher:stage-draft', payload),
+      cancel: (payload: { jobId: string }) => core.invokeChannel('douyin-publisher:cancel', payload),
+      recoverUnpublished: (payload: { jobId: string; acknowledgedNotPublished: boolean }) => core.invokeChannel('douyin-publisher:recover-unpublished', payload),
+      reviewPublished: (payload: { jobId: string; acknowledgedPublished: boolean }) => core.invokeChannel('douyin-publisher:review-published', payload),
+      onJobChanged: (listener: (event: unknown, job: unknown) => void) => core.on('douyin-publisher:job-changed', listener),
+      offJobChanged: (listener: (event: unknown, job: unknown) => void) => core.off('douyin-publisher:job-changed', listener),
+    },
   };
 }

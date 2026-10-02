@@ -83,6 +83,7 @@ export function ToolConfirmDialog({ request, onConfirm, onCancel, onReplan, isRe
         .join(' · ');
     const isExecuting = request.status === 'executing' || isResolving;
     const isInvalidated = request.status === 'invalidated';
+    const voiceoverEnabled = request.params?.voiceoverEnabled !== false;
     const productDeleted = request.invalidation?.reason === 'product-deleted';
     const confirmationCopy = request.name === 'product_video_compose'
         ? {
@@ -141,7 +142,7 @@ export function ToolConfirmDialog({ request, onConfirm, onCancel, onReplan, isRe
                                 <span className="font-semibold text-text-primary">{productReference?.name || String(request.params?.productName || '商品')}</span>
                                 <span className="text-text-tertiary">{proposalScenes.filter((scene) => scene.source === 'ai-motion').length} 个 AI 镜头</span>
                             </div>
-                            <p className="text-[10px] text-[#C05640]">旁白：{voiceoverConfig === null ? '正在检查语音配置…' : voiceoverConfig.configured ? `${proposalScenes.filter((scene) => String(scene.overlayText || '').trim()).length} 段语音任务 · ${voiceoverConfig.model} / ${voiceoverConfig.voiceId}` : `${voiceoverConfig.reason || '语音服务未配置'}；确认后仍会创建工程，旁白可稍后生成`}</p>
+                            <p className="text-[10px] text-[#C05640]">旁白：{!voiceoverEnabled ? '已关闭自动旁白 · 0 段语音任务' : voiceoverConfig === null ? '正在检查语音配置…' : voiceoverConfig.configured ? `${proposalScenes.filter((scene) => String(scene.overlayText || '').trim()).length} 段语音任务 · ${voiceoverConfig.model} / ${voiceoverConfig.voiceId}` : `${voiceoverConfig.reason || '语音服务未配置'}；确认后仍会创建工程，旁白可稍后生成`}</p>
                             {productSpecification && <p className="text-[10px] text-text-tertiary">规格：{productSpecification}</p>}
                             <div className="grid max-h-72 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
                                 {proposalScenes.map((scene, index) => {
@@ -170,7 +171,7 @@ export function ToolConfirmDialog({ request, onConfirm, onCancel, onReplan, isRe
                                                 </div>
                                                 <p className="mt-1 text-[10px] text-text-tertiary">{(scene.durationMs / 1000).toFixed(1)} 秒 · {scene.source === 'ai-motion' ? 'AI 动效' : '原始素材'} · {assets.map((asset) => asset.role).join(' + ') || '图片'}</p>
                                                 {scene.overlayText && <p className="mt-1 line-clamp-2 text-[10px] text-text-secondary">文字：{scene.overlayText}</p>}
-                                                {scene.overlayText && <p className="mt-1 line-clamp-2 text-[10px] text-[#C05640]">将朗读：{scene.overlayText}</p>}
+                                                {voiceoverEnabled && scene.overlayText && <p className="mt-1 line-clamp-2 text-[10px] text-[#C05640]">将朗读：{scene.overlayText}</p>}
                                                 {scene.source === 'ai-motion' && <p className="mt-1 inline-flex items-center gap-1 text-[10px] text-amber-700"><Sparkles className="h-3 w-3" />参考图生成，无内置音频</p>}
                                                 {scene.source === 'ai-motion' && scene.generationPrompt && <p className="mt-1 line-clamp-3 text-[10px] leading-relaxed text-text-secondary">生成描述：{scene.generationPrompt}</p>}
                                             </div>
@@ -221,7 +222,7 @@ export function ToolConfirmDialog({ request, onConfirm, onCancel, onReplan, isRe
                     </button>
                     <button
                         onClick={() => isInvalidated ? onReplan?.(request.callId) : onConfirm(request.callId)}
-                        disabled={isExecuting || (isInvalidated ? productDeleted || !onReplan : request.name === 'product_video_compose' && voiceoverConfig === null)}
+                        disabled={isExecuting || (isInvalidated ? productDeleted || !onReplan : request.name === 'product_video_compose' && voiceoverEnabled && voiceoverConfig === null)}
                         className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-accent-primary hover:bg-accent-primary/90 rounded-xl transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                     >
                         <Check className="w-4 h-4" />

@@ -19,6 +19,7 @@ import {
   validateDraftAmendment,
   preparedMediaMatches,
 } from './pageAdapter.js';
+import { douyinPublish, douyinStatus } from './douyinPublisher.js';
 
 const NATIVE_HOST = 'com.gardenflow.browser_control';
 const INSTANCE_KEY = 'gardenflowXhsPublisherInstanceId';
@@ -27,6 +28,8 @@ const PREPARED_JOB_KEY = 'gardenflowXhsPublisherPreparedJob';
 const RECONNECT_ALARM = 'gardenflow-xhs-publisher-reconnect';
 const EXTENSION_KIND = 'xhs-publisher';
 const CAPABILITY = 'xiaohongshu.publish.v1';
+const DOUYIN_CAPABILITY = 'douyin.publish.v1';
+const DOUYIN_COVER_CAPABILITY = 'douyin.image-cover.v1';
 const PROTOCOL_VERSION = 1;
 const PUBLISH_TAB_PATTERN = 'https://creator.xiaohongshu.com/*';
 
@@ -126,7 +129,7 @@ async function refreshNativeConnection() {
       extensionId: chrome.runtime.id,
       extensionInstanceId: await instanceId(),
       extensionKind: EXTENSION_KIND,
-      capabilities: [CAPABILITY],
+      capabilities: [CAPABILITY, DOUYIN_CAPABILITY, DOUYIN_COVER_CAPABILITY],
       version: manifest.version_name || manifest.version,
       browser: navigator.userAgent.includes('Edg/') ? 'edge' : navigator.userAgent.includes('Brave') ? 'brave' : 'chrome',
     }, 4000);
@@ -1105,8 +1108,10 @@ async function handleDesktopRequest(message) {
   const id = message.id;
   try {
     let value;
-    if (message.method === 'publisher.status') value = await currentStatus();
-    else if (message.method === 'publisher.publish') value = await publish(message.params || {});
+    if (message.method === 'publisher.status') value = message.params?.platform === 'douyin'
+      ? await douyinStatus(nativeConnected) : await currentStatus();
+    else if (message.method === 'publisher.publish') value = message.params?.platform === 'douyin'
+      ? await douyinPublish(message.params || {}) : await publish(message.params || {});
     else if (message.method === 'publisher.restore') value = await restore(message.params || {});
     else throw Object.assign(new Error(`Unsupported publisher method: ${message.method}`), { code: 'METHOD_NOT_ALLOWED' });
     nativePort?.postMessage({ jsonrpc: '2.0', id, result: value });
@@ -1118,7 +1123,9 @@ async function handleDesktopRequest(message) {
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type !== 'publisher.status') return undefined;
-  void connectNative().then(currentStatus).then(sendResponse).catch((error) => sendResponse({ nativeConnected, detail: messageError(error).message }));
+  void connectNative().then(() => message.platform === 'douyin'
+    ? douyinStatus(nativeConnected)
+    : currentStatus()).then(sendResponse).catch((error) => sendResponse({ nativeConnected, detail: messageError(error).message }));
   return true;
 });
 

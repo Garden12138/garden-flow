@@ -18,6 +18,7 @@ import {
 import { evaluateVideoGenerationApprovalPolicy } from '../electron/core/videoGenerationApprovalPolicy.ts';
 import { buildDeferredToolConfirmationData } from '../shared/toolConfirmationPolicy.ts';
 import { resolveProductVideoMotionCapability } from '../shared/productVideoCapability.ts';
+import { mergeAuthoringTaskMetadata } from '../shared/authoringTaskMetadata.ts';
 
 const explicitProductRefs = [{
   productId: 'product-001',
@@ -131,6 +132,42 @@ test('routes selected product plus video intent to the foreground product-video 
   assert.equal(route.requiredCapabilities.includes('product-video-compose'), true);
   assert.equal(shouldUseCoordinator({ runtimeMode: 'gardenflow', route }), false);
   assert.equal(shouldRunSubagentOrchestration({ runtimeMode: 'gardenflow', route }), false);
+});
+
+test('new video-note composer selection with a product starts visual preparation before any project is created', () => {
+  const metadata = {
+    ...mergeAuthoringTaskMetadata({ contextType: 'gardenflow' }, {
+      platform: 'xiaohongshu', taskType: 'direct_write', xhsNoteType: 'video',
+      xhsVideoDurationSeconds: 15, xhsVideoAspectRatio: '9:16',
+    }),
+    explicitProductRefs,
+  };
+  const route = applyProductVideoWorkflowPolicy({ ...genericVideoRoute, intent: 'manuscript_creation' }, {
+    ...productContext, userInput: '展示现有图片', metadata,
+  });
+  assert.equal(metadata.xhsNoteType, 'video');
+  assert.equal(route.workflowKind, 'product-video-compose');
+  assert.equal(shouldUseCoordinator({ runtimeMode: 'gardenflow', route }), false);
+  assert.equal(route.requiresHumanApproval, true);
+  assert.deepEqual(resolveProductVideoVisualPreparation({ workflowKind: route.workflowKind, metadata }), {
+    action: 'prepare', productRefs: explicitProductRefs,
+  });
+});
+
+test('recovered note binding wins over composer hints and cannot be replaced by an unvalidated path', () => {
+  const metadata = {
+    ...mergeAuthoringTaskMetadata({
+      artifactType: 'xiaohongshu-note', activeXhsNotePath: '/validated/existing.redpost',
+      activeXhsNoteUri: 'manuscripts://existing.redpost', xhsNoteType: 'image',
+    }, { platform: 'xiaohongshu', xhsNoteType: 'video', activeXhsNotePath: '/unvalidated/redvideo' }),
+    explicitProductRefs,
+  };
+  assert.equal(metadata.xhsNoteType, 'image');
+  assert.equal(metadata.activeXhsNotePath, '/validated/existing.redpost');
+  assert.equal(applyProductVideoWorkflowPolicy({ ...genericVideoRoute, intent: 'manuscript_creation' }, {
+    ...productContext, metadata,
+  }).workflowKind, undefined);
+  assert.equal(mergeAuthoringTaskMetadata({}, { activeXhsNotePath: '/unvalidated/project.redvideo' }).activeXhsNotePath, undefined);
 });
 
 test('does not route product-backed non-video work or unreferenced video into product composition', () => {

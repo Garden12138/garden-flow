@@ -1,7 +1,17 @@
+import type {
+    PlatformPublishJobStatus,
+    PlatformPublishRequestBaseV1,
+    PlatformPublishResetStatus,
+    PlatformPublishStatus,
+    PlatformPublisherExecutionResult,
+} from './platformPublisher';
+
 export const XHS_PUBLISH_PROTOCOL_VERSION = 1 as const;
 export const XHS_PUBLISHER_EXTENSION_ID = 'jafdjmajegkaabbohedhmmlhogdejkpb';
 export const XHS_PUBLISHER_EXTENSION_ORIGIN = `chrome-extension://${XHS_PUBLISHER_EXTENSION_ID}/`;
 export const XHS_PUBLISHER_CAPABILITY = 'xiaohongshu.publish.v1' as const;
+export const DOUYIN_PUBLISHER_CAPABILITY = 'douyin.publish.v1' as const;
+export const DOUYIN_IMAGE_COVER_CAPABILITY = 'douyin.image-cover.v1' as const;
 export const XHS_TITLE_MAX_LENGTH = 20;
 
 // Use the same conservative UTF-16 count as a browser input's maxlength.
@@ -62,13 +72,8 @@ export function sameXhsPublishMedia(left: unknown, right: unknown): boolean {
         });
 }
 
-export interface XhsPublishRequestV1 {
-    protocolVersion: typeof XHS_PUBLISH_PROTOCOL_VERSION;
-    jobId: string;
-    sessionId: string;
+export interface XhsPublishRequestV1 extends PlatformPublishRequestBaseV1 {
     projectPath: string;
-    revision: number;
-    contentDigest: string;
     noteType: 'image' | 'video';
     title: string;
     body: string;
@@ -86,23 +91,9 @@ export interface XhsDraftAmendmentV1 {
     request: XhsPublishRequestV1;
 }
 
-export type XhsPublishJobStatus =
-    | 'awaiting_confirmation'
-    | 'queued'
-    | 'preflighting'
-    | 'uploading'
-    | 'submitting'
-    | 'published'
-    | 'returning'
-    | 'completed'
-    | 'blocked'
-    | 'cancelled'
-    | 'superseded'
-    | 'submit_result_unknown'
-    | 'published_reset_failed';
-
-export type XhsPublishStatus = 'not_submitted' | 'submitted' | 'published' | 'unknown';
-export type XhsPublishResetStatus = 'not_started' | 'returning' | 'ready' | 'failed';
+export type XhsPublishJobStatus = Exclude<PlatformPublishJobStatus, 'submitted_pending_review'>;
+export type XhsPublishStatus = Exclude<PlatformPublishStatus, 'pending_review'>;
+export type XhsPublishResetStatus = PlatformPublishResetStatus;
 
 export interface XhsPublishJob {
     id: string;
@@ -150,14 +141,8 @@ export interface XhsPublisherStatus {
     activeJob?: XhsPublishJob;
 }
 
-export interface XhsPublisherExecutionResult {
-    ok: boolean;
-    jobId: string;
+export interface XhsPublisherExecutionResult extends PlatformPublisherExecutionResult {
     publishStatus: XhsPublishStatus;
-    resetStatus: XhsPublishResetStatus;
-    code?: string;
-    message?: string;
-    publishedAt?: number;
 }
 
 export type XhsPublishConsentMetadata = {

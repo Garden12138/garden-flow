@@ -1,0 +1,57 @@
+{
+  "checkedAt": "2026-10-01T10:51:09.603Z",
+  "node": "v22.23.2",
+  "pnpm": "10.28.2",
+  "desktopVersion": "0.0.1",
+  "electron": "39.6.0",
+  "publisherVersion": "0.0.1.65535",
+  "checks": [
+    {
+      "command": "pnpm test",
+      "passed": 322,
+      "failed": 0
+    },
+    {
+      "command": "pnpm check",
+      "status": "passed",
+      "publisherTests": 60
+    },
+    {
+      "command": "pnpm build",
+      "status": "passed",
+      "architecture": "darwin-arm64",
+      "signed": false
+    }
+  ],
+  "artifacts": [
+    {
+      "file": "desktop/release/GardenFlow-0.0.1-arm64.dmg",
+      "bytes": 356514984,
+      "sha256": "62ba45a0c472e852f5f3b4d74880a381dfdc647939209304d3a9cbb666e75308",
+      "integrity": "hdiutil verify passed"
+    },
+    {
+      "file": "desktop/release/GardenFlow-0.0.1-arm64.zip",
+      "bytes": 363556687,
+      "sha256": "e33272bbb083e2af8b4d93a712a0fa31bf1ad1122151bb518347cb7a0094e7bc",
+      "integrity": "unzip -tq passed"
+    }
+  ],
+  "executionOrder": [
+    "pnpm test",
+    "pnpm check",
+    "pnpm build"
+  ],
+  "rendererRuntime": {
+    "packages": 66,
+    "uniqueVersions": 44,
+    "load": "passed"
+  },
+  "notes": [
+    "Local socket tests required unsandboxed execution; full reruns passed.",
+    "No plugin check or build ran concurrently with desktop packaging.",
+    "Packaged export exposed missing renderer transitive dependencies; rebuilt with a self-contained renderer runtime. Final UI export verification is recorded separately.",
+    "Custom image cover requests are blocked before upload or submit; automatic custom cover application remains unimplemented.",
+    "A retained unpublished video prompt on the upload landing is treated as an existing draft and cannot be overwritten."
+  ]
+}

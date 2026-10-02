@@ -36,7 +36,9 @@ async function fixture({ rejected = false } = {}) {
     } },
   };
   const context = vm.createContext({ ...adapter, chrome, testState: state, Date: Clock, URL, console, setTimeout: callback => { callback(); return 1; }, clearTimeout() {} });
-  const source = (await readFile(new URL('../src/background.js', import.meta.url), 'utf8')).replace(/^import \{[\s\S]*?\} from '\.\/pageAdapter\.js';/, '');
+  const source = (await readFile(new URL('../src/background.js', import.meta.url), 'utf8'))
+    .replace(/^import \{[\s\S]*?\} from '\.\/pageAdapter\.js';/, '')
+    .replace(/^import \{[^\n]+\} from '\.\/douyinPublisher\.js';/m, '');
   vm.runInContext(`${source}\ndispatchTrustedPublishClick = async () => { testState.clicks += 1; return {ok:true,clickObserved:true,mayHaveDispatched:true}; }; globalThis.testApi = {publish, submitPrepared};`, context);
   return { state, stored, ownerKey, api: context.testApi };
 }

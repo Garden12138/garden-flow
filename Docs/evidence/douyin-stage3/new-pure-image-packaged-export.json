@@ -1,0 +1,72 @@
+{
+  "checkedAt": "2026-10-02T12:14:52.676073+00:00",
+  "source": "latest-packaged-app-confirmation-edit-restart-and-save-mp4-ui",
+  "testedPackageDmgSha256": "836895616adf6d00ffdf70f1e4f19946ceb23da72b2d9f358d54b9299d0b88eb",
+  "projectId": "video_edit_v2_1790943025095_fa59e526",
+  "proposalId": "proposal-d22c7044-35d2-4190-b937-f66ff2fe24bd",
+  "status": "exported",
+  "renderId": "render_1790943181085_6c6bd456",
+  "mediaAssetId": "media_1790943219590_8d948435",
+  "durationMs": 15333,
+  "firstSceneFrames": 100,
+  "firstSceneSubtitle": "纯图片安装包验收｜字幕独立保留",
+  "visualKinds": [
+    "image",
+    "image",
+    "image",
+    "image",
+    "image"
+  ],
+  "tracks": [
+    {
+      "kind": "primary-video",
+      "clips": 5
+    },
+    {
+      "kind": "subtitle",
+      "clips": 5
+    },
+    {
+      "kind": "voiceover",
+      "clips": 0
+    },
+    {
+      "kind": "music",
+      "clips": 0
+    }
+  ],
+  "voiceoverEnabled": false,
+  "generationJobsForProject": 0,
+  "videoGenerateToolResultsInSession": 0,
+  "bytes": 10077676,
+  "sha256": "cf09e7724f532c2067bdb5e13afd48f5787f5e4348aa879804e0d16cebced699",
+  "streams": [
+    {
+      "codec_name": "h264",
+      "codec_type": "video",
+      "width": 1080,
+      "height": 1920,
+      "r_frame_rate": "30/1",
+      "side_data_list": [
+        {}
+      ]
+    },
+    {
+      "codec_name": "aac",
+      "codec_type": "audio",
+      "sample_rate": "48000",
+      "channels": 2,
+      "r_frame_rate": "0/0"
+    }
+  ],
+  "duration": "15.381333",
+  "fullDecode": "passed",
+  "uiColdRestartEditsPreserved": true,
+  "uiMp4SavedToast": true,
+  "manualListening": "not-required-for-this-silent-qa-project; previous-user-listening-applies-to-published-source",
+  "silentAudioAnalysis": {
+    "meanVolumeDb": -91,
+    "maxVolumeDb": -91,
+    "method": "ffmpeg-volumedetect"
+  }
+}

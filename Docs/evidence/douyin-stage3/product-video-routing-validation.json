@@ -1,0 +1,168 @@
+{
+  "checkedAt": "2026-10-02T08:47:54.310366+00:00",
+  "checks": {
+    "desktopTests": 329,
+    "publisherTests": 89,
+    "pnpmCheck": "passed",
+    "pnpmBuild": "passed",
+    "executionOrder": [
+      "pnpm test",
+      "pnpm check",
+      "pnpm build"
+    ]
+  },
+  "desktopVersion": "0.0.1",
+  "electronVersion": "39.6.0",
+  "artifacts": [
+    {
+      "file": "desktop/release/GardenFlow-0.0.1-arm64.dmg",
+      "bytes": 356606298,
+      "sha256": "7f641d58ea15f99b0ca7cea9c7cf62b6a12f0601a867c660c08221662fb2a017"
+    },
+    {
+      "file": "desktop/release/GardenFlow-0.0.1-arm64.zip",
+      "bytes": 363570984,
+      "sha256": "d1b13316b9efad61f3e3cb72a1bcf2d95a56f1df1bee2a136983fd4f5d6d1bb5"
+    }
+  ],
+  "artifactIntegrity": {
+    "dmg": "passed",
+    "zip": "passed"
+  },
+  "publisher": {
+    "checkedAt": "2026-10-02T08:46:38.257Z",
+    "manifestVersion": "0.0.1.65535",
+    "files": [
+      {
+        "file": "background.js",
+        "sha256": "31fed297bce6e2f1f3e415fce52d3e24828a5ff19b21274b1874c0068714ca23",
+        "matchesSource": true
+      },
+      {
+        "file": "douyinAdapter.js",
+        "sha256": "bce7718afb9688eee5efb4ff974a9c1870dcfd64190688b278f68e8b6163df5c",
+        "matchesSource": true
+      },
+      {
+        "file": "douyinCoverAdapter.js",
+        "sha256": "c5553ed8d31bbf650aba922a7e052b58d89535edbe8e630976a4f3aec527c659",
+        "matchesSource": true
+      },
+      {
+        "file": "douyinPublisher.js",
+        "sha256": "1bee980f66486ad66db1c3cec8b5ad5211c0342db1e16efff2251ed9bd602e05",
+        "matchesSource": true
+      },
+      {
+        "file": "icons/icon128.png",
+        "sha256": "c3caae519671bb0bcd8586164fe4cf35d1969d2351fb300954913d5d05d195e4",
+        "matchesSource": true
+      },
+      {
+        "file": "icons/icon16.png",
+        "sha256": "597605b2afe86b986d27f558b0a2d857cd96ae39ce17bedee7cc1c721ae626d9",
+        "matchesSource": true
+      },
+      {
+        "file": "icons/icon32.png",
+        "sha256": "e27464f1c2e534f02f6235bfc637bad0c5a9a99e3fedfe2708a5ac8b630696f1",
+        "matchesSource": true
+      },
+      {
+        "file": "icons/icon48.png",
+        "sha256": "b0c180b88f2c78c973c8c4f499523b634bceb8830790ee16dc855f5494ec9659",
+        "matchesSource": true
+      },
+      {
+        "file": "manifest.json",
+        "sha256": "2a4ab867f61e2610b01918062864acc35452e26ddd64f436bff72a5a0942078a",
+        "matchesSource": true
+      },
+      {
+        "file": "pageAdapter.js",
+        "sha256": "19cfd99778b8246bb39d70e0d51d09e361d4f062dcd8a7e8314631918e9a4217",
+        "matchesSource": true
+      },
+      {
+        "file": "popup.css",
+        "sha256": "00a109f530271739fef2bf940a700f3cb606ad4045c46528b7bb12fbbffbdccb",
+        "matchesSource": true
+      },
+      {
+        "file": "popup.html",
+        "sha256": "38bfc99b67f532102ab88b3e55673a58bbcbebf32f26faa13ecaffbb278b0ade",
+        "matchesSource": true
+      },
+      {
+        "file": "popup.js",
+        "sha256": "c69c483e7e657d1b87c8607d6d6426889a70d66c74e2714e795cb277f2cdbbff",
+        "matchesSource": true
+      }
+    ]
+  },
+  "desktopMainFiles": [
+    {
+      "file": "/dist-electron/appMain-Cl5vneQ9.js",
+      "sha256": "a33459dab6335ca623ac065e130e86d7e683fbdd6e512b2906fa08c93ff4af1a"
+    },
+    {
+      "file": "/dist-electron/main.js",
+      "sha256": "882d6af287c4b63bd0f4dadebfced12d1fe3ad7f9af3f50e83a2e12c945c6acf"
+    }
+  ],
+  "packagedUi": {
+    "newPackageLaunchedAfterQuit": true,
+    "renderer": "app.asar/dist/index.html",
+    "sessionId": "session_1790930602714",
+    "workflowKind": "product-video-compose",
+    "selectedModel": "qwen3.8-max",
+    "visualAttempts": [
+      {
+        "taskId": "task_1790930602798_hn1btd",
+        "diagnostic": {
+          "modelName": "qwen3.8-max",
+          "productId": "product_1790928026583_bc63ff8b",
+          "productUpdatedAt": "2026-10-02T08:05:03.847Z",
+          "imageCount": 5,
+          "assetIds": [
+            "asset_1790928026583_dbe22338",
+            "asset_1790928026584_dc532223",
+            "asset_1790928026585_d6f52937",
+            "asset_1790928026586_26afafb1",
+            "asset_1790928026587_529158e3"
+          ],
+          "durationMs": 56522,
+          "outcome": "token-mismatch",
+          "responseParsed": true,
+          "expectedToken": "GF-D164A0D97F6D",
+          "observedToken": "GF-D164A8D97F6D"
+        }
+      },
+      {
+        "taskId": "task_1790930726898_uy3q8w",
+        "diagnostic": {
+          "modelName": "qwen3.8-max",
+          "productId": "product_1790928026583_bc63ff8b",
+          "productUpdatedAt": "2026-10-02T08:05:03.847Z",
+          "imageCount": 5,
+          "assetIds": [
+            "asset_1790928026583_dbe22338",
+            "asset_1790928026584_dc532223",
+            "asset_1790928026585_d6f52937",
+            "asset_1790928026586_26afafb1",
+            "asset_1790928026587_529158e3"
+          ],
+          "durationMs": 48738,
+          "outcome": "verified",
+          "responseParsed": true,
+          "expectedToken": "GF-A18836DEE4E9",
+          "observedToken": "GF-A18836DEE4E9"
+        }
+      }
+    ],
+    "retryClickedThroughUi": true,
+    "automaticProviderSwitch": false,
+    "videoGenerationEnabled": false,
+    "approvalAndPureImageProject": "pending"
+  }
+}

@@ -1,0 +1,872 @@
+{
+  "checkedAt": "2026-10-02",
+  "scope": "custom-cover-automatic-staging-and-published-owner-reconciliation",
+  "qaJobId": "douyin_publish_8a6f765a-bd88-41a1-8a69-4d871588ebe1",
+  "qaVersionId": "dyver_01a10592-35fb-4ebe-a89b-67705cd52a24",
+  "qaRevision": 5,
+  "accountTail": "8237",
+  "knownTemporaryWebDraft": {
+    "title": "封面流程验收副本｜不发布",
+    "checkedBeforeDiscard": true,
+    "userReplyAfterSpecificDiscardExplanation": "继续验证吧",
+    "discardedThroughUploadPage": true,
+    "restorableDraftPromptAbsentAfterDiscard": true
+  },
+  "initialPackagedAttempt": {
+    "dmgSha256": "f100f30b8155000fd0a2a1c23a1f848e1158328fcbe7d0f60fd97d16a638a1bf",
+    "actualMp4AndBothCoversShown": true,
+    "clickedAction": "上传到页面供核对（不发布）",
+    "result": "blocked-by-stale-published-owner",
+    "status": "blocked",
+    "publishStatus": "not_submitted",
+    "confirmedAt": null,
+    "submittedAt": null,
+    "publishClicked": false
+  },
+  "fix": {
+    "command": "review-published",
+    "requiresDurableHumanPublishedReview": true,
+    "requiresMatchingSpaceJobDigestBrowserAndAccount": true,
+    "pluginRequiresOriginalOwnerAndUniqueEmptyUploadPage": true,
+    "retainsUnreviewedUnknownProtection": true,
+    "navigationsDraftDeletionsAndPublishClicksDuringReconciliation": 0
+  },
+  "checks": {
+    "desktopTests": 324,
+    "publisherTests": 89,
+    "pnpmCheck": "passed",
+    "pnpmBuild": "passed",
+    "executionOrder": [
+      "pnpm test",
+      "pnpm check",
+      "pnpm build"
+    ]
+  },
+  "fullAutomaticUpload": "passed-real-88-upload-and-final-89-package-recovery",
+  "packagedOwnerReconciliation": {
+    "passedOnRealPage": true,
+    "videoAndTextUploaded": true,
+    "publishClicked": false
+  },
+  "automaticCoverUpload": {
+    "bothFilesAssignedAndSavedByPlugin": true,
+    "fullStrictReadback": "passed-both-saved-pictures-and-final-editor-gates",
+    "publisherPopupPixelsReadable": {
+      "portrait": true,
+      "landscape": true
+    },
+    "manualReadabilityIsNotFullPixelValidation": true
+  },
+  "realPageFixes": [
+    "unique-visible-cover-uploader-excludes-ai-reference-inputs",
+    "exclude-cover-modal-video-and-text-fields",
+    "await-saved-cover-pixel-readback",
+    "restore-owned-video-preview-before-media-verification",
+    "select-replacement-input-when-uploaded-image-exists",
+    "await-painted-or-matching-loaded-upload-thumbnail",
+    "shared-two-stage-pixel-sampling",
+    "bounded-central-integer-crop-normalization",
+    "revalidate-both-pictures-after-final-cover-identity-change",
+    "retain-original-uploaded-media-identity",
+    "compare-exact-orientation-signatures-independent-of-object-key-order"
+  ],
+  "latestQaState": {
+    "status": "awaiting_confirmation",
+    "publishStatus": "not_submitted",
+    "resetStatus": "not_started",
+    "errorCode": "",
+    "errorMessage": "",
+    "confirmedAt": null,
+    "submittedAt": null
+  },
+  "originalPublishedJobState": {
+    "status": "completed",
+    "publishStatus": "published",
+    "resetStatus": "ready",
+    "additionalPublication": false
+  },
+  "uiBlocker": {
+    "reportedBy": "cua_repl",
+    "reason": "Mac locked",
+    "requestedManualUnlock": true,
+    "resolvedOnNextRead": true,
+    "recurrenceDuringColdStartCheck": "Mac locked",
+    "current": null,
+    "requestedUnlockForReplacementRetest": true,
+    "macLockNoLongerReported": true,
+    "requestedManualCoverEditorClose": true,
+    "preserveOwnedVideoDraft": true,
+    "coverEditorClosedOnNextRead": true
+  },
+  "versions": {
+    "desktop": "0.0.1",
+    "electron": "39.6.0",
+    "publisherManifest": "0.0.1.65535"
+  },
+  "latestAutomaticRetry": {
+    "publisherTests": 89,
+    "desktopDmgSha256": "c72614fc89e173e8e3257d959bd2e25cefc6270cebaea662eec92896158f9133",
+    "result": "awaiting_confirmation",
+    "action": "上传到页面供核对（不发布）",
+    "sameJobRecoveredAfterPackageAndPluginRestart": true,
+    "oldErrorCleared": true,
+    "publishStatus": "not_submitted",
+    "confirmedAt": null,
+    "submittedAt": null,
+    "publishClicked": false
+  },
+  "validationRuns": [
+    {
+      "checks": {
+        "desktopTests": 324,
+        "publisherTests": 75,
+        "pnpmCheck": "passed",
+        "pnpmBuild": "passed",
+        "executionOrder": [
+          "pnpm test",
+          "pnpm check",
+          "pnpm build"
+        ]
+      },
+      "artifacts": [
+        {
+          "file": "desktop/release/GardenFlow-0.0.1-arm64.dmg",
+          "bytes": 356577135,
+          "sha256": "e81f7c653a9771b48b8cff45ec8fa5bd7b68e73c8b479d5c1a8478f2e34fb1ed"
+        },
+        {
+          "file": "desktop/release/GardenFlow-0.0.1-arm64.zip",
+          "bytes": 363566754,
+          "sha256": "269adfa59d2ed3aed72ba98c8dcff6ebaa3fb231bd13ce2a621303200e3a85d2"
+        }
+      ],
+      "publisherFiles": [
+        {
+          "file": "background.js",
+          "sha256": "31fed297bce6e2f1f3e415fce52d3e24828a5ff19b21274b1874c0068714ca23",
+          "matchesSource": true
+        },
+        {
+          "file": "douyinAdapter.js",
+          "sha256": "b9bd272c339d6effdb0a8e9f03e84c2e5d08debce1f9fbde751ea715a8d3d2f1",
+          "matchesSource": true
+        },
+        {
+          "file": "douyinCoverAdapter.js",
+          "sha256": "7bbc04e099d1ed68bc8934c5c1fae9d44699c676a5cfbb638407566dc441971b",
+          "matchesSource": true
+        },
+        {
+          "file": "douyinPublisher.js",
+          "sha256": "f0d78e850a7b36b496505ef0de7d14a758dfb8726a56fd21c9646581d9f8cb64",
+          "matchesSource": true
+        },
+        {
+          "file": "icons/icon128.png",
+          "sha256": "c3caae519671bb0bcd8586164fe4cf35d1969d2351fb300954913d5d05d195e4",
+          "matchesSource": true
+        },
+        {
+          "file": "icons/icon16.png",
+          "sha256": "597605b2afe86b986d27f558b0a2d857cd96ae39ce17bedee7cc1c721ae626d9",
+          "matchesSource": true
+        },
+        {
+          "file": "icons/icon32.png",
+          "sha256": "e27464f1c2e534f02f6235bfc637bad0c5a9a99e3fedfe2708a5ac8b630696f1",
+          "matchesSource": true
+        },
+        {
+          "file": "icons/icon48.png",
+          "sha256": "b0c180b88f2c78c973c8c4f499523b634bceb8830790ee16dc855f5494ec9659",
+          "matchesSource": true
+        },
+        {
+          "file": "manifest.json",
+          "sha256": "2a4ab867f61e2610b01918062864acc35452e26ddd64f436bff72a5a0942078a",
+          "matchesSource": true
+        },
+        {
+          "file": "pageAdapter.js",
+          "sha256": "19cfd99778b8246bb39d70e0d51d09e361d4f062dcd8a7e8314631918e9a4217",
+          "matchesSource": true
+        },
+        {
+          "file": "popup.css",
+          "sha256": "00a109f530271739fef2bf940a700f3cb606ad4045c46528b7bb12fbbffbdccb",
+          "matchesSource": true
+        },
+        {
+          "file": "popup.html",
+          "sha256": "38bfc99b67f532102ab88b3e55673a58bbcbebf32f26faa13ecaffbb278b0ade",
+          "matchesSource": true
+        },
+        {
+          "file": "popup.js",
+          "sha256": "fb5d8b9e940d77a81b3c9d231f1b2e22f339cc23b62f1eec7c2d82af09e1a9fb",
+          "matchesSource": true
+        }
+      ],
+      "desktopMainFiles": [
+        {
+          "file": "/dist-electron/appMain-hAbc4mFJ.js",
+          "sha256": "c298e155ba4289519963c41706d378ce5943ed35469e50a6dc0d2fe2a776d330"
+        },
+        {
+          "file": "/dist-electron/main.js",
+          "sha256": "ee2ae526ab9e832a2c8c3310a09913e997bceb7471e2e64dd214aa785093a6c0"
+        }
+      ],
+      "versions": {
+        "desktop": "0.0.1",
+        "electron": "39.6.0",
+        "publisherManifest": "0.0.1.65535"
+      },
+      "artifactsCheckedAt": "2026-10-01T17:42:55.131Z",
+      "artifactIntegrity": {
+        "dmg": "passed hdiutil verify",
+        "zip": "passed unzip -tq"
+      }
+    },
+    {
+      "checks": {
+        "desktopTests": 324,
+        "publisherTests": 77,
+        "pnpmCheck": "passed",
+        "pnpmBuild": "passed",
+        "executionOrder": [
+          "pnpm test",
+          "pnpm check",
+          "pnpm build"
+        ]
+      },
+      "artifacts": [
+        {
+          "file": "desktop/release/GardenFlow-0.0.1-arm64.dmg",
+          "bytes": 356587169,
+          "sha256": "629c63c5035b59bf6beeacaa8b2d552ad93b1cae131578651fdedc8b5908e71e"
+        },
+        {
+          "file": "desktop/release/GardenFlow-0.0.1-arm64.zip",
+          "bytes": 363566999,
+          "sha256": "f8665503d34f20854ecc4c706fc6a7187a77daefe57897cfd28782ce61ce11c2"
+        }
+      ],
+      "publisherFiles": [
+        {
+          "file": "background.js",
+          "sha256": "31fed297bce6e2f1f3e415fce52d3e24828a5ff19b21274b1874c0068714ca23",
+          "matchesSource": true
+        },
+        {
+          "file": "douyinAdapter.js",
+          "sha256": "b9bd272c339d6effdb0a8e9f03e84c2e5d08debce1f9fbde751ea715a8d3d2f1",
+          "matchesSource": true
+        },
+        {
+          "file": "douyinCoverAdapter.js",
+          "sha256": "7f367a582ec6a394d2398cb3a7ea936426658855878ae6705226996745492aaa",
+          "matchesSource": true
+        },
+        {
+          "file": "douyinPublisher.js",
+          "sha256": "3ac419c6559f805f1638831eb943619b60af6f1baf66188fc0e8390a7b740445",
+          "matchesSource": true
+        },
+        {
+          "file": "icons/icon128.png",
+          "sha256": "c3caae519671bb0bcd8586164fe4cf35d1969d2351fb300954913d5d05d195e4",
+          "matchesSource": true
+        },
+        {
+          "file": "icons/icon16.png",
+          "sha256": "597605b2afe86b986d27f558b0a2d857cd96ae39ce17bedee7cc1c721ae626d9",
+          "matchesSource": true
+        },
+        {
+          "file": "icons/icon32.png",
+          "sha256": "e27464f1c2e534f02f6235bfc637bad0c5a9a99e3fedfe2708a5ac8b630696f1",
+          "matchesSource": true
+        },
+        {
+          "file": "icons/icon48.png",
+          "sha256": "b0c180b88f2c78c973c8c4f499523b634bceb8830790ee16dc855f5494ec9659",
+          "matchesSource": true
+        },
+        {
+          "file": "manifest.json",
+          "sha256": "2a4ab867f61e2610b01918062864acc35452e26ddd64f436bff72a5a0942078a",
+          "matchesSource": true
+        },
+        {
+          "file": "pageAdapter.js",
+          "sha256": "19cfd99778b8246bb39d70e0d51d09e361d4f062dcd8a7e8314631918e9a4217",
+          "matchesSource": true
+        },
+        {
+          "file": "popup.css",
+          "sha256": "00a109f530271739fef2bf940a700f3cb606ad4045c46528b7bb12fbbffbdccb",
+          "matchesSource": true
+        },
+        {
+          "file": "popup.html",
+          "sha256": "38bfc99b67f532102ab88b3e55673a58bbcbebf32f26faa13ecaffbb278b0ade",
+          "matchesSource": true
+        },
+        {
+          "file": "popup.js",
+          "sha256": "fb5d8b9e940d77a81b3c9d231f1b2e22f339cc23b62f1eec7c2d82af09e1a9fb",
+          "matchesSource": true
+        }
+      ],
+      "desktopMainFiles": [
+        {
+          "file": "/dist-electron/appMain-hAbc4mFJ.js",
+          "sha256": "c298e155ba4289519963c41706d378ce5943ed35469e50a6dc0d2fe2a776d330"
+        },
+        {
+          "file": "/dist-electron/main.js",
+          "sha256": "ee2ae526ab9e832a2c8c3310a09913e997bceb7471e2e64dd214aa785093a6c0"
+        }
+      ],
+      "artifactsCheckedAt": "2026-10-01T18:03:25.887Z"
+    },
+    {
+      "checks": {
+        "desktopTests": 324,
+        "publisherTests": 84,
+        "pnpmCheck": "passed",
+        "pnpmBuild": "passed",
+        "executionOrder": [
+          "pnpm test",
+          "pnpm check",
+          "pnpm build"
+        ]
+      },
+      "artifacts": [
+        {
+          "file": "desktop/release/GardenFlow-0.0.1-arm64.dmg",
+          "bytes": 356343365,
+          "sha256": "bbc28e537eb37a26d7a5676a900e9175d774dc46884ae83c3be23c592747dd86"
+        },
+        {
+          "file": "desktop/release/GardenFlow-0.0.1-arm64.zip",
+          "bytes": 363569090,
+          "sha256": "79b8397051fcc1f1c8fb890d46d9be46602c396c0519f9197d70b67e15a98a44"
+        }
+      ],
+      "publisherFiles": [
+        {
+          "file": "background.js",
+          "sha256": "31fed297bce6e2f1f3e415fce52d3e24828a5ff19b21274b1874c0068714ca23",
+          "matchesSource": true
+        },
+        {
+          "file": "douyinAdapter.js",
+          "sha256": "b9bd272c339d6effdb0a8e9f03e84c2e5d08debce1f9fbde751ea715a8d3d2f1",
+          "matchesSource": true
+        },
+        {
+          "file": "douyinCoverAdapter.js",
+          "sha256": "c5553ed8d31bbf650aba922a7e052b58d89535edbe8e630976a4f3aec527c659",
+          "matchesSource": true
+        },
+        {
+          "file": "douyinPublisher.js",
+          "sha256": "e0982aa4d517e1eda6588f610954756e1f160774371f45bb96ef317ac1704ced",
+          "matchesSource": true
+        },
+        {
+          "file": "icons/icon128.png",
+          "sha256": "c3caae519671bb0bcd8586164fe4cf35d1969d2351fb300954913d5d05d195e4",
+          "matchesSource": true
+        },
+        {
+          "file": "icons/icon16.png",
+          "sha256": "597605b2afe86b986d27f558b0a2d857cd96ae39ce17bedee7cc1c721ae626d9",
+          "matchesSource": true
+        },
+        {
+          "file": "icons/icon32.png",
+          "sha256": "e27464f1c2e534f02f6235bfc637bad0c5a9a99e3fedfe2708a5ac8b630696f1",
+          "matchesSource": true
+        },
+        {
+          "file": "icons/icon48.png",
+          "sha256": "b0c180b88f2c78c973c8c4f499523b634bceb8830790ee16dc855f5494ec9659",
+          "matchesSource": true
+        },
+        {
+          "file": "manifest.json",
+          "sha256": "2a4ab867f61e2610b01918062864acc35452e26ddd64f436bff72a5a0942078a",
+          "matchesSource": true
+        },
+        {
+          "file": "pageAdapter.js",
+          "sha256": "19cfd99778b8246bb39d70e0d51d09e361d4f062dcd8a7e8314631918e9a4217",
+          "matchesSource": true
+        },
+        {
+          "file": "popup.css",
+          "sha256": "00a109f530271739fef2bf940a700f3cb606ad4045c46528b7bb12fbbffbdccb",
+          "matchesSource": true
+        },
+        {
+          "file": "popup.html",
+          "sha256": "38bfc99b67f532102ab88b3e55673a58bbcbebf32f26faa13ecaffbb278b0ade",
+          "matchesSource": true
+        },
+        {
+          "file": "popup.js",
+          "sha256": "d9c5c3f6411ea68bca76aececf8eb0b294e8b4ce7ba2e454c09feb98104b1262",
+          "matchesSource": true
+        }
+      ],
+      "desktopMainFiles": [
+        {
+          "file": "/dist-electron/appMain-hAbc4mFJ.js",
+          "sha256": "c298e155ba4289519963c41706d378ce5943ed35469e50a6dc0d2fe2a776d330"
+        },
+        {
+          "file": "/dist-electron/main.js",
+          "sha256": "ee2ae526ab9e832a2c8c3310a09913e997bceb7471e2e64dd214aa785093a6c0"
+        }
+      ],
+      "artifactsCheckedAt": "2026-10-02T00:55:08.167Z"
+    },
+    {
+      "checks": {
+        "desktopTests": 324,
+        "publisherTests": 87,
+        "pnpmCheck": "passed",
+        "pnpmBuild": "passed",
+        "executionOrder": [
+          "pnpm test",
+          "pnpm check",
+          "pnpm build"
+        ]
+      },
+      "artifacts": [
+        {
+          "file": "desktop/release/GardenFlow-0.0.1-arm64.dmg",
+          "bytes": 356596617,
+          "sha256": "4d6910a3ca95b8780e48f753123080131f488ca2ac217491ddf890ab81ad81ef"
+        },
+        {
+          "file": "desktop/release/GardenFlow-0.0.1-arm64.zip",
+          "bytes": 363568661,
+          "sha256": "ee2aec9a2b4dd0bebed0758c08865bc61047fa537a1846407a2e55cf628ae62f"
+        }
+      ],
+      "publisherFiles": [
+        {
+          "file": "background.js",
+          "sha256": "31fed297bce6e2f1f3e415fce52d3e24828a5ff19b21274b1874c0068714ca23",
+          "matchesSource": true
+        },
+        {
+          "file": "douyinAdapter.js",
+          "sha256": "b9bd272c339d6effdb0a8e9f03e84c2e5d08debce1f9fbde751ea715a8d3d2f1",
+          "matchesSource": true
+        },
+        {
+          "file": "douyinCoverAdapter.js",
+          "sha256": "c5553ed8d31bbf650aba922a7e052b58d89535edbe8e630976a4f3aec527c659",
+          "matchesSource": true
+        },
+        {
+          "file": "douyinPublisher.js",
+          "sha256": "a05d00bd719995a8ce064b05d9fe363192a3432def9a1bd64a31c9d50fbe462d",
+          "matchesSource": true
+        },
+        {
+          "file": "icons/icon128.png",
+          "sha256": "c3caae519671bb0bcd8586164fe4cf35d1969d2351fb300954913d5d05d195e4",
+          "matchesSource": true
+        },
+        {
+          "file": "icons/icon16.png",
+          "sha256": "597605b2afe86b986d27f558b0a2d857cd96ae39ce17bedee7cc1c721ae626d9",
+          "matchesSource": true
+        },
+        {
+          "file": "icons/icon32.png",
+          "sha256": "e27464f1c2e534f02f6235bfc637bad0c5a9a99e3fedfe2708a5ac8b630696f1",
+          "matchesSource": true
+        },
+        {
+          "file": "icons/icon48.png",
+          "sha256": "b0c180b88f2c78c973c8c4f499523b634bceb8830790ee16dc855f5494ec9659",
+          "matchesSource": true
+        },
+        {
+          "file": "manifest.json",
+          "sha256": "2a4ab867f61e2610b01918062864acc35452e26ddd64f436bff72a5a0942078a",
+          "matchesSource": true
+        },
+        {
+          "file": "pageAdapter.js",
+          "sha256": "19cfd99778b8246bb39d70e0d51d09e361d4f062dcd8a7e8314631918e9a4217",
+          "matchesSource": true
+        },
+        {
+          "file": "popup.css",
+          "sha256": "00a109f530271739fef2bf940a700f3cb606ad4045c46528b7bb12fbbffbdccb",
+          "matchesSource": true
+        },
+        {
+          "file": "popup.html",
+          "sha256": "38bfc99b67f532102ab88b3e55673a58bbcbebf32f26faa13ecaffbb278b0ade",
+          "matchesSource": true
+        },
+        {
+          "file": "popup.js",
+          "sha256": "c69c483e7e657d1b87c8607d6d6426889a70d66c74e2714e795cb277f2cdbbff",
+          "matchesSource": true
+        }
+      ],
+      "desktopMainFiles": [
+        {
+          "file": "/dist-electron/appMain-BhHOoj_o.js",
+          "sha256": "fb1295c1868cd27439d0712c01584d65d369290d49060249ad40ef01c1ef5b6a"
+        },
+        {
+          "file": "/dist-electron/main.js",
+          "sha256": "f8446830b515df264cfca930d45e39afb96ee3a9dfbe2d172beb6e87e2ee4f7d"
+        }
+      ],
+      "artifactsCheckedAt": "2026-10-02T06:59:19.274Z",
+      "artifactIntegrity": {
+        "dmg": "passed hdiutil verify",
+        "zip": "passed unzip -tq"
+      }
+    }
+  ],
+  "singleCoverEditor": {
+    "observedHeader": "设置竖封面",
+    "uniqueCompleteButton": true,
+    "horizontalSwitchButtonCount": 0,
+    "fix": "save-each-single-editor-then-open-next-orientation",
+    "realRetry": "pending-close-of-current-editor",
+    "awaitsPortraitEditorClosedBeforeLandscape": true
+  },
+  "manualCloseRequested": {
+    "reason": "Chrome content screenshots remain blank and page accessibility omits current modal controls",
+    "preserveWebDraft": true
+  },
+  "latestPackageUiVerification": "passed-final-package-cold-start-same-draft-recovery-and-mp4-playback",
+  "artifacts": [
+    {
+      "file": "desktop/release/GardenFlow-0.0.1-arm64.dmg",
+      "bytes": 356611743,
+      "sha256": "c72614fc89e173e8e3257d959bd2e25cefc6270cebaea662eec92896158f9133"
+    },
+    {
+      "file": "desktop/release/GardenFlow-0.0.1-arm64.zip",
+      "bytes": 363570062,
+      "sha256": "306b3210c2d7996e2e086b422560c5d767bb334fafdff7e7d5cdcb2f31f60e4c"
+    }
+  ],
+  "publisherFiles": [
+    {
+      "file": "background.js",
+      "sha256": "31fed297bce6e2f1f3e415fce52d3e24828a5ff19b21274b1874c0068714ca23",
+      "matchesSource": true
+    },
+    {
+      "file": "douyinAdapter.js",
+      "sha256": "bce7718afb9688eee5efb4ff974a9c1870dcfd64190688b278f68e8b6163df5c",
+      "matchesSource": true
+    },
+    {
+      "file": "douyinCoverAdapter.js",
+      "sha256": "c5553ed8d31bbf650aba922a7e052b58d89535edbe8e630976a4f3aec527c659",
+      "matchesSource": true
+    },
+    {
+      "file": "douyinPublisher.js",
+      "sha256": "1bee980f66486ad66db1c3cec8b5ad5211c0342db1e16efff2251ed9bd602e05",
+      "matchesSource": true
+    },
+    {
+      "file": "icons/icon128.png",
+      "sha256": "c3caae519671bb0bcd8586164fe4cf35d1969d2351fb300954913d5d05d195e4",
+      "matchesSource": true
+    },
+    {
+      "file": "icons/icon16.png",
+      "sha256": "597605b2afe86b986d27f558b0a2d857cd96ae39ce17bedee7cc1c721ae626d9",
+      "matchesSource": true
+    },
+    {
+      "file": "icons/icon32.png",
+      "sha256": "e27464f1c2e534f02f6235bfc637bad0c5a9a99e3fedfe2708a5ac8b630696f1",
+      "matchesSource": true
+    },
+    {
+      "file": "icons/icon48.png",
+      "sha256": "b0c180b88f2c78c973c8c4f499523b634bceb8830790ee16dc855f5494ec9659",
+      "matchesSource": true
+    },
+    {
+      "file": "manifest.json",
+      "sha256": "2a4ab867f61e2610b01918062864acc35452e26ddd64f436bff72a5a0942078a",
+      "matchesSource": true
+    },
+    {
+      "file": "pageAdapter.js",
+      "sha256": "19cfd99778b8246bb39d70e0d51d09e361d4f062dcd8a7e8314631918e9a4217",
+      "matchesSource": true
+    },
+    {
+      "file": "popup.css",
+      "sha256": "00a109f530271739fef2bf940a700f3cb606ad4045c46528b7bb12fbbffbdccb",
+      "matchesSource": true
+    },
+    {
+      "file": "popup.html",
+      "sha256": "38bfc99b67f532102ab88b3e55673a58bbcbebf32f26faa13ecaffbb278b0ade",
+      "matchesSource": true
+    },
+    {
+      "file": "popup.js",
+      "sha256": "c69c483e7e657d1b87c8607d6d6426889a70d66c74e2714e795cb277f2cdbbff",
+      "matchesSource": true
+    }
+  ],
+  "desktopMainFiles": [
+    {
+      "file": "/dist-electron/appMain-DNlfuyGc.js",
+      "sha256": "23f553014817e6d6bc708021ada5e6fd9c794e408239ba587afe9e274d3cd61f"
+    },
+    {
+      "file": "/dist-electron/main.js",
+      "sha256": "a426cc6881d761696a3e5e0c4a4e1cf9b27e2a1f201f54f85da5d0a717e3259c"
+    }
+  ],
+  "artifactsCheckedAt": "2026-10-02T07:30:40.295Z",
+  "latestQaDatabaseReadback": {
+    "status": "awaiting_confirmation",
+    "publish_status": "not_submitted",
+    "reset_status": "not_started",
+    "error_code": "",
+    "error_message": "",
+    "confirmed_at": null,
+    "submitted_at": null
+  },
+  "publicationTaskCount": 2,
+  "artifactIntegrity": {
+    "dmg": "passed hdiutil verify",
+    "zip": "passed unzip -tq"
+  },
+  "verifiedPackageColdStart": {
+    "dmgSha256": "c72614fc89e173e8e3257d959bd2e25cefc6270cebaea662eec92896158f9133",
+    "rendererFromPackagedAsar": true,
+    "previousProcessExitedThroughMenu": true,
+    "qaRevision": 5,
+    "firstClipFrames": 190,
+    "subtitle": "安装包验收｜独立字幕",
+    "voiceoverVolumePercent": 100,
+    "bgmVolumePercent": 20,
+    "sameQaJobAndBothCoverPreviewsRestored": true,
+    "accountTail": "8237",
+    "publisherTestsOfReloadedSource": 89,
+    "screenshotShownInConversation": true,
+    "exportedAgain": false,
+    "additionalListeningClaim": false,
+    "staleErrorClearedThroughStageDraft": true,
+    "mp4PlayedToEndSeconds": 27.3493
+  },
+  "actualReadbackTrials": [
+    {
+      "publisherTests": 77,
+      "singleEditorsSaved": true,
+      "result": "portrait-readback-mismatch",
+      "publishClicked": false
+    },
+    {
+      "publisherTests": 77,
+      "highQualitySamplingPatch": true,
+      "orientation": "portrait",
+      "actualWidth": 1074,
+      "actualHeight": 1433,
+      "meanAbsoluteError": 7.28,
+      "largeDeltaFraction": 0.0576,
+      "result": "blocked",
+      "publishClicked": false
+    },
+    {
+      "publisherTests": 79,
+      "boundedCenterRoundingPatch": true,
+      "portraitReadbackPassed": true,
+      "orientation": "landscape",
+      "actualWidth": 1435,
+      "actualHeight": 1075,
+      "unroundedMeanAbsoluteError": 8.59,
+      "unroundedLargeDeltaFraction": 0.0863,
+      "result": "landscape-readback-mismatch",
+      "publishClicked": false
+    },
+    {
+      "publisherTests": 83,
+      "result": "editor-readiness-timeout-before-save",
+      "publishClicked": false
+    },
+    {
+      "publisherTests": 84,
+      "bothInitialStrictReadbacksPassed": true,
+      "result": "final-editor-readiness-timeout",
+      "errorCode": "EDITOR_NOT_READY",
+      "publishClicked": false
+    },
+    {
+      "publisherTests": 85,
+      "bothInitialStrictReadbacksPassed": true,
+      "result": "final-editor-readiness-timeout",
+      "observedFailedGate": "landscape-cover-snapshot-changed",
+      "changedFields": [
+        "sourceDigest",
+        "pixelDigest"
+      ],
+      "mediaTitleDescriptionMatched": true,
+      "uploadBusy": false,
+      "publishButtonCount": 1,
+      "publishButtonEnabled": true,
+      "validationErrorCount": 0,
+      "publishClicked": false
+    },
+    {
+      "publisherTests": 87,
+      "bothInitialStrictReadbacksPassed": true,
+      "result": "final-editor-readiness-timeout",
+      "errorCode": "EDITOR_NOT_READY",
+      "popupAllGatesMatched": true,
+      "ownerStatusReadThroughDevTools": "preparing",
+      "publishClicked": false,
+      "confirmedAt": null,
+      "submittedAt": null
+    },
+    {
+      "publisherTests": 88,
+      "desktopDmgSha256": "4d6910a3ca95b8780e48f753123080131f488ca2ac217491ddf890ab81ad81ef",
+      "result": "awaiting_confirmation",
+      "bothStrictReadbacksPassed": true,
+      "publishStatus": "not_submitted",
+      "confirmedAt": null,
+      "submittedAt": null,
+      "publishClicked": false,
+      "staleErrorRetained": "EDITOR_NOT_READY",
+      "completedAtEpochMs": 1790925510275
+    },
+    {
+      "publisherTests": 89,
+      "desktopDmgSha256": "c72614fc89e173e8e3257d959bd2e25cefc6270cebaea662eec92896158f9133",
+      "result": "awaiting_confirmation",
+      "action": "上传到页面供核对（不发布）",
+      "sameJobRecoveredAfterPackageAndPluginRestart": true,
+      "oldErrorCleared": true,
+      "publishStatus": "not_submitted",
+      "confirmedAt": null,
+      "submittedAt": null,
+      "publishClicked": false
+    }
+  ],
+  "jobCount": 2,
+  "integrity": {
+    "dmg": "passed-hdiutil-verify",
+    "zip": "passed-unzip-tq",
+    "publisherFileCount": 13
+  },
+  "verifiedPackageColdStarts": [
+    {
+      "dmgSha256": "629c63c5035b59bf6beeacaa8b2d552ad93b1cae131578651fdedc8b5908e71e",
+      "rendererFromPackagedAsar": true,
+      "previousProcessExitedThroughMenu": true,
+      "qaRevision": 5,
+      "firstClipFrames": 190,
+      "subtitle": "安装包验收｜独立字幕",
+      "voiceoverVolumePercent": 100,
+      "bgmVolumePercent": 20,
+      "sameQaJobAndBothCoverPreviewsRestored": true,
+      "accountTail": "8237",
+      "publisherTestsOfReloadedSource": 77,
+      "doesNotVerifyLaterPackage": true
+    },
+    {
+      "dmgSha256": "bbc28e537eb37a26d7a5676a900e9175d774dc46884ae83c3be23c592747dd86",
+      "rendererFromPackagedAsar": true,
+      "previousProcessExitedThroughMenu": true,
+      "qaRevision": 5,
+      "firstClipFrames": 190,
+      "subtitle": "安装包验收｜独立字幕",
+      "voiceoverVolumePercent": 100,
+      "bgmVolumePercent": 20,
+      "sameQaJobAndBothCoverPreviewsRestored": true,
+      "accountTail": "8237",
+      "publisherTestsOfReloadedSource": 84,
+      "screenshotShownInConversation": true,
+      "exportedAgain": false,
+      "additionalListeningClaim": false
+    },
+    {
+      "dmgSha256": "4d6910a3ca95b8780e48f753123080131f488ca2ac217491ddf890ab81ad81ef",
+      "rendererFromPackagedAsar": true,
+      "previousProcessExitedThroughMenu": true,
+      "qaRevision": 5,
+      "firstClipFrames": 190,
+      "subtitle": "安装包验收｜独立字幕",
+      "voiceoverVolumePercent": 100,
+      "bgmVolumePercent": 20,
+      "sameQaJobAndBothCoverPreviewsRestored": true,
+      "accountTail": "8237",
+      "publisherTestsOfReloadedSource": 87,
+      "screenshotShownInConversation": true,
+      "exportedAgain": false,
+      "additionalListeningClaim": false,
+      "mp4PlayedToEndSeconds": 27.3493
+    },
+    {
+      "dmgSha256": "c72614fc89e173e8e3257d959bd2e25cefc6270cebaea662eec92896158f9133",
+      "rendererFromPackagedAsar": true,
+      "previousProcessExitedThroughMenu": true,
+      "qaRevision": 5,
+      "firstClipFrames": 190,
+      "subtitle": "安装包验收｜独立字幕",
+      "voiceoverVolumePercent": 100,
+      "bgmVolumePercent": 20,
+      "sameQaJobAndBothCoverPreviewsRestored": true,
+      "accountTail": "8237",
+      "publisherTestsOfReloadedSource": 89,
+      "screenshotShownInConversation": true,
+      "exportedAgain": false,
+      "additionalListeningClaim": false,
+      "staleErrorClearedThroughStageDraft": true,
+      "mp4PlayedToEndSeconds": 27.3493
+    }
+  ],
+  "publisherReload": {
+    "publisherTestsOfLoadedSource": 89,
+    "source": "PublishPlugin/dist/extension",
+    "invokedReloadInInstalledExtensionDetails": true,
+    "popupVerifiedOwnedMediaTitleDescriptionAndCovers": true
+  },
+  "recordUpdatedAt": "2026-10-02T07:33:33.198154+00:00",
+  "webDraftCorrection": {
+    "prefixRemovedThroughUi": "#############",
+    "remainingCopyMatchedConfirmationCard": true,
+    "noNavigationDiscardOrPublication": true
+  },
+  "realPublicationCountRecheck": {
+    "checkedAt": "2026-10-02T07:28:15.355856+00:00",
+    "readThrough": "native-cua-creator-content-manage",
+    "workCount": 1,
+    "title": "原料透明的成猫粮｜伟嘉海洋鱼夹心10kg",
+    "duration": "00:27",
+    "platformPublishedAt": "2026年09月30日 16:43",
+    "status": "已发布",
+    "noMoreWorksShown": true,
+    "qaDraftPreservedInSeparateTab": true,
+    "additionalPublication": false,
+    "screenshotShownInConversation": true
+  }
+}

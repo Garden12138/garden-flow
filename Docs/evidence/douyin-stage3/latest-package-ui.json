@@ -1,0 +1,62 @@
+{
+  "checkedOn": "2026-10-01",
+  "source": "CUA accessibility observations of final unsigned package and real Chrome publisher extension, followed by read-only SQLite verification",
+  "desktopVersion": "0.0.1",
+  "publisherVersion": "0.0.1.65535",
+  "dmgSha256": "62ba45a0c472e852f5f3b4d74880a381dfdc647939209304d3a9cbb666e75308",
+  "rendererLocation": "Packaged app.asar/dist/index.html",
+  "coldStart": "passed after user unlocked desktop",
+  "qaProjectId": "video_edit_v2_1790838286888_da01b48d",
+  "qaVersionId": "dyver_01a10592-35fb-4ebe-a89b-67705cd52a24",
+  "qaRestoredRevision": 3,
+  "qaRestoredFirstSceneFrames": 190,
+  "qaRestoredSubtitle": "安装包验收｜独立字幕",
+  "qaTimelineDurationMs": 27333,
+  "voiceoverVolumePercent": 100,
+  "bgmVolumePercent": 20,
+  "coverBlock": {
+    "savedImageSelectionRestored": true,
+    "warningVisible": true,
+    "prepareDisabledWithBrowserBound": true,
+    "restoredDefaultCoverThroughUi": true,
+    "qaRevisionAfterRestore": 4
+  },
+  "retainedDraftProtection": {
+    "accountIdTail": "8237",
+    "browser": "chrome",
+    "pluginReloadObserved": true,
+    "pageStateReadByDesktop": "draft",
+    "detail": "发布页已有草稿，不会覆盖",
+    "defaultCoverPrepareAttempt": "blocked with the same existing-draft message",
+    "newDesktopPublishJobs": 0,
+    "newUploadOrSubmission": false,
+    "temporaryWebDraftDiscarded": false
+  },
+  "publishedProject": {
+    "projectId": "video_edit_v2_1790749371844_b74f409e",
+    "revision": 2,
+    "firstSceneFrames": 180,
+    "subtitle": "伟嘉成猫全价猫粮 海洋鱼味10kg",
+    "timelineDurationMs": 27000,
+    "jobStatus": "completed",
+    "publishStatus": "published",
+    "resetStatus": "ready",
+    "resetStatusMeaning": "Persisted result of the original completed job; current browser contains the later unpublished QA draft.",
+    "mp4Playback": {
+      "mediaAssetId": "media_1790749572738_d2fc7b16",
+      "playButtonChangedToPause": true,
+      "elapsedSecondsAtEnd": 27.05067,
+      "elapsedTimeReadback": "0:27",
+      "playButtonRestoredAtEnd": true,
+      "lastFrame": "Cat eating, visible in the final packaged confirmation card screenshot",
+      "screenshotEvidence": "Current CUA screenshot in the acceptance conversation; no independent screenshot file saved"
+    }
+  },
+  "totalDesktopPublishJobs": 1,
+  "qaDesktopPublishJobs": 0,
+  "manualListening": "No new human listening result; existing source listening confirmation remains scoped to that source.",
+  "limitations": [
+    "Custom horizontal/vertical image-cover application and readback remain unimplemented.",
+    "Independent screenshot files were not saved; final playback screenshot remains in the acceptance conversation and accessibility evidence is recorded here."
+  ]
+}

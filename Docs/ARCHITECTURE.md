@@ -28,7 +28,9 @@ GardenFlow 是本地优先的 Electron 桌面应用，配套两个 Chromium 扩�
 - `desktop/electron/builtin-skills/`：随应用分发的系统 Skill。
 - `desktop/src/vendor/freecut/`：FreeCut 编辑器与工程格式集成，保留独立许可证和 attribution。
 - `Plugin/`：采集与浏览器控制扩展。
-- `PublishPlugin/`：小红书发布辅助扩展。
+- `PublishPlugin/`：小红书与抖音创作者页面的发布辅助扩展，按平台能力和页面归属分别校验。
+- `desktop/shared/platformPublisher.ts`：公共发布请求、目标和状态契约；保留小红书旧请求格式，抖音使用独立版本与账号绑定。自选图片封面携带源图及横／竖生成文件的哈希快照，插件通过 `douyin.image-cover.v1` 显式声明能力；仅上传供核对与最终提交使用不同结构化阶段。
+- 抖音封面适配器按可见上传器及已有上传图片状态选择原始／替换输入，排除 AI 参考图输入。输入文件须精确匹配哈希；保存前核对加载状态，保存后独立核对图片画面。最终准备期间预览身份再次变化时，重新用原上传文件校验两张图片，再由新页面快照复核；按横、竖方向比较精确签名，不依赖浏览器序列化后的对象字段顺序。媒体须保持原上传身份，`preparing` 状态不可提交。诊断只保留方向、尺寸、数值误差、变化字段及检查项，不保存签名 URL、完整校验文案或图片数据。
 - `branding/`：当前品牌身份和视觉源文件。
 - `scripts/`：生成一致性、品牌与文档检查。
 
@@ -61,6 +63,8 @@ schema 升级必须：
 - 配套 Node.js 测试。
 
 工作空间内部目录为 `.gardenflow`。本地媒体通过 `gardenflow-asset://` 访问，主进程会规范化路径并验证允许根目录。
+
+商品视频导出使用随安装包分发的 Remotion 页面、平台合成器和独立 Node 渲染运行时。构建时按当前锁定依赖复制完整渲染器依赖树，去除 pnpm 链接并保留嵌套版本；安装包从 `Resources/remotion-renderer-runtime` 加载，避免依赖桌面源码的 `node_modules`。开发环境仍使用已安装的依赖。
 
 ## 5. AI 与工具运行时
 

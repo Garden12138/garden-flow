@@ -8,7 +8,8 @@ import * as adapter from '../src/pageAdapter.js';
 // function declarations called on the selected closed-shadow button. Only
 // browser transport/DOM/platform feedback are isolated, no real posting.
 const source = (await readFile(new URL('../src/background.js', import.meta.url), 'utf8'))
-  .replace(/^import \{[\s\S]*?\} from '\.\/pageAdapter\.js';/, '');
+  .replace(/^import \{[\s\S]*?\} from '\.\/pageAdapter\.js';/, '')
+  .replace(/^import \{[^\n]+\} from '\.\/douyinPublisher\.js';/m, '');
 
 function fixture(options = {}) {
   const request = { protocolVersion: 1, jobId: 'job1', sessionId: 's1', projectPath: '/fixture/note', revision: 1,

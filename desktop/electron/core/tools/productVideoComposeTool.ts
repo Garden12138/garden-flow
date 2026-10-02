@@ -49,9 +49,10 @@ export class ProductVideoComposeTool extends DeclarativeTool<typeof ProductVideo
 
     getConfirmationDetails(params: ProductVideoComposeParams): ToolConfirmationDetails {
         const voiceover = getProductVideoVoiceoverConfig();
-        const voiceoverCount = params.scenes.filter((scene) => String(scene.overlayText || '').trim()).length;
+        const voiceoverEnabled = params.voiceoverEnabled !== false;
+        const voiceoverCount = voiceoverEnabled ? params.scenes.filter((scene) => String(scene.overlayText || '').trim()).length : 0;
         const sceneLines = params.scenes.map((scene, index) => (
-            `${index + 1}. ${scene.title} · ${(scene.durationMs / 1000).toFixed(1)}s · ${scene.source === 'ai-motion' ? 'AI 动效' : '原始素材'}${scene.overlayText ? ` · 旁白：${scene.overlayText}` : ''}`
+            `${index + 1}. ${scene.title} · ${(scene.durationMs / 1000).toFixed(1)}s · ${scene.source === 'ai-motion' ? 'AI 动效' : '原始素材'}${scene.overlayText ? ` · ${voiceoverEnabled ? '旁白' : '文字'}：${scene.overlayText}` : ''}`
         ));
         return {
             type: 'info',
@@ -59,11 +60,13 @@ export class ProductVideoComposeTool extends DeclarativeTool<typeof ProductVideo
             description: [
                 `${params.canvas.width}×${params.canvas.height} · ${params.canvas.fps}fps · ${(params.durationMs / 1000).toFixed(1)}s`,
                 `AI 动效镜头：${params.scenes.filter((scene) => scene.source === 'ai-motion').length}`,
-                `旁白任务：${voiceover.configured ? voiceoverCount : 0} 段（${voiceover.configured ? `${voiceover.model} · ${voiceover.voiceId}` : '语音服务未配置，工程仍可创建'}）`,
+                `旁白任务：${voiceover.configured ? voiceoverCount : 0} 段（${!voiceoverEnabled ? '已关闭自动旁白，保留画面文字' : voiceover.configured ? `${voiceover.model} · ${voiceover.voiceId}` : '语音服务未配置，工程仍可创建'}）`,
                 '',
                 ...sceneLines,
             ].join('\n'),
-            impact: '确认后会复制商品素材、创建可编辑工程，并为 AI 动效镜头及已配置的逐镜头旁白消耗模型额度。',
+            impact: params.scenes.some((scene) => scene.source === 'ai-motion') || (voiceover.configured && voiceoverCount > 0)
+                ? '确认后会复制商品素材、创建可编辑工程，并提交已选的 AI 动效或旁白任务，消耗模型额度。'
+                : '确认后会复制商品素材、创建可编辑工程，不会自动提交视频或旁白生成任务。',
             requiresUserAcknowledgement: true,
         };
     }

@@ -1,0 +1,53 @@
+{
+  "checkedAt": "2026-10-01",
+  "scope": "custom-image-cover-followup",
+  "sourceAssetId": "asset_1790235933277_14a6824e",
+  "qaProjectId": "video_edit_v2_1790838286888_da01b48d",
+  "qaVersionId": "dyver_01a10592-35fb-4ebe-a89b-67705cd52a24",
+  "qaRevision": 5,
+  "sourceSha256": "5a48de4a9188bfa575e5406947b4e9be42a256b4148b5ac8b84ed804f9ec5036",
+  "files": [
+    {
+      "orientation": "portrait",
+      "width": 1080,
+      "height": 1440,
+      "sha256": "fb76311d2b3d3d158badba405d34a4799decd6ae81ec2f5bdef5e0e379fc6259"
+    },
+    {
+      "orientation": "landscape",
+      "width": 1440,
+      "height": 1080,
+      "sha256": "871cabbcd2d6f1979445bceb19aeaae0b09909c4479a9f675c6ba9323638f667"
+    }
+  ],
+  "actualPage": {
+    "draftTitle": "封面流程验收副本｜不发布",
+    "manualUploadAndSave": "passed-both-orientations",
+    "reloadedPublisherPixelReadback": {
+      "portrait": true,
+      "landscape": true
+    },
+    "accountTail": "8237",
+    "publishClicked": false,
+    "fullAutomaticUpload": "pending-clean-upload-page"
+  },
+  "packagedUi": {
+    "renderer": "packaged-asar",
+    "draftReopened": true,
+    "independentFrames": 190,
+    "coverChoiceSavedRevision": 5,
+    "cropPreviewShown": true,
+    "generatedFilesMatchManualUpload": true,
+    "coverCapabilityRecognized": true,
+    "prepareExistingDraftBlocked": true,
+    "qaPublishJobCount": 0,
+    "existingCompletedPublishJobCount": 1,
+    "buildBoundary": "Final build f100f30b…38a1bf; earlier full UI build preserved in custom-cover-ui-build.json",
+    "finalColdStartRestoredRevision": 5,
+    "finalCoverSelectionRestored": true,
+    "finalCropPreviewRestored": true,
+    "dmgSha256": "f100f30b8155000fd0a2a1c23a1f848e1158328fcbe7d0f60fd97d16a638a1bf",
+    "finalPublisherReloaded": true
+  },
+  "pendingApproval": "Leave and discard only the known temporary web QA draft before testing a new app-owned upload. Preserve local project, media and already-published work."
+}

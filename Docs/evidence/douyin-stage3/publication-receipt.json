@@ -1,0 +1,25 @@
+{
+  "id": "douyin_publish_dfb19d67-6473-440a-a542-3d39e245db68",
+  "version_id": "dyver_47b2844a-3964-429a-b74d-4451859cc5ca",
+  "status": "completed",
+  "publish_status": "published",
+  "reset_status": "ready",
+  "published_at": 1790759533369,
+  "completed_at": 1790759533393,
+  "publishedReview": {
+    "kind": "user-verified-published",
+    "reviewedAt": 1790760118348,
+    "title": "原料透明的成猫粮｜伟嘉海洋鱼夹心10kg",
+    "accountIdTail": "8237"
+  },
+  "checkedAt": "2026-10-01T05:44:17.118473+00:00",
+  "platformObservation": {
+    "status": "已发布",
+    "timestamp": "2026-09-30 16:43",
+    "workCount": 1,
+    "durationSeconds": 27,
+    "source": "Chrome creator works management inspected through CUA",
+    "automaticReceipt": false
+  },
+  "localPublishedAtMeaning": "Time of manual verification, not the platform publication timestamp."
+}

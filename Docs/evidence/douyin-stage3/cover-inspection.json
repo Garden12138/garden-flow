@@ -1,0 +1,27 @@
+{
+  "checkedOn": "2026-10-01",
+  "source": "Real creator page accessibility observations through CUA",
+  "accountTail": "8237",
+  "projectId": "video_edit_v2_1790838286888_da01b48d",
+  "mediaAssetId": "media_1790839250576_2e5b95d0",
+  "temporaryPageTitle": "封面流程验收副本｜不发布",
+  "observedControls": [
+    "竖封面3:4",
+    "横封面4:3",
+    "上传封面",
+    "完成",
+    "设置横封面",
+    "竖封面预览（3:4）"
+  ],
+  "coverFileSelected": false,
+  "publishClicked": false,
+  "returnedToVideoUploadPage": true,
+  "uploadPageState": "Upload controls visible; page retains a continue-editing reminder for the temporary unpublished QA video. No draft was discarded.",
+  "newDesktopPublishJobs": 0,
+  "desktopJobRecheck": "Read-only SQLite verification: one completed/published/ready job total; zero jobs for the QA project.",
+  "acceptance": "Controls inspected only; custom image cover application and readback not verified.",
+  "limitations": [
+    "ScreenCaptureKit intermittently returned -3811.",
+    "Browser window changes interrupted interaction; no unrelated page was edited."
+  ]
+}

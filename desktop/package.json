@@ -72,6 +72,10 @@
       {
         "from": ".remotion-compositor",
         "to": "remotion-compositor"
+      },
+      {
+        "from": ".remotion-renderer-runtime",
+        "to": "remotion-renderer-runtime"
       }
     ],
     "files": [

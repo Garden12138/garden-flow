@@ -165,7 +165,7 @@ async function submitSceneVoiceoverUnlocked(input: {
     let project = await getVideoEditorV2Project(input.projectId);
     const scene = project?.productVideo?.scenes.find((item) => item.id === input.sceneId);
     if (!project?.productVideo || !scene) throw new Error('商品视频分镜不存在');
-    if (input.automatic && !project.productVideo.voiceoverAutoApprovedAt) return project;
+    if (input.automatic && (project.productVideo.proposal.voiceoverEnabled === false || !project.productVideo.voiceoverAutoApprovedAt)) return project;
     const narrationText = String(scene.narrationText || '').trim();
     if (!narrationText) throw new Error('旁白文案为空，请先编辑文案。');
     const currentHash = textHash(narrationText);
@@ -249,7 +249,7 @@ export function submitProductVideoSceneVoiceover(input: {
 
 export async function submitApprovedProductVideoVoiceovers(projectId: string): Promise<void> {
     const project = await getVideoEditorV2Project(projectId);
-    if (!project?.productVideo) return;
+    if (!project?.productVideo || project.productVideo.proposal.voiceoverEnabled === false) return;
     await Promise.all(project.productVideo.scenes
         .filter((scene) => String(scene.narrationText || '').trim())
         .map((scene) => submitProductVideoSceneVoiceover({ projectId, sceneId: scene.id, automatic: true })));

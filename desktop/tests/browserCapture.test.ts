@@ -355,7 +355,7 @@ test('Desktop Bridge authenticates token and origin, enforces registration and a
             origin: XHS_PUBLISHER_EXTENSION_ORIGIN,
             hostInstanceId: 'publisher-test-host',
         });
-        assert.deepEqual(publisherHello.result?.acceptedCapabilities, [XHS_PUBLISHER_CAPABILITY, 'extension.register']);
+        assert.deepEqual(publisherHello.result?.acceptedCapabilities, [XHS_PUBLISHER_CAPABILITY, 'douyin.publish.v1', 'douyin.image-cover.v1', 'extension.register']);
         const publisherRegistration = await publisherClient.request('extension.register', {
             extensionId: XHS_PUBLISHER_EXTENSION_ID,
             extensionInstanceId: 'publisher-test-instance',
@@ -365,6 +365,7 @@ test('Desktop Bridge authenticates token and origin, enforces registration and a
             browser: 'chrome',
         });
         assert.equal(publisherRegistration.result?.extensionKind, 'xhs-publisher');
+        assert.deepEqual(publisherRegistration.result?.acceptedCapabilities, [XHS_PUBLISHER_CAPABILITY, 'extension.register']);
         const publisherIngest = await publisherClient.request('knowledge.ingestEntry', { operationId: 'publisher-op', payload: {} });
         assert.equal(publisherIngest.error?.data?.code, 'CAPABILITY_NOT_ALLOWED');
         await assert.rejects(

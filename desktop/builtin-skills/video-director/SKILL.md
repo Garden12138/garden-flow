@@ -46,6 +46,7 @@ Whenever the current turn contains a validated `@商品` reference and the user 
 6. Build one complete proposal. Defaults are 1080×1920, 30fps, 15 seconds, five scenes. Read the structured `<product_video_capabilities>` block: when `aiMotion.available` is true, default to two `ai-motion` scenes and three `product-asset` scenes; when false, use five `product-asset` scenes and no AI video calls. Explicit user requirements override these defaults.
 7. Every scene must reference real asset IDs from that product, and its title/prompt must match the actual referenced image. Show the actual thumbnails, scene duration, screen text, material type, fit mode, motion preset, and AI generation prompt before or as part of submitting the proposal.
 8. Keep all screen copy on the text track. AI generation prompts must explicitly request clean imagery without baked-in text, captions, prices, logos added by the model, or watermarks.
+   Set the structured proposal field `voiceoverEnabled: false` when the user requests no narration or a silent video. Keep `overlayText` for subtitles; do not remove screen text to suppress narration. Otherwise use `voiceoverEnabled: true` (legacy proposals without this field keep the existing narration default). The confirmation card must show zero speech tasks when disabled. The user can add narration manually in the editor later.
 9. Put every product reference from the current turn's `explicitProductRefs` into `referencedProductIds`; the runtime will reject the proposal unless the user selected exactly one product and both `productId` and `productUpdatedAt` match. Submit the full proposal once through `product_video_compose`. This tool owns the human confirmation gate. Words such as “确认”, “可以”, or “继续” in a chat message never bypass the tool confirmation.
 10. A cancellation creates no project and submits no model task. Continue revising the proposal in chat, then resubmit it with the same `proposalId` for the same logical proposal or a new ID for a materially new proposal.
 11. After approval, the tool creates the durable Video Editor V2 product-video project, snapshots source assets, generates only the approved reference-guided silent AI clips when configured (zero for a pure-image proposal), and returns a `video-project://<projectId>` link. Do not separately call `video.generate` for those scenes.
@@ -65,6 +66,7 @@ Example proposal shape:
   "title": "商品名｜15 秒商品视频",
   "canvas": { "width": 1080, "height": 1920, "fps": 30, "aspectRatio": "9:16" },
   "durationMs": 15000,
+  "voiceoverEnabled": true,
   "scenes": [
     {
       "id": "scene-1",

@@ -1,0 +1,22 @@
+{
+  "checkedOn": "2026-10-01",
+  "source": "CUA accessibility observations of the unsigned packaged GardenFlow app and read-only SQLite verification",
+  "projectId": "video_edit_v2_1790838286888_da01b48d",
+  "versionId": "dyver_01a10592-35fb-4ebe-a89b-67705cd52a24",
+  "revisionBefore": 2,
+  "revisionAfter": 3,
+  "coverAssetId": "asset_1790235933277_14a6824e",
+  "uiObservations": [
+    "Selected the first product image in the QA copy cover selector.",
+    "Editor displayed the unsupported horizontal/vertical cover warning.",
+    "Saved the independent copy; revision became 3.",
+    "Publication panel displayed the selected material and automatic publication blocked warning.",
+    "Prepare current version button was disabled. Browser binding was also unavailable at that moment."
+  ],
+  "publishedVersionRevision": 2,
+  "publishedVersionCover": "default",
+  "totalDesktopPublishJobs": 1,
+  "qaDesktopPublishJobs": 0,
+  "buildBoundary": "Original observations belong to the cover blocking package before the retained-draft probe fix. Subsequent final-package cold-start restoration, blocking with a bound browser, and restoring the default cover are recorded separately in latest-package-ui.json.",
+  "acceptance": "Cover selection persistence and UI warning verified. Main-process and plugin upload/submit blocking verified separately by integration tests. Web cover application remains unimplemented."
+}

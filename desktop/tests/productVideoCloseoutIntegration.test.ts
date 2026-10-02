@@ -7,6 +7,44 @@ import { createProductVideoVerificationPng } from '../electron/core/productVideo
 import { buildVideoEditorV2RemotionComposition } from '../shared/videoAutoEditRemotion.ts';
 const picture = () => `data:image/png;base64,${createProductVideoVerificationPng('GF-ABC123DEF456').toString('base64')}`;
 
+test('silent approval preserves subtitles and submits no speech even with configured TTS or after restart', async (t) => {
+    const h = await productVideoHarness(); t.after(() => h.close());
+    h.state.settings = { tts_endpoint: 'https://tts.invalid/v1', tts_api_key: 'fixture', tts_model: 'tts-1' };
+    h.state.audio = sineWav(1);
+    const bundle = await h.store.upsertProduct({ name: '无旁白商品', images: [{ dataUrl: picture() }] });
+    const product = await h.store.getProductCreativeReference(bundle.product.id);
+    const proposal = { ...makeProposal(product), voiceoverEnabled: false };
+    const details = new h.api.ProductVideoComposeTool().getConfirmationDetails(proposal);
+    assert.match(details.description, /旁白任务：0 段（已关闭自动旁白/);
+    assert.match(details.description, /文字：商品实拍 1/);
+    await h.approveFixture(proposal);
+    const result = await h.api.resolveProductVideoApproval('approval-1', true);
+    assert.equal(result.success, true, result.error);
+    assert.equal((await h.api.resolveProductVideoApproval('approval-1', true)).projectId, result.projectId);
+    let project = await h.api.getVideoEditorV2Project(result.projectId);
+    assert.equal(project.productVideo.proposal.voiceoverEnabled, false);
+    assert.equal(project.productVideo.voiceoverAutoApprovedAt, undefined);
+    assert.ok(project.productVideo.scenes.every((scene: any) => scene.narrationText === '' && scene.voiceoverStatus === 'not-required'));
+    assert.equal(project.timeline.tracks.find((track: any) => track.kind === 'subtitle').clips.length, 5);
+    h.restart();
+    await h.api.submitApprovedProductVideoVoiceovers(project.id);
+    project = await h.api.reconcileProductVideoVoiceoverProject(project.id);
+    assert.equal(project.productVideo.proposal.voiceoverEnabled, false);
+    assert.equal(h.state.ttsCalls + h.state.videoCalls, 0);
+    assert.equal((await new h.api.MediaGenerationJobRegistry().listJobs({ source: 'product-video-voiceover' })).items.length, 0);
+    const output = await h.api.renderVideoEditorV2Project({ projectId: project.id, renderVideo: false });
+    await fs.access(output.compositionPath);
+    const composition = buildVideoEditorV2RemotionComposition(project);
+    assert.equal(composition.scenes.filter((scene: any) => scene.id.startsWith('voiceover_')).length, 0);
+    // Explicit editor actions may add narration without re-authorizing automatic submission.
+    await h.api.applyProductVideoEditCommand({ projectId: project.id, command: { type: 'scene.narration-text', sceneId: 'scene-0', text: '手动添加的旁白' } });
+    await h.api.submitApprovedProductVideoVoiceovers(project.id);
+    assert.equal(h.state.ttsCalls, 0);
+    await h.api.submitProductVideoSceneVoiceover({ projectId: project.id, sceneId: 'scene-0' });
+    await waitForVoiceovers(h.api, project.id);
+    assert.equal(h.state.ttsCalls, 1);
+});
+
 test('real SQLite approvals invalidate immediately, recover on load and never authorize old proposals', async (t) => {
     const h = await productVideoHarness(); t.after(() => h.close());
     const bundle = await h.store.upsertProduct({ name: '测试商品', images: [{ dataUrl: picture() }] });

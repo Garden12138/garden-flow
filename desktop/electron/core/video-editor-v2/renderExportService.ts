@@ -158,7 +158,10 @@ async function renderRemotionComposition(input: {
     });
     await fs.cp(findRemotionBundleDirectory(), renderDir, { recursive: true });
     const stagedComposition = await stageRemotionAssets(input.project.assets, input.composition, renderDir);
-    const { renderMedia, selectComposition } = createRequire(import.meta.url)('@remotion/renderer') as typeof import('@remotion/renderer');
+    const rendererPath = app.isPackaged
+      ? path.join(process.resourcesPath, 'remotion-renderer-runtime', 'node_modules', '@remotion', 'renderer', 'dist', 'index.js')
+      : '@remotion/renderer';
+    const { renderMedia, selectComposition } = createRequire(import.meta.url)(rendererPath) as typeof import('@remotion/renderer');
     const inputProps = { composition: stagedComposition, runtime: 'render' as const };
     const browserExecutable = findInstalledChrome();
     const binariesDirectory = findRemotionCompositorDirectory();

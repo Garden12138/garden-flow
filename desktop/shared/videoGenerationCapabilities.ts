@@ -43,6 +43,12 @@ export type VideoModelRoute = {
 const ALL_ASPECT_RATIOS: VideoAspectRatio[] = ['16:9', '9:16'];
 const ALL_RESOLUTIONS: VideoResolution[] = ['720p', '1080p'];
 
+export function assertVideoGenerationEnabled(settings: Record<string, unknown>): void {
+    if (settings.video_generation_enabled === false) {
+        throw Object.assign(new Error('视频生成已关闭，请在设置的视频服务中启用'), { code: 'VIDEO_GENERATION_DISABLED' });
+    }
+}
+
 function stringList(value: unknown): string[] {
     const candidates = Array.isArray(value)
         ? value
@@ -237,6 +243,7 @@ export function getVideoModelCapabilities(model: string, endpoint = '', preset?:
 }
 
 export function buildVideoModelRoutes(settings: Record<string, unknown>): VideoModelRoute[] {
+    if (settings.video_generation_enabled === false) return [];
     const providers = parseVideoProviderConfigs(settings);
     const activeProviderId = String(settings.active_video_provider_id || '').trim();
     const orderedProviders = [...providers].sort((left, right) => (

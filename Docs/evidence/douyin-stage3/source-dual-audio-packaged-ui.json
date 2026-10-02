@@ -1,0 +1,25 @@
+{
+  "checkedAt": "2026-10-02T12:18:18.081703+00:00",
+  "packageDmgSha256": "836895616adf6d00ffdf70f1e4f19946ceb23da72b2d9f358d54b9299d0b88eb",
+  "projectId": "video_edit_v2_1790235933266_1e7bd8c6",
+  "title": "伟嘉成猫全价猫粮 海洋鱼味10kg｜15秒竖版商品视频",
+  "openedThrough": "published-douyin-version-view-source",
+  "timelineDurationMs": 27000,
+  "firstSceneFrames": 180,
+  "voiceoverClips": 5,
+  "voiceoverVolume": 1,
+  "musicClips": 1,
+  "musicVolume": 0.2,
+  "uiReadBack": {
+    "timeline27Seconds": true,
+    "firstScene180Frames": true,
+    "narration100Percent": true,
+    "bgm20Percent": true,
+    "sourceSubtitleUnchanged": true,
+    "nativeAudioPlayedTo5SecondEnd": true,
+    "overallPreviewReachedNutritionSceneAt11Seconds": true
+  },
+  "screenshot": "shown-in-conversation",
+  "sourceNotEditedOrExported": true,
+  "manualListening": "existing-user-confirmation-for-revision-5-remains-the-only-listening-verdict"
+}

@@ -23,6 +23,8 @@ import { VideoMotionComposition } from '../components/manuscripts/remotion/Video
 import type { RemotionCompositionConfig } from '../components/manuscripts/remotion/types';
 import { appAlert, appConfirm } from '../utils/appDialogs';
 import { resolveAssetUrl } from '../utils/pathManager';
+import { dispatchAppIntent } from '../features/app-shell/appIntent';
+import type { DouyinPublishJob, DouyinVideoVersion } from '../../shared/platformVideoVersion';
 
 type ProductVideoWorkbenchProps = {
     projectId: string;
@@ -73,6 +75,21 @@ export function ProductVideoWorkbench({ projectId, onClose }: ProductVideoWorkbe
     const [musicPickerOpen, setMusicPickerOpen] = useState(false);
     const [voicePickerOpen, setVoicePickerOpen] = useState(false);
     const [libraryAudio, setLibraryAudio] = useState<LibraryAudioAsset[]>([]);
+    const [douyinVersion, setDouyinVersion] = useState<DouyinVideoVersion | null>(null);
+    const [douyinVersions, setDouyinVersions] = useState<DouyinVideoVersion[]>([]);
+    const [productChanged, setProductChanged] = useState(false);
+    const [douyinEditorOpen, setDouyinEditorOpen] = useState(false);
+    const [douyinTitle, setDouyinTitle] = useState('');
+    const [douyinDescription, setDouyinDescription] = useState('');
+    const [douyinTags, setDouyinTags] = useState('');
+    const [douyinCoverId, setDouyinCoverId] = useState('');
+    const [publisherOpen, setPublisherOpen] = useState(false);
+    const [publisherInstances, setPublisherInstances] = useState<Array<{ extensionInstanceId: string; browser?: string; accountId?: string; accountLabel?: string; pageState?: string; detail?: string; imageCoverSupported?: boolean }>>([]);
+    const [publisherBinding, setPublisherBinding] = useState('');
+    const [publishJob, setPublishJob] = useState<DouyinPublishJob | null>(null);
+    const [publishPreviewUrl, setPublishPreviewUrl] = useState('');
+    const [acknowledgedNotPublished, setAcknowledgedNotPublished] = useState(false);
+    const [acknowledgedPublished, setAcknowledgedPublished] = useState(false);
 
     const loadProject = useCallback(async () => {
         try {
@@ -98,6 +115,151 @@ export function ProductVideoWorkbench({ projectId, onClose }: ProductVideoWorkbe
             if (payload?.scope === 'video-editor-v2' && payload?.entityId === projectId) void loadProject();
         });
     }, [loadProject, projectId]);
+
+    const loadDouyinVersion = useCallback(async () => {
+        const result = await window.ipcRenderer.douyinVideo.getVersion({ projectId, sourceProjectId: projectId }) as {
+            success?: boolean; version?: DouyinVideoVersion | null; versions?: DouyinVideoVersion[]; productChanged?: boolean;
+        };
+        if (!result.success) return;
+        const own = result.version?.projectId === projectId ? result.version : null;
+        setDouyinVersion(own);
+        setDouyinVersions(result.versions || []);
+        setProductChanged(Boolean(result.productChanged));
+        setDouyinTitle(own?.title || '');
+        setDouyinDescription(own?.description || '');
+        setDouyinTags((own?.hashtags || []).join(' '));
+        setDouyinCoverId(own?.coverAssetId || '');
+    }, [projectId]);
+
+    useEffect(() => { void loadDouyinVersion(); }, [loadDouyinVersion]);
+
+    const createDouyinVersion = useCallback(async (duplicate = false) => {
+        setBusy('douyin.create');
+        try {
+            const result = await window.ipcRenderer.douyinVideo.createVersion({ sourceProjectId: projectId, duplicate }) as {
+                success?: boolean; error?: string; version?: DouyinVideoVersion;
+            };
+            if (!result.success || !result.version) throw new Error(result.error || '创建抖音版本失败');
+            if (result.version.projectId === projectId) {
+                await loadDouyinVersion();
+                setDouyinEditorOpen(true);
+            } else {
+                dispatchAppIntent({ type: 'video-project.open', projectId: result.version.projectId });
+            }
+        } catch (createError) {
+            void appAlert(createError instanceof Error ? createError.message : String(createError));
+        } finally {
+            setBusy('');
+        }
+    }, [loadDouyinVersion, projectId]);
+
+    const saveDouyinCopy = useCallback(async () => {
+        if (!douyinVersion) return;
+        setBusy('douyin.save');
+        try {
+            const result = await window.ipcRenderer.douyinVideo.saveVersion({
+                versionId: douyinVersion.id,
+                expectedRevision: douyinVersion.revision,
+                title: douyinTitle,
+                description: douyinDescription,
+                hashtags: douyinTags.split(/[\s,，#]+/u).filter(Boolean),
+                coverAssetId: douyinCoverId || undefined,
+            }) as { success?: boolean; error?: string; version?: DouyinVideoVersion };
+            if (!result.success || !result.version) throw new Error(result.error || '保存抖音稿件失败');
+            setDouyinVersion(result.version);
+            setDouyinEditorOpen(false);
+        } catch (saveError) {
+            void appAlert(saveError instanceof Error ? saveError.message : String(saveError));
+            await loadDouyinVersion();
+        } finally {
+            setBusy('');
+        }
+    }, [douyinVersion, douyinTitle, douyinDescription, douyinTags, douyinCoverId, loadDouyinVersion]);
+
+    const loadPublisher = useCallback(async () => {
+        if (!douyinVersion) return;
+        const [status, latest] = await Promise.all([
+            window.ipcRenderer.douyinPublisher.getStatus(),
+            window.ipcRenderer.douyinPublisher.getJob({ versionId: douyinVersion.id }),
+        ]) as [
+            { success?: boolean; boundExtensionInstanceId?: string; instances?: typeof publisherInstances },
+            { success?: boolean; job?: DouyinPublishJob; videoPreviewUrl?: string },
+        ];
+        if (status.success) {
+            setPublisherBinding(status.boundExtensionInstanceId || '');
+            setPublisherInstances(status.instances || []);
+        }
+        if (latest.job) {
+            setPublishJob(latest.job);
+            setPublishPreviewUrl(latest.videoPreviewUrl || '');
+        }
+    }, [douyinVersion]);
+
+    useEffect(() => {
+        if (!publisherOpen || !douyinVersion) return;
+        void loadPublisher();
+        const timer = window.setInterval(() => { void loadPublisher(); }, 2000);
+        return () => window.clearInterval(timer);
+    }, [publisherOpen, douyinVersion?.id, loadPublisher]);
+
+    const bindPublisher = useCallback(async (extensionInstanceId: string) => {
+        const result = await window.ipcRenderer.douyinPublisher.bindInstance({ extensionInstanceId }) as { success?: boolean; error?: string };
+        if (!result.success) { void appAlert(result.error || '绑定浏览器失败'); return; }
+        await loadPublisher();
+    }, [loadPublisher]);
+
+    const prepareDouyinPublication = useCallback(async () => {
+        if (!douyinVersion) return;
+        setBusy('douyin.prepare');
+        try {
+            const result = await window.ipcRenderer.douyinPublisher.prepare({ versionId: douyinVersion.id }) as {
+                success?: boolean; error?: string; job?: DouyinPublishJob; videoPreviewUrl?: string;
+            };
+            if (!result.success || !result.job) throw new Error(result.error || '准备发布失败');
+            setPublishJob(result.job);
+            setPublishPreviewUrl(result.videoPreviewUrl || '');
+        } catch (publishError) { void appAlert(publishError instanceof Error ? publishError.message : String(publishError)); }
+        finally { setBusy(''); }
+    }, [douyinVersion]);
+
+    const actOnDouyinJob = useCallback(async (action: 'confirm' | 'cancel' | 'stageDraft') => {
+        if (!publishJob) return;
+        setBusy(`douyin.${action}`);
+        try {
+            const result = await window.ipcRenderer.douyinPublisher[action]({ jobId: publishJob.id }) as { success?: boolean; error?: string; job?: DouyinPublishJob };
+            if (!result.success || !result.job) throw new Error(result.error || '发布操作失败');
+            setPublishJob(result.job);
+        } catch (publishError) { void appAlert(publishError instanceof Error ? publishError.message : String(publishError)); }
+        finally { setBusy(''); }
+    }, [publishJob]);
+
+    const recoverDouyinJob = useCallback(async () => {
+        if (!publishJob || !acknowledgedNotPublished) return;
+        setBusy('douyin.recover');
+        try {
+            const result = await window.ipcRenderer.douyinPublisher.recoverUnpublished({ jobId: publishJob.id, acknowledgedNotPublished: true }) as {
+                success?: boolean; error?: string; job?: DouyinPublishJob;
+            };
+            if (!result.success || !result.job) throw new Error(result.error || '无法安全恢复旧草稿');
+            setPublishJob(result.job);
+            setAcknowledgedNotPublished(false);
+        } catch (recoverError) { void appAlert(recoverError instanceof Error ? recoverError.message : String(recoverError)); }
+        finally { setBusy(''); }
+    }, [publishJob, acknowledgedNotPublished]);
+
+    const reviewPublishedDouyinJob = useCallback(async () => {
+        if (!publishJob || !acknowledgedPublished) return;
+        setBusy('douyin.reviewPublished');
+        try {
+            const result = await window.ipcRenderer.douyinPublisher.reviewPublished({ jobId: publishJob.id, acknowledgedPublished: true }) as {
+                success?: boolean; error?: string; job?: DouyinPublishJob;
+            };
+            if (!result.success || !result.job) throw new Error(result.error || '无法记录作品管理核验结果');
+            setPublishJob(result.job);
+            setAcknowledgedPublished(false);
+        } catch (reviewError) { void appAlert(reviewError instanceof Error ? reviewError.message : String(reviewError)); }
+        finally { setBusy(''); }
+    }, [publishJob, acknowledgedPublished]);
 
     useEffect(() => {
         void window.ipcRenderer.media.list<{ success?: boolean; assets?: LibraryAudioAsset[] }>({ limit: 200 }).then((result) => {
@@ -221,13 +383,19 @@ export function ProductVideoWorkbench({ projectId, onClose }: ProductVideoWorkbe
     if (!project || !project.productVideo) return <div className="flex h-full flex-col items-center justify-center gap-3 text-text-secondary"><Film className="h-8 w-8" /><p>{error || '商品视频工程不存在'}</p>{onClose && <button type="button" className="rounded-lg border border-border px-3 py-2" onClick={onClose}>返回创作页</button>}</div>;
 
     return (
-        <div className="flex h-full min-h-0 flex-col bg-[#F7F8FA] text-text-primary">
+        <div className="relative flex h-full min-h-0 flex-col bg-[#F7F8FA] text-text-primary">
             <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-white px-4">
                 <div className="flex min-w-0 items-center gap-3">
                     <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#0D1117] text-white"><Film className="h-4 w-4" /></div>
                     <div className="min-w-0"><h1 className="truncate text-sm font-bold">{project.title}</h1><p className="text-[11px] text-text-tertiary">{project.productVideo.productSnapshot.name} · {project.canvas.width}×{project.canvas.height} · {statusLabel(project.status)}</p></div>
                 </div>
                 <div className="flex items-center gap-2">
+                    {douyinVersion ? <>
+                        <button type="button" onClick={() => setDouyinEditorOpen(true)} className="rounded-lg border border-border px-3 py-2 text-xs font-semibold">抖音稿件 · 第 {douyinVersion.revision} 版</button>
+                        <button type="button" onClick={() => setPublisherOpen(true)} className="rounded-lg border border-border px-3 py-2 text-xs font-semibold">准备抖音发布</button>
+                        <button type="button" onClick={() => dispatchAppIntent({ type: 'video-project.open', projectId: douyinVersion.sourceProjectId })} className="rounded-lg border border-border px-3 py-2 text-xs">查看来源</button>
+                        <button type="button" onClick={() => void createDouyinVersion(true)} disabled={Boolean(busy)} className="rounded-lg border border-border px-3 py-2 text-xs disabled:opacity-50">再复制一版</button>
+                    </> : <button type="button" onClick={() => void createDouyinVersion()} disabled={Boolean(busy)} className="rounded-lg border border-border px-3 py-2 text-xs font-semibold disabled:opacity-50">{douyinVersions.length ? '打开抖音版本' : '创建抖音版本'}</button>}
                     <button type="button" onClick={() => void applyCommand({ type: 'music.remove' })} disabled={!musicTrack?.clips.length || Boolean(busy)} className="rounded-lg border border-border px-3 py-2 text-xs font-medium text-text-secondary disabled:opacity-40">移除 BGM</button>
                     <div className="relative">
                         <button type="button" onClick={() => setMusicPickerOpen((open) => !open)} disabled={Boolean(busy)} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold"><Music2 className="h-3.5 w-3.5" />添加 BGM</button>
@@ -244,6 +412,48 @@ export function ProductVideoWorkbench({ projectId, onClose }: ProductVideoWorkbe
                     {onClose && <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-lg text-text-tertiary hover:bg-surface-secondary"><X className="h-4 w-4" /></button>}
                 </div>
             </header>
+
+            {douyinVersion && productChanged && <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800">商品资料已变化，请复核抖音稿件中的商品事实；当前工程与文案不会自动改写。</div>}
+            {douyinEditorOpen && douyinVersion && <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/40 p-6">
+                <section className="w-full max-w-xl space-y-4 rounded-2xl bg-white p-6 shadow-2xl">
+                    <div className="flex items-center justify-between"><h2 className="text-base font-bold">抖音短视频稿件 · 第 {douyinVersion.revision} 版</h2><button type="button" onClick={() => setDouyinEditorOpen(false)} aria-label="关闭抖音稿件"><X className="h-4 w-4" /></button></div>
+                    <p className="text-xs text-text-secondary">首句尽快说明看点；检查字幕不要落在抖音按钮和文案区域。视频镜头、旁白与 BGM 可在工作台单独修改，修改后需重新导出此版本。</p>
+                    <label className="block text-xs font-semibold">内部标题<input value={douyinTitle} onChange={(event) => setDouyinTitle(event.target.value)} className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm" /></label>
+                    <label className="block text-xs font-semibold">发布描述<textarea value={douyinDescription} onChange={(event) => setDouyinDescription(event.target.value)} rows={5} className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm" /></label>
+                    <label className="block text-xs font-semibold">话题（空格分隔）<input value={douyinTags} onChange={(event) => setDouyinTags(event.target.value)} className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm" /></label>
+                    <label className="block text-xs font-semibold">封面素材
+                        <select value={douyinCoverId} onChange={(event) => setDouyinCoverId(event.target.value)} className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm">
+                            <option value="">使用视频默认封面</option>
+                            {project.assets.filter((asset) => asset.kind === 'image').map((asset) => <option key={asset.id} value={asset.id}>{asset.title}</option>)}
+                        </select>
+                    </label>
+                    {douyinCoverId && <div className="space-y-2"><p className="text-xs text-text-secondary">所选图片将居中裁切为竖封面 3:4 和横封面 4:3。请核对主体和文字是否完整；发布确认卡会展示实际上传的两张封面。</p><div className="flex items-end gap-4">{(['portrait', 'landscape'] as const).map((orientation) => <figure key={orientation} className="w-32"><img src={resolveAssetUrl(project.assets.find((asset) => asset.id === douyinCoverId)?.projectPath)} alt={orientation === 'portrait' ? '竖封面裁切预览' : '横封面裁切预览'} className={`w-full rounded-lg bg-black object-cover ${orientation === 'portrait' ? 'aspect-[3/4]' : 'aspect-[4/3]'}`} /><figcaption className="mt-1 text-center text-xs text-text-secondary">{orientation === 'portrait' ? '竖封面 3:4' : '横封面 4:3'}</figcaption></figure>)}</div></div>}
+                    <div className="flex justify-end gap-2"><button type="button" onClick={() => setDouyinEditorOpen(false)} className="rounded-lg border border-border px-3 py-2 text-xs">取消</button><button type="button" onClick={() => void saveDouyinCopy()} disabled={Boolean(busy)} className="rounded-lg bg-[#0F766E] px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">保存独立稿件</button></div>
+                </section>
+            </div>}
+
+            {publisherOpen && douyinVersion && <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/40 p-6">
+                <section className="max-h-full w-full max-w-2xl space-y-4 overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+                    <div className="flex items-center justify-between"><h2 className="text-base font-bold">抖音发布确认</h2><button type="button" onClick={() => setPublisherOpen(false)} aria-label="关闭发布确认"><X className="h-4 w-4" /></button></div>
+                    <div className="space-y-2 text-xs"><p className="font-semibold">目标浏览器与账号</p>{publisherInstances.map((instance) => <div key={instance.extensionInstanceId} className="flex items-center justify-between rounded-lg border border-border p-2"><span>{instance.browser || '浏览器'} · {instance.accountLabel || '账号未识别'} · {instance.pageState || '未知'}<br /><span className="text-text-tertiary">{instance.detail || instance.accountId || instance.extensionInstanceId}</span></span><button type="button" onClick={() => void bindPublisher(instance.extensionInstanceId)} className="rounded border border-border px-2 py-1">{publisherBinding === instance.extensionInstanceId ? '已绑定' : '绑定'}</button></div>)}{publisherInstances.length === 0 && <p>请安装新版发布插件，并打开已登录的抖音创作者发布页。</p>}</div>
+                    {douyinVersion.coverAssetId && <p className="text-xs text-text-secondary">已选封面素材：{project.assets.find((asset) => asset.id === douyinVersion.coverAssetId)?.title || douyinVersion.coverAssetId}，将应用为横、竖双封面。{!publisherInstances.some((instance) => instance.extensionInstanceId === publisherBinding && instance.imageCoverSupported) && <span className="text-amber-700">请更新发布插件并绑定支持图片封面的浏览器。</span>}</p>}
+                    {publishJob ? <div className="space-y-3 rounded-xl border border-border bg-surface-secondary/40 p-4 text-xs">
+                        <div className="font-semibold">《{publishJob.title}》· 第 {publishJob.versionRevision} 版 · {publishJob.status}</div>
+                        <div>目标账号：{publishJob.accountLabel}（{publishJob.accountId}）</div>
+                        {publishPreviewUrl && <video src={publishPreviewUrl} controls preload="metadata" className="max-h-64 rounded-lg bg-black" />}
+                        {publishJob.imageCover ? <div className="space-y-2"><p>实际上传封面（居中裁切）</p><div className="flex items-end gap-4">{publishJob.imageCover.files.map((file) => <figure key={file.orientation} className="w-32"><img src={resolveAssetUrl(file.path)} alt={file.orientation === 'portrait' ? '实际竖封面' : '实际横封面'} className="w-full rounded-lg" /><figcaption className="mt-1 text-center">{file.orientation === 'portrait' ? '竖封面 3:4' : '横封面 4:3'}</figcaption></figure>)}</div></div> : <p>封面：视频默认封面</p>}
+                        <p className="whitespace-pre-wrap">{publishJob.description}</p>
+                        <p>{publishJob.hashtags.map((tag) => `#${tag}`).join(' ')}</p>
+                        {publishJob.errorMessage && <p className="text-amber-700">{publishJob.errorMessage}</p>}
+                        {['awaiting_confirmation', 'blocked'].includes(publishJob.status) && publishJob.publishStatus === 'not_submitted' && <div className="flex flex-wrap gap-2"><button type="button" onClick={() => void actOnDouyinJob('stageDraft')} disabled={Boolean(busy)} className="rounded-lg border border-border px-3 py-2 disabled:opacity-50">上传到页面供核对（不发布）</button><button type="button" onClick={() => void actOnDouyinJob('confirm')} disabled={Boolean(busy) || Boolean(publishJob.imageCover && !publisherInstances.some((instance) => instance.extensionInstanceId === publishJob.extensionInstanceId && instance.imageCoverSupported))} className="rounded-lg bg-[#0F766E] px-3 py-2 font-semibold text-white disabled:opacity-50">{publishJob.status === 'blocked' ? '复核后重试发布' : publishJob.imageCover ? '确认视频、封面、文案和账号后发布' : '确认视频、文案和账号后发布'}</button><button type="button" onClick={() => void actOnDouyinJob('cancel')} disabled={Boolean(busy)} className="rounded-lg border border-border px-3 py-2">取消</button></div>}
+                        {publishJob.status === 'submitted_pending_review' && <p>平台已接收，正在审核；请在作品管理核对后再认定发布成功。</p>}
+                        {publishJob.status === 'submit_result_unknown' && <div className="space-y-2"><p>提交结果未知，请先检查抖音作品管理。核实前不要重新提交。</p><label className="flex items-center gap-2"><input type="checkbox" checked={acknowledgedNotPublished} onChange={(event) => setAcknowledgedNotPublished(event.target.checked)} />我已在抖音作品管理核实这次没有发布成功</label><button type="button" onClick={() => void recoverDouyinJob()} disabled={!acknowledgedNotPublished || Boolean(busy)} className="rounded-lg border border-border px-3 py-2 disabled:opacity-50">已核实未发布，恢复发布页</button></div>}
+                        {(['submit_result_unknown', 'submitted_pending_review', 'published_reset_failed'].includes(publishJob.status) || (publishJob.status === 'completed' && !publishJob.publishedReview)) && <div className="space-y-2"><label className="flex items-center gap-2"><input type="checkbox" checked={acknowledgedPublished} onChange={(event) => setAcknowledgedPublished(event.target.checked)} />我已在目标账号的作品管理核实《{publishJob.title}》显示“已发布”</label><button type="button" onClick={() => void reviewPublishedDouyinJob()} disabled={!acknowledgedPublished || Boolean(busy)} className="rounded-lg border border-border px-3 py-2 disabled:opacity-50">{publishJob.status === 'published_reset_failed' ? '复核空白发布页并完成收尾' : publishJob.status === 'completed' ? '补记作品管理核实结果' : '记录已发布并复核空白发布页'}</button></div>}
+                        {publishJob.status === 'completed' && <p>{publishJob.publishedReview ? '作品管理已人工核实发布成功' : '平台已确认发布成功'}，原浏览器已返回空白视频发布页。</p>}
+                    </div> : <p className="text-xs text-text-secondary">确认卡会展示实际导出 MP4、完整文案及页面读取的目标账号。准备操作不会提交视频。</p>}
+                    <div className="flex justify-end"><button type="button" onClick={() => void prepareDouyinPublication()} disabled={Boolean(busy) || !publisherBinding || Boolean(douyinVersion.coverAssetId && !publisherInstances.some((instance) => instance.extensionInstanceId === publisherBinding && instance.imageCoverSupported))} className="rounded-lg border border-border px-3 py-2 text-xs font-semibold disabled:opacity-50">准备当前版本</button></div>
+                </section>
+            </div>}
 
             <div className="grid min-h-0 flex-1 grid-cols-[220px_minmax(360px,1fr)_280px] grid-rows-[minmax(0,1fr)_250px]">
                 <aside className="row-span-2 min-h-0 overflow-y-auto border-r border-border bg-white p-3">
@@ -262,8 +472,13 @@ export function ProductVideoWorkbench({ projectId, onClose }: ProductVideoWorkbe
 
                 <main className="min-h-0 overflow-hidden bg-[#E9ECEF] p-4">
                     <div className="flex h-full items-center justify-center">
-                        <div className="h-full max-h-[calc(100vh-350px)] overflow-hidden rounded-[18px] border-[6px] border-[#0D1117] bg-[#0D1117] shadow-[0_20px_50px_-24px_rgba(13,17,23,0.7)]" style={{ aspectRatio: `${project.canvas.width}/${project.canvas.height}` }}>
+                        <div className="relative h-full max-h-[calc(100vh-350px)] overflow-hidden rounded-[18px] border-[6px] border-[#0D1117] bg-[#0D1117] shadow-[0_20px_50px_-24px_rgba(13,17,23,0.7)]" style={{ aspectRatio: `${project.canvas.width}/${project.canvas.height}` }}>
                             {composition ? <Player component={VideoMotionComposition} inputProps={{ composition: composition as RemotionCompositionConfig, runtime: 'preview' }} durationInFrames={composition.durationInFrames} fps={composition.fps} compositionWidth={composition.width} compositionHeight={composition.height} controls loop style={{ width: '100%', height: '100%' }} /> : <div className="flex h-full items-center justify-center text-xs text-white/60">暂无可预览镜头</div>}
+                            {douyinVersion && <div className="pointer-events-none absolute inset-0" aria-label="抖音竖屏安全区示意">
+                                <div className="absolute right-0 top-[20%] h-[58%] w-[17%] border-l border-white/50 bg-black/15" />
+                                <div className="absolute bottom-0 left-0 h-[20%] w-full border-t border-white/50 bg-black/20" />
+                                <span className="absolute bottom-[21%] left-2 rounded bg-black/60 px-1.5 py-0.5 text-[9px] text-white">抖音按钮／文案安全区示意</span>
+                            </div>}
                         </div>
                     </div>
                 </main>

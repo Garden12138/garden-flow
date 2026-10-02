@@ -1,0 +1,311 @@
+{
+  "checkedAt": "2026-10-02T12:26:33.147969+00:00",
+  "checks": {
+    "desktopTests": 330,
+    "publisherTests": 89,
+    "pnpmCheck": "passed",
+    "pnpmBuild": "passed",
+    "executionOrder": [
+      "pnpm test",
+      "pnpm check",
+      "pnpm build"
+    ]
+  },
+  "desktopVersion": "0.0.1",
+  "electronVersion": "39.6.0",
+  "publisher": {
+    "manifestVersion": "0.0.1.65535",
+    "files": [
+      {
+        "file": "background.js",
+        "sha256": "31fed297bce6e2f1f3e415fce52d3e24828a5ff19b21274b1874c0068714ca23",
+        "matchesSource": true
+      },
+      {
+        "file": "douyinAdapter.js",
+        "sha256": "bce7718afb9688eee5efb4ff974a9c1870dcfd64190688b278f68e8b6163df5c",
+        "matchesSource": true
+      },
+      {
+        "file": "douyinCoverAdapter.js",
+        "sha256": "c5553ed8d31bbf650aba922a7e052b58d89535edbe8e630976a4f3aec527c659",
+        "matchesSource": true
+      },
+      {
+        "file": "douyinPublisher.js",
+        "sha256": "1bee980f66486ad66db1c3cec8b5ad5211c0342db1e16efff2251ed9bd602e05",
+        "matchesSource": true
+      },
+      {
+        "file": "manifest.json",
+        "sha256": "2a4ab867f61e2610b01918062864acc35452e26ddd64f436bff72a5a0942078a",
+        "matchesSource": true
+      },
+      {
+        "file": "pageAdapter.js",
+        "sha256": "19cfd99778b8246bb39d70e0d51d09e361d4f062dcd8a7e8314631918e9a4217",
+        "matchesSource": true
+      },
+      {
+        "file": "popup.css",
+        "sha256": "00a109f530271739fef2bf940a700f3cb606ad4045c46528b7bb12fbbffbdccb",
+        "matchesSource": true
+      },
+      {
+        "file": "popup.html",
+        "sha256": "38bfc99b67f532102ab88b3e55673a58bbcbebf32f26faa13ecaffbb278b0ade",
+        "matchesSource": true
+      },
+      {
+        "file": "popup.js",
+        "sha256": "c69c483e7e657d1b87c8607d6d6426889a70d66c74e2714e795cb277f2cdbbff",
+        "matchesSource": true
+      },
+      {
+        "file": "icons/icon128.png",
+        "sha256": "c3caae519671bb0bcd8586164fe4cf35d1969d2351fb300954913d5d05d195e4",
+        "matchesSource": true
+      },
+      {
+        "file": "icons/icon16.png",
+        "sha256": "597605b2afe86b986d27f558b0a2d857cd96ae39ce17bedee7cc1c721ae626d9",
+        "matchesSource": true
+      },
+      {
+        "file": "icons/icon32.png",
+        "sha256": "e27464f1c2e534f02f6235bfc637bad0c5a9a99e3fedfe2708a5ac8b630696f1",
+        "matchesSource": true
+      },
+      {
+        "file": "icons/icon48.png",
+        "sha256": "b0c180b88f2c78c973c8c4f499523b634bceb8830790ee16dc855f5494ec9659",
+        "matchesSource": true
+      }
+    ]
+  },
+  "desktopMainFiles": [
+    {
+      "file": "/dist-electron/appMain-CIPg7tum.js",
+      "sha256": "2a238898f91657106dcf3a41dc596abe477f4f743f46ed17a89b807a26610555"
+    },
+    {
+      "file": "/dist-electron/main.js",
+      "sha256": "0face502812fff4236c35b5b8ffe5b71074a4a51b440bb1e8d83137a345b20e6"
+    }
+  ],
+  "packagedUi": {
+    "newPackageLaunchedAfterQuit": true,
+    "oldInvalidatedCardRestored": true,
+    "replanDoubleClickThroughUi": true,
+    "newTaskCount": 1,
+    "sourceTaskId": "task_1790930726898_uy3q8w",
+    "newReplanTaskId": "task_1790942657339_c84jq7",
+    "newProductVersion": "2026-10-02T11:58:05.366Z",
+    "visualRetry": "passed-same-model-strict-match-after-two-blocked-attempts",
+    "silentProposal": "passed-real-card-zero-ai-zero-voiceover",
+    "pureImageProject": "passed-real-confirmation-edit-cold-restart-export",
+    "visualAttempts": [
+      {
+        "taskId": "task_1790942657339_c84jq7",
+        "status": "failed",
+        "diagnostic": {
+          "modelName": "qwen3.8-max",
+          "productId": "product_1790928026583_bc63ff8b",
+          "productUpdatedAt": "2026-10-02T11:58:05.366Z",
+          "imageCount": 5,
+          "assetIds": [
+            "asset_1790928026583_dbe22338",
+            "asset_1790928026584_dc532223",
+            "asset_1790928026585_d6f52937",
+            "asset_1790928026586_26afafb1",
+            "asset_1790928026587_529158e3"
+          ],
+          "durationMs": 37682,
+          "outcome": "token-mismatch",
+          "responseParsed": true,
+          "expectedToken": "GF-EAEFB84CB91D",
+          "observedToken": "GF-EAEFB84CB1D"
+        }
+      },
+      {
+        "taskId": "task_1790942745170_ram85r",
+        "status": "failed",
+        "diagnostic": {
+          "modelName": "qwen3.8-max",
+          "productId": "product_1790928026583_bc63ff8b",
+          "productUpdatedAt": "2026-10-02T11:58:05.366Z",
+          "imageCount": 5,
+          "assetIds": [
+            "asset_1790928026583_dbe22338",
+            "asset_1790928026584_dc532223",
+            "asset_1790928026585_d6f52937",
+            "asset_1790928026586_26afafb1",
+            "asset_1790928026587_529158e3"
+          ],
+          "durationMs": 34498,
+          "outcome": "token-mismatch",
+          "responseParsed": true,
+          "expectedToken": "GF-3313DBC6EC1B",
+          "observedToken": "GF-33130BCEC1B"
+        }
+      },
+      {
+        "taskId": "task_1790942855511_h1ct1t",
+        "status": "running",
+        "diagnostic": {
+          "modelName": "qwen3.8-max",
+          "productId": "product_1790928026583_bc63ff8b",
+          "productUpdatedAt": "2026-10-02T11:58:05.366Z",
+          "imageCount": 5,
+          "assetIds": [
+            "asset_1790928026583_dbe22338",
+            "asset_1790928026584_dc532223",
+            "asset_1790928026585_d6f52937",
+            "asset_1790928026586_26afafb1",
+            "asset_1790928026587_529158e3"
+          ],
+          "durationMs": 38961,
+          "outcome": "verified",
+          "responseParsed": true,
+          "expectedToken": "GF-7444D8A3C928",
+          "observedToken": "GF-7444D8A3C928"
+        }
+      }
+    ],
+    "approvalsBeforeConfirmation": [
+      {
+        "call_id": "call_d42de8b4595f4ed28705ef3a",
+        "task_id": "task_1790930726898_uy3q8w",
+        "status": "invalidated",
+        "proposalId": "proposal-2b1e40eb-2400-417f-b5f6-c040ce11f8a0",
+        "productUpdatedAt": "2026-10-02T08:05:03.847Z",
+        "voiceoverEnabled": null,
+        "canvas": {
+          "width": 1080,
+          "height": 1920,
+          "fps": 30,
+          "aspectRatio": "9:16"
+        },
+        "durationMs": 15000,
+        "sceneCount": 5,
+        "aiCount": 0
+      },
+      {
+        "call_id": "call_487781c9105840ad9f7275a6",
+        "task_id": "task_1790942855511_h1ct1t",
+        "status": "pending",
+        "proposalId": "proposal-d22c7044-35d2-4190-b937-f66ff2fe24bd",
+        "productUpdatedAt": "2026-10-02T11:58:05.366Z",
+        "voiceoverEnabled": false,
+        "canvas": {
+          "width": 1080,
+          "height": 1920,
+          "fps": 30,
+          "aspectRatio": "9:16"
+        },
+        "durationMs": 15000,
+        "sceneCount": 5,
+        "aiCount": 0
+      }
+    ],
+    "subtitleTextsRetained": true,
+    "newProject": {
+      "id": "video_edit_v2_1790943025095_fa59e526",
+      "status": "ready",
+      "proposalId": "proposal-d22c7044-35d2-4190-b937-f66ff2fe24bd",
+      "productVersion": "2026-10-02T11:58:05.366Z",
+      "voiceoverEnabled": false,
+      "voiceoverAutoApprovedAt": null,
+      "scenes": [
+        {
+          "id": "scene-1",
+          "durationMs": 3333,
+          "overlayText": "纯图片安装包验收｜字幕独立保留",
+          "source": "product-asset",
+          "generationStatus": "not-required",
+          "narrationText": "",
+          "voiceoverStatus": "not-required"
+        },
+        {
+          "id": "scene-2",
+          "durationMs": 3000,
+          "overlayText": "约50%肉类原料 · 高易消化蛋白",
+          "source": "product-asset",
+          "generationStatus": "not-required",
+          "narrationText": "",
+          "voiceoverStatus": "not-required"
+        },
+        {
+          "id": "scene-3",
+          "durationMs": 3000,
+          "overlayText": "每日营养 一包大满足",
+          "source": "product-asset",
+          "generationStatus": "not-required",
+          "narrationText": "",
+          "voiceoverStatus": "not-required"
+        },
+        {
+          "id": "scene-4",
+          "durationMs": 3000,
+          "overlayText": "酥皮咔滋脆 夹心超美味",
+          "source": "product-asset",
+          "generationStatus": "not-required",
+          "narrationText": "",
+          "voiceoverStatus": "not-required"
+        },
+        {
+          "id": "scene-5",
+          "durationMs": 3000,
+          "overlayText": "界面验收演示 · 不发布",
+          "source": "product-asset",
+          "generationStatus": "not-required",
+          "narrationText": "",
+          "voiceoverStatus": "not-required"
+        }
+      ],
+      "tracks": [
+        {
+          "kind": "primary-video",
+          "clips": 5
+        },
+        {
+          "kind": "subtitle",
+          "clips": 5
+        },
+        {
+          "kind": "voiceover",
+          "clips": 0
+        },
+        {
+          "kind": "music",
+          "clips": 0
+        }
+      ],
+      "durationMs": 15333,
+      "assets": 5
+    },
+    "frameAndSubtitleEditedThroughUi": true,
+    "generationJobsForNewProject": 0,
+    "exportEvidence": "new-pure-image-packaged-export.json",
+    "videoGenerationRestored": true,
+    "providerConfigHashMatchesBaseline": true,
+    "oldSourceDualAudioUiEvidence": "source-dual-audio-packaged-ui.json",
+    "additionalPublishClicked": false
+  },
+  "artifactIntegrity": {
+    "dmg": "passed",
+    "zip": "passed"
+  },
+  "artifacts": [
+    {
+      "file": "desktop/release/GardenFlow-0.0.1-arm64.dmg",
+      "bytes": 356558894,
+      "sha256": "836895616adf6d00ffdf70f1e4f19946ceb23da72b2d9f358d54b9299d0b88eb"
+    },
+    {
+      "file": "desktop/release/GardenFlow-0.0.1-arm64.zip",
+      "bytes": 363571460,
+      "sha256": "e3c21fcd11e82c5dc8dd777b640e35db21c07df75597e62e4b5871b97550cb48"
+    }
+  ]
+}

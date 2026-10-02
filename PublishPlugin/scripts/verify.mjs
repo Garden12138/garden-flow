@@ -14,6 +14,9 @@ const required = [
   'manifest.json',
   'background.js',
   'pageAdapter.js',
+  'douyinAdapter.js',
+  'douyinCoverAdapter.js',
+  'douyinPublisher.js',
   'popup.html',
   'popup.js',
   'popup.css',
@@ -32,12 +35,18 @@ if (manifest.manifest_version !== 3) throw new Error('Publisher extension must u
 if (packageJson.version !== desktopPackageJson.version) throw new Error('Publisher package version must match Desktop');
 if (assertChromeManifestVersion(manifest.version) !== toChromeManifestVersion(desktopPackageJson.version)) throw new Error('Publisher manifest version must match Desktop');
 if (manifest.version_name !== desktopPackageJson.version) throw new Error('Publisher version_name must show the Desktop release version');
-if (manifest.host_permissions?.length !== 1 || manifest.host_permissions[0] !== 'https://creator.xiaohongshu.com/*') throw new Error('Publisher host permissions are too broad');
+if (JSON.stringify(manifest.host_permissions) !== JSON.stringify([
+  'https://creator.xiaohongshu.com/*',
+  'https://creator.douyin.com/*',
+])) throw new Error('Publisher host permissions must stay limited to the two creator sites');
 if (manifest.permissions?.includes('cookies') || manifest.host_permissions?.includes('<all_urls>')) throw new Error('Publisher extension requests forbidden permissions');
 const extensionId = createHash('sha256').update(Buffer.from(manifest.key, 'base64')).digest('hex').slice(0, 32)
   .replace(/[0-9a-f]/g, (digit) => String.fromCharCode(97 + Number.parseInt(digit, 16)));
 if (extensionId !== 'jafdjmajegkaabbohedhmmlhogdejkpb') throw new Error(`Unexpected fixed extension id: ${extensionId}`);
 const background = fs.readFileSync(path.join(output, 'background.js'), 'utf8');
+if (/\bimport\s*\(/.test(background)) {
+  throw new Error('Manifest V3 service workers cannot use dynamic import');
+}
 const injectedVerificationStart = background.indexOf('function readPreparedEditorSnapshot()');
 const injectedVerificationEnd = background.indexOf('function editorVerificationPayload(payload)');
 const injectedVerification = background.slice(injectedVerificationStart, injectedVerificationEnd);

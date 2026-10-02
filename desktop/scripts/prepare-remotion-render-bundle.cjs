@@ -1,6 +1,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { bundle } = require('@remotion/bundler');
+const { prepareRemotionRendererRuntime } = require('./prepare-remotion-renderer-runtime.cjs');
 
 const desktopRoot = path.resolve(__dirname, '..');
 const outputDirectory = path.join(desktopRoot, '.remotion-render-bundle');
@@ -30,6 +31,7 @@ async function main() {
     });
     await fs.access(path.join(outputDirectory, 'index.html'));
     await prepareCompositor();
+    await prepareRemotionRendererRuntime(path.join(desktopRoot, '.remotion-renderer-runtime'));
     process.stdout.write(`Remotion render bundle ready: ${outputDirectory}\n`);
 }
 

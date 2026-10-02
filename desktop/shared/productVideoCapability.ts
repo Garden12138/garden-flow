@@ -3,10 +3,11 @@ import { resolveVideoModelRoute } from './videoGenerationCapabilities.ts';
 export type ProductVideoMotionCapability = {
     available: boolean;
     model?: string;
-    reason?: 'not-configured' | 'reference-images-unsupported';
+    reason?: 'disabled' | 'not-configured' | 'reference-images-unsupported';
 };
 
 export function resolveProductVideoMotionCapability(settings: Record<string, unknown>): ProductVideoMotionCapability {
+    if (settings.video_generation_enabled === false) return { available: false, reason: 'disabled' };
     const route = resolveVideoModelRoute(settings);
     if (!route?.provider.endpoint || !route.provider.apiKey || !route.model) {
         return { available: false, reason: 'not-configured' };

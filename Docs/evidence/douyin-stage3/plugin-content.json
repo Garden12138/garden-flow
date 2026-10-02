@@ -1,0 +1,66 @@
+{
+  "checkedAt": "2026-10-01T10:51:09.603Z",
+  "manifestVersion": "0.0.1.65535",
+  "files": [
+    {
+      "file": "background.js",
+      "sha256": "ac77bcb62791e067512d1ee757524b6f303bdf2a9806ec85a976f086f1c3a381",
+      "matchesSource": true
+    },
+    {
+      "file": "douyinAdapter.js",
+      "sha256": "4b2ad88bbb3a041484af6ab546ff0b48fe32e9e75800b8439c9e87065c25fd52",
+      "matchesSource": true
+    },
+    {
+      "file": "douyinPublisher.js",
+      "sha256": "03e3bf1cce6599f44a1e8ae47cc3f5944890aea8cbba9dcf18e81fdffa9bd355",
+      "matchesSource": true
+    },
+    {
+      "file": "manifest.json",
+      "sha256": "2a4ab867f61e2610b01918062864acc35452e26ddd64f436bff72a5a0942078a",
+      "matchesSource": true
+    },
+    {
+      "file": "pageAdapter.js",
+      "sha256": "19cfd99778b8246bb39d70e0d51d09e361d4f062dcd8a7e8314631918e9a4217",
+      "matchesSource": true
+    },
+    {
+      "file": "popup.css",
+      "sha256": "00a109f530271739fef2bf940a700f3cb606ad4045c46528b7bb12fbbffbdccb",
+      "matchesSource": true
+    },
+    {
+      "file": "popup.html",
+      "sha256": "38bfc99b67f532102ab88b3e55673a58bbcbebf32f26faa13ecaffbb278b0ade",
+      "matchesSource": true
+    },
+    {
+      "file": "popup.js",
+      "sha256": "edd4d81a1d15fab989f048feb2915ccd775133e4f737a0a342eaadb5e46eb5a3",
+      "matchesSource": true
+    },
+    {
+      "file": "icons/icon128.png",
+      "sha256": "c3caae519671bb0bcd8586164fe4cf35d1969d2351fb300954913d5d05d195e4",
+      "matchesSource": true
+    },
+    {
+      "file": "icons/icon16.png",
+      "sha256": "597605b2afe86b986d27f558b0a2d857cd96ae39ce17bedee7cc1c721ae626d9",
+      "matchesSource": true
+    },
+    {
+      "file": "icons/icon32.png",
+      "sha256": "e27464f1c2e534f02f6235bfc637bad0c5a9a99e3fedfe2708a5ac8b630696f1",
+      "matchesSource": true
+    },
+    {
+      "file": "icons/icon48.png",
+      "sha256": "b0c180b88f2c78c973c8c4f499523b634bceb8830790ee16dc855f5494ec9659",
+      "matchesSource": true
+    }
+  ]
+}

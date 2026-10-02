@@ -129,6 +129,7 @@ export function Settings({
   const [sources, setSources] = useState<AiSourceConfig[]>([]);
   const [routes, setRoutes] = useState<AiModelRoutes>({ ...DEFAULT_AI_MODEL_ROUTES });
   const [videoProviders, setVideoProviders] = useState<VideoProviderConfig[]>([]);
+  const [videoGenerationEnabled, setVideoGenerationEnabled] = useState(true);
   const [activeVideoProviderId, setActiveVideoProviderId] = useState('');
   const [workspaceDir, setWorkspaceDir] = useState('');
   const [proxyEnabled, setProxyEnabled] = useState(false);
@@ -156,6 +157,7 @@ export function Settings({
       setSources(loadedSources);
       setRoutes(normalizeAiModelRoutes(settings.ai_model_routes_json));
       setVideoProviders(loadedVideo);
+      setVideoGenerationEnabled(settings.video_generation_enabled !== false);
       setActiveVideoProviderId(String(settings.active_video_provider_id || loadedVideo[0]?.id || ''));
       setWorkspaceDir(String(settings.workspace_dir || ''));
       setProxyEnabled(Boolean(settings.proxy_enabled));
@@ -248,7 +250,7 @@ export function Settings({
         }),
       ) as AiModelRoutes;
       const activeVideo = videoProviders.find((provider) => provider.id === activeVideoProviderId);
-      if (activeVideo && (!activeVideo.endpoint.trim() || !activeVideo.apiKey.trim() || !activeVideo.model.trim())) {
+      if (videoGenerationEnabled && activeVideo && (!activeVideo.endpoint.trim() || !activeVideo.apiKey.trim() || !activeVideo.model.trim())) {
         throw new Error('启用的视频供应商必须填写 endpoint、key 和 model。');
       }
       const chatSource = sanitizedSources.find((source) => source.id === normalizedRoutes.chat.sourceId);
@@ -281,6 +283,7 @@ export function Settings({
         embedding_key: embeddingSource?.apiKey || '',
         embedding_model: normalizedRoutes.embedding.model || '',
         video_providers_json: JSON.stringify(videoProviders),
+        video_generation_enabled: videoGenerationEnabled,
         active_video_provider_id: activeVideo?.id || '',
         video_endpoint: activeVideo?.endpoint.trim() || '',
         video_api_key: activeVideo?.apiKey.trim() || '',
@@ -474,6 +477,8 @@ export function Settings({
 
           {view === 'media' ? (
             <SectionCard title="视频供应商" description="New API 配置必须显式选择上游类型，并填写 endpoint、key 和 model；不会根据 URL 或模型名猜测。">
+              <label className="mb-4 flex items-center gap-2 text-sm text-text-primary"><input type="checkbox" checked={videoGenerationEnabled} onChange={(event) => setVideoGenerationEnabled(event.target.checked)} />启用视频生成</label>
+              {!videoGenerationEnabled ? <p className="mb-4 text-xs leading-5 text-text-tertiary">视频生成已关闭，供应商配置会保留。商品视频默认使用原图动效，已有工程仍可编辑、预览和导出。</p> : null}
               {videoProviders.length === 0 ? <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-text-tertiary">尚未配置视频供应商</div> : null}
               <div className="space-y-3">
                 {videoProviders.map((provider) => (
@@ -526,7 +531,7 @@ export function Settings({
       </main>
 
       <div className="fixed bottom-0 right-0 z-20 flex w-[calc(100%-14rem)] items-center justify-between border-t border-border bg-surface-primary/95 px-6 py-3 backdrop-blur">
-        <div className={clsx('text-xs', message === '设置已保存' ? 'text-emerald-600' : 'text-text-tertiary')}>{message || `${readySources.length} 个可用 AI 供应商${selectedVideo ? ' · 1 个视频供应商已启用' : ''}`}</div>
+        <div className={clsx('text-xs', message === '设置已保存' ? 'text-emerald-600' : 'text-text-tertiary')}>{message || `${readySources.length} 个可用 AI 供应商${!videoGenerationEnabled ? ' · 视频生成已关闭' : selectedVideo ? ' · 1 个视频供应商已启用' : ''}`}</div>
         <button type="button" onClick={save} disabled={saving} className="inline-flex items-center gap-2 rounded-lg bg-accent-primary px-5 py-2 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-50">
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           保存设置

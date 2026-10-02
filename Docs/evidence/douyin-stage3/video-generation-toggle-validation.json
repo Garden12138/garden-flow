@@ -1,0 +1,107 @@
+{
+  "checkedAt": "2026-10-02T08:36:33.195890+00:00",
+  "checks": {
+    "desktopTests": 327,
+    "publisherTests": 89,
+    "pnpmCheck": "passed",
+    "pnpmBuild": "passed",
+    "executionOrder": [
+      "pnpm test",
+      "pnpm check",
+      "pnpm build"
+    ]
+  },
+  "artifacts": [
+    {
+      "file": "desktop/release/GardenFlow-0.0.1-arm64.dmg",
+      "sha256": "8bf8872fea4cbbb631c1c12838eb80ac4c232aa722adb0d709623c507bccda51"
+    },
+    {
+      "file": "desktop/release/GardenFlow-0.0.1-arm64.zip",
+      "sha256": "7ec228fd3f3d78ae8626714b2f95d7c5aafc58b5e5a26968565edf7d753f0a98"
+    }
+  ],
+  "artifactIntegrity": {
+    "dmg": "passed",
+    "zip": "passed"
+  },
+  "publisher": {
+    "checkedAt": "2026-10-02T08:30:00.879Z",
+    "manifestVersion": "0.0.1.65535",
+    "files": [
+      {
+        "file": "background.js",
+        "sha256": "31fed297bce6e2f1f3e415fce52d3e24828a5ff19b21274b1874c0068714ca23",
+        "matchesSource": true
+      },
+      {
+        "file": "douyinAdapter.js",
+        "sha256": "bce7718afb9688eee5efb4ff974a9c1870dcfd64190688b278f68e8b6163df5c",
+        "matchesSource": true
+      },
+      {
+        "file": "douyinCoverAdapter.js",
+        "sha256": "c5553ed8d31bbf650aba922a7e052b58d89535edbe8e630976a4f3aec527c659",
+        "matchesSource": true
+      },
+      {
+        "file": "douyinPublisher.js",
+        "sha256": "1bee980f66486ad66db1c3cec8b5ad5211c0342db1e16efff2251ed9bd602e05",
+        "matchesSource": true
+      },
+      {
+        "file": "icons/icon128.png",
+        "sha256": "c3caae519671bb0bcd8586164fe4cf35d1969d2351fb300954913d5d05d195e4",
+        "matchesSource": true
+      },
+      {
+        "file": "icons/icon16.png",
+        "sha256": "597605b2afe86b986d27f558b0a2d857cd96ae39ce17bedee7cc1c721ae626d9",
+        "matchesSource": true
+      },
+      {
+        "file": "icons/icon32.png",
+        "sha256": "e27464f1c2e534f02f6235bfc637bad0c5a9a99e3fedfe2708a5ac8b630696f1",
+        "matchesSource": true
+      },
+      {
+        "file": "icons/icon48.png",
+        "sha256": "b0c180b88f2c78c973c8c4f499523b634bceb8830790ee16dc855f5494ec9659",
+        "matchesSource": true
+      },
+      {
+        "file": "manifest.json",
+        "sha256": "2a4ab867f61e2610b01918062864acc35452e26ddd64f436bff72a5a0942078a",
+        "matchesSource": true
+      },
+      {
+        "file": "pageAdapter.js",
+        "sha256": "19cfd99778b8246bb39d70e0d51d09e361d4f062dcd8a7e8314631918e9a4217",
+        "matchesSource": true
+      },
+      {
+        "file": "popup.css",
+        "sha256": "00a109f530271739fef2bf940a700f3cb606ad4045c46528b7bb12fbbffbdccb",
+        "matchesSource": true
+      },
+      {
+        "file": "popup.html",
+        "sha256": "38bfc99b67f532102ab88b3e55673a58bbcbebf32f26faa13ecaffbb278b0ade",
+        "matchesSource": true
+      },
+      {
+        "file": "popup.js",
+        "sha256": "c69c483e7e657d1b87c8607d6d6426889a70d66c74e2714e795cb277f2cdbbff",
+        "matchesSource": true
+      }
+    ]
+  },
+  "packagedUi": {
+    "newPackageLaunchedAfterQuit": true,
+    "renderer": "app.asar/dist/index.html",
+    "enabledCheckboxVisible": true,
+    "disableSaved": true,
+    "providerConfigUnchanged": true,
+    "storyboardFlow": "blocked-by-discovered-routing-regression-not-accepted"
+  }
+}

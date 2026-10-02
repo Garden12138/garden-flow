@@ -2204,7 +2204,7 @@ export function GenerationStudio({
     const activeVideoCapabilities: VideoModelCapabilities | null = selectedVideoModelRoute?.capabilities || null;
     const resolvedVideoEndpoint = String(selectedVideoModelRoute?.provider.endpoint || settings.video_endpoint || '').trim();
     const resolvedVideoApiKey = String(selectedVideoModelRoute?.provider.apiKey || settings.video_api_key || '').trim();
-    const hasVideoConfig = Boolean(resolvedVideoEndpoint) && Boolean(resolvedVideoApiKey) && Boolean(effectiveVideoModel);
+    const hasVideoConfig = settings.video_generation_enabled !== false && Boolean(resolvedVideoEndpoint) && Boolean(resolvedVideoApiKey) && Boolean(effectiveVideoModel);
     const videoModelOptions = useMemo<PickerOption[]>(() => videoModelRoutes.map((route) => ({
         value: route.model,
         label: route.model,

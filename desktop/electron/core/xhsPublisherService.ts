@@ -23,6 +23,7 @@ import { assertXhsSourceExportCurrent } from './xhsVideoPublishSource';
 import { XHS_AUTO_PUBLISH_TASK_ID } from './builtinAutomationTasks';
 import { canAmendXhsDraft, parseXhsPublishReply, selectXhsConversationJob, type XhsPublishReplyClassification } from './xhsPublishConversation';
 import type { IntentRoute } from './ai/types';
+import type { PlatformPublishCommandV1 } from '../../shared/platformPublisher';
 import { isXhsMediaCompatible, type XhsNoteProjectSnapshot } from '../../shared/xhsNote';
 import {
     XHS_PUBLISHER_CAPABILITY,
@@ -618,9 +619,10 @@ export class XhsPublisherService extends EventEmitter {
             await this.waitForPublisherConnection(current.extensionInstanceId);
             current = this.save({ ...current, status: 'uploading', updatedAt: Date.now() });
             let prepareRaw = await bridge.invokeBrowserControl('publisher.publish', {
+                platform: 'xiaohongshu',
                 phase: 'prepare',
-                request: request as unknown as Record<string, unknown>,
-            }, {
+                request,
+            } satisfies PlatformPublishCommandV1, {
                 extensionInstanceId: current.extensionInstanceId,
                 extensionKind: 'xhs-publisher',
                 requiredCapability: XHS_PUBLISHER_CAPABILITY,
@@ -633,7 +635,7 @@ export class XhsPublisherService extends EventEmitter {
                 const owner = isRecord(page) && typeof page.ownedJobId === 'string' ? getXhsPublishJob(page.ownedJobId) : null;
                 if (owner && canAmendXhsDraft(owner, current, current.extensionInstanceId)) {
                     await this.amendOwnedDraft(owner, current, owner.errorCode === 'USER_VERIFIED_NOT_PUBLISHED');
-                    prepareRaw = await bridge.invokeBrowserControl('publisher.publish', { phase: 'prepare', request: request as unknown as Record<string, unknown> }, {
+                    prepareRaw = await bridge.invokeBrowserControl('publisher.publish', { platform: 'xiaohongshu', phase: 'prepare', request } satisfies PlatformPublishCommandV1, {
                         extensionInstanceId: current.extensionInstanceId, extensionKind: 'xhs-publisher', requiredCapability: XHS_PUBLISHER_CAPABILITY, timeoutMs: 10 * 60_000,
                     });
                 }
@@ -680,11 +682,12 @@ export class XhsPublisherService extends EventEmitter {
                 updatedAt: Date.now(),
             });
             const submitRaw = await bridge.invokeBrowserControl('publisher.publish', {
+                platform: 'xiaohongshu',
                 phase: 'submit',
                 jobId: current.id,
                 contentDigest: current.contentDigest,
-                request: request as unknown as Record<string, unknown>,
-            }, {
+                request,
+            } satisfies PlatformPublishCommandV1, {
                 extensionInstanceId: current.extensionInstanceId,
                 extensionKind: 'xhs-publisher',
                 requiredCapability: XHS_PUBLISHER_CAPABILITY,

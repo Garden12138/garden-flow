@@ -2,6 +2,8 @@ import os from 'node:os';
 import path from 'node:path';
 import {
     XHS_PUBLISHER_CAPABILITY,
+    DOUYIN_PUBLISHER_CAPABILITY,
+    DOUYIN_IMAGE_COVER_CAPABILITY,
     XHS_PUBLISHER_EXTENSION_ID,
     XHS_PUBLISHER_EXTENSION_ORIGIN,
     type BrowserExtensionKind,
@@ -28,7 +30,7 @@ export const BROWSER_CAPTURE_ALLOWED_METHODS = new Set([
 ]);
 
 export const BROWSER_CAPTURE_CAPABILITIES = ['knowledge.ingest', 'assets.ingestProduct', 'extension.register'] as const;
-export const XHS_PUBLISHER_CAPABILITIES = [XHS_PUBLISHER_CAPABILITY, 'extension.register'] as const;
+export const XHS_PUBLISHER_CAPABILITIES = [XHS_PUBLISHER_CAPABILITY, DOUYIN_PUBLISHER_CAPABILITY, DOUYIN_IMAGE_COVER_CAPABILITY, 'extension.register'] as const;
 
 /**
  * 桌面 → native host → 插件方向允许转发的方法。

@@ -33,6 +33,8 @@ import { renderXhsNoteMarkdown } from '../shared/xhsNote';
 import { XHS_PUBLISHER_EXTENSION_ID } from '../shared/xhsPublisher';
 import { buildChatRunMessageMetadata, type ChatSendReceipt } from '../shared/chatRunState';
 import { mergeContextSessionMetadata } from '../shared/contextSessionMetadata';
+import { mergeAuthoringTaskMetadata } from '../shared/authoringTaskMetadata';
+import { isStructuredProductVideoCreation } from './core/ai/productVideoWorkflowPolicy';
 import {
   saveSettings,
   getSettings,
@@ -40,6 +42,9 @@ import {
   getWorkspacePathsForSpace,
   getDefaultWorkspaceDir,
   getActiveSpaceId,
+  getDouyinVideoVersion,
+  getDouyinVideoVersionByProject,
+  listDouyinVideoVersions,
   listSpaces,
   createSpace,
   renameSpace,
@@ -206,6 +211,8 @@ import {
   getProductVideoReplanInput,
 } from './core/productVideoApprovalService';
 import { renderVideoEditorV2Project } from './core/video-editor-v2/renderExportService';
+import { createDouyinVideoVersion, saveDouyinVideoVersion } from './core/douyinVideoVersionService';
+import { getDouyinPublisherService } from './core/douyinPublisherService';
 import { transcribeMediaToSrt } from './core/video-auto-edit/asrSrtService';
 import { buildRuntimeBaseSystemPrompt } from './core/prompts/defaultPromptBuilder';
 import {
@@ -6747,6 +6754,95 @@ ipcMain.handle('videoEditorV2:create-project', async (_, payload?: {
   }
 });
 
+ipcMain.handle('douyin:video-version-create', async (_, payload?: {
+  sourceProjectId?: string; sourceNotePath?: string; duplicate?: boolean;
+}) => {
+  try {
+    const version = await createDouyinVideoVersion({
+      sourceProjectId: String(payload?.sourceProjectId || ''),
+      sourceNotePath: payload?.sourceNotePath,
+      duplicate: payload?.duplicate === true,
+    });
+    emitRendererDataChanged('video-editor-v2', { action: 'douyin-version-create', entityId: version.projectId });
+    return { success: true, version };
+  } catch (error) {
+    return { success: false, error: String(error) };
+  }
+});
+
+ipcMain.handle('douyin:video-version-get', async (_, payload?: { versionId?: string; projectId?: string; sourceProjectId?: string }) => {
+  try {
+    const version = payload?.versionId ? getDouyinVideoVersion(payload.versionId)
+      : payload?.projectId ? getDouyinVideoVersionByProject(payload.projectId) : null;
+    const versions = payload?.sourceProjectId ? listDouyinVideoVersions(payload.sourceProjectId) : [];
+    const current = version || versions[0] || null;
+    const product = current ? await brandWorkspaceStore.getProductCreativeReference(current.sourceProductId).catch(() => null) : null;
+    return { success: true, version: current, versions, productChanged: Boolean(current && (!product || product.updatedAt !== current.sourceProductUpdatedAt)) };
+  } catch (error) {
+    return { success: false, error: String(error) };
+  }
+});
+
+ipcMain.handle('douyin:video-version-save', async (_, payload?: {
+  versionId?: string; expectedRevision?: number; title?: string; description?: string; hashtags?: string[]; coverAssetId?: string;
+}) => {
+  try {
+    const version = await saveDouyinVideoVersion({
+      versionId: String(payload?.versionId || ''),
+      expectedRevision: Number(payload?.expectedRevision),
+      title: String(payload?.title || ''),
+      description: String(payload?.description || ''),
+      hashtags: Array.isArray(payload?.hashtags) ? payload.hashtags : [],
+      coverAssetId: payload?.coverAssetId,
+    });
+    emitRendererDataChanged('video-editor-v2', { action: 'douyin-version-save', entityId: version.projectId });
+    return { success: true, version };
+  } catch (error) {
+    return { success: false, error: String(error) };
+  }
+});
+
+ipcMain.handle('douyin-publisher:status', async () => {
+  try { return { success: true, ...(await getDouyinPublisherService().getStatus()) }; }
+  catch (error) { return { success: false, error: String(error) }; }
+});
+ipcMain.handle('douyin-publisher:bind-instance', async (_, payload?: { extensionInstanceId?: string }) => {
+  try { return { success: true, extensionInstanceId: getDouyinPublisherService().bindInstance(String(payload?.extensionInstanceId || '')) }; }
+  catch (error) { return { success: false, error: String(error) }; }
+});
+ipcMain.handle('douyin-publisher:prepare', async (_, payload?: { versionId?: string; sessionId?: string }) => {
+  try {
+    const service = getDouyinPublisherService();
+    const job = await service.prepare(String(payload?.versionId || ''), String(payload?.sessionId || ''));
+    return { success: true, job, videoPreviewUrl: service.previewUrl(job) };
+  } catch (error) { return { success: false, error: String(error) }; }
+});
+ipcMain.handle('douyin-publisher:get-job', async (_, payload?: { jobId?: string; versionId?: string }) => {
+  const service = getDouyinPublisherService();
+  const job = payload?.jobId ? service.getJob(String(payload.jobId)) : service.getLatestJob(String(payload?.versionId || ''));
+  return { success: Boolean(job), job, videoPreviewUrl: job ? service.previewUrl(job) : undefined };
+});
+ipcMain.handle('douyin-publisher:confirm', async (_, payload?: { jobId?: string }) => {
+  try { return { success: true, job: await getDouyinPublisherService().confirm(String(payload?.jobId || '')) }; }
+  catch (error) { return { success: false, error: String(error) }; }
+});
+ipcMain.handle('douyin-publisher:stage-draft', async (_, payload?: { jobId?: string }) => {
+  try { return { success: true, job: await getDouyinPublisherService().stageDraft(String(payload?.jobId || '')) }; }
+  catch (error) { return { success: false, error: String(error) }; }
+});
+ipcMain.handle('douyin-publisher:cancel', async (_, payload?: { jobId?: string }) => {
+  try { return { success: true, job: getDouyinPublisherService().cancel(String(payload?.jobId || '')) }; }
+  catch (error) { return { success: false, error: String(error) }; }
+});
+ipcMain.handle('douyin-publisher:recover-unpublished', async (_, payload?: { jobId?: string; acknowledgedNotPublished?: boolean }) => {
+  try { return { success: true, job: await getDouyinPublisherService().recoverUnpublished(String(payload?.jobId || ''), payload?.acknowledgedNotPublished === true) }; }
+  catch (error) { return { success: false, error: String(error) }; }
+});
+ipcMain.handle('douyin-publisher:review-published', async (_, payload?: { jobId?: string; acknowledgedPublished?: boolean }) => {
+  try { return { success: true, job: await getDouyinPublisherService().reviewPublished(String(payload?.jobId || ''), payload?.acknowledgedPublished === true) }; }
+  catch (error) { return { success: false, error: String(error) }; }
+});
+
 ipcMain.handle('videoEditorV2:get-project', async (_, payload?: { projectId?: string }) => {
   try {
     const projectId = String(payload?.projectId || '').trim();
@@ -8875,23 +8971,8 @@ async function executeChatMessage(
     const rawTaskHints = taskHints && typeof taskHints === 'object' && !Array.isArray(taskHints)
       ? taskHints as Record<string, unknown>
       : {};
-    const hasXhsBindingHint = Boolean(
-      sessionMeta.activeXhsNotePath
-      || sessionMeta.activeXhsNoteUri
-      || rawTaskHints.activeXhsNotePath
-      || rawTaskHints.activeXhsNoteUri
-      || rawTaskHints.xhsNoteType
-      || rawTaskHints.artifactType === 'xiaohongshu-note',
-    );
     const effectiveTaskHints = {
-      ...sessionMeta,
-      ...rawTaskHints,
-      ...(hasXhsBindingHint ? {
-        artifactType: sessionMeta.artifactType,
-        activeXhsNotePath: sessionMeta.activeXhsNotePath,
-        activeXhsNoteUri: sessionMeta.activeXhsNoteUri,
-        xhsNoteType: sessionMeta.xhsNoteType,
-      } : {}),
+      ...mergeAuthoringTaskMetadata(sessionMeta, rawTaskHints),
       ...(productAssetContext.explicitProductRefs.length > 0 ? {
         explicitProductRefs: productAssetContext.explicitProductRefs,
         productVideoRequest: { message: String(message || ''), spaceId: getWorkspacePaths().activeSpaceId },
@@ -8928,7 +9009,7 @@ async function executeChatMessage(
         }
       }
     }
-    if (gardenFlowAuthoringHints) {
+    if (gardenFlowAuthoringHints && !isStructuredProductVideoCreation(effectiveTaskHints)) {
       outgoingMessage = buildGardenFlowAuthoringPrompt(outgoingMessage, gardenFlowAuthoringHints);
     }
 

@@ -4,6 +4,7 @@ import { app } from 'electron';
 import { fileURLToPath } from 'url';
 import { resolveAssetSourceToPath } from './core/localAssetManager';
 import type { XhsPublishJob, XhsPublishJobStatus } from '../shared/xhsPublisher';
+import type { DouyinVideoVersion, DouyinPublishJob } from '../shared/platformVideoVersion';
 
 const dbPath = path.join(app.getPath('userData'), 'gardenflow.db');
 const db = new Database(dbPath);
@@ -197,6 +198,66 @@ const initDb = () => {
 
     INSERT OR IGNORE INTO xhs_publisher_config (id, bound_extension_instance_id, updated_at)
       VALUES (1, '', 0);
+
+    CREATE TABLE IF NOT EXISTS douyin_video_versions (
+      id TEXT PRIMARY KEY,
+      space_id TEXT NOT NULL,
+      source_project_id TEXT NOT NULL,
+      source_note_path TEXT,
+      source_note_revision INTEGER,
+      source_product_id TEXT NOT NULL,
+      source_product_updated_at TEXT NOT NULL,
+      project_id TEXT NOT NULL UNIQUE,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL,
+      hashtags_json TEXT NOT NULL,
+      cover_asset_id TEXT,
+      revision INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_douyin_versions_source ON douyin_video_versions(space_id, source_project_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS douyin_publish_jobs (
+      id TEXT PRIMARY KEY,
+      space_id TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      version_id TEXT NOT NULL,
+      version_revision INTEGER NOT NULL,
+      project_id TEXT NOT NULL,
+      render_id TEXT NOT NULL,
+      media_asset_id TEXT NOT NULL,
+      media_path TEXT NOT NULL,
+      content_digest TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL,
+      hashtags_json TEXT NOT NULL,
+      account_id TEXT NOT NULL,
+      account_label TEXT NOT NULL,
+      extension_instance_id TEXT NOT NULL,
+      status TEXT NOT NULL,
+      publish_status TEXT NOT NULL,
+      reset_status TEXT NOT NULL,
+      error_code TEXT NOT NULL DEFAULT '',
+      error_message TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      confirmed_at INTEGER,
+      submitted_at INTEGER,
+      published_at INTEGER,
+      completed_at INTEGER,
+      published_review_json TEXT,
+      image_cover_json TEXT,
+      UNIQUE(space_id, version_id, version_revision, content_digest)
+    );
+    CREATE INDEX IF NOT EXISTS idx_douyin_publish_jobs_version ON douyin_publish_jobs(space_id, version_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS douyin_publisher_config (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      bound_extension_instance_id TEXT NOT NULL DEFAULT '',
+      updated_at INTEGER NOT NULL
+    );
+    INSERT OR IGNORE INTO douyin_publisher_config (id, bound_extension_instance_id, updated_at) VALUES (1, '', 0);
 
     CREATE TABLE IF NOT EXISTS session_transcript_records (
       id TEXT PRIMARY KEY,
@@ -427,6 +488,12 @@ const initDb = () => {
   }
   if (!hasColumn('xhs_publish_jobs', 'unpublished_review_json')) {
     db.exec('ALTER TABLE xhs_publish_jobs ADD COLUMN unpublished_review_json TEXT');
+  }
+  if (!hasColumn('douyin_publish_jobs', 'published_review_json')) {
+    db.exec('ALTER TABLE douyin_publish_jobs ADD COLUMN published_review_json TEXT');
+  }
+  if (!hasColumn('douyin_publish_jobs', 'image_cover_json')) {
+    db.exec('ALTER TABLE douyin_publish_jobs ADD COLUMN image_cover_json TEXT');
   }
 
   // User Memory tables
@@ -723,6 +790,7 @@ const SETTINGS_EXTRA_KEYS = [
   'visual_index_pdf_render_dpi',
   'visual_index_concurrency',
   'video_analysis_enabled',
+  'video_generation_enabled',
   'video_analysis_endpoint',
   'video_analysis_api_key',
   'video_analysis_model',
@@ -2283,6 +2351,135 @@ export const upsertXhsPublishJob = (job: XhsPublishJob): void => {
 export const getXhsPublishJob = (jobId: string): XhsPublishJob | null => {
   const row = db.prepare('SELECT * FROM xhs_publish_jobs WHERE id = ?').get(jobId) as XhsPublishJobRow | undefined;
   return row ? xhsPublishJobFromRow(row) : null;
+};
+
+type DouyinVersionRow = {
+  id: string; space_id: string; source_project_id: string; source_note_path: string | null;
+  source_note_revision: number | null; source_product_id: string; source_product_updated_at: string;
+  project_id: string; title: string; description: string; hashtags_json: string;
+  cover_asset_id: string | null; revision: number; created_at: number; updated_at: number;
+};
+
+const douyinVersionFromRow = (row: DouyinVersionRow): DouyinVideoVersion => ({
+  id: row.id, spaceId: row.space_id, sourceProjectId: row.source_project_id,
+  sourceNotePath: row.source_note_path || undefined, sourceNoteRevision: row.source_note_revision ?? undefined,
+  sourceProductId: row.source_product_id, sourceProductUpdatedAt: row.source_product_updated_at,
+  projectId: row.project_id, title: row.title, description: row.description,
+  hashtags: safeJsonParse(row.hashtags_json, [] as string[]), coverAssetId: row.cover_asset_id || undefined,
+  revision: row.revision, createdAt: row.created_at, updatedAt: row.updated_at,
+});
+
+export const getDouyinVideoVersion = (id: string, spaceId = getActiveSpaceId()): DouyinVideoVersion | null => {
+  const row = db.prepare('SELECT * FROM douyin_video_versions WHERE id = ? AND space_id = ?').get(id, spaceId) as DouyinVersionRow | undefined;
+  return row ? douyinVersionFromRow(row) : null;
+};
+
+export const getDouyinVideoVersionByProject = (projectId: string, spaceId = getActiveSpaceId()): DouyinVideoVersion | null => {
+  const row = db.prepare('SELECT * FROM douyin_video_versions WHERE project_id = ? AND space_id = ?').get(projectId, spaceId) as DouyinVersionRow | undefined;
+  return row ? douyinVersionFromRow(row) : null;
+};
+
+export const listDouyinVideoVersions = (sourceProjectId: string, spaceId = getActiveSpaceId()): DouyinVideoVersion[] => (
+  (db.prepare('SELECT * FROM douyin_video_versions WHERE source_project_id = ? AND space_id = ? ORDER BY created_at ASC').all(sourceProjectId, spaceId) as DouyinVersionRow[])
+    .map(douyinVersionFromRow)
+);
+
+export const insertDouyinVideoVersion = (version: DouyinVideoVersion): void => {
+  db.prepare(`INSERT INTO douyin_video_versions
+    (id, space_id, source_project_id, source_note_path, source_note_revision, source_product_id,
+    source_product_updated_at, project_id, title, description, hashtags_json, cover_asset_id,
+    revision, created_at, updated_at)
+    VALUES (@id, @space_id, @source_project_id, @source_note_path, @source_note_revision, @source_product_id,
+    @source_product_updated_at, @project_id, @title, @description, @hashtags_json, @cover_asset_id,
+    @revision, @created_at, @updated_at)`).run({
+    id: version.id, space_id: version.spaceId, source_project_id: version.sourceProjectId,
+    source_note_path: version.sourceNotePath || null, source_note_revision: version.sourceNoteRevision ?? null,
+    source_product_id: version.sourceProductId, source_product_updated_at: version.sourceProductUpdatedAt,
+    project_id: version.projectId, title: version.title, description: version.description,
+    hashtags_json: JSON.stringify(version.hashtags), cover_asset_id: version.coverAssetId || null,
+    revision: version.revision, created_at: version.createdAt, updated_at: version.updatedAt,
+  });
+};
+
+export const updateDouyinVideoVersion = (version: DouyinVideoVersion, expectedRevision: number): boolean => {
+  const result = db.prepare(`UPDATE douyin_video_versions SET title = ?, description = ?, hashtags_json = ?,
+    cover_asset_id = ?, revision = ?, updated_at = ? WHERE id = ? AND space_id = ? AND revision = ?`).run(
+    version.title, version.description, JSON.stringify(version.hashtags), version.coverAssetId || null,
+    version.revision, version.updatedAt, version.id, version.spaceId, expectedRevision,
+  );
+  return result.changes === 1;
+};
+
+type DouyinJobRow = {
+  id: string; space_id: string; session_id: string; version_id: string; version_revision: number;
+  project_id: string; render_id: string; media_asset_id: string; media_path: string; content_digest: string;
+  title: string; description: string; hashtags_json: string; account_id: string; account_label: string;
+  extension_instance_id: string; status: DouyinPublishJob['status']; publish_status: DouyinPublishJob['publishStatus'];
+  reset_status: DouyinPublishJob['resetStatus']; error_code: string; error_message: string;
+  created_at: number; updated_at: number; confirmed_at: number | null; submitted_at: number | null;
+  published_at: number | null; completed_at: number | null;
+  published_review_json: string | null;
+  image_cover_json: string | null;
+};
+
+const douyinJobFromRow = (row: DouyinJobRow): DouyinPublishJob => ({
+  id: row.id, platform: 'douyin', spaceId: row.space_id, sessionId: row.session_id,
+  versionId: row.version_id, versionRevision: row.version_revision, projectId: row.project_id,
+  renderId: row.render_id, mediaAssetId: row.media_asset_id, mediaPath: row.media_path,
+  contentDigest: row.content_digest, title: row.title, description: row.description,
+  hashtags: safeJsonParse(row.hashtags_json, [] as string[]), accountId: row.account_id,
+  accountLabel: row.account_label, extensionInstanceId: row.extension_instance_id,
+  status: row.status, publishStatus: row.publish_status, resetStatus: row.reset_status,
+  errorCode: row.error_code, errorMessage: row.error_message, createdAt: row.created_at,
+  updatedAt: row.updated_at, confirmedAt: row.confirmed_at ?? undefined,
+  submittedAt: row.submitted_at ?? undefined, publishedAt: row.published_at ?? undefined,
+  completedAt: row.completed_at ?? undefined,
+  publishedReview: safeJsonParse(row.published_review_json, null as DouyinPublishJob['publishedReview'] | null) || undefined,
+  imageCover: safeJsonParse(row.image_cover_json, null as DouyinPublishJob['imageCover'] | null) || undefined,
+});
+
+export const getDouyinPublishJob = (id: string, spaceId = getActiveSpaceId()): DouyinPublishJob | null => {
+  const row = db.prepare('SELECT * FROM douyin_publish_jobs WHERE id = ? AND space_id = ?').get(id, spaceId) as DouyinJobRow | undefined;
+  return row ? douyinJobFromRow(row) : null;
+};
+
+export const listDouyinPublishJobs = (spaceId = getActiveSpaceId()): DouyinPublishJob[] => (
+  (db.prepare('SELECT * FROM douyin_publish_jobs WHERE space_id = ? ORDER BY created_at DESC').all(spaceId) as DouyinJobRow[])
+    .map(douyinJobFromRow)
+);
+
+export const upsertDouyinPublishJob = (job: DouyinPublishJob): void => {
+  db.prepare(`INSERT OR REPLACE INTO douyin_publish_jobs
+    (id, space_id, session_id, version_id, version_revision, project_id, render_id, media_asset_id,
+    media_path, content_digest, title, description, hashtags_json, account_id, account_label,
+    extension_instance_id, status, publish_status, reset_status, error_code, error_message,
+    created_at, updated_at, confirmed_at, submitted_at, published_at, completed_at, published_review_json, image_cover_json)
+    VALUES (@id, @space_id, @session_id, @version_id, @version_revision, @project_id, @render_id, @media_asset_id,
+    @media_path, @content_digest, @title, @description, @hashtags_json, @account_id, @account_label,
+    @extension_instance_id, @status, @publish_status, @reset_status, @error_code, @error_message,
+    @created_at, @updated_at, @confirmed_at, @submitted_at, @published_at, @completed_at, @published_review_json, @image_cover_json)`).run({
+    id: job.id, space_id: job.spaceId, session_id: job.sessionId, version_id: job.versionId,
+    version_revision: job.versionRevision, project_id: job.projectId, render_id: job.renderId,
+    media_asset_id: job.mediaAssetId, media_path: job.mediaPath, content_digest: job.contentDigest,
+    title: job.title, description: job.description, hashtags_json: JSON.stringify(job.hashtags),
+    account_id: job.accountId, account_label: job.accountLabel, extension_instance_id: job.extensionInstanceId,
+    status: job.status, publish_status: job.publishStatus, reset_status: job.resetStatus,
+    error_code: job.errorCode, error_message: job.errorMessage, created_at: job.createdAt,
+    updated_at: job.updatedAt, confirmed_at: job.confirmedAt ?? null, submitted_at: job.submittedAt ?? null,
+    published_at: job.publishedAt ?? null, completed_at: job.completedAt ?? null,
+    published_review_json: job.publishedReview ? JSON.stringify(job.publishedReview) : null,
+    image_cover_json: job.imageCover ? JSON.stringify(job.imageCover) : null,
+  });
+};
+
+export const getDouyinPublisherBinding = (): string => {
+  const row = db.prepare('SELECT bound_extension_instance_id AS id FROM douyin_publisher_config WHERE id = 1').get() as { id: string } | undefined;
+  return row?.id || '';
+};
+
+export const setDouyinPublisherBinding = (extensionInstanceId: string): void => {
+  db.prepare('UPDATE douyin_publisher_config SET bound_extension_instance_id = ?, updated_at = ? WHERE id = 1')
+    .run(extensionInstanceId, Date.now());
 };
 
 export const findXhsPublishJobByCandidate = (

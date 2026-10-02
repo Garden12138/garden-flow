@@ -3,6 +3,7 @@ dist/
 dist-electron/
 .remotion-render-bundle/
 .remotion-compositor/
+.remotion-renderer-runtime/
 release/
 .private-runtime/
 .plugin-runtime/

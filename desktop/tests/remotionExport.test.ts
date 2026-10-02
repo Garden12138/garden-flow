@@ -3,11 +3,29 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { createRequire } from 'node:module';
+import { execFileSync } from 'node:child_process';
 import { stageRemotionAssets } from '../electron/core/video-editor-v2/remotionAssetStaging.ts';
 import type { MediaAssetRecord } from '../shared/videoAutoEdit.ts';
 import type { VideoEditorV2RemotionComposition } from '../shared/videoAutoEditRemotion.ts';
 import { shouldRenderVisualPlaceholder } from '../shared/videoMotionLayerPolicy.ts';
 import { musicNormalizationGain } from '../electron/core/video-editor-v2/productVideoMusicLoudness.ts';
+
+test('packaged renderer loads its dependencies outside the repository without pnpm symlinks', async () => {
+    const fixtureDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'gardenflow-renderer-runtime-test-'));
+    try {
+        const { prepareRemotionRendererRuntime } = createRequire(import.meta.url)('../scripts/prepare-remotion-renderer-runtime.cjs');
+        const entryPath = await prepareRemotionRendererRuntime(fixtureDirectory);
+        execFileSync(process.execPath, ['-e', 'const r = require(process.argv[1]); if (typeof r.renderMedia !== "function" || typeof r.selectComposition !== "function") process.exit(1);', entryPath], {
+            cwd: fixtureDirectory,
+            env: { ...process.env, NODE_PATH: '' },
+        });
+        const desktopPackage = JSON.parse(await fs.readFile(new URL('../package.json', import.meta.url), 'utf8'));
+        assert.ok(desktopPackage.build.extraResources.some((item: { from: string; to: string }) => item.from === '.remotion-renderer-runtime' && item.to === 'remotion-renderer-runtime'));
+    } finally {
+        await fs.rm(fixtureDirectory, { recursive: true, force: true });
+    }
+});
 
 test('quiet BGM is raised before applying the standard 20% music mix', () => {
     assert.equal(musicNormalizationGain(-43.9, -26.5), 24);

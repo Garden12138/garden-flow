@@ -23,6 +23,7 @@ import {
     type NewApiVideoUpstream,
 } from '../../shared/newApiVideo';
 import {
+    assertVideoGenerationEnabled,
     getVideoModelCapabilities,
     resolveVideoModelRoute,
     videoModeReferenceRange,
@@ -1135,6 +1136,7 @@ export async function generateVideosToMediaLibrary(input: GenerateVideosInput): 
     }
 
     const settings = (getSettings() || {}) as Record<string, unknown>;
+    assertVideoGenerationEnabled(settings);
     const generationMode = (String(input.generationMode || '').trim() || 'text-to-video') as VideoGenerationMode;
     const configuredRoute = resolveVideoModelRoute(settings, input.model);
     const endpoint = normalizeApiBaseUrl(

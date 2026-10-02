@@ -863,6 +863,71 @@ export async function createVideoEditorV2Project(input: {
   return saveVideoEditorV2Project(project);
 }
 
+/** Make an independent editable platform cut without carrying over a published render. */
+export async function cloneProductVideoProject(sourceProjectId: string, title?: string): Promise<VideoEditorV2Project> {
+  return enqueueProductProjectMutation(sourceProjectId, async () => {
+    const source = await getVideoEditorV2Project(sourceProjectId);
+    if (!source || source.projectKind !== 'product-video' || !source.productVideo) {
+      throw new Error('只能从现有商品视频工程创建平台版本');
+    }
+    if (['generating', 'rendering', 'auto_editing'].includes(source.status)) {
+      throw new Error('原工程正在处理，请完成后再创建平台版本');
+    }
+    const sourceDir = getProjectDir(source.id);
+    const id = `video_edit_v2_${Date.now()}_${randomUUID().slice(0, 8)}`;
+    const targetDir = getProjectDir(id);
+    const rebase = (candidate: string | null | undefined): string | null | undefined => {
+      if (!candidate) return candidate;
+      const resolved = path.resolve(candidate);
+      const relative = path.relative(sourceDir, resolved);
+      if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+        throw new Error('原工程包含目录外的媒体引用，无法安全复制');
+      }
+      return path.join(targetDir, relative);
+    };
+    try {
+      await fs.cp(sourceDir, targetDir, {
+        recursive: true,
+        filter: (candidate) => candidate === sourceDir || !['project.json', 'renders', 'remotion'].includes(path.basename(candidate)),
+      });
+      const timestamp = nowIso();
+      const clone: VideoEditorV2Project = {
+        ...source,
+        id,
+        title: String(title || '').trim() || `${source.title} · 抖音版`,
+        sourceManuscriptPath: null,
+        projectDir: targetDir,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        status: source.status === 'exported' ? 'ready' : source.status,
+        assets: source.assets.map((asset) => ({
+          ...asset,
+          sourcePath: rebase(asset.projectPath)!,
+          projectPath: rebase(asset.projectPath)!,
+          proxyPath: rebase(asset.proxyPath),
+          thumbnailPath: rebase(asset.thumbnailPath),
+        })),
+        transcriptTracks: source.transcriptTracks.map((track) => ({
+          ...track,
+          sourceSrtPath: rebase(track.sourceSrtPath)!,
+          normalizedJsonPath: rebase(track.normalizedJsonPath)!,
+          editedSrtPath: rebase(track.editedSrtPath),
+        })),
+        timeline: { ...source.timeline, id: `timeline_${id}` },
+        autoEditRuns: [],
+        undoStack: [],
+        remotionSnapshot: null,
+        renderOutputs: [],
+        lastError: null,
+      };
+      return await saveVideoEditorV2Project(clone);
+    } catch (error) {
+      await fs.rm(targetDir, { recursive: true, force: true });
+      throw error;
+    }
+  });
+}
+
 export async function getOrCreateVideoEditorV2ProjectForManuscript(input: {
   manuscriptPath: string;
   title?: string;
@@ -1119,8 +1184,8 @@ async function createProductVideoProjectUnlocked(input: CreateProductVideoProjec
     const sceneStates = input.proposal.scenes.map((scene) => ({
       ...scene,
       generationStatus: scene.source === 'ai-motion' ? 'pending' as const : 'not-required' as const,
-      narrationText: String(scene.overlayText || '').trim(),
-      voiceoverStatus: String(scene.overlayText || '').trim() ? 'needs-configuration' as const : 'not-required' as const,
+      narrationText: input.proposal.voiceoverEnabled === false ? '' : String(scene.overlayText || '').trim(),
+      voiceoverStatus: input.proposal.voiceoverEnabled !== false && String(scene.overlayText || '').trim() ? 'needs-configuration' as const : 'not-required' as const,
     }));
     input.assertSnapshotCurrent?.();
     const saved = await saveVideoEditorV2Project({
@@ -1139,7 +1204,7 @@ async function createProductVideoProjectUnlocked(input: CreateProductVideoProjec
       },
       productVideo: {
         proposal: input.proposal,
-        voiceoverAutoApprovedAt: nowIso(),
+        voiceoverAutoApprovedAt: input.proposal.voiceoverEnabled === false ? undefined : nowIso(),
         productSnapshot: input.productSnapshot,
         scenes: sceneStates,
       },

@@ -48,6 +48,7 @@ export async function productVideoHarness() {
         electron: `export const app = { isPackaged: false, getAppPath: () => ${JSON.stringify(path.resolve(import.meta.dirname, '../..'))} };`,
     };
     const exports = `export * from './electron/core/productVideoApprovalService';
+        export * from './electron/core/tools/productVideoComposeTool';
         export * from './electron/core/brandWorkspaceStore';
         export * from './electron/core/video-editor-v2/videoEditorV2ProjectStore';
         export * from './electron/core/video-editor-v2/productVideoVoiceoverService';

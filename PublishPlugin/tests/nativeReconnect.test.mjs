@@ -25,7 +25,9 @@ async function fixture() {
     storage: { local: { get: async key => ({ [key]: stored[key] }), set: async values => Object.assign(stored, values) } },
   };
   const context = vm.createContext({ ...adapter, chrome, navigator: { userAgent: 'Chrome' }, crypto, setTimeout, clearTimeout });
-  const source = (await readFile(new URL('../src/background.js', import.meta.url), 'utf8')).replace(/^import \{[\s\S]*?\} from '\.\/pageAdapter\.js';/, '');
+  const source = (await readFile(new URL('../src/background.js', import.meta.url), 'utf8'))
+    .replace(/^import \{[\s\S]*?\} from '\.\/pageAdapter\.js';/, '')
+    .replace(/^import \{[^\n]+\} from '\.\/douyinPublisher\.js';/m, '');
   vm.runInContext(`${source}\nglobalThis.api={connectNative,getState:()=>({connected:nativeConnected,error:nativeConnectionError})};`, context);
   await context.api.connectNative();
   return { state, stored, api: context.api };

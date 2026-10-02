@@ -27,6 +27,7 @@ export const ProductVideoComposeParamsSchema = z.object({
     aspectRatio: z.enum(['16:9', '9:16', '1:1', '4:5', 'custom']).default('9:16'),
   }).strict(),
   durationMs: z.number().int().min(1_000).max(300_000),
+  voiceoverEnabled: z.boolean().optional().describe('Whether approval authorizes automatic narration from screen copy. Set false for a silent video; omitted retains the existing narration default.'),
   scenes: z.array(ProductVideoProposalSceneSchema).min(1).max(8),
 }).strict().superRefine((value, context) => {
   const uniqueProductIds = Array.from(new Set(value.referencedProductIds));
