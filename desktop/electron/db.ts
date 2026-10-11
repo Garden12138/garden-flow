@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { resolveAssetSourceToPath } from './core/localAssetManager';
 import type { XhsPublishJob, XhsPublishJobStatus } from '../shared/xhsPublisher';
 import type { DouyinVideoVersion, DouyinPublishJob } from '../shared/platformVideoVersion';
+import type { TikTokVideoVersion, TikTokPublishJob } from '../shared/tiktokVideo';
 
 const dbPath = path.join(app.getPath('userData'), 'gardenflow.db');
 const db = new Database(dbPath);
@@ -259,6 +260,23 @@ const initDb = () => {
     );
     INSERT OR IGNORE INTO douyin_publisher_config (id, bound_extension_instance_id, updated_at) VALUES (1, '', 0);
 
+    CREATE TABLE IF NOT EXISTS tiktok_video_versions (
+      id TEXT PRIMARY KEY, space_id TEXT NOT NULL, source_project_id TEXT NOT NULL,
+      project_id TEXT NOT NULL UNIQUE, revision INTEGER NOT NULL,
+      document_json TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_tiktok_versions_source ON tiktok_video_versions(space_id, source_project_id, created_at);
+    CREATE TABLE IF NOT EXISTS tiktok_publish_jobs (
+      id TEXT PRIMARY KEY, space_id TEXT NOT NULL, version_id TEXT NOT NULL,
+      version_revision INTEGER NOT NULL, content_digest TEXT NOT NULL,
+      document_json TEXT NOT NULL, created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_tiktok_jobs_version ON tiktok_publish_jobs(space_id, version_id, created_at DESC);
+    CREATE TABLE IF NOT EXISTS tiktok_publisher_config (
+      id INTEGER PRIMARY KEY CHECK (id = 1), bound_extension_instance_id TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL
+    );
+    INSERT OR IGNORE INTO tiktok_publisher_config (id, bound_extension_instance_id, updated_at) VALUES (1, '', 0);
+
     CREATE TABLE IF NOT EXISTS session_transcript_records (
       id TEXT PRIMARY KEY,
       session_id TEXT NOT NULL,
@@ -492,6 +510,7 @@ const initDb = () => {
   if (!hasColumn('douyin_publish_jobs', 'published_review_json')) {
     db.exec('ALTER TABLE douyin_publish_jobs ADD COLUMN published_review_json TEXT');
   }
+  migrateTikTokPublishHistory();
   if (!hasColumn('douyin_publish_jobs', 'image_cover_json')) {
     db.exec('ALTER TABLE douyin_publish_jobs ADD COLUMN image_cover_json TEXT');
   }
@@ -3808,4 +3827,62 @@ export const getSimilaritySortedSourceIds = (queryEmbedding: number[]): { source
   return Array.from(sourceScores.entries())
     .map(([sourceId, score]) => ({ sourceId, score }))
     .sort((a, b) => b.score - a.score);
+};
+
+type TikTokDocumentRow = { document_json: string };
+
+// Preserve cancelled/reviewed attempts when a user prepares the same cut again.
+export function migrateTikTokPublishHistory(): void {
+  const schema = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'tiktok_publish_jobs'").get() as { sql?: string } | undefined;
+  if (!schema?.sql?.replace(/\s+/g, '').includes('UNIQUE(space_id,version_id,version_revision,content_digest)')) return;
+  db.transaction(() => db.exec(`
+    CREATE TABLE tiktok_publish_jobs_history (
+      id TEXT PRIMARY KEY, space_id TEXT NOT NULL, version_id TEXT NOT NULL,
+      version_revision INTEGER NOT NULL, content_digest TEXT NOT NULL,
+      document_json TEXT NOT NULL, created_at INTEGER NOT NULL
+    );
+    INSERT INTO tiktok_publish_jobs_history SELECT * FROM tiktok_publish_jobs;
+    DROP TABLE tiktok_publish_jobs;
+    ALTER TABLE tiktok_publish_jobs_history RENAME TO tiktok_publish_jobs;
+    CREATE INDEX idx_tiktok_jobs_version ON tiktok_publish_jobs(space_id, version_id, created_at DESC);
+  `))();
+}
+
+export const getTikTokVideoVersion = (id: string, spaceId = getActiveSpaceId()): TikTokVideoVersion | null => {
+  const row = db.prepare('SELECT document_json FROM tiktok_video_versions WHERE id = ? AND space_id = ?').get(id, spaceId) as TikTokDocumentRow | undefined;
+  return row ? safeJsonParse(row.document_json, null as TikTokVideoVersion | null) : null;
+};
+export const getTikTokVideoVersionByProject = (projectId: string, spaceId = getActiveSpaceId()): TikTokVideoVersion | null => {
+  const row = db.prepare('SELECT document_json FROM tiktok_video_versions WHERE project_id = ? AND space_id = ?').get(projectId, spaceId) as TikTokDocumentRow | undefined;
+  return row ? safeJsonParse(row.document_json, null as TikTokVideoVersion | null) : null;
+};
+export const listTikTokVideoVersions = (sourceProjectId: string, spaceId = getActiveSpaceId()): TikTokVideoVersion[] => (
+  (db.prepare('SELECT document_json FROM tiktok_video_versions WHERE source_project_id = ? AND space_id = ? ORDER BY created_at ASC').all(sourceProjectId, spaceId) as TikTokDocumentRow[])
+    .flatMap((row) => { const item = safeJsonParse(row.document_json, null as TikTokVideoVersion | null); return item ? [item] : []; })
+);
+export const insertTikTokVideoVersion = (version: TikTokVideoVersion): void => {
+  db.prepare('INSERT INTO tiktok_video_versions (id, space_id, source_project_id, project_id, revision, document_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(version.id, version.spaceId, version.sourceProjectId, version.projectId, version.revision, JSON.stringify(version), version.createdAt, version.updatedAt);
+};
+export const updateTikTokVideoVersion = (version: TikTokVideoVersion, expectedRevision: number): boolean => (
+  db.prepare('UPDATE tiktok_video_versions SET revision = ?, document_json = ?, updated_at = ? WHERE id = ? AND space_id = ? AND revision = ? AND project_id = ? AND source_project_id = ?')
+    .run(version.revision, JSON.stringify(version), version.updatedAt, version.id, version.spaceId, expectedRevision, version.projectId, version.sourceProjectId).changes === 1
+);
+export const getTikTokPublishJob = (id: string, spaceId = getActiveSpaceId()): TikTokPublishJob | null => {
+  const row = db.prepare('SELECT document_json FROM tiktok_publish_jobs WHERE id = ? AND space_id = ?').get(id, spaceId) as TikTokDocumentRow | undefined;
+  return row ? safeJsonParse(row.document_json, null as TikTokPublishJob | null) : null;
+};
+export const listTikTokPublishJobs = (spaceId = getActiveSpaceId()): TikTokPublishJob[] => (
+  (db.prepare('SELECT document_json FROM tiktok_publish_jobs WHERE space_id = ? ORDER BY created_at DESC').all(spaceId) as TikTokDocumentRow[])
+    .flatMap((row) => { const item = safeJsonParse(row.document_json, null as TikTokPublishJob | null); return item ? [item] : []; })
+);
+export const upsertTikTokPublishJob = (job: TikTokPublishJob): void => {
+  db.prepare('INSERT OR REPLACE INTO tiktok_publish_jobs (id, space_id, version_id, version_revision, content_digest, document_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run(job.id, job.spaceId, job.versionId, job.versionRevision, job.contentDigest, JSON.stringify(job), job.createdAt);
+};
+export const getTikTokPublisherBinding = (): string => (
+  (db.prepare('SELECT bound_extension_instance_id AS id FROM tiktok_publisher_config WHERE id = 1').get() as { id: string }).id
+);
+export const setTikTokPublisherBinding = (extensionInstanceId: string): void => {
+  db.prepare('UPDATE tiktok_publisher_config SET bound_extension_instance_id = ?, updated_at = ? WHERE id = 1').run(extensionInstanceId, Date.now());
 };

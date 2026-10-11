@@ -9,16 +9,23 @@ import type { ProductVideoProposal, VideoEditorV2Project } from '../../shared/vi
 
 // Real approval SQL, project/catalog/media stores and job registry; only host, router,
 // image/video providers and the TTS HTTP boundary are isolated from user data.
-export async function productVideoHarness() {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'gardenflow-video-closeout-'));
+export async function productVideoHarness(options: { platformVersions?: boolean } = {}) {
+    const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'gardenflow-video-closeout-')));
     const source = await fs.readFile(new URL('../../electron/db.ts', import.meta.url), 'utf8');
     let sql = new DatabaseSync(path.join(root, 'approvals.db'));
     sql.exec('PRAGMA foreign_keys=OFF');
     sql.exec(source.match(/CREATE TABLE IF NOT EXISTS pending_tool_approvals \([\s\S]*?\n    \);/)![0]);
+    if (options.platformVersions) {
+        for (const table of ['douyin_video_versions', 'douyin_publish_jobs', 'douyin_publisher_config', 'tiktok_video_versions', 'tiktok_publish_jobs', 'tiktok_publisher_config']) {
+            const schema = source.match(new RegExp(`CREATE TABLE IF NOT EXISTS ${table} \\([\\s\\S]*?\\);`))?.[0];
+            if (!schema) throw new Error(`Missing platform version schema: ${table}`);
+            sql.exec(schema);
+        }
+    }
     const state = {
         root, spaceId: 'default', settings: {} as Record<string, unknown>,
         messages: [] as Array<Record<string, any>>, tasks: new Map<string, any>(), videoCalls: 0, ttsCalls: 0,
-        audio: Buffer.alloc(0), failSpeech: false,
+        audio: Buffer.alloc(0), failSpeech: false, localizationCalls: 0, localizationResponse: {} as any,
     };
     const db = {
         prepare: (query: string) => sql.prepare(query),
@@ -30,14 +37,19 @@ export async function productVideoHarness() {
     };
     const approvalTypes = source.slice(source.indexOf('export type PendingToolApprovalStatus'), source.indexOf('export type AgentTaskStatus'));
     const approvalFunctions = source.slice(source.indexOf('const parsePendingToolApproval'), source.indexOf('/**\n * 获取会话的所有消息', source.indexOf('const parsePendingToolApproval')));
+    const platformFunctions = options.platformVersions
+        ? source.slice(source.indexOf('type DouyinVersionRow ='), source.indexOf('export const findXhsPublishJobByCandidate')) + '\n' + source.slice(source.indexOf('type TikTokDocumentRow ='))
+        : '';
     const mocks: Record<string, string> = {
         db: `const state = globalThis.__fixture; const db = globalThis.__fixtureDb;
             export const getSettings = () => state.settings;
-            export const getWorkspacePathsForSpace = (spaceId) => { const base = state.root + '/' + spaceId; return { base, media: base + '/media', subjects: base + '/subjects', activeSpaceId: spaceId }; };
+            export const getWorkspacePathsForSpace = (spaceId) => { const base = state.root + '/' + spaceId; return { base, media: base + '/media', subjects: base + '/subjects', manuscripts: base + '/manuscripts', activeSpaceId: spaceId }; };
             export const getWorkspacePaths = () => getWorkspacePathsForSpace(state.spaceId);
+            export const getActiveSpaceId = () => state.spaceId;
             export const addChatMessage = (message) => state.messages.push(message);
             export const getChatMessages = (session) => state.messages.filter((message) => message.session_id === session);
-            ${approvalTypes}\n${approvalFunctions}`,
+            const safeJsonParse = (value, fallback) => { try { return JSON.parse(value); } catch { return fallback; } };
+            ${approvalTypes}\n${approvalFunctions}\n${platformFunctions}`,
         ai: `const state = globalThis.__fixture;
             const runtime = { getTask: id => state.tasks.get(id), cancelTask: id => { state.tasks.get(id).status = 'cancelled'; }, resumeTask: id => { state.tasks.get(id).status = 'running'; }, addArtifact: (id, artifact) => state.tasks.get(id).artifacts.push(artifact) };
             export const getTaskGraphRuntime = () => runtime;
@@ -54,7 +66,11 @@ export async function productVideoHarness() {
         export * from './electron/core/video-editor-v2/productVideoVoiceoverService';
         export * from './electron/core/video-editor-v2/renderExportService';
         export * from './electron/core/mediaGenerationJobRegistry';
-        export * from './electron/db';`;
+        export * from './electron/db';
+        ${options.platformVersions ? `export * from './electron/core/douyinVideoVersionService';
+        export * from './electron/core/tiktokVideoVersionService';
+        export * from './electron/core/tiktokLocalization';
+        export * from './electron/core/xhsNoteProjectStore';` : ''}`;
     const bundled = await build({ stdin: { contents: exports, resolveDir: path.resolve(import.meta.dirname, '../..') }, bundle: true, write: false, platform: 'node', format: 'cjs', packages: 'external', define: { 'import.meta.url': JSON.stringify(new URL('../../package.json', import.meta.url).href) },
         plugins: [{ name: 'isolated-video-host', setup(builder) {
             builder.onResolve({ filter: /(?:^electron$|(?:^|\/)db(?:\.ts)?$|(?:^|\/)ai$|mediaGenerationTools$|imageGenerationService$|videoGenerationService$)/ }, (args) => {
@@ -70,9 +86,15 @@ export async function productVideoHarness() {
     const fixtureProcess = Object.create(process);
     fixtureProcess.resourcesPath = path.resolve(import.meta.dirname, '../..');
     vm.runInNewContext(bundled.outputFiles[0].text, { module, exports: module.exports, __fixture: state, __fixtureDb: db,
-        require: createRequire(new URL('../../package.json', import.meta.url)), process: fixtureProcess, console, Buffer, URL, AbortController, AbortSignal,
+        // Required dependencies run in the host realm, matching the app's Error
+        // constructor so renderer exceptions exercise the normal recovery path.
+        require: createRequire(new URL('../../package.json', import.meta.url)), process: fixtureProcess, console, Buffer, URL, Error, AbortController, AbortSignal,
         setTimeout, clearTimeout, setInterval, clearInterval, structuredClone, __dirname: root,
         fetch: async (url: string) => {
+            if (url === 'https://text.invalid/v1/chat/completions') {
+                state.localizationCalls++;
+                return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(state.localizationResponse) } }] }), { headers: { 'content-type': 'application/json' } });
+            }
             if (url !== 'https://tts.invalid/v1/audio/speech') throw new Error(`Unexpected network request`);
             state.ttsCalls++;
             return state.failSpeech ? new Response('fixture speech failure', { status: 400 }) : new Response(state.audio, { headers: { 'content-type': 'audio/wav' } });

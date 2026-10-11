@@ -114,6 +114,8 @@ pnpm dev
 
 首次启动会创建当前 GardenFlow 数据目录、`gardenflow.db` 和默认空间。随后打开“设置 → AI 供应商”添加供应商并选择能力路由；视频服务单独配置。
 
+根目录的 `pnpm install` 只安装根目录依赖，首次安装或依赖变更后请使用 `pnpm run setup`。开发版与安装版共享数据目录和单实例锁；运行 `pnpm dev` 前请完全退出已有 GardenFlow（macOS 使用 `⌘Q`，仅关闭窗口不会退出应用）。已有实例运行时，新启动会激活现有窗口并正常退出，终端会显示原因。
+
 ### 常用命令
 
 | 命令 | 用途 |
@@ -172,7 +174,7 @@ Native Messaging ── browser extensions
 - `desktop/src/`：React、TypeScript、TailwindCSS renderer。
 - `desktop/electron/`：Electron 主进程、SQLite、AI runtime、工具、媒体和自动化服务。
 - `Plugin/`：内容采集与浏览器控制扩展。
-- `PublishPlugin/`：小红书与抖音发布辅助扩展。
+- `PublishPlugin/`：小红书、抖音与国际版 TikTok 发布辅助扩展；TikTok 实际商品发布仍待验收。
 - `desktop/src/vendor/freecut/`：带独立归属声明的 FreeCut 工程能力。
 
 深入了解见[架构文档](./Docs/ARCHITECTURE.md)。

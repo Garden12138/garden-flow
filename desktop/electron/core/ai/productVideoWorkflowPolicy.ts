@@ -57,6 +57,7 @@ export const applyProductVideoWorkflowPolicy = (
   if (
     context.runtimeMode !== 'gardenflow'
     || (route.intent !== 'video_creation'
+      && context.metadata?.workflowKind !== 'product-video-compose'
       && context.metadata?.productVideoReplan !== true
       && !isStructuredProductVideoCreation(context.metadata))
     || readExplicitProductRefs(context.metadata).length === 0

@@ -149,8 +149,7 @@ async function writeJsonAtomic(filePath: string, value: unknown): Promise<void> 
   await fs.rename(tempPath, filePath);
 }
 
-function enrichProject(project: VideoEditorV2Project): VideoEditorV2Project {
-  const projectDir = getProjectDir(project.id);
+function enrichProject(project: VideoEditorV2Project, projectDir = getProjectDir(project.id)): VideoEditorV2Project {
   return migrateProductVideoVoiceoverProject({
     ...project,
     version: 2,
@@ -810,6 +809,7 @@ async function audioContentHash(filePath: string): Promise<string> {
 }
 
 export async function saveVideoEditorV2Project(project: VideoEditorV2Project): Promise<VideoEditorV2Project> {
+  const projectFile = getProjectFilePath(project.id);
   const next: VideoEditorV2Project = {
     ...project,
     version: 2,
@@ -822,15 +822,16 @@ export async function saveVideoEditorV2Project(project: VideoEditorV2Project): P
     updatedAt: nowIso(),
   };
   await ensureProjectDirs(next.id);
-  await writeJsonAtomic(getProjectFilePath(next.id), next);
-  return enrichProject(next);
+  await writeJsonAtomic(projectFile, next);
+  return enrichProject(next, next.projectDir);
 }
 
 export async function getVideoEditorV2Project(projectId: string): Promise<VideoEditorV2Project | null> {
-  const raw = await readJsonIfExists<Record<string, unknown>>(getProjectFilePath(projectId));
+  const projectDir = getProjectDir(projectId);
+  const raw = await readJsonIfExists<Record<string, unknown>>(path.join(projectDir, PROJECT_FILE_NAME));
   if (!raw || (raw.version !== 1 && raw.version !== 2)) return null;
   const project = raw as unknown as VideoEditorV2Project;
-  return enrichProject(project);
+  return enrichProject(project, projectDir);
 }
 
 export async function listVideoEditorV2Projects(): Promise<VideoEditorV2Project[]> {
@@ -864,9 +865,15 @@ export async function createVideoEditorV2Project(input: {
 }
 
 /** Make an independent editable platform cut without carrying over a published render. */
-export async function cloneProductVideoProject(sourceProjectId: string, title?: string): Promise<VideoEditorV2Project> {
+export async function cloneProductVideoProject(sourceProjectId: string, title?: string, expectedMediaRoot?: string): Promise<VideoEditorV2Project> {
   return enqueueProductProjectMutation(sourceProjectId, async () => {
+    const mediaRoot = path.resolve(expectedMediaRoot || getMediaRootDir());
+    const assertSpace = () => {
+      if (path.resolve(getMediaRootDir()) !== mediaRoot) throw new Error('复制期间工作空间已变化，请重新创建平台版本');
+    };
+    assertSpace();
     const source = await getVideoEditorV2Project(sourceProjectId);
+    assertSpace();
     if (!source || source.projectKind !== 'product-video' || !source.productVideo) {
       throw new Error('只能从现有商品视频工程创建平台版本');
     }
@@ -919,7 +926,9 @@ export async function cloneProductVideoProject(sourceProjectId: string, title?: 
         remotionSnapshot: null,
         renderOutputs: [],
         lastError: null,
+        productVideo: { ...source.productVideo, voiceoverAutoApprovedAt: undefined },
       };
+      assertSpace();
       return await saveVideoEditorV2Project(clone);
     } catch (error) {
       await fs.rm(targetDir, { recursive: true, force: true });
@@ -1420,6 +1429,71 @@ export function applyProductVideoEditCommand(input: {
   command: ProductVideoEditCommand;
 }): Promise<VideoEditorV2Project> {
   return enqueueProductProjectMutation(input.projectId, () => applyProductVideoEditCommandUnlocked(input));
+}
+
+/** Apply a reviewed language proposal as one queued mutation, preserving scene timing and product facts. */
+export function applyProductVideoLocalization(input: {
+  projectId: string;
+  expectedUpdatedAt: string;
+  scenes: Array<{ sceneId: string; overlayText: string; narrationText: string }>;
+  validateVersion: () => void;
+  commitVersion: () => void;
+}): Promise<VideoEditorV2Project> {
+  const mediaRoot = getMediaRootDir();
+  return enqueueProductProjectMutation(input.projectId, async () => {
+    const assertSpace = () => {
+      if (getMediaRootDir() !== mediaRoot) throw new Error('工作空间已变化，请重新打开版本');
+    };
+    assertSpace();
+    const current = await getVideoEditorV2Project(input.projectId);
+    assertSpace();
+    input.validateVersion();
+    if (!current?.productVideo || current.updatedAt !== input.expectedUpdatedAt) throw new Error('工程已更新，请重新生成语言建议');
+    if (['generating', 'rendering', 'auto_editing'].includes(current.status)
+      || current.productVideo.scenes.some(scene => ['queued', 'generating'].includes(scene.voiceoverStatus || ''))) throw new Error('工程正在处理，请完成后再应用语言建议');
+    const translations = new Map(input.scenes.map(scene => [scene.sceneId, scene]));
+    if (translations.size !== input.scenes.length || translations.size !== current.productVideo.scenes.length
+      || current.productVideo.scenes.some(scene => !translations.has(scene.id))) throw new Error('语言建议的分镜与当前工程不一致');
+    let project = pushTimelineUndo(current, 'tiktok.localization');
+    const primary = project.timeline.tracks.find(track => track.kind === 'primary-video');
+    const tracks = project.timeline.tracks.map(track => {
+      if (track.kind !== 'subtitle') return track;
+      const clips = track.clips.map(clip => {
+        const text = clip.sceneId ? translations.get(clip.sceneId)?.overlayText : undefined;
+        return text === undefined ? clip : { ...clip, text };
+      });
+      for (const scene of input.scenes) {
+        const visual = primary?.clips.find(clip => clip.sceneId === scene.sceneId);
+        if (!scene.overlayText || !visual || clips.some(clip => clip.sceneId === scene.sceneId)) continue;
+        clips.push({ id: `text_${randomUUID()}`, sceneId: scene.sceneId, sourceStartMs: 0,
+          sourceEndMs: visual.timelineEndMs - visual.timelineStartMs,
+          timelineStartMs: visual.timelineStartMs, timelineEndMs: visual.timelineEndMs, text: scene.overlayText });
+      }
+      return { ...track, clips };
+    });
+    project = reflowProductTimeline({ ...project, timeline: { ...project.timeline, tracks }, productVideo: {
+      ...current.productVideo, voiceoverAutoApprovedAt: undefined,
+      scenes: current.productVideo.scenes.map(scene => {
+        const translation = translations.get(scene.id)!;
+        return { ...scene, overlayText: translation.overlayText, narrationText: translation.narrationText,
+          voiceoverStatus: translation.narrationText === (scene.narrationText || '') ? scene.voiceoverStatus
+            : scene.voiceoverAssetId ? 'stale' as const
+              : translation.narrationText ? 'needs-configuration' as const : 'not-required' as const };
+      }),
+    } });
+    assertSpace();
+    input.validateVersion();
+    const saved = await saveVideoEditorV2Project(project);
+    try {
+      assertSpace();
+      input.commitVersion();
+    } catch (error) {
+      // Keep file and metadata consistent if the final database compare-and-swap fails.
+      await fs.writeFile(path.join(current.projectDir, PROJECT_FILE_NAME), JSON.stringify(current, null, 2), 'utf8');
+      throw error;
+    }
+    return saved;
+  });
 }
 
 export function setProductVideoVoiceoverJob(input: {

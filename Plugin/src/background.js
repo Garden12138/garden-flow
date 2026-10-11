@@ -7,13 +7,7 @@ import {
   buildKnowledgeEntryFromCaptureDocument,
   buildKnowledgeEntryFromPagePayload,
 } from './capture/knowledgeEntryMapper.js';
-import {
-  captureJdProductReviews,
-  ensureJdReviewModal,
-  extractJdProductPayload,
-  extractJdReviewPreview,
-  isJdProductUrl,
-} from './capture/jdProduct.js';
+import { getProductCaptureAdapter, productPlatformFromUrl, assertExpectedProductMatches } from './capture/productAdapters.js';
 
 const NATIVE_KNOWLEDGE_ENDPOINT = Object.freeze({
   baseUrl: 'native://gardenflow',
@@ -49,6 +43,8 @@ const MENU_VIDEO_ID = 'gardenflow-save-video';
 const PLUGIN_CAPTURE_MESSAGE_TYPES = new Set([
   'preview-jd-product',
   'save-jd-product',
+  'preview-product',
+  'save-product',
   'save-xhs',
   'xhs:download-current-note',
   'xhs:download-current-note-zip',
@@ -460,8 +456,10 @@ async function handleMessage(message, sender) {
       return await checkDesktopServer(true);
     case 'inspect-page':
       return await inspectPage(tabId);
+    case 'preview-product':
     case 'preview-jd-product':
       return await previewJdProductFromTab(tabId);
+    case 'save-product':
     case 'save-jd-product':
       return await saveJdProductFromTab(tabId, message?.reviewOptions);
     case 'save-xhs':
@@ -666,6 +664,12 @@ function detectCaptureTargetFromUrl(rawUrl) {
       description: '当前页面已识别为京东商品详情页，确认后保存到商品资产库。',
       detected: true,
     };
+  }
+
+  const productPlatform = productPlatformFromUrl(rawUrl);
+  if (productPlatform === 'taobao' || productPlatform === 'tmall') {
+    const label = productPlatform === 'tmall' ? '天猫' : '淘宝';
+    return { kind: 'product', platform: productPlatform, action: 'preview-product', label: `预览${label}商品`, description: '预览当前商品及评论，确认后保存到资产库。', detected: true };
   }
 
   if (hostname === 'mp.weixin.qq.com') {
@@ -4297,10 +4301,11 @@ async function saveSelectedTextFromTab(tabId) {
 }
 
 async function saveCurrentPageFromTab(tabId, options = {}, existingInspection = null) {
+  if (options.expectedProduct != null) assertExpectedProductMatches((await chrome.tabs.get(tabId)).url, options.expectedProduct);
   const inspection = existingInspection || await inspectPage(tabId);
   const action = normalizeText(inspection?.pageInfo?.action) || 'save-page-link';
-  if (action === 'preview-jd-product' || action === 'save-jd-product') {
-    return await saveJdProductFromTab(tabId, options?.reviewOptions);
+  if (['preview-product', 'save-product', 'preview-jd-product', 'save-jd-product'].includes(action)) {
+    return await saveJdProductFromTab(tabId, options?.reviewOptions, options?.expectedProduct, options?.captureSpaceId);
   }
   if (action === 'save-xhs') {
     return await saveXhsNoteFromTab(tabId);
@@ -4323,32 +4328,35 @@ async function saveCurrentPageFromTab(tabId, options = {}, existingInspection = 
   return await saveCurrentPageLinkFromTab(tabId);
 }
 
-async function previewJdProductFromTab(tabId) {
-  const product = await runExtraction(tabId, extractJdProductPayload, { world: 'MAIN' });
-  if (product?.accessErrorCode) {
-    throw captureAccessError(product.accessErrorCode, '京东', product?.sourceUrl);
+async function previewJdProductFromTab(tabId, reviewOptions = {}, expectedProduct = null, prepareForSave = false) {
+  const tab = await chrome.tabs.get(tabId);
+  const adapter = getProductCaptureAdapter(tab.url);
+  if (!adapter) throw new Error('当前页面不是支持的商品详情页');
+  const product = await runExtraction(tabId, adapter.extract, { world: 'MAIN', args: prepareForSave && adapter.platform !== 'jd' ? ['product', { hydrateSections: true }] : adapter.extractArgs });
+  if (!product) throw new Error('商品采集未返回结果，请重新加载采集插件后重试');
+  if (product.pageChanged) throw new Error('商品页面已变化，请重新识别');
+  if (product?.accessErrorCode) throw captureAccessError(product.accessErrorCode, adapter.label, product?.sourceUrl);
+  if (!product.externalId) throw new Error(`当前${adapter.label}页面未识别到商品标识，请确认已打开商品详情页`);
+  if (expectedProduct != null) assertExpectedProductMatches(product.sourceUrl, expectedProduct, product);
+  if (!product.title) throw new Error(`已识别${adapter.label}商品 ${product.externalId}，但未读取到商品名称。请确认页面加载完成，并重新加载最新版采集插件后重试`);
+  if (adapter.ensureReviews) {
+    const modalState = await runExtraction(tabId, adapter.ensureReviews, { world: 'MAIN', args: adapter.ensureArgs });
+    if (modalState?.accessErrorCode) throw captureAccessError(modalState.accessErrorCode, adapter.label, product?.sourceUrl);
   }
-  if (!product?.externalId || !product?.title) {
-    throw new Error('当前页面未识别到完整的京东商品名称或商品标识');
+  product.reviewCapture = await runExtraction(tabId, adapter.previewReviews, { world: 'MAIN', args: adapter.platform === 'jd' ? adapter.previewArgs : ['preview', reviewOptions] });
+  if (product.reviewCapture?.accessErrorCode && adapter.platform === 'jd') {
+    throw captureAccessError(product.reviewCapture.accessErrorCode, adapter.label, product?.sourceUrl);
   }
-  const modalState = await runExtraction(tabId, ensureJdReviewModal, { world: 'MAIN' });
-  if (modalState?.accessErrorCode) {
-    throw captureAccessError(modalState.accessErrorCode, '京东', product?.sourceUrl);
-  }
-  product.reviewCapture = await runExtraction(tabId, extractJdReviewPreview, { world: 'MAIN' });
-  if (product.reviewCapture?.accessErrorCode) {
-    throw captureAccessError(product.reviewCapture.accessErrorCode, '京东', product?.sourceUrl);
-  }
-  return {
-    success: true,
-    preview: true,
-    mode: 'jd-product-preview',
-    product,
-  };
+  const latestTab = await chrome.tabs.get(tabId);
+  if (latestTab.url !== tab.url) throw new Error('商品页面已变化，请重新识别');
+  product.previewPageUrl = tab.url;
+  return { success: true, preview: true, mode: adapter.platform === 'jd' ? 'jd-product-preview' : 'product-preview', product };
 }
 
-async function saveJdProductFromTab(tabId, reviewOptions = {}) {
-  const preview = await previewJdProductFromTab(tabId);
+async function saveJdProductFromTab(tabId, reviewOptions = {}, expectedProduct = null, captureSpaceId = undefined) {
+  if (expectedProduct != null) assertExpectedProductMatches((await chrome.tabs.get(tabId)).url, expectedProduct);
+  const preview = await previewJdProductFromTab(tabId, reviewOptions, expectedProduct, true);
+  const adapter = getProductCaptureAdapter(preview.product.sourceUrl);
   const normalizedReviewOptions = {
     selectedFilterIds: Array.from(new Set((Array.isArray(reviewOptions?.selectedFilterIds) ? reviewOptions.selectedFilterIds : [])
       .map((value) => normalizeText(value).slice(0, 200)).filter(Boolean))).slice(0, 50),
@@ -4357,34 +4365,44 @@ async function saveJdProductFromTab(tabId, reviewOptions = {}) {
     limitPerFilter: Number.isFinite(Number(reviewOptions?.limitPerFilter))
       ? Math.max(1, Math.min(50, Math.trunc(Number(reviewOptions.limitPerFilter))))
       : 5,
+    filterLabels: Object.fromEntries(Object.entries(reviewOptions?.filterLabels || {}).slice(0, 50)
+      .filter(([id, label]) => id && typeof label === 'string').map(([id, label]) => [normalizeText(id).slice(0, 200), normalizeText(label).slice(0, 100)])),
+    filterLimits: Object.fromEntries(Object.entries(reviewOptions?.filterLimits || {}).slice(0, 50).map(([id, limit]) => [normalizeText(id).slice(0, 200), Math.max(1, Math.min(50, Math.trunc(Number(limit) || 5)))])),
     captureAll: reviewOptions?.captureAll === true,
     interactionDelayMs: Number.isFinite(Number(reviewOptions?.interactionDelayMs))
       ? Math.max(0, Math.min(5_000, Math.trunc(Number(reviewOptions.interactionDelayMs))))
-      : 0,
+      : adapter.platform === 'jd' ? 0 : 800,
     scrollDelayMs: Number.isFinite(Number(reviewOptions?.scrollDelayMs))
       ? Math.max(400, Math.min(5_000, Math.trunc(Number(reviewOptions.scrollDelayMs))))
-      : 400,
+      : adapter.platform === 'jd' ? 400 : 1_000,
     maxScrollRounds: Number.isFinite(Number(reviewOptions?.maxScrollRounds))
       ? Math.max(1, Math.min(12, Math.trunc(Number(reviewOptions.maxScrollRounds))))
       : 6,
   };
-  const reviewCapture = await runExtraction(tabId, captureJdProductReviews, {
+  // Opening all reviews during preview may hit a gate. Keep that snapshot and
+  // stop interacting with the page, including an additional capture injection.
+  const reviewCapture = preview.product.reviewCapture?.accessErrorCode && adapter.platform !== 'jd' ? preview.product.reviewCapture : await runExtraction(tabId, adapter.captureReviews, {
     world: 'MAIN',
-    args: [normalizedReviewOptions],
+    args: adapter.captureArgs(normalizedReviewOptions),
   });
-  if (reviewCapture?.accessErrorCode) {
-    throw captureAccessError(reviewCapture.accessErrorCode, '京东', preview.product?.sourceUrl);
+  if (reviewCapture?.accessErrorCode && adapter.platform === 'jd') {
+    throw captureAccessError(reviewCapture.accessErrorCode, adapter.label, preview.product?.sourceUrl);
   }
+  const latestTab = await chrome.tabs.get(tabId);
+  if (latestTab.url !== preview.product.previewPageUrl) throw new Error('商品页面已变化，请重新识别');
   const payload = {
     ...preview.product,
     reviewOptions: normalizedReviewOptions,
     reviewCapture,
   };
   const operationId = createBridgeOperationId('assets.ingestProduct', payload);
-  const result = await requestNativeHost('assets.ingestProduct', { operationId, payload }, 120_000);
+  const result = await requestNativeHost('assets.ingestProduct', { operationId, payload, ...(captureSpaceId === undefined ? {} : { spaceId: captureSpaceId }) }, 120_000);
   return {
     success: true,
-    mode: 'jd-product',
+    mode: adapter.platform === 'jd' ? 'jd-product' : 'product',
+    platform: adapter.platform,
+    sourceUrl: payload.sourceUrl,
+    externalId: payload.externalId,
     title: payload.title,
     productId: result?.productId || '',
     snapshotId: result?.snapshotId || '',
@@ -4392,6 +4410,8 @@ async function saveJdProductFromTab(tabId, reviewOptions = {}) {
     importedImages: Number(result?.importedImages || 0),
     importedReviewImages: Number(result?.importedReviewImages || 0),
     capturedReviews: Number(result?.capturedReviews || 0),
+    reviewCaptureStatus: result?.reviewCaptureStatus || reviewCapture?.status || '',
+    reviewAccessErrorCode: reviewCapture?.accessErrorCode || '',
     reviewWarnings: Array.isArray(result?.reviewWarnings) ? result.reviewWarnings : reviewCapture?.warnings || [],
     missingFields: Array.isArray(result?.missingFields) ? result.missingFields : payload.missingFields || [],
   };
@@ -4401,7 +4421,7 @@ async function saveCurrentPageLinkFromTab(tabId) {
   // This action is also called directly by older side panels and browser tools.
   // Always route product pages before the generic article extractor can collect page chrome.
   const tab = await chrome.tabs.get(tabId);
-  if (isJdProductUrl(tab?.url)) return await saveJdProductFromTab(tabId);
+  if (getProductCaptureAdapter(tab?.url)) return await saveJdProductFromTab(tabId);
   const genericResult = await genericCaptureCoordinator.extract(tabId);
   let entry;
   if (genericResult.capture) {
@@ -4573,6 +4593,7 @@ async function saveXhsNoteFromTab(tabId) {
 
 configurePluginCapture({
   saveCurrentPageFromTab: async (tabId, options) => {
+    if (options?.expectedProduct != null) assertExpectedProductMatches((await chrome.tabs.get(tabId)).url, options.expectedProduct);
     const inspection = await inspectPage(tabId);
     if (normalizeText(inspection?.pageInfo?.action) === 'save-xhs') {
       return await enqueueXhsTask({
@@ -9558,6 +9579,11 @@ function detectCaptureTarget() {
       description: '当前页面已识别为京东商品详情页，确认后保存到商品资产库。',
       detected: true,
     };
+  }
+
+  if (['item.taobao.com', 'detail.tmall.com', 'chaoshi.detail.tmall.com'].includes(hostname) && location.pathname === '/item.htm' && /^\d+$/.test(new URL(location.href).searchParams.get('id') || '')) {
+    const platform = hostname === 'item.taobao.com' ? 'taobao' : 'tmall';
+    return { kind: 'product', platform, action: 'preview-product', label: `预览${platform === 'tmall' ? '天猫' : '淘宝'}商品`, description: '预览当前商品及评论，确认后保存到资产库。', detected: true };
   }
 
   if (hostname === 'youtube.com' || hostname.endsWith('.youtube.com') || hostname === 'youtu.be') {

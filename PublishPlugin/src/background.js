@@ -20,6 +20,7 @@ import {
   preparedMediaMatches,
 } from './pageAdapter.js';
 import { douyinPublish, douyinStatus } from './douyinPublisher.js';
+import { tiktokPublish, tiktokStatus } from './tiktokPublisher.js';
 
 const NATIVE_HOST = 'com.gardenflow.browser_control';
 const INSTANCE_KEY = 'gardenflowXhsPublisherInstanceId';
@@ -30,6 +31,7 @@ const EXTENSION_KIND = 'xhs-publisher';
 const CAPABILITY = 'xiaohongshu.publish.v1';
 const DOUYIN_CAPABILITY = 'douyin.publish.v1';
 const DOUYIN_COVER_CAPABILITY = 'douyin.image-cover.v1';
+const TIKTOK_CAPABILITY = 'tiktok.publish.v1';
 const PROTOCOL_VERSION = 1;
 const PUBLISH_TAB_PATTERN = 'https://creator.xiaohongshu.com/*';
 
@@ -129,7 +131,7 @@ async function refreshNativeConnection() {
       extensionId: chrome.runtime.id,
       extensionInstanceId: await instanceId(),
       extensionKind: EXTENSION_KIND,
-      capabilities: [CAPABILITY, DOUYIN_CAPABILITY, DOUYIN_COVER_CAPABILITY],
+      capabilities: [CAPABILITY, DOUYIN_CAPABILITY, DOUYIN_COVER_CAPABILITY, TIKTOK_CAPABILITY],
       version: manifest.version_name || manifest.version,
       browser: navigator.userAgent.includes('Edg/') ? 'edge' : navigator.userAgent.includes('Brave') ? 'brave' : 'chrome',
     }, 4000);
@@ -1108,10 +1110,12 @@ async function handleDesktopRequest(message) {
   const id = message.id;
   try {
     let value;
+    const platform = message.params?.platform;
+    if (platform !== undefined && !['xiaohongshu', 'douyin', 'tiktok'].includes(platform)) throw Object.assign(new Error('Unsupported publication platform'), { code: 'INVALID_PLATFORM' });
     if (message.method === 'publisher.status') value = message.params?.platform === 'douyin'
-      ? await douyinStatus(nativeConnected) : await currentStatus();
+      ? await douyinStatus(nativeConnected) : message.params?.platform === 'tiktok' ? await tiktokStatus(nativeConnected) : await currentStatus();
     else if (message.method === 'publisher.publish') value = message.params?.platform === 'douyin'
-      ? await douyinPublish(message.params || {}) : await publish(message.params || {});
+      ? await douyinPublish(message.params || {}) : message.params?.platform === 'tiktok' ? await tiktokPublish(message.params || {}) : await publish(message.params || {});
     else if (message.method === 'publisher.restore') value = await restore(message.params || {});
     else throw Object.assign(new Error(`Unsupported publisher method: ${message.method}`), { code: 'METHOD_NOT_ALLOWED' });
     nativePort?.postMessage({ jsonrpc: '2.0', id, result: value });
@@ -1125,7 +1129,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type !== 'publisher.status') return undefined;
   void connectNative().then(() => message.platform === 'douyin'
     ? douyinStatus(nativeConnected)
-    : currentStatus()).then(sendResponse).catch((error) => sendResponse({ nativeConnected, detail: messageError(error).message }));
+    : message.platform === 'tiktok' ? tiktokStatus(nativeConnected) : currentStatus()).then(sendResponse).catch((error) => sendResponse({ nativeConnected, detail: messageError(error).message }));
   return true;
 });
 

@@ -1576,6 +1576,7 @@ function applyPersistedRuntimeEventsToMessages(
       const checkpointType = runtimeText(payload.checkpointType || payload.checkpoint_type);
       const checkpointPayload = runtimeObject(payload.payload);
       if (checkpointType === 'chat.error') {
+        next[targetIndex].productVideoVisualRetry = checkpointPayload.category === 'product-video-visual';
         const detail = runtimeText(checkpointPayload.detail || checkpointPayload.message || checkpointPayload.raw)
           || stringifyRuntimePreview(checkpointPayload);
         if (detail) {
@@ -4368,6 +4369,7 @@ export function Chat({
               ...lastMsg,
               messageType: 'reply',
               timeline,
+              productVideoVisualRetry: notice.productVideoRetry,
               isStreaming: false,
               suppressPendingIndicator: false,
               processingFinishedAt: now,
@@ -5670,6 +5672,13 @@ export function Chat({
                                   onPreviewLink={onMessageLinkPreview}
                                   activePreviewHref={activePreviewHref}
                                 />
+                                {msg.productVideoVisualRetry && (
+                                  <button type="button" disabled={isProcessing || Boolean(resolvingConfirmationCallId)}
+                                    onClick={() => { void retryProductVideo(); }}
+                                    className="ml-2 rounded-md border border-border px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary disabled:opacity-50">
+                                    重试图片理解
+                                  </button>
+                                )}
                               </ErrorBoundary>
                             ))}
                             {messageListHeader}

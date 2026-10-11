@@ -39,3 +39,13 @@ chrome.runtime.sendMessage({ type: 'publisher.status', platform: 'douyin' }).the
   const element = document.getElementById('douyin-status');
   if (element) element.textContent = '抖音：状态读取失败';
 });
+
+chrome.runtime.sendMessage({ type: 'publisher.status', platform: 'tiktok' }).then((result) => {
+  const element = document.getElementById('tiktok-status');
+  if (element) element.textContent = result?.nativeConnected
+    ? 'TikTok：' + (result.detail || result.pageState || '未知') + (result.accountLabel ? '；' + result.accountLabel : '')
+    : 'TikTok：未连接桌面端';
+}).catch(() => {
+  const element = document.getElementById('tiktok-status');
+  if (element) element.textContent = 'TikTok：状态读取失败';
+});

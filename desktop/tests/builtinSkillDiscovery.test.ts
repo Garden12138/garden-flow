@@ -72,3 +72,10 @@ test('xhs capture prompt describes the structured plugin pipeline', () => {
     assert.match(promptSource, /登录墙/);
     assert.doesNotMatch(promptSource, /computer-use/i, 'builtin task definition should no longer depend on computer-use');
 });
+
+test('marketplace auto capture skill is discoverable and describes independent platform snapshots', async () => {
+    const skills = await loadSkillsFromDir(path.join(desktopRoot, 'electron/builtin-skills'), 'builtin');
+    const skill = skills.find((item) => item.name === 'marketplace-auto-capture');
+    assert.ok(skill);
+    for (const term of ['research.run', 'capture.save', 'expectedProduct', 'assets.ingestProduct', 'snapshotId', '当前评价列表', '跨平台商品独立保留']) assert.ok(skill.body?.includes(term), term);
+});

@@ -12,6 +12,7 @@ export const XHS_PUBLISHER_EXTENSION_ORIGIN = `chrome-extension://${XHS_PUBLISHE
 export const XHS_PUBLISHER_CAPABILITY = 'xiaohongshu.publish.v1' as const;
 export const DOUYIN_PUBLISHER_CAPABILITY = 'douyin.publish.v1' as const;
 export const DOUYIN_IMAGE_COVER_CAPABILITY = 'douyin.image-cover.v1' as const;
+export const TIKTOK_PUBLISHER_CAPABILITY = 'tiktok.publish.v1' as const;
 export const XHS_TITLE_MAX_LENGTH = 20;
 
 // Use the same conservative UTF-16 count as a browser input's maxlength.

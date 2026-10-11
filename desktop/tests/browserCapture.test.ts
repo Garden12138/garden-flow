@@ -355,7 +355,7 @@ test('Desktop Bridge authenticates token and origin, enforces registration and a
             origin: XHS_PUBLISHER_EXTENSION_ORIGIN,
             hostInstanceId: 'publisher-test-host',
         });
-        assert.deepEqual(publisherHello.result?.acceptedCapabilities, [XHS_PUBLISHER_CAPABILITY, 'douyin.publish.v1', 'douyin.image-cover.v1', 'extension.register']);
+        assert.deepEqual(publisherHello.result?.acceptedCapabilities, [XHS_PUBLISHER_CAPABILITY, 'douyin.publish.v1', 'douyin.image-cover.v1', 'tiktok.publish.v1', 'extension.register']);
         const publisherRegistration = await publisherClient.request('extension.register', {
             extensionId: XHS_PUBLISHER_EXTENSION_ID,
             extensionInstanceId: 'publisher-test-instance',
@@ -392,6 +392,77 @@ test('Desktop Bridge authenticates token and origin, enforces registration and a
         if (previousStateRoot === undefined) delete process.env.GARDENFLOW_BROWSER_CONTROL_STATE_DIR;
         else process.env.GARDENFLOW_BROWSER_CONTROL_STATE_DIR = previousStateRoot;
         await fs.rm(temporaryRoot, { recursive: true, force: true });
+    }
+});
+
+test('Desktop Bridge routes default capture and publisher requests by kind instead of last activity', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'gardenflow-bridge-routing-'));
+    const previous = process.env.GARDENFLOW_BROWSER_CONTROL_STATE_DIR;
+    process.env.GARDENFLOW_BROWSER_CONTROL_STATE_DIR = root;
+    const forwarded: string[] = [];
+    const service = new BrowserCaptureBridgeService({ appVersion: '2.5.0', handleRequest: async () => ({ ok: true }) });
+    const clients: Array<Awaited<ReturnType<typeof openBridgeClient>>> = [];
+    try {
+        await service.start();
+        const descriptor = JSON.parse(await fs.readFile(browserCaptureDescriptorPath(), 'utf8')) as BrowserCaptureBridgeDescriptor;
+        for (const kind of ['capture', 'xhs-publisher'] as const) {
+            const client = await openBridgeClient(descriptor, (method) => {
+                forwarded.push(`${kind}:${method}`);
+                return { kind };
+            });
+            clients.push(client);
+            await client.request('bridge.hello', {
+                role: 'native_host', bridgeProtocolVersion: BROWSER_CAPTURE_BRIDGE_PROTOCOL_VERSION,
+                authToken: descriptor.hostAuthToken,
+                origin: kind === 'capture' ? BROWSER_CAPTURE_EXTENSION_ORIGIN : XHS_PUBLISHER_EXTENSION_ORIGIN,
+                hostInstanceId: `${kind}-host`,
+            });
+            await client.request('extension.register', {
+                extensionId: kind === 'capture' ? BROWSER_CAPTURE_EXTENSION_ID : XHS_PUBLISHER_EXTENSION_ID,
+                extensionInstanceId: kind, extensionKind: kind, browser: 'chrome', version: '1.0.0',
+            });
+        }
+        // Control recency deterministically; publisher heartbeats must not claim capture requests.
+        const instances = (service as any).instances;
+        instances.get('capture').lastSeenAtMs = 1;
+        instances.get('xhs-publisher').lastSeenAtMs = 2;
+        assert.equal(service.getStatus().instances[0].extensionKind, 'xhs-publisher');
+        for (const method of ['tools/list', 'tools/call']) {
+            assert.deepEqual(await service.invokeBrowserControl(method, {}, { timeoutMs: 1000 }), { kind: 'capture' });
+        }
+        instances.get('capture').lastSeenAtMs = 3;
+        for (const method of ['publisher.status', 'publisher.publish', 'publisher.restore']) {
+            assert.deepEqual(await service.invokeBrowserControl(method, {}, { timeoutMs: 1000 }), { kind: 'xhs-publisher' });
+        }
+        await assert.rejects(service.invokeBrowserControl('tools/call', {}, { extensionInstanceId: 'xhs-publisher' }), { code: 'CAPABILITY_NOT_ALLOWED' });
+        await assert.rejects(service.invokeBrowserControl('publisher.publish', {}, { extensionInstanceId: 'capture' }), { code: 'CAPABILITY_NOT_ALLOWED' });
+        await assert.rejects(service.invokeBrowserControl('tools/call', {}, { requiredCapability: XHS_PUBLISHER_CAPABILITY }), { code: 'BROWSER_INSTANCE_UNAVAILABLE' });
+        // Legacy publishers must not claim new capabilities. Only an explicit
+        // advertisement by the signed publisher may enable TikTok forwarding.
+        await assert.rejects(service.invokeBrowserControl('publisher.status', { platform: 'tiktok' }, { requiredCapability: 'tiktok.publish.v1' }), { code: 'BROWSER_INSTANCE_UNAVAILABLE' });
+        await clients[1].request('extension.register', { extensionId: XHS_PUBLISHER_EXTENSION_ID,
+            extensionInstanceId: 'xhs-publisher', extensionKind: 'xhs-publisher',
+            capabilities: [XHS_PUBLISHER_CAPABILITY, 'tiktok.publish.v1'], version: '1.0.0', browser: 'chrome' });
+        assert.ok(service.getStatus().instances.find(item => item.extensionKind === 'xhs-publisher')?.capabilities.includes('tiktok.publish.v1'));
+        for (const method of ['publisher.status', 'publisher.publish']) {
+            assert.deepEqual(await service.invokeBrowserControl(method, { platform: 'tiktok' }, { requiredCapability: 'tiktok.publish.v1', timeoutMs: 1000 }), { kind: 'xhs-publisher' });
+        }
+        await assert.rejects(service.invokeBrowserControl('tools/call', {}, { requiredCapability: 'tiktok.publish.v1' }), { code: 'BROWSER_INSTANCE_UNAVAILABLE' });
+        await assert.rejects(service.invokeBrowserControl('tools/call', {}, { extensionInstanceId: 'xhs-publisher', requiredCapability: 'tiktok.publish.v1' }), { code: 'CAPABILITY_NOT_ALLOWED' });
+        assert.equal(forwarded.length, 7);
+        await clients[0].request('bridge.disconnect', {});
+        for (let i = 0; i < 100 && service.getStatus().instances.some((item) => item.extensionKind === 'capture'); i++) {
+            await new Promise((resolve) => setTimeout(resolve, 2));
+        }
+        assert.ok(service.getStatus().instances.every((item) => item.extensionKind !== 'capture'));
+        await assert.rejects(service.invokeBrowserControl('tools/call', {}), { code: 'BROWSER_INSTANCE_UNAVAILABLE' });
+        assert.equal(forwarded.length, 7, 'capture never falls back to the remaining publisher');
+    } finally {
+        clients.forEach((client) => client.close());
+        await service.stop();
+        if (previous === undefined) delete process.env.GARDENFLOW_BROWSER_CONTROL_STATE_DIR;
+        else process.env.GARDENFLOW_BROWSER_CONTROL_STATE_DIR = previous;
+        await fs.rm(root, { recursive: true, force: true });
     }
 });
 
@@ -470,7 +541,10 @@ test('publisher reconnect wait targets the same browser and old socket cleanup p
     }
 });
 
-async function openBridgeClient(descriptor: BrowserCaptureBridgeDescriptor): Promise<{
+async function openBridgeClient(
+    descriptor: BrowserCaptureBridgeDescriptor,
+    handleForward?: (method: string, params: Record<string, unknown>) => unknown,
+): Promise<{
     request: (method: string, params: Record<string, unknown>) => Promise<RpcResponse>;
     close: () => void;
 }> {
@@ -488,8 +562,18 @@ async function openBridgeClient(descriptor: BrowserCaptureBridgeDescriptor): Pro
         while (buffer.length >= 4) {
             const length = buffer.readUInt32LE(0);
             if (buffer.length < length + 4) return;
-            const response = JSON.parse(buffer.subarray(4, length + 4).toString('utf8')) as RpcResponse & { id: string };
+            const response = JSON.parse(buffer.subarray(4, length + 4).toString('utf8')) as RpcResponse & {
+                id: string; method?: string; params?: Record<string, unknown>;
+            };
             buffer = buffer.subarray(length + 4);
+            if (response.method && handleForward) {
+                const payload = Buffer.from(JSON.stringify({ jsonrpc: '2.0', id: response.id, result: handleForward(response.method, response.params || {}) }), 'utf8');
+                const frame = Buffer.alloc(payload.length + 4);
+                frame.writeUInt32LE(payload.length, 0);
+                payload.copy(frame, 4);
+                socket.write(frame);
+                continue;
+            }
             pending.get(String(response.id))?.(response);
             pending.delete(String(response.id));
         }

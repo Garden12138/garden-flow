@@ -162,13 +162,14 @@ test('all direct page-link saves of JD products bypass generic article capture',
   const { readFile } = await import('node:fs/promises');
   const { runInNewContext } = await import('node:vm');
   const { isJdProductUrl } = await import('../src/capture/jdProduct.js');
+  const { getProductCaptureAdapter } = await import('../src/capture/productAdapters.js');
   const source = await readFile(new URL('../src/background.js', import.meta.url), 'utf8');
   const start = source.indexOf('async function saveCurrentPageLinkFromTab(');
   const end = source.indexOf('\nasync function ', start + 1);
   const calls = [];
   const context = {
     chrome: { tabs: { get: async () => ({ url: 'https://item.jd.com/280930.html' }) } },
-    isJdProductUrl,
+    getProductCaptureAdapter,
     saveJdProductFromTab: async (id) => { calls.push(id); return { mode: 'jd-product' }; },
     genericCaptureCoordinator: { extract: () => { throw new Error('Should not collect page chrome'); } },
   };

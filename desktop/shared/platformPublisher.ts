@@ -1,6 +1,7 @@
 import type { XhsPublishRequestV1 } from './xhsPublisher';
+import type { TikTokPublishSettings } from './tiktokVideo';
 
-export type PublicationPlatform = 'xiaohongshu' | 'douyin';
+export type PublicationPlatform = 'xiaohongshu' | 'douyin' | 'tiktok';
 
 export type PlatformPublishJobStatus =
     | 'awaiting_confirmation' | 'queued' | 'preflighting' | 'uploading'
@@ -50,11 +51,21 @@ export interface DouyinPublishRequestV1 extends PlatformPublishRequestBaseV1 {
     imageCover?: DouyinImageCoverSnapshot;
 }
 
+export interface TikTokPublishRequestV1 extends Omit<DouyinPublishRequestV1, 'platform' | 'imageCover' | 'coverAssetId'> {
+    platform: 'tiktok';
+    language: string;
+    market: string;
+    publishSettings: TikTokPublishSettings;
+    mediaSha256: string;
+    mediaSize: number;
+}
+
 // The browser instance remains the transport target. Legacy Xiaohongshu
 // requests omit platform and retain their original serialized shape.
 export type PlatformPublishRequestV1 =
     | (XhsPublishRequestV1 & { platform?: 'xiaohongshu' })
-    | DouyinPublishRequestV1;
+    | DouyinPublishRequestV1
+    | TikTokPublishRequestV1;
 
 export type PlatformPublishCommandV1 = {
     platform: 'xiaohongshu';
@@ -67,7 +78,11 @@ export type PlatformPublishCommandV1 = {
     phase: 'prepare' | 'submit';
     request: DouyinPublishRequestV1;
 } | {
-    platform: 'douyin';
+    platform: 'tiktok';
+    phase: 'prepare' | 'submit' | 'read-receipt';
+    request: TikTokPublishRequestV1;
+} | {
+    platform: 'douyin' | 'tiktok';
     phase: 'review-published';
     jobId: string;
     contentDigest: string;

@@ -52,6 +52,8 @@ export const ECOMMERCE_PLATFORM_ICON_PATHS: Record<string, string> = {
   'shein-marketplace': '/ecommerce-platform-icons/shein-marketplace.png',
   'shopee': '/ecommerce-platform-icons/shopee.svg',
   'taobao-tmall': '/ecommerce-platform-icons/taobao-tmall.svg',
+  taobao: '/ecommerce-platform-icons/taobao-tmall.svg',
+  tmall: '/ecommerce-platform-icons/taobao-tmall.svg',
   'temu': '/ecommerce-platform-icons/temu.png',
   'tiki': '/ecommerce-platform-icons/tiki.png',
   'tiktok-shop-sea': '/ecommerce-platform-icons/tiktok-shop-sea.svg',

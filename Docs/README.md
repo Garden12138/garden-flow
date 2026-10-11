@@ -9,6 +9,8 @@
 | [阶段 0 验收记录](./PHASE_0_ACCEPTANCE.md) | 京东商品采集、保存和资产库回看的基础闭环验收 |
 | [阶段 1 验收记录](./PHASE_1_ACCEPTANCE.md) | 商品资产整理、引用和创作上下文闭环验收 |
 | [抖音阶段 3 验收记录](./DOUYIN_STAGE3_ACCEPTANCE.md) | 独立商品视频版本、发布插件及真实页面验收状态 |
+| [淘宝／天猫阶段 4 验收记录](./TAOBAO_TMALL_STAGE4_ACCEPTANCE.md) | 手动商品与评论采集、独立商品同款关联及待验收实页 |
+| [TikTok 阶段 5 验收记录](./TIKTOK_STAGE5_ACCEPTANCE.md) | 国际版独立商品视频、语言建议、Studio 适配与真实验收余项 |
 | [路线图](../ROADMAP.md) | 当前能力、近期改进与反馈驱动的后续方向 |
 | [首轮推广工作包](./launch/README.md) | 发布草稿、录制脚本、贡献任务及人工复盘模板 |
 | [使用手册](./USER_MANUAL.md) | 首次启动、空间、采集、知识、灵感、创作、生成、自动化和隐私 |
@@ -22,6 +24,7 @@
 模块文档：
 
 - [浏览器采集扩展](../Plugin/README.md)
+- [淘宝／天猫自动采集验收](./TAOBAO_TMALL_AUTO_CAPTURE_ACCEPTANCE.md)
 - [renderer 架构](../desktop/src/README.md)
 - [bridge 约定](../desktop/src/bridge/README.md)
 - [FreeCut 归属](../desktop/src/vendor/freecut/ATTRIBUTION.md)

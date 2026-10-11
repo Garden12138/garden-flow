@@ -352,6 +352,7 @@ export interface Message {
   createdAt?: number;
   runId?: string;
   runSequence?: number;
+  productVideoVisualRetry?: boolean;
   role: 'user' | 'ai';
   messageType?: 'reply' | 'thinking';
   content: string;

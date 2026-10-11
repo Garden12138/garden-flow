@@ -27,7 +27,7 @@ async function fixture() {
   const context = vm.createContext({ ...adapter, chrome, navigator: { userAgent: 'Chrome' }, crypto, setTimeout, clearTimeout });
   const source = (await readFile(new URL('../src/background.js', import.meta.url), 'utf8'))
     .replace(/^import \{[\s\S]*?\} from '\.\/pageAdapter\.js';/, '')
-    .replace(/^import \{[^\n]+\} from '\.\/douyinPublisher\.js';/m, '');
+    .replace(/^import \{[^\n]+\} from '\.\/(?:douyinPublisher|tiktokPublisher)\.js';/gm, '');
   vm.runInContext(`${source}\nglobalThis.api={connectNative,getState:()=>({connected:nativeConnected,error:nativeConnectionError})};`, context);
   await context.api.connectNative();
   return { state, stored, api: context.api };

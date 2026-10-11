@@ -10,6 +10,13 @@ import {
 
 export { JD_AUTO_CAPTURE_TASK_ID, resolveJdAutoCaptureLaunch } from './jdAutoCaptureSettings';
 
+import {
+    TAOBAO_AUTO_CAPTURE_TASK_ID,
+    TMALL_AUTO_CAPTURE_TASK_ID,
+    resolveMarketplaceAutoCaptureLaunch,
+    type MarketplaceCapturePlatform,
+} from './marketplaceAutoCaptureSettings';
+
 /**
  * 内置自动化任务：定义在代码，状态在配置。
  *
@@ -228,6 +235,38 @@ async function checkJdAutoCaptureReadiness(
     };
 }
 
+function marketplaceAutoCaptureDefinition(platform: MarketplaceCapturePlatform): BuiltinAutomationDefinition {
+    const label = platform === 'taobao' ? '淘宝' : '天猫';
+    const id = platform === 'taobao' ? TAOBAO_AUTO_CAPTURE_TASK_ID : TMALL_AUTO_CAPTURE_TASK_ID;
+    return {
+        id,
+        name: `${label}商品自动采集`,
+        description: `按关键词在${label}首页搜索，批量保存商品、图片和评论及来源快照。按实际详情页区分淘宝／天猫来源；遇到登录、验证或限流停止。默认关闭。`,
+        supportedPlatforms: ['darwin', 'win32', 'linux'],
+        trigger: { kind: 'schedule', schedule: { mode: 'daily', time: platform === 'taobao' ? '11:00' : '11:30' } },
+        requiredSkills: ['marketplace-auto-capture'],
+        settingsSchema: JD_AUTO_CAPTURE_SETTINGS.map((field) => {
+            if (field.key === 'keywords') return { ...field, description: `每天轮换一个关键词，从${label}首页搜索并批量采集；为空时无法开启。` };
+            if (field.key === 'reviewFilterLabels') return { ...field, description: '留空时采集当前评价列表；填写时只使用页面真实存在的标签，缺失标签会记录提示。' };
+            if (field.key === 'reviewsPerFilter') return { ...field, description: '当前评价列表或每个选定标签的采样数，范围 1–50，默认 5 条；不推断好中差。' };
+            return { ...field };
+        }),
+        buildPrompt: (settings) => {
+            const launch = resolveMarketplaceAutoCaptureLaunch(settings);
+            return [
+                `[GardenFlow 内置自动化任务：${label}商品自动采集]`,
+                `任务ID: ${id}`,
+                `关键词: ${launch.keyword}`,
+                `目标新增商品数: ${launch.maxProductsPerRun}`,
+                `评论标签: ${launch.reviewFilterLabels.join(' / ') || '当前评价列表'}`,
+                `每个标签评论数: ${launch.reviewsPerFilter}`,
+                '运行时通过插件页内搜索和 capture.save 执行，不依赖模型导航。跨平台商品独立保存；不自动建立同款关系。',
+            ].join('\n');
+        },
+        checkReadiness: async (settings) => ({ ...await checkJdAutoCaptureReadiness(settings), taskId: id }),
+    };
+}
+
 export function resolveXhsAutoCaptureLaunch(settings: Record<string, unknown>): {
     keyword: string;
     searchUrl: string;
@@ -345,6 +384,8 @@ const BUILTIN_AUTOMATION_DEFINITIONS: BuiltinAutomationDefinition[] = [
         buildPrompt: buildJdAutoCapturePrompt,
         checkReadiness: checkJdAutoCaptureReadiness,
     },
+    marketplaceAutoCaptureDefinition('taobao'),
+    marketplaceAutoCaptureDefinition('tmall'),
     {
         id: XHS_AUTO_PUBLISH_TASK_ID,
         name: '小红书自动发布',

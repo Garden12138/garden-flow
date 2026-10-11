@@ -36,6 +36,7 @@ import { fetchUrlContents } from './background/urlContentRuntime.js';
 import { unsupportedBrowserCommandError } from './background/unsupportedCommandRuntime.js';
 import { configureWebMcpTelemetry, invokeWebMcpTool, listWebMcpTools } from './background/webMcpRuntime.js';
 import { closeSiteResearchItem, openSiteResearchItem } from './background/siteResearchNavigation.js';
+import { productPlatformFromUrl } from './capture/productAdapters.js';
 
 const PLUGIN_ID = 'gardenflow-browser-control';
 const API_CANDIDATES = [];
@@ -170,11 +171,11 @@ const BROWSER_CONTROL_MCP_TOOLS = [
   },
   {
     name: 'research.run',
-    description: 'Execute one typed read-only site-research action. Desktop owns multi-step navigation, scrolling, item open/restore, retry, and cleanup orchestration. Supports keyword search on Xiaohongshu, Douyin, and JD; macro mode runs the complete research sequence.',
+    description: 'Execute one typed read-only site-research action. Desktop owns multi-step navigation, scrolling, item open/restore, retry, and cleanup orchestration. Supports keyword search on Xiaohongshu, Douyin, JD, Taobao, and Tmall; macro mode runs the complete research sequence.',
     inputSchema: {
       type: 'object',
       properties: {
-        site: { type: 'string', enum: ['xiaohongshu', 'xhs', 'douyin', 'jd', 'jingdong', 'youtube', 'web'] },
+        site: { type: 'string', enum: ['xiaohongshu', 'xhs', 'douyin', 'jd', 'jingdong', 'taobao', 'tb', 'tmall', 'tm', 'youtube', 'web'] },
         operation: { type: 'string', enum: ['search', 'author_scan', 'content_scan'] },
         query: { type: 'string' },
         url: { type: 'string' },
@@ -211,19 +212,34 @@ const BROWSER_CONTROL_MCP_TOOLS = [
   },
   {
     name: 'capture.save',
-    description: 'Save the current page using the same site-specific plugin capture path as the side panel. Supports Xiaohongshu notes and JD products, including optional JD review filters.',
+    description: 'Save the current page using the same site-specific plugin capture path as the side panel. Supports Xiaohongshu notes and JD, Taobao, and Tmall products. Product reviews default to five per scope; use actual page filter IDs or labels and optional per-filter limits.',
     inputSchema: {
       type: 'object',
       properties: {
         tabId: { type: 'number' },
         sessionId: { type: 'string' },
+        captureSpaceId: { type: 'string', description: 'Pin the product ingestion to the desktop task startup space.' },
+        expectedProduct: {
+          type: 'object',
+          properties: {
+            externalId: { type: 'string', pattern: '^\\d+$' },
+            platforms: { type: 'array', minItems: 1, maxItems: 3, items: { type: 'string', enum: ['jd', 'taobao', 'tmall'] } },
+          },
+          required: ['externalId', 'platforms'],
+          additionalProperties: false,
+        },
         reviewOptions: {
           type: 'object',
           properties: {
             selectedFilterIds: { type: 'array', maxItems: 50, items: { type: 'string' } },
             selectedFilterLabels: { type: 'array', maxItems: 50, items: { type: 'string' } },
             limitPerFilter: { type: 'number', minimum: 1, maximum: 50 },
-            captureAll: { type: 'boolean' },
+            filterLimits: {
+              type: 'object',
+              maxProperties: 50,
+              additionalProperties: { type: 'number', minimum: 1, maximum: 50 },
+            },
+            captureAll: { type: 'boolean', description: 'JD only. Taobao and Tmall always use bounded sampling.' },
             interactionDelayMs: { type: 'number', minimum: 0, maximum: 5000 },
             scrollDelayMs: { type: 'number', minimum: 400, maximum: 5000 },
             maxScrollRounds: { type: 'number', minimum: 1, maximum: 12 },
@@ -1634,16 +1650,19 @@ async function runBrowserAction(action, context = {}) {
       case 'save-xhs': {
         const tabId = Number(normalized.tabId || session.activeTabId || activeBrowserSession?.activeTabId || 0);
         await requireActiveControlledTabLease(session, tabId, 'capture.save');
-        const isJdProductCapture = normalized.reviewOptions && typeof normalized.reviewOptions === 'object';
+        const capturePlatform = productPlatformFromUrl(tab?.url || (await chrome.tabs.get(tabId)).url);
+        const captureAction = capturePlatform === 'jd' ? 'saveJdProduct' : capturePlatform ? 'saveProduct' : 'saveCurrentPage';
         publishCaptureActivity(
           tabId,
           'pending',
-          isJdProductCapture ? '自动任务正在通过商品采集插件保存商品及评论…' : '自动任务正在通过页面采集插件保存…',
-          { action: isJdProductCapture ? 'saveJdProduct' : 'saveCurrentPage' },
+          capturePlatform ? '自动任务正在通过商品采集插件保存商品及评论…' : '自动任务正在通过页面采集插件保存…',
+          { action: captureAction },
         );
         try {
           result = await saveCurrentPageViaPluginCapture(tabId, {
             reviewOptions: normalized.reviewOptions,
+            expectedProduct: normalized.expectedProduct,
+            captureSpaceId: normalized.captureSpaceId,
           });
           let tabClosed = false;
           let closeError = '';
@@ -1651,10 +1670,10 @@ async function runBrowserAction(action, context = {}) {
             publishCaptureActivity(
               tabId,
               'pending',
-              result?.mode === 'jd-product'
+              ['jd-product', 'product'].includes(result?.mode)
                 ? `自动采集完成：已保存 ${Number(result.capturedReviews || 0)} 条评论，正在关闭商品页…`
                 : '自动采集完成，正在关闭页面…',
-              { action: isJdProductCapture ? 'saveJdProduct' : 'saveCurrentPage', result },
+              { action: captureAction, result },
             );
             try {
               await closeControlledTab(session, { tabId, reason: 'capture_save_complete' });
@@ -1674,10 +1693,10 @@ async function runBrowserAction(action, context = {}) {
               normalized.closeAfterSave === true ? 'error' : 'success',
               normalized.closeAfterSave === true
                 ? `商品已保存，但商品页关闭失败，桌面端将重试：${closeError}`
-                : result?.mode === 'jd-product'
+                : ['jd-product', 'product'].includes(result?.mode)
                   ? `采集完成：已保存 ${Number(result.capturedReviews || 0)} 条评论`
                   : '采集完成',
-              { action: isJdProductCapture ? 'saveJdProduct' : 'saveCurrentPage', result },
+              { action: captureAction, result },
             );
           }
         } catch (error) {
@@ -1685,7 +1704,7 @@ async function runBrowserAction(action, context = {}) {
             tabId,
             'error',
             `自动采集失败：${error instanceof Error ? error.message : String(error)}`,
-            { action: isJdProductCapture ? 'saveJdProduct' : 'saveCurrentPage' },
+            { action: captureAction },
           );
           throw error;
         }

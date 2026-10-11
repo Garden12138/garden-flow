@@ -17,6 +17,8 @@ const required = [
   'douyinAdapter.js',
   'douyinCoverAdapter.js',
   'douyinPublisher.js',
+  'tiktokAdapter.js',
+  'tiktokPublisher.js',
   'popup.html',
   'popup.js',
   'popup.css',
@@ -38,7 +40,8 @@ if (manifest.version_name !== desktopPackageJson.version) throw new Error('Publi
 if (JSON.stringify(manifest.host_permissions) !== JSON.stringify([
   'https://creator.xiaohongshu.com/*',
   'https://creator.douyin.com/*',
-])) throw new Error('Publisher host permissions must stay limited to the two creator sites');
+  'https://www.tiktok.com/*',
+])) throw new Error('Publisher host permissions must stay limited to the three supported creator sites');
 if (manifest.permissions?.includes('cookies') || manifest.host_permissions?.includes('<all_urls>')) throw new Error('Publisher extension requests forbidden permissions');
 const extensionId = createHash('sha256').update(Buffer.from(manifest.key, 'base64')).digest('hex').slice(0, 32)
   .replace(/[0-9a-f]/g, (digit) => String.fromCharCode(97 + Number.parseInt(digit, 16)));

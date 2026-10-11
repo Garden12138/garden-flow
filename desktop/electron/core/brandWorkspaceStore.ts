@@ -1,3 +1,7 @@
+import type { ProductLink, LinkProductsInput } from '../../shared/productLinks.ts';
+import { splitProductReviewMetadata } from '../../shared/productReviewMetadata.ts';
+import { isProductCaptureUiImage, readProductMedia, validateProductCaptureIdentity, validateProductMediaSource } from './productCapturePolicy.ts';
+import { capturedMediaKey } from './productCaptureMedia.ts';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
@@ -65,6 +69,7 @@ export type BrandWorkspaceSku = {
   externalId?: string;
   createdAt: string;
   updatedAt: string;
+  userEditedAt?: string;
 };
 
 type StoredAssetRef = {
@@ -75,6 +80,8 @@ type StoredAssetRef = {
   sourceUrl?: string;
   role: string;
   origin: 'user' | 'capture' | 'generated';
+  // Retain historical snapshot files, but stop offering verified UI graphics in new creations.
+  excludedFromCreative?: true;
   createdAt: string;
 };
 
@@ -124,6 +131,7 @@ export type ProductReviewResult = {
   label: string;
   requested: number;
   captured: number;
+  availableCount?: number;
   status: 'complete' | 'partial' | 'missing';
   warning?: string;
   captureAll?: boolean;
@@ -228,6 +236,7 @@ type BrandWorkspaceCatalog = {
   skus: BrandWorkspaceSku[];
   assets: StoredAssetRef[];
   sourceSnapshots: ProductSourceSnapshot[];
+  productLinks: ProductLink[];
   detailPages: BrandWorkspaceProductDetailPage[];
 };
 
@@ -254,7 +263,9 @@ export type CapturedProductInput = {
   reviewOptions?: {
     selectedFilterIds?: string[];
     selectedFilterLabels?: string[];
+    filterLabels?: Record<string, string>;
     limitPerFilter?: number;
+    filterLimits?: Record<string, number>;
     captureAll?: boolean;
   };
   reviewCapture?: CapturedProductReviewCapture;
@@ -268,6 +279,7 @@ const EMPTY_CATALOG: BrandWorkspaceCatalog = {
   skus: [],
   assets: [],
   sourceSnapshots: [],
+  productLinks: [],
   detailPages: [],
 };
 
@@ -380,6 +392,7 @@ function normalizeStoredReviewCapture(value: unknown): ProductReviewCapture | un
         label,
         requested: Math.max(0, Math.trunc(Number(result.requested) || 0)),
         captured: Math.max(0, Math.trunc(Number(result.captured) || 0)),
+        availableCount: typeof result.availableCount === 'number' && Number.isSafeInteger(result.availableCount) && result.availableCount >= 0 ? result.availableCount : undefined,
         status,
         warning: cleanText(result.warning, 500) || undefined,
         captureAll: result.captureAll === true || undefined,
@@ -406,8 +419,7 @@ function normalizeStoredReviewCapture(value: unknown): ProductReviewCapture | un
         rating: Number.isFinite(rating) && rating >= 1 && rating <= 5 ? rating : undefined,
         sentiment: normalizeReviewSentiment(review.sentiment),
         matchedFilterIds: cleanStringList(review.matchedFilterIds, 50).map(cleanId).filter(Boolean),
-        dateText: cleanText(review.dateText, 300) || undefined,
-        skuText: cleanText(review.skuText, 1_000) || undefined,
+        ...splitProductReviewMetadata(review.dateText, review.skuText),
         badges: cleanStringList(review.badges, 20),
         helpfulCount: Number.isFinite(helpfulCount) && helpfulCount >= 0 ? Math.trunc(helpfulCount) : undefined,
         imageAssetIds: cleanStringList(review.imageAssetIds, 20).map(cleanId).filter(Boolean),
@@ -463,6 +475,10 @@ function normalizeCatalog(value: unknown): BrandWorkspaceCatalog {
           reviewCapture: normalizeStoredReviewCapture(snapshot.reviewCapture),
         }))
       : [],
+    productLinks: Array.isArray(source.productLinks) ? source.productLinks.filter((link) => (
+      link && Array.isArray(link.productIds) && link.productIds.length === 2 && link.productIds[0] !== link.productIds[1]
+      && link.productIds.every((id) => source.products?.some((product) => product.id === id))
+    )) : [],
     detailPages: Array.isArray(source.detailPages) ? source.detailPages : [],
   };
 }
@@ -658,18 +674,61 @@ export function createBrandWorkspaceStore(resolveRoot: () => string) {
     const resolved: StoredAssetRef[] = [];
     for (const input of inputs.slice(0, 100)) {
       const existing = input.id
-        ? catalog.assets.find((asset) => asset.id === input.id)
+        ? catalog.assets.find((asset) => asset.id === input.id && asset.ownerType === ownerType && asset.ownerId === ownerId)
         : input.sourceUrl
-          ? catalog.assets.find((asset) => asset.ownerType === ownerType && asset.ownerId === ownerId && asset.sourceUrl === input.sourceUrl)
+          ? [...catalog.assets].reverse().find((asset) => asset.ownerType === ownerType && asset.ownerId === ownerId && asset.sourceUrl === input.sourceUrl
+            && (input.origin !== 'capture' || (asset.origin === 'capture' && !asset.excludedFromCreative)))
           : undefined;
-      if (existing) {
+      if (existing && !(input.origin === 'capture' && existing.origin === 'capture' && input.dataUrl && !await readCapturedAsset(existing))) {
         resolved.push(existing);
         continue;
       }
+      // A fresh download must not be discarded in favor of a missing/corrupt
+      // cached file. Keep the old historical reference, exclude it from creation.
+      if (existing?.origin === 'capture') existing.excludedFromCreative = true;
       const created = await createAsset(input, ownerType, ownerId);
       if (created) resolved.push(created);
     }
     return Array.from(new Map(resolved.map((asset) => [asset.id, asset])).values());
+  }
+
+  async function readCapturedAsset(asset: StoredAssetRef): Promise<string | undefined> {
+    if (asset.origin !== 'capture' || asset.excludedFromCreative) return undefined;
+    const absolutePath = deletableAssetPath(asset);
+    if (!absolutePath) return undefined;
+    try {
+      const stat = await fs.lstat(absolutePath);
+      if (!stat.isFile() || stat.size <= 0 || stat.size > 12 * 1024 * 1024) return undefined;
+      const realRoot = await fs.realpath(assetsRoot());
+      const realPath = await fs.realpath(absolutePath);
+      if (!realPath.startsWith(`${realRoot}${path.sep}`)) return undefined;
+      const extension = path.extname(realPath).slice(1).toLowerCase();
+      const mime = extension === 'jpg' ? 'image/jpeg' : `image/${extension}`;
+      const { contentType, buffer } = await readProductMedia(new Response(await fs.readFile(realPath), { headers: { 'content-type': mime } }));
+      return `data:${contentType};base64,${buffer.toString('base64')}`;
+    } catch { return undefined; }
+  }
+
+  async function getCapturedProductImageCache(input: CapturedProductInput) {
+    const platform = validateProductCaptureIdentity(input.platform, input.externalId, input.sourceUrl);
+    const catalog = await readCatalog();
+    const snapshot = [...catalog.sourceSnapshots].reverse().find((item) => item.platform === platform && item.externalId === input.externalId);
+    const cache = new Map<string, BrandWorkspaceImageInput>();
+    if (!snapshot) return cache;
+    const jobs = [
+      ...(input.images || []).slice(0, 24).map((image) => ({ sourceUrl: image.sourceUrl, ownerType: 'product', ownerId: snapshot.productId, reviewId: undefined as string | undefined })),
+      ...(input.reviewCapture?.reviews || []).flatMap((review) => (review.imageSourceUrls || []).map((sourceUrl) => ({
+        sourceUrl, ownerType: 'product-review', ownerId: cleanId(`review-${platform}-${input.externalId}-${cleanId(review.id)}`), reviewId: review.id,
+      }))).slice(0, 100),
+    ];
+    for (const job of jobs) {
+      const sourceUrl = validateProductMediaSource(platform, job.sourceUrl);
+      const asset = [...catalog.assets].reverse().find((item) => item.ownerType === job.ownerType && item.ownerId === job.ownerId
+        && item.sourceUrl === sourceUrl && item.origin === 'capture' && !item.excludedFromCreative);
+      const dataUrl = asset && await readCapturedAsset(asset);
+      if (asset && dataUrl) cache.set(capturedMediaKey(sourceUrl, job.reviewId), { id: asset.id, sourceUrl, dataUrl, origin: 'capture' });
+    }
+    return cache;
   }
 
   function replaceOwnerAssets(catalog: BrandWorkspaceCatalog, ownerType: StoredAssetRef['ownerType'], ownerId: string, assets: StoredAssetRef[]): void {
@@ -699,6 +758,7 @@ export function createBrandWorkspaceStore(resolveRoot: () => string) {
     const reviewIds = new Set(sourceSnapshots.flatMap((snapshot) => snapshot.reviewCapture?.reviews.map((review) => review.id) || []));
     return {
       product,
+      links: catalog.productLinks.filter((link) => link.productIds.includes(product.id)),
       skus,
       assets: catalog.assets.filter((asset) => asset.ownerType === 'product' && asset.ownerId === product.id).map(publicAsset),
       skuAssets: Object.fromEntries(skus.map((sku) => [
@@ -800,7 +860,7 @@ export function createBrandWorkspaceStore(resolveRoot: () => string) {
         missingFields: snapshot.missingFields,
       })),
       imageCount: catalog.assets.filter((asset) => (
-        asset.ownerType === 'product' && asset.ownerId === product.id
+        asset.ownerType === 'product' && asset.ownerId === product.id && !asset.excludedFromCreative
       )).length,
       reviews: selectReviewReferences(sourceSnapshots),
     };
@@ -815,7 +875,7 @@ export function createBrandWorkspaceStore(resolveRoot: () => string) {
     const skus = catalog.skus.filter((sku) => sku.productId === product.id);
     const skuIds = new Set(skus.map((sku) => sku.id));
     const detailPageIds = new Set(catalog.detailPages.filter((page) => page.productId === product.id).map((page) => page.id));
-    const storedAssets = catalog.assets.filter((asset) => (
+    const storedAssets = catalog.assets.filter((asset) => !asset.excludedFromCreative && (
       (asset.ownerType === 'product' && asset.ownerId === product.id)
       || (asset.ownerType === 'sku' && skuIds.has(asset.ownerId))
       || (asset.ownerType === 'product-detail' && detailPageIds.has(asset.ownerId))
@@ -860,7 +920,7 @@ export function createBrandWorkspaceStore(resolveRoot: () => string) {
     if (!product) throw new Error('商品不存在');
     const skuIds = new Set(catalog.skus.filter((sku) => sku.productId === product.id).map((sku) => sku.id));
     const detailPageIds = new Set(catalog.detailPages.filter((page) => page.productId === product.id).map((page) => page.id));
-    const allowed = new Map(catalog.assets.filter((asset) => (
+    const allowed = new Map(catalog.assets.filter((asset) => !asset.excludedFromCreative && (
       (asset.ownerType === 'product' && asset.ownerId === product.id)
       || (asset.ownerType === 'sku' && skuIds.has(asset.ownerId))
       || (asset.ownerType === 'product-detail' && detailPageIds.has(asset.ownerId))
@@ -960,6 +1020,7 @@ export function createBrandWorkspaceStore(resolveRoot: () => string) {
           externalId: cleanId(skuInput.externalId) || existingSku?.externalId,
           createdAt: existingSku?.createdAt || updatedAt,
           updatedAt,
+          userEditedAt: updatedAt,
         };
         catalog.skus = [...catalog.skus.filter((item) => item.id !== skuId), sku];
         const skuAssets = await resolveAssets(catalog, skuInput.images, 'sku', skuId);
@@ -999,6 +1060,7 @@ export function createBrandWorkspaceStore(resolveRoot: () => string) {
       externalId: cleanId(input.externalId) || existing?.externalId,
       createdAt: existing?.createdAt || updatedAt,
       updatedAt,
+      userEditedAt: updatedAt,
     };
     catalog.skus = [...catalog.skus.filter((item) => item.id !== id), sku];
     const assets = await resolveAssets(catalog, input.images, 'sku', id);
@@ -1065,6 +1127,7 @@ export function createBrandWorkspaceStore(resolveRoot: () => string) {
     ));
 
     catalog.products = catalog.products.filter((item) => item.id !== productId);
+    catalog.productLinks = catalog.productLinks.filter((link) => !link.productIds.includes(productId));
     catalog.skus = catalog.skus.filter((sku) => sku.productId !== productId);
     catalog.detailPages = catalog.detailPages.filter((page) => page.productId !== productId);
     catalog.sourceSnapshots = catalog.sourceSnapshots.filter((snapshot) => snapshot.productId !== productId);
@@ -1131,7 +1194,7 @@ export function createBrandWorkspaceStore(resolveRoot: () => string) {
           name: existingProduct.userEditedAt ? existingProduct.name : title,
           description: existingProduct.userEditedAt
             ? existingProduct.description
-            : cleanLines(input.description || input.detailText, 20_000) || existingProduct.description,
+            : cleanLines(input.description || input.detailText, 20_000) || (input.description === '' ? undefined : existingProduct.description),
           facts: [
             ...existingProduct.facts.filter((fact) => fact.origin !== 'captured' || !capturedFacts.some((next) => next.key === fact.key)),
             ...capturedFacts.filter((fact) => !existingProduct.facts.some((prior) => prior.key === fact.key && prior.origin !== 'captured')),
@@ -1149,6 +1212,9 @@ export function createBrandWorkspaceStore(resolveRoot: () => string) {
     catalog.products = [...catalog.products.filter((item) => item.id !== productId), product];
 
     const priorProductAssets = catalog.assets.filter((asset) => asset.ownerType === 'product' && asset.ownerId === productId);
+    for (const asset of priorProductAssets) {
+      if (asset.origin === 'capture' && isProductCaptureUiImage(platform, asset.sourceUrl)) asset.excludedFromCreative = true;
+    }
     const newProductAssets = await resolveAssets(catalog, (input.images || []).map((image) => ({
       ...image,
       origin: 'capture',
@@ -1164,17 +1230,30 @@ export function createBrandWorkspaceStore(resolveRoot: () => string) {
         (skuExternalId && sku.externalId === skuExternalId)
         || sku.name === selectedSkuName
       ));
+      const selectedVariant = cleanText(input.selectedSku?.variantText, 4_000) || undefined;
+      // Repair only a malformed captured value proven to belong to this exact
+      // source/SKU. Preserve manual edits, history and other products.
+      const priorCapturedSku = existingSku && !existingSku.userEditedAt && !existingProduct?.userEditedAt
+        && catalog.sourceSnapshots.some((snapshot) => snapshot.productId === productId && snapshot.platform === platform
+          && snapshot.externalId === externalId && snapshot.capturedAt === existingSku.updatedAt
+          && snapshot.selectedSku?.externalId === skuExternalId && snapshot.selectedSku?.name === existingSku.name
+          && snapshot.selectedSku?.variantText === existingSku.variantText);
+      const repairCapturedText = Boolean(priorCapturedSku && skuExternalId && existingSku?.externalId === skuExternalId
+        && /\uFFFD/.test(`${existingSku?.name || ''}${existingSku?.variantText || ''}`)
+        && !/\uFFFD/.test(`${selectedSkuName}${selectedVariant || ''}`)
+        && !(input.missingFields || []).some((field) => field.startsWith('当前规格文字异常')));
       const skuId = existingSku?.id || `sku_${Date.now()}_${randomUUID().slice(0, 8)}`;
       catalog.skus = [
         ...catalog.skus.filter((sku) => sku.id !== skuId),
         {
           id: skuId,
           productId,
-          name: existingSku?.name || selectedSkuName,
-          variantText: existingSku?.variantText || cleanText(input.selectedSku?.variantText, 4_000) || undefined,
+          name: repairCapturedText ? selectedSkuName : existingSku?.name || selectedSkuName,
+          variantText: repairCapturedText ? selectedVariant : existingSku?.variantText || selectedVariant,
           externalId: existingSku?.externalId || skuExternalId || undefined,
           createdAt: existingSku?.createdAt || capturedAt,
           updatedAt: capturedAt,
+          ...(existingSku?.userEditedAt ? { userEditedAt: existingSku.userEditedAt } : {}),
         },
       ];
     }
@@ -1211,11 +1290,10 @@ export function createBrandWorkspaceStore(resolveRoot: () => string) {
         rating: Number.isFinite(rating) && rating >= 1 && rating <= 5 ? rating : undefined,
         sentiment: normalizeReviewSentiment(capturedReview.sentiment),
         matchedFilterIds: cleanStringList(capturedReview.matchedFilterIds, 50).map(cleanId).filter(Boolean),
-        dateText: cleanText(capturedReview.dateText, 300) || undefined,
-        skuText: cleanText(capturedReview.skuText, 1_000) || undefined,
+        ...splitProductReviewMetadata(capturedReview.dateText, capturedReview.skuText),
         badges: cleanStringList(capturedReview.badges, 20),
         helpfulCount: Number.isFinite(helpfulCount) && helpfulCount >= 0 ? Math.trunc(helpfulCount) : undefined,
-        imageAssetIds: reviewAssets.filter((asset) => asset.sourceUrl && currentReviewSourceUrls.has(asset.sourceUrl)).map((asset) => asset.id),
+        imageAssetIds: reviewAssets.filter((asset) => !asset.excludedFromCreative && asset.sourceUrl && currentReviewSourceUrls.has(asset.sourceUrl)).map((asset) => asset.id),
         sourceImages: capturedSourceImages
           .map((image) => ({
             sourceUrl: cleanText(image.sourceUrl, 8_000),
@@ -1276,6 +1354,35 @@ export function createBrandWorkspaceStore(resolveRoot: () => string) {
     };
   }
 
+  async function linkProducts(input: LinkProductsInput): Promise<ProductLink> {
+    const catalog = await readCatalog();
+    const productId = cleanId(input.productId);
+    const relatedProductId = cleanId(input.relatedProductId);
+    if (!productId || !relatedProductId || productId === relatedProductId) throw new Error('请选择另一个商品');
+    const product = catalog.products.find((item) => item.id === productId);
+    const related = catalog.products.find((item) => item.id === relatedProductId);
+    if (!product || !related) throw Object.assign(new Error('关联商品已不存在，请刷新'), { code: 'PRODUCT_NOT_FOUND' });
+    if (product.updatedAt !== input.productVersion || related.updatedAt !== input.relatedProductVersion) {
+      throw Object.assign(new Error('商品资料已变化，请刷新候选后确认'), { code: 'PRODUCT_LINK_STALE' });
+    }
+    const productIds = [productId, relatedProductId].sort() as [string, string];
+    const existing = catalog.productLinks.find((link) => link.productIds[0] === productIds[0] && link.productIds[1] === productIds[1]);
+    if (existing) return existing;
+    const link: ProductLink = { id: `link_${randomUUID()}`, productIds, confirmedAt: nowIso(), reason: cleanText(input.reason, 2_000) || '用户确认同款' };
+    catalog.productLinks.push(link);
+    await writeCatalog(catalog);
+    return link;
+  }
+
+  async function unlinkProducts(input: { productId: string; relatedProductId: string }): Promise<void> {
+    const catalog = await readCatalog();
+    const productId = cleanId(input.productId);
+    const relatedProductId = cleanId(input.relatedProductId);
+    if (!productId || !relatedProductId || productId === relatedProductId) throw new Error('关联商品标识无效');
+    catalog.productLinks = catalog.productLinks.filter((link) => !(link.productIds.includes(productId) && link.productIds.includes(relatedProductId)));
+    await writeCatalog(catalog);
+  }
+
   async function rebuildAiIndex() {
     const catalog = await readCatalog();
     const payload = {
@@ -1318,7 +1425,11 @@ export function createBrandWorkspaceStore(resolveRoot: () => string) {
 
   return {
     list: () => enqueueMutation(list),
+    // Relationship-only writes serialize with the catalog, but do not invalidate creative snapshots.
+    linkProducts: (input: LinkProductsInput) => enqueueMutation(() => linkProducts(input)),
+    unlinkProducts: (input: { productId: string; relatedProductId: string }) => enqueueMutation(() => unlinkProducts(input)),
     get: (id: string) => enqueueMutation(() => get(id)),
+    getCapturedProductImageCache: (input: CapturedProductInput) => enqueueMutation(() => getCapturedProductImageCache(input)),
     getProductAiReference: (id: string) => enqueueMutation(() => getProductAiReference(id)),
     getProductCreativeReference: (id: string) => enqueueMutation(() => getProductCreativeReference(id)),
     resolveProductCreativeAssetPaths: (id: string, assetIds: string[]) => enqueueMutation(() => resolveProductCreativeAssetPaths(id, assetIds)),

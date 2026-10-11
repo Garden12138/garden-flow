@@ -556,19 +556,23 @@ export class BrowserCaptureBridgeService {
             });
         }
         const requestedInstance = String(options.extensionInstanceId || '').trim();
+        const publisherMethod = method.startsWith('publisher.');
+        const methodKind = publisherMethod ? 'xhs-publisher'
+            : method === 'tools/list' || method === 'tools/call' ? 'capture' : undefined;
         const candidates = this.getStatus().instances.filter((item) => (
             (!options.extensionKind || item.extensionKind === options.extensionKind)
             && (!options.requiredCapability || item.capabilities.includes(options.requiredCapability))
         ));
         const instance = requestedInstance
             ? candidates.find((item) => item.extensionInstanceId === requestedInstance)
-            : candidates[0];
+            : candidates.find((item) => (!methodKind || item.extensionKind === methodKind)
+                && this.hostSockets.get(item.extensionInstanceId)?.destroyed === false);
         if (!instance) {
-            throw Object.assign(new Error('没有已连接的 GardenFlow 浏览器插件实例'), {
+            const label = methodKind === 'capture' ? '采集插件' : methodKind === 'xhs-publisher' ? '发布插件' : '浏览器插件';
+            throw Object.assign(new Error(`没有已连接的 GardenFlow ${label}实例`), {
                 code: 'BROWSER_INSTANCE_UNAVAILABLE',
             });
         }
-        const publisherMethod = method.startsWith('publisher.');
         if (publisherMethod && instance.extensionKind !== 'xhs-publisher') {
             throw Object.assign(new Error('采集插件不能执行发布操作'), { code: 'CAPABILITY_NOT_ALLOWED' });
         }

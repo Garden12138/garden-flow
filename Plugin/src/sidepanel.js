@@ -52,6 +52,7 @@ let captureSignature = '';
 let jdProductPreview = null;
 let jdReviewOptions = {
   selectedFilterIds: [],
+  filterLimits: {},
   limitPerFilter: 5,
   captureAll: false,
 };
@@ -125,6 +126,12 @@ function bindEvents() {
       if (event.target.checked) selected.add(filterId);
       else selected.delete(filterId);
       jdReviewOptions.selectedFilterIds = Array.from(selected);
+      renderCaptureActions(context);
+      return;
+    }
+    if (event.target?.matches?.('[data-product-filter-limit]')) {
+      const limit = Number(event.target.value);
+      jdReviewOptions.filterLimits[event.target.dataset.productFilterLimit] = Number.isFinite(limit) ? Math.max(1, Math.min(50, Math.trunc(limit))) : 5;
       renderCaptureActions(context);
       return;
     }
@@ -330,7 +337,7 @@ function renderCaptureActions(nextContext) {
   if (captureSignature !== nextSignature) {
     captureFeedback = null;
     jdProductPreview = null;
-    jdReviewOptions = { selectedFilterIds: [], limitPerFilter: 5, captureAll: false };
+    jdReviewOptions = { selectedFilterIds: [], filterLimits: {}, limitPerFilter: 5, captureAll: false };
     captureSignature = nextSignature;
   }
 
@@ -353,7 +360,7 @@ function renderCaptureActions(nextContext) {
     button.title = item.title || item.label;
     button.textContent = capturePendingAction === item.action
       ? meta.pending
-      : automatedCapturePending && config.variant === 'jd-product'
+      : automatedCapturePending && ['jd-product', 'product'].includes(config.variant)
         ? '自动任务采集中…'
         : item.label;
     button.disabled = Boolean(capturePendingAction) || automatedCapturePending || !isHealthy || item.disabled;
@@ -375,7 +382,7 @@ function renderCaptureActions(nextContext) {
     elements.captureOptions.classList.remove('hidden');
   }
 
-  if (config.variant === 'jd-product' && jdProductPreview) {
+  if (['jd-product', 'product'].includes(config.variant) && jdProductPreview) {
     const product = jdProductPreview;
     const summary = document.createElement('div');
     summary.className = 'jd-product-preview';
@@ -391,15 +398,18 @@ function renderCaptureActions(nextContext) {
       heading.appendChild(image);
     }
     const name = document.createElement('strong');
-    name.textContent = product.title || '京东商品';
+    name.textContent = product.title || '商品';
     heading.appendChild(name);
     summary.appendChild(heading);
     const fields = [
-      ['店铺', product.shopName],
-      ['品牌', product.brandName],
+      ['来源平台', product.platform === 'taobao' ? '淘宝' : product.platform === 'tmall' ? '天猫' : '京东'],
+      ['采集时间', product.capturedAt ? new Date(product.capturedAt).toLocaleString() : '未识别'],
+      ['店铺', product.shopName || '未识别'],
+      ['品牌', product.brandName || '未识别'],
       ['当前规格', product.selectedSku?.variantText || '未识别'],
       [product.price?.label || '价格快照', product.price?.text || '未识别'],
-      ['商品编号', product.selectedSku?.externalId || product.externalId],
+      ['商品编号', product.externalId],
+      ['SKU 编号', product.selectedSku?.externalId || '未识别'],
       ['已识别资料', `${product.images?.length || 0} 张图片 · ${product.parameters?.length || 0} 项参数`],
     ];
     const details = document.createElement('dl');
@@ -412,6 +422,10 @@ function renderCaptureActions(nextContext) {
       details.append(term, detail);
     }
     summary.appendChild(details);
+    if (product.missingFields?.length) {
+      const missing = document.createElement('p'); missing.className = 'jd-review-options-warning';
+      missing.textContent = `缺失资料：${product.missingFields.join('、')}`; summary.appendChild(missing);
+    }
     const reviewCapture = product.reviewCapture;
     const reviewPanel = document.createElement('section');
     reviewPanel.className = 'jd-review-options';
@@ -419,6 +433,9 @@ function renderCaptureActions(nextContext) {
     reviewHeading.className = 'jd-review-options-heading';
     reviewHeading.textContent = '商品评论';
     reviewPanel.appendChild(reviewHeading);
+    for (const message of reviewCapture?.warnings || []) {
+      const warning = document.createElement('p'); warning.className = 'jd-review-options-warning'; warning.textContent = message; reviewPanel.appendChild(warning);
+    }
     if (reviewCapture?.modalDetected) {
       const filters = Array.isArray(reviewCapture.availableFilters) ? reviewCapture.availableFilters : [];
       const availableIds = new Set(filters.map((filter) => filter.id));
@@ -426,7 +443,7 @@ function renderCaptureActions(nextContext) {
       const hint = document.createElement('div');
       hint.className = 'jd-review-options-hint';
       hint.textContent = filters.length
-        ? '可选择多个标签；不选择时默认采集好评、中评、差评。'
+        ? product.platform === 'jd' ? '可选择多个标签；不选择时默认采集好评、中评、差评。' : '可选择页面提供的标签；不选择时采集当前评价列表。'
         : '已检测到评价弹窗，但没有识别到可用标签。';
       reviewPanel.appendChild(hint);
       if (filters.length) {
@@ -443,6 +460,16 @@ function renderCaptureActions(nextContext) {
           const text = document.createElement('span');
           text.textContent = `${filter.label}${filter.countText ? ` ${filter.countText}` : ''}`;
           label.append(checkbox, text);
+          if (product.platform !== 'jd') {
+            const count = document.createElement('input');
+            count.type = 'number'; count.min = '1'; count.max = '50'; count.step = '1';
+            count.dataset.productFilterLimit = filter.id;
+            count.setAttribute('aria-label', `${filter.label}采集条数`);
+            count.value = String(jdReviewOptions.filterLimits[filter.id] || jdReviewOptions.limitPerFilter);
+            count.disabled = checkbox.disabled;
+            count.style.width = '54px';
+            label.append(count);
+          }
           filterList.appendChild(label);
         }
         reviewPanel.appendChild(filterList);
@@ -456,7 +483,7 @@ function renderCaptureActions(nextContext) {
         const allLabel = document.createElement('span');
         allLabel.textContent = '尽量采集更多评论（每标签最多 50 条、最多滚动 6 次）';
         allRow.append(allInput, allLabel);
-        reviewPanel.appendChild(allRow);
+        if (product.platform === 'jd') reviewPanel.appendChild(allRow);
         const limitRow = document.createElement('label');
         limitRow.className = 'jd-review-limit-row';
         const limitLabel = document.createElement('span');
@@ -476,16 +503,18 @@ function renderCaptureActions(nextContext) {
         const selection = document.createElement('div');
         selection.className = 'jd-review-options-hint';
         const selectedLabels = filters.filter((filter) => jdReviewOptions.selectedFilterIds.includes(filter.id)).map((filter) => filter.label);
-        const quantity = jdReviewOptions.captureAll ? '各最多 50 条（安全上限）' : `各 ${jdReviewOptions.limitPerFilter} 条`;
+        const quantity = product.platform !== 'jd' ? '按各标签条数采集' : jdReviewOptions.captureAll ? '各最多 50 条（安全上限）' : `各 ${jdReviewOptions.limitPerFilter} 条`;
         selection.textContent = selectedLabels.length
           ? `将采集：${selectedLabels.join('、')}，${quantity}`
-          : `默认采集：好评、中评、差评，${quantity}`;
+          : product.platform === 'jd' ? `默认采集：好评、中评、差评，${quantity}`
+            : reviewCapture.readableReviewCount === 0 ? '尚未读取到当前列表的评论正文，保存时将重试读取'
+              : `默认采集：当前评价列表，${jdReviewOptions.limitPerFilter} 条`;
         reviewPanel.appendChild(selection);
       }
     } else {
       const warning = document.createElement('div');
       warning.className = 'jd-review-options-warning';
-      warning.textContent = '没有检测到评价弹窗。点“确认保存”时会再次自动打开并采集；如果页面没有可用入口，商品资料仍会正常保存。';
+      warning.textContent = '未识别到可读取的评论列表。保存时将重试读取；若仍不可读，会保留已识别的商品资料并标记评论未完成。';
       reviewPanel.appendChild(warning);
     }
     summary.appendChild(reviewPanel);
@@ -502,12 +531,6 @@ function renderCaptureActions(nextContext) {
       summary.appendChild(disclosure);
     }
     elements.captureOptions.appendChild(summary);
-    if (Array.isArray(product.missingFields) && product.missingFields.length > 0) {
-      const missing = document.createElement('div');
-      missing.className = 'capture-switch-row';
-      missing.textContent = `待补充：${product.missingFields.join('、')}`;
-      elements.captureOptions.appendChild(missing);
-    }
     elements.captureOptions.classList.remove('hidden');
   }
 
@@ -560,6 +583,19 @@ async function updateXhsSaveCommentsSetting(enabled) {
   }
 }
 
+function productReviewOptionsForSave(options, availableFilters = []) {
+  const labels = new Map(availableFilters.map((filter) => [filter.id, filter.label]));
+  const selectedFilterIds = [...options.selectedFilterIds];
+  return {
+    selectedFilterIds,
+    selectedFilterLabels: selectedFilterIds.map((id) => labels.get(id) || id),
+    filterLabels: Object.fromEntries(selectedFilterIds.filter((id) => labels.has(id)).map((id) => [id, labels.get(id)])),
+    limitPerFilter: options.limitPerFilter,
+    filterLimits: options.filterLimits,
+    captureAll: options.captureAll,
+  };
+}
+
 async function runCaptureAction(action) {
   if (!action || capturePendingAction) return;
   const meta = getCaptureActionMeta(action);
@@ -587,15 +623,8 @@ async function runCaptureAction(action) {
       tabId,
       tabUrl: tab.url || '',
       windowId: Number(tab.windowId || 0) || undefined,
-      ...(action === 'saveJdProduct' ? {
-        reviewOptions: {
-          selectedFilterIds: jdReviewOptions.selectedFilterIds,
-          selectedFilterLabels: (jdProductPreview?.reviewCapture?.availableFilters || [])
-            .filter((filter) => jdReviewOptions.selectedFilterIds.includes(filter.id))
-            .map((filter) => filter.label),
-          limitPerFilter: jdReviewOptions.limitPerFilter,
-          captureAll: jdReviewOptions.captureAll,
-        },
+      ...(['saveJdProduct', 'saveProduct'].includes(action) ? {
+        reviewOptions: productReviewOptionsForSave(jdReviewOptions, jdProductPreview?.reviewCapture?.availableFilters || []),
       } : {}),
     });
     if (response.taskQueue) {
@@ -610,7 +639,7 @@ async function runCaptureAction(action) {
       jdProductPreview = response.product;
     }
     captureFeedback = {
-      status: 'success',
+      status: response?.preview && response?.product ? productPreviewFeedback(response.product).status : 'success',
       message: summarizeActionResponse(response, meta.done),
     };
     await refreshTaskQueue(false);
@@ -862,18 +891,21 @@ function getCaptureActionConfig(nextContext) {
       ],
     };
   }
-  if (platform === 'jd' && pageType === 'product') {
-    const hasCurrentPreview = jdProductPreview?.sourceUrl === tab.url;
+  if (['jd', 'taobao', 'tmall'].includes(platform) && pageType === 'product') {
+    const hasCurrentPreview = (jdProductPreview?.previewPageUrl || jdProductPreview?.sourceUrl) === tab.url;
+    const previewFeedback = hasCurrentPreview ? productPreviewFeedback(jdProductPreview) : null;
+    const previewAction = platform === 'jd' ? 'previewJdProduct' : 'previewProduct';
+    const saveAction = platform === 'jd' ? 'saveJdProduct' : 'saveProduct';
     return {
-      variant: 'jd-product',
+      variant: platform === 'jd' ? 'jd-product' : 'product',
       title: 'GardenFlow 商品采集',
-      subtitle: '京东商品详情页',
+      subtitle: `${getPlatformMeta(platform).name}商品详情页`,
       hint: hasCurrentPreview ? '核对商品资料后保存到资产库' : '先预览当前规格和可采集素材',
       actions: [
         hasCurrentPreview
-          ? { label: '确认保存到资产库', action: 'saveJdProduct', primary: true, title: '保存当前商品及来源快照' }
-          : { label: '预览商品及评论', action: 'previewJdProduct', primary: true, title: '读取当前商品、所选规格和评论标签' },
-        ...(hasCurrentPreview ? [{ label: '重新识别', action: 'previewJdProduct', title: '更新商品资料并自动识别评论标签' }] : []),
+          ? { label: previewFeedback.saveLabel, action: saveAction, primary: previewFeedback.status === 'success', title: '仅保存已识别的资料；缺失字段不会自动补齐' }
+          : { label: '预览商品及评论', action: previewAction, primary: true, title: '读取当前商品、所选规格和评论标签' },
+        ...(hasCurrentPreview ? [{ label: '重新识别', action: previewAction, title: '更新商品资料并自动识别评论标签' }] : []),
       ],
     };
   }
@@ -978,6 +1010,8 @@ function getCaptureActionConfig(nextContext) {
 
 function getCaptureActionMeta(action) {
   const map = {
+    previewProduct: { type: 'preview-product', pending: '正在识别商品及评论...', done: '商品及评论标签已识别，请核对后保存' },
+    saveProduct: { type: 'save-product', pending: '正在保存商品及评论...', done: '商品已保存到资产库' },
     previewJdProduct: { type: 'preview-jd-product', pending: '正在识别商品及评论...', done: '商品及评论标签已识别，请核对后保存' },
     saveJdProduct: { type: 'save-jd-product', pending: '正在打开评价并保存...', done: '商品已保存到资产库' },
     save: { type: 'save-xhs', pending: '保存中...', done: '已保存到 GardenFlow' },
@@ -1002,10 +1036,10 @@ function getCaptureActionMeta(action) {
 }
 
 function summarizeActionResponse(response, fallback) {
-  if (response?.mode === 'jd-product-preview') {
-    return `已识别「${response.product?.title || '京东商品'}」，请核对后保存`;
+  if (['jd-product-preview', 'product-preview'].includes(response?.mode)) {
+    return productPreviewFeedback(response.product).message;
   }
-  if (response?.mode === 'jd-product') {
+  if (['jd-product', 'product'].includes(response?.mode)) {
     const imageText = `，已保存 ${Number(response.importedImages || 0)} 张图片`;
     const reviewText = Number(response.capturedReviews || 0) > 0
       ? `、${Number(response.capturedReviews || 0)} 条评论和 ${Number(response.importedReviewImages || 0)} 张评论图`
@@ -1039,6 +1073,21 @@ function summarizeActionResponse(response, fallback) {
     return response.duplicate ? '知识库中已存在这条内容' : fallback;
   }
   return fallback || '操作完成';
+}
+
+function productPreviewFeedback(product) {
+  const hasBody = Boolean(product?.price?.text || product?.selectedSku?.variantText || product?.selectedSku?.name
+    || product?.images?.length || product?.parameters?.length || product?.detailText || product?.description);
+  if (product?.platform !== 'jd' && !hasBody) {
+    return { status: 'warning', saveLabel: '仅保存已识别资料', message: '商品主体未识别：当前仅取得名称或少量基础资料，未读取到规格、价格、图片、参数和详情，尚不能用于完整商品创作。' };
+  }
+  if (product?.missingFields?.length) {
+    return { status: 'warning', saveLabel: '保存已识别资料', message: '资料识别不完整；保存仅包含已识别内容，缺失项请见上方列表。' };
+  }
+  if (!product?.reviewCapture?.modalDetected || ['not-opened', 'partial'].includes(product?.reviewCapture?.status) || product?.reviewCapture?.readableReviewCount === 0) {
+    return { status: 'warning', saveLabel: '保存商品资料并重试评论', message: '商品资料已读取，评论列表尚未完整识别；保存时将重试，无法读取的评论会标记为未完成。' };
+  }
+  return { status: 'success', saveLabel: '确认保存到资产库', message: `已识别「${product?.title || '商品'}」，请核对后保存` };
 }
 
 async function refreshTaskQueue(showErrors = false) {
@@ -1172,6 +1221,8 @@ function getFallbackLogMessage(status) {
 function normalizePlatform(value) {
   const text = String(value || '').toLowerCase().trim();
   const hostname = getPlatformHostname(text);
+  if (hostname === 'item.taobao.com' || text === 'taobao') return 'taobao';
+  if (['detail.tmall.com', 'chaoshi.detail.tmall.com'].includes(hostname) || text === 'tmall') return 'tmall';
   if (hostname === 'jd.com' || hostname.endsWith('.jd.com') || hostname === 'jd.hk' || hostname.endsWith('.jd.hk')) return 'jd';
   if (hostname === 'x.com' || hostname.endsWith('.x.com') || hostname === 'twitter.com' || hostname.endsWith('.twitter.com') || text === 'x') return 'x';
   if (hostname === 'instagram.com' || hostname.endsWith('.instagram.com') || hostname === 'instagr.am' || hostname.endsWith('.instagr.am')) return 'instagram';
@@ -1213,6 +1264,8 @@ function getPlatformHostname(value) {
 
 function getPlatformMeta(platform) {
   const map = {
+    taobao: { platform: 'taobao', name: '淘宝', logo: '淘' },
+    tmall: { platform: 'tmall', name: '天猫', logo: '猫' },
     jd: { platform: 'jd', name: '京东', logo: '京' },
     xhs: { platform: 'xhs', name: '小红书', logo: '小', icon: 'assets/platforms/xiaohongshu.svg' },
     youtube: { platform: 'youtube', name: 'YouTube', logo: '▶' },
@@ -1234,7 +1287,7 @@ function getPlatformMeta(platform) {
 function inferPageType(pageInfo, tab) {
   const kind = String(pageInfo?.kind || '').toLowerCase();
   const url = String(tab?.url || '').toLowerCase();
-  if (/jd-product|商品/.test(kind) || /(?:^|\.)jd\.(?:com|hk)\/.*\/\d+\.html/.test(url)) return 'product';
+  if (kind === 'product' || /jd-product|商品/.test(kind) || /(?:^|\.)jd\.(?:com|hk)\/.*\/\d+\.html/.test(url)) return 'product';
   if (/profile|author|博主|主页/.test(kind) || /\/user\/profile\//.test(url)) return 'profile';
   if (/note|image|小红书/.test(kind) || /\/explore\/|\/discovery\/item\//.test(url)) return 'note';
   if (/post|tweet|帖子|推文/.test(kind) || /\/comments\/|\/status\/|instagram\.com\/(p|reel)\//.test(url)) return 'post';

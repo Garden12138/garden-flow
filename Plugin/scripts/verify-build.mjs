@@ -178,6 +178,11 @@ for (const capability of siteResearchCapabilities.capabilities) {
   siteCapabilityIds.add(capability.id);
   assert(Array.isArray(capability.supportedOperations) && capability.supportedOperations.length > 0, `${capability.id} must declare operations`);
   assert.match(capability.extractorSchemaHash, /^[a-f0-9]{64}$/, `${capability.id} must declare a sha256 extractor schema hash`);
+  if (capability.searchNavigationHostPatterns) {
+    assert(capability.searchViaPageUi === true, `${capability.id} navigation hosts require page UI search`);
+    assert.deepEqual([...capability.searchNavigationHostPatterns].sort(), ['taobao.com', 'tmall.com'], 'Only Taobao/Tmall shared search navigation is declared');
+    assert(['taobao', 'tmall'].includes(capability.id), 'Shared marketplace navigation requires a marketplace capability');
+  }
   for (const host of capability.hostPatterns || []) {
     assert(!siteCapabilityHosts.has(host), `Duplicate site research host: ${host}`);
     siteCapabilityHosts.add(host);

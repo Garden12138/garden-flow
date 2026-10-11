@@ -1,29 +1,16 @@
-import { deflateSync } from 'node:zlib';
+import { deflateSync, inflateSync } from 'node:zlib';
+import {
+    verificationGlyphCharacters,
+    verificationGlyphWidth,
+    verificationGlyphHeight,
+    verificationGlyphMasksBase64,
+} from './productVideoVerificationGlyphs.ts';
 
 const WIDTH = 720;
 const HEIGHT = 280;
 const CHANNELS = 3;
 
-const GLYPHS: Record<string, string[]> = {
-    '0': ['01110', '10001', '10011', '10101', '11001', '10001', '01110'],
-    '1': ['00100', '01100', '00100', '00100', '00100', '00100', '01110'],
-    '2': ['01110', '10001', '00001', '00010', '00100', '01000', '11111'],
-    '3': ['11110', '00001', '00001', '01110', '00001', '00001', '11110'],
-    '4': ['00010', '00110', '01010', '10010', '11111', '00010', '00010'],
-    '5': ['11111', '10000', '10000', '11110', '00001', '00001', '11110'],
-    '6': ['01110', '10000', '10000', '11110', '10001', '10001', '01110'],
-    '7': ['11111', '00001', '00010', '00100', '01000', '01000', '01000'],
-    '8': ['01110', '10001', '10001', '01110', '10001', '10001', '01110'],
-    '9': ['01110', '10001', '10001', '01111', '00001', '00001', '01110'],
-    'A': ['01110', '10001', '10001', '11111', '10001', '10001', '10001'],
-    'B': ['11110', '10001', '10001', '11110', '10001', '10001', '11110'],
-    'C': ['01111', '10000', '10000', '10000', '10000', '10000', '01111'],
-    'D': ['11110', '10001', '10001', '10001', '10001', '10001', '11110'],
-    'E': ['11111', '10000', '10000', '11110', '10000', '10000', '11111'],
-    'F': ['11111', '10000', '10000', '11110', '10000', '10000', '10000'],
-    'G': ['01111', '10000', '10000', '10111', '10001', '10001', '01111'],
-    '-': ['00000', '00000', '00000', '11111', '00000', '00000', '00000'],
-};
+const GLYPH_MASKS = inflateSync(Buffer.from(verificationGlyphMasksBase64, 'base64'));
 
 const CRC_TABLE = (() => {
     const table = new Uint32Array(256);
@@ -80,30 +67,25 @@ function fillRect(
 }
 
 function drawToken(pixels: Buffer, token: string): void {
-    const scaleX = 7;
-    const scaleY = 12;
-    const spacing = 7;
-    const glyphWidth = 5 * scaleX;
+    const spacing = 4;
+    const glyphWidth = verificationGlyphWidth;
     const textWidth = (token.length * glyphWidth) + ((token.length - 1) * spacing);
     const startX = Math.floor((WIDTH - textWidth) / 2);
-    const startY = Math.floor((HEIGHT - (7 * scaleY)) / 2);
+    const startY = Math.floor((HEIGHT - verificationGlyphHeight) / 2);
 
     [...token].forEach((character, characterIndex) => {
-        const glyph = GLYPHS[character];
-        if (!glyph) throw new Error(`Unsupported verification token character: ${character}`);
-        glyph.forEach((row, rowIndex) => {
-            [...row].forEach((pixel, columnIndex) => {
-                if (pixel !== '1') return;
-                fillRect(
-                    pixels,
-                    startX + (characterIndex * (glyphWidth + spacing)) + (columnIndex * scaleX),
-                    startY + (rowIndex * scaleY),
-                    scaleX,
-                    scaleY,
-                    [255, 255, 255],
-                );
-            });
-        });
+        const glyphIndex = verificationGlyphCharacters.indexOf(character);
+        if (glyphIndex < 0) throw new Error(`Unsupported verification token character: ${character}`);
+        const glyphOffset = glyphIndex * glyphWidth * verificationGlyphHeight;
+        for (let row = 0; row < verificationGlyphHeight; row += 1) {
+            for (let column = 0; column < glyphWidth; column += 1) {
+                const alpha = GLYPH_MASKS[glyphOffset + (row * glyphWidth) + column] / 255;
+                const offset = (((startY + row) * WIDTH) + startX + (characterIndex * (glyphWidth + spacing)) + column) * CHANNELS;
+                for (let channel = 0; channel < CHANNELS; channel += 1) {
+                    pixels[offset + channel] = Math.round(pixels[offset + channel] * (1 - alpha) + 255 * alpha);
+                }
+            }
+        }
     });
 }
 

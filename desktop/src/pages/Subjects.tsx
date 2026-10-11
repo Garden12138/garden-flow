@@ -1,3 +1,5 @@
+import { ProductLinksPanel } from '../components/products/ProductLinksPanel';
+import type { ProductLink } from '../../shared/productLinks';
 import { ProductSourcePreview, type ProductPreviewSnapshot } from '../components/products/ProductSourcePreview';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
@@ -152,6 +154,7 @@ interface BrandWorkspaceSourceSnapshot extends ProductPreviewSnapshot {
 }
 
 interface BrandWorkspaceProductBundle {
+    links?: ProductLink[];
     product: BrandWorkspaceProduct;
     skus: BrandWorkspaceSku[];
     assets: BrandWorkspaceAssetRef[];
@@ -1170,6 +1173,7 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
     const [expandedBrandIds, setExpandedBrandIds] = useState<Set<string>>(() => new Set());
     const [productDetailContext, setProductDetailContext] = useState<ProductDetailContext | null>(null);
     const [selectedDetailPlatformId, setSelectedDetailPlatformId] = useState('');
+    const [selectedSourceSnapshotId, setSelectedSourceSnapshotId] = useState('');
     const [initialVoicePresent, setInitialVoicePresent] = useState(false);
     const [initialVideoPresent, setInitialVideoPresent] = useState(false);
     const [recordingError, setRecordingError] = useState('');
@@ -1519,14 +1523,16 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
     ), [activeDetailBrandBundle, productDetailContext]);
     const availableDetailPlatforms = useMemo(() => {
         const sourcePlatformIds = new Set((activeDetailProductBundle?.sourceSnapshots || []).map((snapshot) => snapshot.platform));
-        return ALL_ECOMMERCE_PLATFORMS.filter((platform) => sourcePlatformIds.has(platform.id));
+        return [...ALL_ECOMMERCE_PLATFORMS,
+            { id: 'taobao', name: '淘宝', market: '中国大陆', platformType: '综合电商' },
+            { id: 'tmall', name: '天猫', market: '中国大陆', platformType: '综合电商' },
+        ].filter((platform) => sourcePlatformIds.has(platform.id));
     }, [activeDetailProductBundle]);
     const activeDetailPlatform = useMemo(() => (
         availableDetailPlatforms.find((platform) => platform.id === selectedDetailPlatformId) || availableDetailPlatforms[0] || null
     ), [availableDetailPlatforms, selectedDetailPlatformId]);
-    const activeProductSourceSnapshot = activeDetailProductBundle?.sourceSnapshots?.find((snapshot) => (
-        snapshot.platform === activeDetailPlatform?.id
-    )) || null;
+    const platformSourceSnapshots = (activeDetailProductBundle?.sourceSnapshots || []).filter((snapshot) => snapshot.platform === activeDetailPlatform?.id);
+    const activeProductSourceSnapshot = platformSourceSnapshots.find((snapshot) => snapshot.id === selectedSourceSnapshotId) || platformSourceSnapshots[0] || null;
     const activeDraftSubject = useMemo(
         () => draft.id ? subjects.find((subject) => subject.id === draft.id) || null : null,
         [draft.id, subjects],
@@ -1782,6 +1788,7 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
 
     const openProductDetailPage = useCallback((brand: BrandWorkspaceBrand, productBundle: BrandWorkspaceProductBundle) => {
         setProductDetailContext({ brandId: brand.id, productId: productBundle.product.id });
+        setSelectedSourceSnapshotId('');
         setSelectedDetailPlatformId(productBundle.sourceSnapshots?.[0]?.platform || '');
         setError('');
     }, []);
@@ -2857,6 +2864,20 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
                                 </div>
                             )}
 
+                            {activeDetailProductBundle && <ProductLinksPanel
+                                key={activeDetailProductBundle.product.id}
+                                product={activeDetailProductBundle.product}
+                                links={activeDetailProductBundle.links || []}
+                                products={brandWorkspaceBrands.flatMap((brand) => brand.products.map((item) => ({ ...item.product, platform: item.sourceSnapshots?.[0]?.platform })))}
+                                onChanged={loadData}
+                                onOpen={(id) => {
+                                    for (const brand of brandWorkspaceBrands) {
+                                        const related = brand.products.find((item) => item.product.id === id);
+                                        if (related) { openProductDetailPage(brand.brand, related); break; }
+                                    }
+                                }}
+                            />}
+
                             {activeProductSourceSnapshot && (
                                 <section className="rounded-xl border border-[rgb(var(--color-border))] bg-white p-4">
                                     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -2877,6 +2898,12 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
                                         </button>
                                     </div>
                                     <div className="mt-4">
+                                        {platformSourceSnapshots.length > 1 && <label className="mb-4 flex items-center gap-3 text-xs text-text-secondary">
+                                            采集记录
+                                            <select aria-label="选择商品来源快照" value={activeProductSourceSnapshot.id} onChange={(event) => setSelectedSourceSnapshotId(event.target.value)} className="min-w-0 rounded-lg border border-border bg-surface-primary px-3 py-2">
+                                                {platformSourceSnapshots.map((snapshot) => <option key={snapshot.id} value={snapshot.id}>{new Date(snapshot.capturedAt).toLocaleString()} · {snapshot.selectedSku?.variantText || '未识别规格'}</option>)}
+                                            </select>
+                                        </label>}
                                         <ProductSourcePreview
                                             snapshot={activeProductSourceSnapshot}
                                             images={activeProductSourceSnapshot.imageAssetIds.flatMap((id) => (

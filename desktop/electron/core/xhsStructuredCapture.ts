@@ -586,19 +586,26 @@ async function closeOpenedItem(
 export function createXhsStructuredCaptureIo(
     log?: (level: 'info' | 'warn' | 'error', message: string) => void,
 ): XhsStructuredCaptureIo {
+    let extensionInstanceId: string | undefined;
     return {
         invokeBrowserControl: async (method, params, options) => {
             const bridge = getBrowserCaptureBridgeService();
             if (!bridge) throw new Error('Desktop Bridge 尚未启动');
-            return await bridge.invokeBrowserControl(method, params, options);
+            extensionInstanceId ||= bridge.getStatus().instances.find((instance) => instance.extensionKind === 'capture')?.extensionInstanceId;
+            if (!extensionInstanceId) throw new Error('没有已连接的 GardenFlow 采集插件实例');
+            return await bridge.invokeBrowserControl(method, params, { ...options, extensionKind: 'capture', extensionInstanceId });
         },
         checkPluginInstance: () => {
             const bridge = getBrowserCaptureBridgeService();
-            const instances = bridge?.getStatus().instances || [];
-            if (instances.length === 0) {
+            const instances = (bridge?.getStatus().instances || []).filter((instance) => instance.extensionKind === 'capture');
+            const instance = extensionInstanceId
+                ? instances.find((item) => item.extensionInstanceId === extensionInstanceId)
+                : instances[0];
+            if (!instance) {
                 return { ok: false, detail: '未检测到已连接的 GardenFlow 浏览器插件，请确认采集浏览器已打开且插件已启用' };
             }
-            return { ok: true, detail: `已连接 ${instances.length} 个插件实例` };
+            extensionInstanceId = instance.extensionInstanceId;
+            return { ok: true, detail: `已连接 ${instances.length} 个采集插件实例` };
         },
         log,
     };

@@ -41,6 +41,7 @@ export function listSiteCapabilities() {
     filters: Object.fromEntries(Object.entries(spec.filters).map(([key, values]) => [key, [...values]])),
     searchEntryUrl: spec.searchEntryUrl || null,
     searchViaPageUi: spec.searchViaPageUi === true,
+    searchNavigationHostPatterns: [...(spec.searchNavigationHostPatterns || spec.hosts)],
     resultReadyTimeoutMs: Number(spec.resultReadyTimeoutMs) || RESULT_READY_TIMEOUT_MS,
     detailOpenMode: spec.detailOpenMode || 'direct_url',
     capabilityVersion: spec.capabilityVersion,
@@ -123,6 +124,30 @@ export function pickReusableResearchTab(tabs, request) {
 
 export async function runSiteResearch(requestInput, deps = {}) {
   const request = normalizeResearchRequest(requestInput);
+  // Return owned tabs even after a content-script timeout, so the desktop can
+  // close its search tabs without touching tabs that were already open.
+  const owned = new Set();
+  const wrapped = {
+    ...deps,
+    createControlledTab: typeof deps.createControlledTab === 'function' ? async (options) => {
+      const created = await deps.createControlledTab(options);
+      if (created?.tab?.id) owned.add(created.tab.id);
+      return created;
+    } : undefined,
+    trackSearchTab: (id) => owned.add(id),
+  };
+  try {
+    const result = await runSiteResearchMacro(requestInput, wrapped);
+    return owned.size ? { ...result, cleanupTabIds: [...owned] } : result;
+  } catch (error) {
+    if (!owned.size) throw error;
+    const reason = { BROWSER_LOGIN_REQUIRED: 'login_required', BROWSER_SECURITY_CHALLENGE: 'security_verification_required', BROWSER_RATE_LIMITED: 'rate_limited' }[error?.code] || 'research_runtime_failed';
+    return { success: false, reason, message: String(error?.message || error), site: siteMetadata(request.site), cleanupTabIds: [...owned], tab: { id: [...owned][0] }, items: [] };
+  }
+}
+
+async function runSiteResearchMacro(requestInput, deps = {}) {
+  const request = normalizeResearchRequest(requestInput);
   if (request.executionMode !== 'macro') {
     return await runSiteResearchStep(request, deps);
   }
@@ -167,9 +192,24 @@ export async function runSiteResearch(requestInput, deps = {}) {
     }
     if (request.site.searchViaPageUi === true) {
       if (request.interactionDelayMs > 0) await delayWithDeps(request.interactionDelayMs, deps);
+      const beforeTabs = ['taobao', 'tmall'].includes(request.site.id) && typeof deps.listTabs === 'function'
+        ? new Set((await deps.listTabs()).map((item) => item.id)) : null;
       const submitted = unwrapContentDelivery(await deps.submitSearch(tab.id, extractorRequest(request)));
       if (submitted?.success !== true) {
         return researchSearchFailure(request, tab, targetUrl, submitted);
+      }
+      if (beforeTabs) {
+        // Some marketplace search buttons open an ordinary child tab. Only
+        // adopt a new tab with this search page as opener and a declared host.
+        for (let waited = 0; waited < 8_000; waited += 500) {
+          const tabs = await deps.listTabs();
+          const children = tabs.filter((item) => !beforeTabs.has(item.id) && item.openerTabId === tab.id && urlMatchesSite(item.url || item.pendingUrl || '', request.site));
+          for (const child of children) { await deps.claimTab(child.id, 'research_search'); deps.trackSearchTab?.(child.id); }
+          if (children.length) { tab = children[0]; break; }
+          const currentTab = await deps.getTab?.(tab.id);
+          if (/^\/search(?:\/|$|\.htm)|^\/search_product\.htm/.test(new URL(currentTab?.url || targetUrl).pathname)) break;
+          await delayWithDeps(500, deps);
+        }
       }
       if (typeof deps.waitForTabComplete === 'function') await deps.waitForTabComplete(tab.id, request.timeoutMs);
     } else if (!request.site.searchUrlTemplate) {
@@ -180,6 +220,9 @@ export async function runSiteResearch(requestInput, deps = {}) {
     }
   }
   const current = await deps.getTab?.(tab.id) || tab;
+  if (['taobao', 'tmall'].includes(request.site.id) && !urlMatchesSite(current?.url || current?.pendingUrl || targetUrl, request.site)) {
+    return researchSearchFailure(request, current, targetUrl, { reason: 'search_left_platform', message: '搜索跳转离开声明的平台域名，已停止' });
+  }
   let extracted = unwrapContentDelivery(await deps.readSiteEvidence(tab.id, extractorRequest(request)));
   if (extracted?.success === false && extracted?.reason) {
     const result = {
@@ -231,6 +274,7 @@ export async function runSiteResearch(requestInput, deps = {}) {
   }
   if (request.operation === 'search' || request.operation === 'author_scan') {
     extracted = await collectBoundedCards(tab.id, request, extracted, deps);
+    if (extracted?.success === false) return researchSearchFailure(request, current, targetUrl, extracted);
     if (!(extracted?.items || []).length) {
       return researchCardsFailure(request, current, targetUrl, extracted);
     }
@@ -631,6 +675,7 @@ function normalizeMediaTypes(value) {
 }
 
 async function collectBoundedCards(tabId, request, first, deps) {
+  if (first?.success === false) return first;
   const collected = new Map();
   appendCollectedItems(collected, first?.items, request.limit);
   let latest = first || {};
@@ -648,6 +693,7 @@ async function collectBoundedCards(tabId, request, first, deps) {
     if (latest?.success === false) break;
     appendCollectedItems(collected, latest?.items, request.limit);
   }
+  if (latest?.success === false) return { ...first, ...latest, items: [...collected.values()] };
   let stalledScrolls = 0;
   for (let index = 0; index < request.maxScrolls && collected.size < request.limit; index += 1) {
     if (!collected.size) break;
@@ -673,6 +719,7 @@ function researchCardKey(item) {
   const url = String(item?.sourceUrl || '');
   const match = /\/(?:explore|discovery\/item|video)\/([0-9a-zA-Z]+)/.exec(url);
   if (match?.[1]) return match[1];
+  if (['taobao', 'tmall'].includes(item?.platform)) return `${item.platform}:${item.id || url}`;
   return String(item?.id || url || '').trim();
 }
 
@@ -808,7 +855,7 @@ function resolveSiteCapability(value, sourceUrl) {
     .find((spec) => spec.aliases.includes(requested))?.id || '';
   const id = alias || requested || inferSiteId(sourceUrl);
   const spec = SITE_CAPABILITY_SPECS[id];
-  if (!spec) throw new Error('research.run requires supported site: xiaohongshu, douyin, jd, youtube, or web');
+  if (!spec) throw new Error('research.run requires supported site: xiaohongshu, douyin, jd, taobao, tmall, youtube, or web');
   if (sourceUrl && !urlMatchesSite(sourceUrl, spec)) throw new Error(`URL does not belong to ${spec.displayName}`);
   return spec;
 }
@@ -832,6 +879,8 @@ export function buildSiteSearchTargetUrl(site, query) {
 function inferSiteId(sourceUrl) {
   try {
     const host = new URL(sourceUrl).hostname.toLowerCase();
+    if (host === 'tmall.com' || host.endsWith('.tmall.com')) return 'tmall';
+    if (host === 'taobao.com' || host.endsWith('.taobao.com')) return 'taobao';
     return Object.values(SITE_CAPABILITY_SPECS).find((spec) => spec.hosts.some((suffix) => suffix !== '*' && (host === suffix || host.endsWith(`.${suffix}`))))?.id || 'web';
   } catch {
     return '';
@@ -841,7 +890,8 @@ function inferSiteId(sourceUrl) {
 function urlMatchesSite(url, spec) {
   try {
     const host = new URL(url).hostname.toLowerCase();
-    return spec.hosts.includes('*') || spec.hosts.some((suffix) => host === suffix || host.endsWith(`.${suffix}`));
+    const patterns = spec.searchNavigationHostPatterns || spec.hosts;
+    return patterns.includes('*') || patterns.some((suffix) => host === suffix || host.endsWith(`.${suffix}`));
   } catch {
     return false;
   }
@@ -876,6 +926,7 @@ function isLikelySiteHomeUrl(url, siteId) {
     const path = new URL(url).pathname.replace(/\/+$/, '') || '/';
     if (siteId === 'xiaohongshu') return path === '/' || path === '/explore';
     if (siteId === 'douyin') return path === '/' || path === '/jingxuan';
+    if (['taobao', 'tmall'].includes(siteId)) return path === '/';
     if (siteId === 'jd') return path === '/' || path.toLowerCase() === '/search';
   } catch {
     return false;
@@ -894,6 +945,7 @@ function isLikelySiteDetailUrl(url, siteId) {
     if (siteId === 'douyin') {
       return /^\/video\//.test(path) || /^\/note\//.test(path) || /^\/user\//.test(path);
     }
+    if (['taobao', 'tmall'].includes(siteId)) return path === '/item.htm';
     if (siteId === 'jd') {
       return /^\/\d+\.html$/i.test(path);
     }

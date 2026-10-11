@@ -2,6 +2,27 @@ import type { BridgeCore } from '../types';
 
 export function createVideoEditorBridge(core: BridgeCore) {
   return {
+    tiktokVideo: {
+      createVersion: (payload: { sourceProjectId: string; duplicate?: boolean }) => core.invokeChannel('tiktok:video-version-create', payload),
+      getVersion: (payload: { versionId?: string; projectId?: string; sourceProjectId?: string }) => core.invokeChannel('tiktok:video-version-get', payload),
+      saveVersion: (payload: { versionId: string; expectedRevision: number; title: string; description: string; hashtags: string[]; language: string; market: string; publishSettings?: unknown }) => core.invokeChannel('tiktok:video-version-save', payload),
+      suggestLocalization: (payload: { versionId: string; expectedRevision: number; language: string; market: string }) => core.invokeChannel('tiktok:localization-suggest', payload),
+      applyLocalization: (payload: { proposalId: string }) => core.invokeChannel('tiktok:localization-apply', payload),
+    },
+    tiktokPublisher: {
+      getStatus: () => core.invokeChannel('tiktok-publisher:status'),
+      bindInstance: (payload: { extensionInstanceId: string }) => core.invokeChannel('tiktok-publisher:bind-instance', payload),
+      prepare: (payload: { versionId: string; sessionId?: string }) => core.invokeChannel('tiktok-publisher:prepare', payload),
+      getJob: (payload: { jobId?: string; versionId?: string }) => core.invokeChannel('tiktok-publisher:get-job', payload),
+      confirm: (payload: { jobId: string }) => core.invokeChannel('tiktok-publisher:confirm', payload),
+      stageDraft: (payload: { jobId: string }) => core.invokeChannel('tiktok-publisher:stage-draft', payload),
+      cancel: (payload: { jobId: string }) => core.invokeChannel('tiktok-publisher:cancel', payload),
+      recoverUnpublished: (payload: { jobId: string; acknowledgedNotPublished: boolean }) => core.invokeChannel('tiktok-publisher:recover-unpublished', payload),
+      reviewPublished: (payload: { jobId: string; acknowledgedPublished: boolean }) => core.invokeChannel('tiktok-publisher:review-published', payload),
+      readReceipt: (payload: { jobId: string }) => core.invokeChannel('tiktok-publisher:read-receipt', payload),
+      onJobChanged: (listener: (event: unknown, job: unknown) => void) => core.on('tiktok-publisher:job-changed', listener),
+      offJobChanged: (listener: (event: unknown, job: unknown) => void) => core.off('tiktok-publisher:job-changed', listener),
+    },
     videoEditorV2: {
       getOrCreateForManuscript: (payload: { manuscriptPath: string; title?: string }) =>
         core.invokeChannel('videoEditorV2:get-or-create-for-manuscript', payload),

@@ -53,6 +53,7 @@ function lastResultLabel(task: BuiltinTask): string {
     if (task.running) return '正在执行';
     if (!task.lastRunAt) return '尚未运行';
     if (task.lastResult === 'success') return `上次运行成功 · ${formatRunTime(task.lastRunAt)}`;
+    if (task.lastResult === 'partial') return `上次部分完成 · ${task.lastError || '已保存结果保留，请查看采集报告'}`;
     if (task.lastResult === 'skipped') return `上次跳过 · ${task.lastError || '未就绪'}`;
     if (task.lastResult === 'error') return `上次失败 · ${task.lastError || '未知错误'}`;
     return `上次运行 ${formatRunTime(task.lastRunAt)}`;
@@ -361,6 +362,7 @@ export function BuiltinAutomationSection({ isActive = true, onOpenSession }: Bui
                                         type="button"
                                         onClick={() => void runNow(task)}
                                         disabled={executing || platformBlocked}
+                                        title="立即执行一轮，不改变定时开关"
                                         className="flex items-center gap-1.5 rounded-md border border-border/70 px-2.5 py-1 text-xs text-text-secondary transition-colors hover:bg-surface-secondary hover:text-text-primary disabled:opacity-50"
                                     >
                                         {executing

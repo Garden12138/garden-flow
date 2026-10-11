@@ -11,7 +11,7 @@
     "build": "node ../scripts/sync-brand.cjs && node scripts/sync-manifest-version.mjs && node scripts/build.mjs",
     "verify": "node scripts/verify-build.mjs",
     "typecheck": "tsc --noEmit",
-    "check": "pnpm build && pnpm verify && pnpm typecheck && pnpm test:operation-id && pnpm test:desktop-bridge-client && pnpm test:site-research && pnpm test:generic-capture && pnpm test:jd-product && pnpm test:plugin-diagnostics",
+    "check": "pnpm build && pnpm verify && pnpm typecheck && pnpm test:operation-id && pnpm test:desktop-bridge-client && pnpm test:site-research && pnpm test:marketplace-search && pnpm test:generic-capture && pnpm test:jd-product && pnpm test:taobao-product && pnpm test:plugin-diagnostics",
     "install:native-host": "node install-native-host.mjs",
     "diagnose:browser-control": "node scripts/diagnose-browser-control.mjs",
     "test:browser-control-faults": "node scripts/test-browser-control-faults.mjs",
@@ -25,7 +25,9 @@
     "smoke:browser-control": "node scripts/smoke-browser-control-e2e.mjs",
     "mcp:server": "node mcp-server.mjs",
     "agent:call": "node agent-client.mjs",
-    "package": "zsh ./package-plugin.sh"
+    "package": "zsh ./package-plugin.sh",
+    "test:taobao-product": "node --test scripts/test-taobao-product-capture.mjs",
+    "test:marketplace-search": "node --test scripts/test-marketplace-search.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.28.1",

@@ -134,6 +134,19 @@ test('routes selected product plus video intent to the foreground product-video 
   assert.equal(shouldRunSubagentOrchestration({ runtimeMode: 'gardenflow', route }), false);
 });
 
+test('an explicit product-video retry contract overrides generic image-generation routing', () => {
+  const route = applyProductVideoWorkflowPolicy({
+    ...genericVideoRoute, intent: 'image_creation', requiredCapabilities: ['image-generation'],
+  }, { ...productContext, metadata: { explicitProductRefs, workflowKind: 'product-video-compose' } });
+  assert.equal(route.workflowKind, 'product-video-compose');
+  assert.equal(route.requiredCapabilities.includes('image-generation'), false);
+  assert.equal(validateRuntimeCompletion({ route, productVideoState: { status: 'awaiting-approval' } }).complete, true);
+  const missingReference = applyProductVideoWorkflowPolicy(genericVideoRoute, {
+    ...productContext, metadata: { workflowKind: 'product-video-compose' },
+  });
+  assert.equal(missingReference.workflowKind, undefined);
+});
+
 test('new video-note composer selection with a product starts visual preparation before any project is created', () => {
   const metadata = {
     ...mergeAuthoringTaskMetadata({ contextType: 'gardenflow' }, {

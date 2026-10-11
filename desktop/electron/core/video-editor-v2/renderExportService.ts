@@ -13,6 +13,7 @@ import { ensureProductVideoMusicAudible, saveVideoEditorV2Project } from './vide
 import { stageRemotionAssets } from './remotionAssetStaging';
 import { registerRenderedVideoAsset } from '../mediaLibraryStore';
 import { videoRenderFingerprint } from './videoPublicationPolicy';
+import { retryLocalRemotionNavigation } from './localRemotionRetry';
 
 type RenderProgressPayload = {
   projectId: string;
@@ -172,15 +173,21 @@ async function renderRemotionComposition(input: {
       percent: 40,
       status: 'running',
     });
-    const composition = await selectComposition({
+    const onRetry = () => input.onProgress?.({
+      projectId: input.project.id,
+      stage: '重新准备渲染',
+      percent: 40,
+      status: 'running',
+    });
+    const composition = await retryLocalRemotionNavigation(() => selectComposition({
       serveUrl: renderDir,
       id: VIDEO_EDITOR_V2_REMOTION_COMPOSITION_ID,
       inputProps,
       browserExecutable,
       binariesDirectory,
-    });
+    }), onRetry);
 
-    await renderMedia({
+    await retryLocalRemotionNavigation(() => renderMedia({
       composition,
       serveUrl: renderDir,
       browserExecutable,
@@ -199,7 +206,7 @@ async function renderRemotionComposition(input: {
           status: 'running',
         });
       },
-    });
+    }), onRetry);
   } finally {
     await fs.rm(renderDir, { recursive: true, force: true });
   }

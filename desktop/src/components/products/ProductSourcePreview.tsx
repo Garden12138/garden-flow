@@ -4,6 +4,7 @@ import { resolveAssetUrl } from '../../utils/pathManager';
 
 export interface ProductPreviewSnapshot {
     captureVersion?: number;
+    platform?: string;
     title: string;
     externalId: string;
     sourceUrl: string;
@@ -30,6 +31,7 @@ export interface ProductPreviewSnapshot {
             label: string;
             requested: number;
             captured: number;
+            availableCount?: number;
             status: 'complete' | 'partial' | 'missing';
             warning?: string;
             captureAll?: boolean;
@@ -69,6 +71,7 @@ export function ProductSourcePreview({ snapshot, images, reviewImages = [], lega
     legacy?: boolean;
     rawText?: string;
 }) {
+    const platformLabel = ({ jd: '京东', taobao: '淘宝', tmall: '天猫' } as Record<string, string>)[snapshot.platform || 'jd'] || snapshot.platform || '来源平台';
     const [imageIndex, setImageIndex] = useState(0);
     const [reviewFilterId, setReviewFilterId] = useState('all');
     const [rejectedImages, setRejectedImages] = useState<Set<string>>(() => new Set());
@@ -82,10 +85,12 @@ export function ProductSourcePreview({ snapshot, images, reviewImages = [], lega
     const activeImage = availableImages[Math.min(imageIndex, availableImages.length - 1)];
     const rejectImage = (path: string) => setRejectedImages((current) => new Set([...current, path]));
     const facts = [
-        ['品牌', snapshot.brandName],
-        ['店铺', snapshot.shopName],
+        ['来源平台', platformLabel],
+        ['品牌', snapshot.brandName || '未识别'],
+        ['店铺', snapshot.shopName || '未识别'],
         ['当前规格', snapshot.selectedSku?.variantText || '未识别'],
-        ['商品编号', snapshot.selectedSku?.externalId || snapshot.externalId],
+        ['商品编号', snapshot.externalId],
+        ['SKU 编号', snapshot.selectedSku?.externalId || '未识别'],
     ].filter(([, value]) => value);
     const reviewCapture = snapshot.reviewCapture;
     const filterLabels = new Map((reviewCapture?.availableFilters || []).map((filter) => [filter.id, filter.label]));
@@ -98,7 +103,7 @@ export function ProductSourcePreview({ snapshot, images, reviewImages = [], lega
         <div className="space-y-5 text-text-primary">
             {legacy && (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
-                    这条记录由旧版网页采集保存，缺少结构化商品资料。打开京东原页，在插件中重新识别并保存，即可在资产库查看完整商品资料。
+                    这条记录由旧版网页采集保存，缺少结构化商品资料。打开{platformLabel}原页，在插件中重新识别并保存，即可在资产库查看完整商品资料。
                 </div>
             )}
             <div className="grid gap-5 md:grid-cols-2">
@@ -149,7 +154,7 @@ export function ProductSourcePreview({ snapshot, images, reviewImages = [], lega
                     <div className="rounded-xl bg-surface-secondary p-4">
                         <div className="text-xs text-text-secondary">{snapshot.price?.label || '价格快照'}</div>
                         <div className="mt-1 text-2xl font-semibold text-accent-primary">{snapshot.price?.text || '未识别'}</div>
-                        <div className="mt-2 text-xs leading-5 text-text-tertiary">采集于 {new Date(snapshot.capturedAt).toLocaleString()}，以京东页面实时价格为准。</div>
+                        <div className="mt-2 text-xs leading-5 text-text-tertiary">采集于 {new Date(snapshot.capturedAt).toLocaleString()}，以{platformLabel}页面实时价格为准。</div>
                     </div>
                     <dl className="grid grid-cols-[64px_minmax(0,1fr)] gap-x-3 gap-y-3 text-sm leading-6">
                         {facts.map(([label, value]) => (
@@ -161,7 +166,7 @@ export function ProductSourcePreview({ snapshot, images, reviewImages = [], lega
                     </dl>
                     {!legacy && snapshot.missingFields.length > 0 && (
                         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
-                            待补充：{snapshot.missingFields.join('、')}。可在京东展开商品详情后重新识别。
+                            待补充：{snapshot.missingFields.join('、')}。可在{platformLabel}展开商品详情后重新识别。
                         </div>
                     )}
                 </div>
@@ -201,6 +206,7 @@ export function ProductSourcePreview({ snapshot, images, reviewImages = [], lega
                                     title={result.warning}
                                 >
                                     {result.label} {result.captureAll ? `${result.captured} 条（全部）` : `${result.captured}/${result.requested}`}
+                                    {result.availableCount !== undefined && result.availableCount < result.requested ? `（页面共 ${result.availableCount} 条）` : ''}
                                 </button>
                             ))}
                         </div>
@@ -220,7 +226,7 @@ export function ProductSourcePreview({ snapshot, images, reviewImages = [], lega
                                 return (
                                     <article key={review.id} className="rounded-xl border border-black/[0.06] bg-white p-4">
                                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-tertiary">
-                                            <span className="font-semibold text-text-primary">{review.authorName || '京东用户'}</span>
+                                            <span className="font-semibold text-text-primary">{review.authorName || `${platformLabel}用户`}</span>
                                             {review.rating && (
                                                 <span className="inline-flex items-center gap-1 text-amber-600">
                                                     <Star className="h-3.5 w-3.5 fill-current" />{review.rating} 星

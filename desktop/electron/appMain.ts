@@ -43,6 +43,9 @@ import {
   getDefaultWorkspaceDir,
   getActiveSpaceId,
   getDouyinVideoVersion,
+  getTikTokVideoVersion,
+  getTikTokVideoVersionByProject,
+  listTikTokVideoVersions,
   getDouyinVideoVersionByProject,
   listDouyinVideoVersions,
   listSpaces,
@@ -213,6 +216,9 @@ import {
 import { renderVideoEditorV2Project } from './core/video-editor-v2/renderExportService';
 import { createDouyinVideoVersion, saveDouyinVideoVersion } from './core/douyinVideoVersionService';
 import { getDouyinPublisherService } from './core/douyinPublisherService';
+import { createTikTokVideoVersion, saveTikTokVideoVersion } from './core/tiktokVideoVersionService';
+import { getTikTokPublisherService } from './core/tiktokPublisherService';
+import { suggestTikTokLocalization, applyTikTokLocalization } from './core/tiktokLocalization';
 import { transcribeMediaToSrt } from './core/video-auto-edit/asrSrtService';
 import { buildRuntimeBaseSystemPrompt } from './core/prompts/defaultPromptBuilder';
 import {
@@ -304,6 +310,11 @@ import {
   type McpServerConfig,
 } from './core/mcpStore';
 import { normalizeApiBaseUrl, normalizeRemoteAssetUrl, safeUrlJoin } from './core/urlUtils';
+import { suggestProductLinks, type ProductMatchDocument } from './core/productLinkSuggestions';
+import type { LinkProductsInput } from '../shared/productLinks';
+import { validateCapturedProduct } from './core/productCaptureValidation';
+import { localizeCapturedProductMedia } from './core/productCaptureMedia';
+import { resolveProductCaptureSpaceId } from './core/productCaptureSpace';
 import { resolveModelScopeFromContextType, resolveScopedModelName } from './core/modelScopeSettings';
 import {
   llmSupportsAttachmentKind,
@@ -1324,6 +1335,8 @@ function emitForcedSkillActivationEvents(sender: Electron.WebContents, skillName
 }
 
 if (!appSingleInstanceLock) {
+  console.info('[Startup] GardenFlow 已有实例运行，已请求显示现有窗口，本次启动正常退出。');
+  console.info('[Startup] 如需运行当前源码，请先完全退出已有 GardenFlow，再执行 pnpm dev。');
   app.exit(0);
 }
 
@@ -6843,6 +6856,120 @@ ipcMain.handle('douyin-publisher:review-published', async (_, payload?: { jobId?
   catch (error) { return { success: false, error: String(error) }; }
 });
 
+ipcMain.handle('tiktok:video-version-create', async (_, payload?: {
+  sourceProjectId?: string; duplicate?: boolean;
+}) => {
+  try {
+    const version = await createTikTokVideoVersion({
+      sourceProjectId: String(payload?.sourceProjectId || ''),
+      duplicate: payload?.duplicate === true,
+    });
+    emitRendererDataChanged('video-editor-v2', { action: 'tiktok-version-create', entityId: version.projectId });
+    return { success: true, version };
+  } catch (error) {
+    return { success: false, error: String(error) };
+  }
+});
+
+ipcMain.handle('tiktok:video-version-get', async (_, payload?: { versionId?: string; projectId?: string; sourceProjectId?: string }) => {
+  try {
+    const version = payload?.versionId ? getTikTokVideoVersion(payload.versionId)
+      : payload?.projectId ? getTikTokVideoVersionByProject(payload.projectId) : null;
+    const versions = payload?.sourceProjectId ? listTikTokVideoVersions(payload.sourceProjectId) : [];
+    const current = version || versions[0] || null;
+    const product = current ? await brandWorkspaceStore.getProductCreativeReference(current.sourceProductId).catch(() => null) : null;
+    return { success: true, version: current, versions, productChanged: Boolean(current && (!product || product.updatedAt !== current.sourceProductUpdatedAt)) };
+  } catch (error) {
+    return { success: false, error: String(error) };
+  }
+});
+
+ipcMain.handle('tiktok:video-version-save', async (_, payload?: {
+  versionId?: string; expectedRevision?: number; title?: string; description?: string; hashtags?: string[]; language?: string; market?: string; publishSettings?: unknown;
+}) => {
+  try {
+    const version = await saveTikTokVideoVersion({
+      versionId: String(payload?.versionId || ''),
+      expectedRevision: Number(payload?.expectedRevision),
+      title: String(payload?.title || ''),
+      description: String(payload?.description || ''),
+      hashtags: Array.isArray(payload?.hashtags) ? payload.hashtags : [],
+      language: String(payload?.language || ''), market: String(payload?.market || ''), publishSettings: payload?.publishSettings,
+    });
+    emitRendererDataChanged('video-editor-v2', { action: 'tiktok-version-save', entityId: version.projectId });
+    return { success: true, version };
+  } catch (error) {
+    return { success: false, error: String(error) };
+  }
+});
+
+ipcMain.handle('tiktok:localization-suggest', async (_, payload?: { versionId?: string; expectedRevision?: number; language?: string; market?: string }) => {
+  try {
+    const settings = (getSettings() || {}) as Record<string, unknown>;
+    const llm = resolveSettingsLlm(settings, { preferChat: true });
+    if (!llm) throw new Error('请先在设置中配置文本模型，也可手动编辑文案、字幕和旁白');
+    const sources = Array.isArray(settings.ai_sources_json) ? settings.ai_sources_json : JSON.parse(String(settings.ai_sources_json || '[]'));
+    const selectedSource = Array.isArray(sources) ? sources.find((item: any) => item?.id === llm.sourceId) : undefined;
+    const { detectAiProtocol } = await import('./core/aiSourceService');
+    const proposal = await suggestTikTokLocalization({ versionId: String(payload?.versionId || ''), expectedRevision: Number(payload?.expectedRevision),
+      language: String(payload?.language || ''), market: String(payload?.market || ''), llm,
+      protocol: detectAiProtocol({ baseURL: llm.baseURL, presetId: selectedSource?.presetId, protocol: selectedSource?.protocol }) });
+    return { success: true, proposal };
+  } catch (error) { return { success: false, error: String(error) }; }
+});
+ipcMain.handle('tiktok:localization-apply', async (_, payload?: { proposalId?: string }) => {
+  try {
+    const result = await applyTikTokLocalization(String(payload?.proposalId || ''));
+    emitRendererDataChanged('video-editor-v2', { action: 'tiktok-localization', entityId: result.project.id });
+    return { success: true, ...result };
+  } catch (error) { return { success: false, error: String(error) }; }
+});
+
+ipcMain.handle('tiktok-publisher:status', async () => {
+  try { return { success: true, ...(await getTikTokPublisherService().getStatus()) }; }
+  catch (error) { return { success: false, error: String(error) }; }
+});
+ipcMain.handle('tiktok-publisher:bind-instance', async (_, payload?: { extensionInstanceId?: string }) => {
+  try { return { success: true, extensionInstanceId: getTikTokPublisherService().bindInstance(String(payload?.extensionInstanceId || '')) }; }
+  catch (error) { return { success: false, error: String(error) }; }
+});
+ipcMain.handle('tiktok-publisher:prepare', async (_, payload?: { versionId?: string; sessionId?: string }) => {
+  try {
+    const service = getTikTokPublisherService();
+    const job = await service.prepare(String(payload?.versionId || ''), String(payload?.sessionId || ''));
+    return { success: true, job, videoPreviewUrl: service.previewUrl(job) };
+  } catch (error) { return { success: false, error: String(error) }; }
+});
+ipcMain.handle('tiktok-publisher:get-job', async (_, payload?: { jobId?: string; versionId?: string }) => {
+  const service = getTikTokPublisherService();
+  const job = payload?.jobId ? service.getJob(String(payload.jobId)) : service.getLatestJob(String(payload?.versionId || ''));
+  return { success: Boolean(job), job, videoPreviewUrl: job ? service.previewUrl(job) : undefined };
+});
+ipcMain.handle('tiktok-publisher:confirm', async (_, payload?: { jobId?: string }) => {
+  try { return { success: true, job: await getTikTokPublisherService().confirm(String(payload?.jobId || '')) }; }
+  catch (error) { return { success: false, error: String(error) }; }
+});
+ipcMain.handle('tiktok-publisher:stage-draft', async (_, payload?: { jobId?: string }) => {
+  try { return { success: true, job: await getTikTokPublisherService().stageDraft(String(payload?.jobId || '')) }; }
+  catch (error) { return { success: false, error: String(error) }; }
+});
+ipcMain.handle('tiktok-publisher:cancel', async (_, payload?: { jobId?: string }) => {
+  try { return { success: true, job: getTikTokPublisherService().cancel(String(payload?.jobId || '')) }; }
+  catch (error) { return { success: false, error: String(error) }; }
+});
+ipcMain.handle('tiktok-publisher:recover-unpublished', async (_, payload?: { jobId?: string; acknowledgedNotPublished?: boolean }) => {
+  try { return { success: true, job: await getTikTokPublisherService().recoverUnpublished(String(payload?.jobId || ''), payload?.acknowledgedNotPublished === true) }; }
+  catch (error) { return { success: false, error: String(error) }; }
+});
+ipcMain.handle('tiktok-publisher:review-published', async (_, payload?: { jobId?: string; acknowledgedPublished?: boolean }) => {
+  try { return { success: true, job: await getTikTokPublisherService().reviewPublished(String(payload?.jobId || ''), payload?.acknowledgedPublished === true) }; }
+  catch (error) { return { success: false, error: String(error) }; }
+});
+ipcMain.handle('tiktok-publisher:read-receipt', async (_, payload?: { jobId?: string }) => {
+  try { return { success: true, job: await getTikTokPublisherService().readReceipt(String(payload?.jobId || '')) }; }
+  catch (error) { return { success: false, error: String(error) }; }
+});
+
 ipcMain.handle('videoEditorV2:get-project', async (_, payload?: { projectId?: string }) => {
   try {
     const projectId = String(payload?.projectId || '').trim();
@@ -7523,6 +7650,61 @@ ipcMain.handle('brand-workspace:delete-product', async (_, payload?: { id?: stri
     console.error('Failed to hard-delete product:', error);
     return { success: false, error: String(error) };
   }
+});
+
+ipcMain.handle('brand-workspace:suggest-product-links', async (_, payload?: { productId?: string }) => {
+  try {
+    const productId = String(payload?.productId || '').trim();
+    if (!productId) throw new Error('请选择商品');
+    const workspace = getWorkspacePaths().subjects;
+    const bundles = await brandWorkspaceStore.list();
+    const all = bundles.flatMap((brand) => brand.products);
+    const source = all.find((bundle) => bundle.product.id === productId);
+    if (!source) throw new Error('商品不存在');
+    const linked = new Set(source.links.flatMap((link) => link.productIds));
+    const toDocument = (bundle: typeof source): ProductMatchDocument => ({
+      productId: bundle.product.id, productVersion: bundle.product.updatedAt, name: bundle.product.name,
+      description: bundle.product.description, facts: bundle.product.facts.map(({ key, value }) => ({ key, value })),
+      sources: bundle.sourceSnapshots.slice(0, 4).map(({ platform, brandName, selectedSku, parameters }) => ({ platform, brandName, selectedSku, parameters })),
+    });
+    const candidates = all.filter((bundle) => bundle.product.id !== productId && !linked.has(bundle.product.id)).map(toDocument);
+    if (!candidates.length) return { success: true, productVersion: source.product.updatedAt, candidates: [] };
+    const settings = (getSettings() || {}) as Record<string, unknown>;
+    const llm = resolveSettingsLlm(settings, { preferChat: true });
+    if (!llm) throw new Error('请先在设置中配置文本模型，也可手动选择商品关联');
+    const sources = Array.isArray(settings.ai_sources_json) ? settings.ai_sources_json : JSON.parse(String(settings.ai_sources_json || '[]'));
+    const selectedSource = Array.isArray(sources) ? sources.find((item: any) => item?.id === llm.sourceId) : undefined;
+    const { detectAiProtocol } = await import('./core/aiSourceService');
+    const matches = await suggestProductLinks({ product: toDocument(source), candidates, llm,
+      protocol: detectAiProtocol({ baseURL: llm.baseURL, presetId: selectedSource?.presetId, protocol: selectedSource?.protocol }) });
+    if (workspace !== getWorkspacePaths().subjects) throw new Error('工作空间已变化，请重新查找同款');
+    const current = (await brandWorkspaceStore.list()).flatMap((brand) => brand.products);
+    if (current.find((item) => item.product.id === productId)?.product.updatedAt !== source.product.updatedAt
+      || matches.some((match) => current.find((item) => item.product.id === match.productId)?.product.updatedAt !== match.productVersion)) {
+      throw new Error('商品资料已变化，请重新查找同款');
+    }
+    return { success: true, modelName: llm.modelName, productVersion: source.product.updatedAt, candidates: matches };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : '同款推荐失败' };
+  }
+});
+
+ipcMain.handle('brand-workspace:link-products', async (_, payload: LinkProductsInput) => {
+  try {
+    if (!payload || typeof payload !== 'object') throw new Error('关联请求无效');
+    const link = await brandWorkspaceStore.linkProducts(payload);
+    emitRendererDataChanged('subjects', { action: 'product-link', entityId: payload.productId });
+    return { success: true, link };
+  } catch (error) { return { success: false, error: error instanceof Error ? error.message : '关联失败' }; }
+});
+
+ipcMain.handle('brand-workspace:unlink-products', async (_, payload: { productId: string; relatedProductId: string }) => {
+  try {
+    if (!payload || typeof payload !== 'object') throw new Error('关联请求无效');
+    await brandWorkspaceStore.unlinkProducts(payload);
+    emitRendererDataChanged('subjects', { action: 'product-unlink', entityId: payload.productId });
+    return { success: true };
+  } catch (error) { return { success: false, error: error instanceof Error ? error.message : '解除关联失败' }; }
 });
 
 ipcMain.handle('brand-workspace:rebuild-ai-index', async () => {
@@ -9254,7 +9436,12 @@ ipcMain.handle('chat:retry-product-video', (event, payload: { sessionId?: string
       if (payload.callId) {
         ({ message, productId } = await getProductVideoReplanInput(sessionId, payload.callId));
       } else {
-        const task = getTaskGraphRuntime().listTasks({ ownerSessionId: sessionId, limit: 1 })[0];
+        // A plain follow-up may create an unrelated task. The explicit retry
+        // action belongs to the latest product-video request in this session.
+        const task = getTaskGraphRuntime().listTasks({ ownerSessionId: sessionId, limit: 50 }).find((candidate) => {
+          const metadata = candidate.metadata as Record<string, unknown> | undefined;
+          return metadata?.workflowKind === 'product-video-compose';
+        });
         const metadata = task?.metadata as Record<string, unknown> | undefined;
         const diagnostic = metadata?.productVideoVisualDiagnostic as { outcome?: string } | undefined;
         const request = metadata?.productVideoRequest as { message?: string; spaceId?: string } | undefined;
@@ -9269,7 +9456,7 @@ ipcMain.handle('chat:retry-product-video', (event, payload: { sessionId?: string
         sessionId, message, displayContent: payload.callId ? '按最新商品资料重新规划视频' : '重试商品图片理解',
         modelConfig: payload.modelConfig,
         assetReferences: [{ id: product.id, name: product.name, referenceType: 'product' }],
-        taskHints: { productVideoProposalId: `proposal-${randomUUID()}`, productVideoReplan: true },
+        taskHints: { workflowKind: 'product-video-compose', productVideoProposalId: `proposal-${randomUUID()}`, productVideoReplan: true },
       }, resolve);
       resolve({ accepted: false, sessionId, runId: '', userMessageId: '', assistantMessageId: '', error: '未能启动商品视频任务，请重试。' });
     })().catch((error) => resolve({ accepted: false, sessionId, runId: '', userMessageId: '', assistantMessageId: '', error: error instanceof Error ? error.message : String(error) }));
@@ -15174,7 +15361,9 @@ async function handleBrowserCaptureBridgeRequest(
   if (!operationId) {
     throw bridgePayloadError('OPERATION_ID_REQUIRED', '写入请求缺少 operationId');
   }
-  const operationKey = `${method}:${operationId}`;
+  const captureSpaceId = method === 'assets.ingestProduct'
+    ? resolveProductCaptureSpaceId(params.spaceId, getActiveSpaceId(), listSpaces().map((space) => space.id)) : '';
+  const operationKey = captureSpaceId ? `${method}:${captureSpaceId}:${operationId}` : `${method}:${operationId}`;
   return browserCaptureOperationResults.run(operationKey, async () => {
     const payload = params.payload;
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
@@ -15228,21 +15417,31 @@ async function handleBrowserCaptureBridgeRequest(
       emitRendererDataChanged('media', { action: 'import', count: imported.length });
       result = { imported: imported.length, assetIds: imported.map((item) => item.id) };
     } else if (method === 'assets.ingestProduct') {
-      const normalized = validateCapturedJdProduct(payload);
-      const localized = await localizeCapturedProductImages(normalized);
-      const localizedReviews = await localizeCapturedProductReviewImages(normalized);
-      const persisted = await brandWorkspaceStore.ingestProduct({
+      const normalized = validateCapturedProduct(payload);
+      const captureRoot = path.join(getWorkspacePathsForSpace(captureSpaceId).subjects, 'brand-workspace');
+      const captureStore = createBrandWorkspaceStore(() => captureRoot);
+      const cache = await captureStore.getCapturedProductImageCache(normalized);
+      const localized = await localizeCapturedProductMedia(normalized, {
+        cache,
+        headers: {
+          'User-Agent': XHS_ASSET_REQUEST_HEADERS['User-Agent'],
+          'Referer': normalized.sourceUrl,
+          'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+          'Accept-Language': XHS_ASSET_REQUEST_HEADERS['Accept-Language'],
+        },
+      });
+      const persisted = await captureStore.ingestProduct({
         ...normalized,
         images: localized.images,
-        reviewCapture: localizedReviews.reviewCapture,
+        reviewCapture: localized.reviewCapture,
         sourceImages: (normalized.images || []).map((image) => ({ sourceUrl: image.sourceUrl!, role: image.role || 'gallery' })),
         missingFields: [
           ...(normalized.missingFields || []),
-          ...(localized.failedImages > 0 ? [`商品图片下载失败（${localized.failedImages} 张）`] : []),
+          ...(localized.failedImages > 0 ? [`商品图片下载失败（${localized.failedImages} 张）：${localized.failureReasons.join("；")}`] : []),
         ],
       });
-      await brandWorkspaceStore.rebuildAiIndex();
-      emitRendererDataChanged('subjects', {
+      await captureStore.rebuildAiIndex();
+      if (captureSpaceId === getActiveSpaceId()) emitRendererDataChanged('subjects', {
         action: persisted.duplicate ? 'product-recapture' : 'product-capture',
         entityId: persisted.product.product.id,
       });
@@ -15253,6 +15452,7 @@ async function handleBrowserCaptureBridgeRequest(
         importedImages: persisted.sourceSnapshot.imageAssetIds.length,
         importedReviewImages: persisted.sourceSnapshot.reviewCapture?.reviews.reduce((total, review) => total + review.imageAssetIds.length, 0) || 0,
         capturedReviews: persisted.sourceSnapshot.reviewCapture?.reviews.length || 0,
+        reviewCaptureStatus: persisted.sourceSnapshot.reviewCapture?.status || '',
         reviewWarnings: persisted.sourceSnapshot.reviewCapture?.warnings || [],
         missingFields: persisted.sourceSnapshot.missingFields,
       };
@@ -15264,305 +15464,6 @@ async function handleBrowserCaptureBridgeRequest(
   });
 }
 
-function validateCapturedJdProduct(payload: object): CapturedProductInput {
-  const record = payload as Record<string, unknown>;
-  const platform = String(record.platform || '').trim().toLowerCase();
-  const externalId = String(record.externalId || '').trim().slice(0, 500);
-  const sourceUrl = String(record.sourceUrl || '').trim().slice(0, 8_000);
-  const title = String(record.title || '').replace(/\s+/g, ' ').trim().slice(0, 1_000);
-  let hostname = '';
-  try {
-    hostname = new URL(sourceUrl).hostname.toLowerCase();
-  } catch {
-    // Validation below returns a stable bridge error.
-  }
-  if (platform !== 'jd' || !externalId || !title || !(hostname === 'jd.com' || hostname.endsWith('.jd.com') || hostname === 'jd.hk' || hostname.endsWith('.jd.hk'))) {
-    throw bridgePayloadError('INVALID_CAPTURE_PAYLOAD', '当前页面不是可保存的京东商品详情页');
-  }
-
-  const source = record as unknown as CapturedProductInput;
-  let rejectedImages = 0;
-  const images = (Array.isArray(source.images) ? source.images : [])
-    .slice(0, 24)
-    .flatMap((image) => {
-      try {
-        return [{
-          name: String(image?.name || '').trim().slice(0, 500) || undefined,
-          sourceUrl: validateCapturedJdImageSource(image?.sourceUrl),
-          role: String(image?.role || '').trim().slice(0, 100) || 'image',
-          origin: 'capture' as const,
-        }];
-      } catch {
-        rejectedImages += 1;
-        return [];
-      }
-    });
-  const reviewCaptureRecord = source.reviewCapture && typeof source.reviewCapture === 'object'
-    ? source.reviewCapture
-    : undefined;
-  let rejectedReviewImages = 0;
-  const availableFilters = (Array.isArray(reviewCaptureRecord?.availableFilters) ? reviewCaptureRecord.availableFilters : [])
-    .slice(0, 50)
-    .flatMap((filter) => {
-      const id = String(filter?.id || '').trim().replace(/[^a-zA-Z0-9._:-]/g, '-').slice(0, 500);
-      const label = String(filter?.label || '').replace(/\s+/g, ' ').trim().slice(0, 100);
-      if (!id || !label) return [];
-      const sentiment = ['positive', 'neutral', 'negative'].includes(String(filter?.sentiment))
-        ? filter?.sentiment as 'positive' | 'neutral' | 'negative'
-        : undefined;
-      return [{ id, label, countText: String(filter?.countText || '').trim().slice(0, 100) || undefined, sentiment }];
-    });
-  const filterIds = new Set(availableFilters.map((filter) => filter.id));
-  const selectedFilters = (Array.isArray(reviewCaptureRecord?.selectedFilters) ? reviewCaptureRecord.selectedFilters : [])
-    .slice(0, 50)
-    .flatMap((filter) => {
-      const id = String(filter?.id || '').trim().replace(/[^a-zA-Z0-9._:-]/g, '-').slice(0, 500);
-      const label = String(filter?.label || '').replace(/\s+/g, ' ').trim().slice(0, 100);
-      if (!id || !label || !filterIds.has(id)) return [];
-      const rawLimit = Number(filter?.limit);
-      return [{
-        id,
-        label,
-        limit: Number.isFinite(rawLimit) ? Math.max(1, Math.min(50, Math.trunc(rawLimit))) : 5,
-        captureAll: filter?.captureAll === true || undefined,
-      }];
-    });
-  const reviewResults = (Array.isArray(reviewCaptureRecord?.results) ? reviewCaptureRecord.results : [])
-    .slice(0, 50)
-    .flatMap((item) => {
-      const filterId = String(item?.filterId || '').trim().replace(/[^a-zA-Z0-9._:-]/g, '-').slice(0, 500);
-      const label = String(item?.label || '').replace(/\s+/g, ' ').trim().slice(0, 100);
-      if (!filterId || !label || !filterIds.has(filterId)) return [];
-      const resultStatus = ['complete', 'partial', 'missing'].includes(String(item?.status))
-        ? item?.status as 'complete' | 'partial' | 'missing'
-        : 'partial';
-      return [{
-        filterId,
-        label,
-        requested: Math.max(0, Math.trunc(Number(item?.requested) || 0)),
-        captured: Math.max(0, Math.trunc(Number(item?.captured) || 0)),
-        status: resultStatus,
-        warning: String(item?.warning || '').replace(/\s+/g, ' ').trim().slice(0, 500) || undefined,
-        captureAll: item?.captureAll === true || undefined,
-      }];
-    });
-  const reviews = (Array.isArray(reviewCaptureRecord?.reviews) ? reviewCaptureRecord.reviews : [])
-    .flatMap((review) => {
-      const id = String(review?.id || '').trim().replace(/[^a-zA-Z0-9._:-]/g, '-').slice(0, 500);
-      const text = String(review?.text || '').replace(/\s+/g, ' ').trim();
-      if (!id || !text) return [];
-      const imageSourceUrls = (Array.isArray(review?.imageSourceUrls) ? review.imageSourceUrls : [])
-        .slice(0, 9)
-        .flatMap((imageUrl) => {
-          try {
-            return [validateCapturedJdImageSource(imageUrl)];
-          } catch {
-            rejectedReviewImages += 1;
-            return [];
-          }
-        });
-      let video;
-      if (review?.video?.present === true) {
-        try {
-          video = {
-            present: true as const,
-            sourceUrl: review.video.sourceUrl ? validateCapturedJdImageSource(review.video.sourceUrl) : undefined,
-          };
-        } catch {
-          video = { present: true as const };
-        }
-      }
-      const rating = Number(review?.rating);
-      const helpfulCount = Number(review?.helpfulCount);
-      const sentiment = ['positive', 'neutral', 'negative'].includes(String(review?.sentiment))
-        ? review?.sentiment as 'positive' | 'neutral' | 'negative'
-        : undefined;
-      return [{
-        id,
-        platformReviewId: String(review?.platformReviewId || '').trim().replace(/[^a-zA-Z0-9._:-]/g, '-').slice(0, 500) || undefined,
-        authorName: String(review?.authorName || '').replace(/\s+/g, ' ').trim().slice(0, 300) || undefined,
-        text,
-        merchantReply: String(review?.merchantReply || '').replace(/\s+/g, ' ').trim() || undefined,
-        rating: Number.isFinite(rating) && rating >= 1 && rating <= 5 ? rating : undefined,
-        sentiment,
-        matchedFilterIds: Array.from(new Set((Array.isArray(review?.matchedFilterIds) ? review.matchedFilterIds : [])
-          .map((value) => String(value || '').trim().replace(/[^a-zA-Z0-9._:-]/g, '-').slice(0, 500))
-          .filter((value) => value && filterIds.has(value)))).slice(0, 50),
-        dateText: String(review?.dateText || '').replace(/\s+/g, ' ').trim().slice(0, 300) || undefined,
-        skuText: String(review?.skuText || '').replace(/\s+/g, ' ').trim().slice(0, 1_000) || undefined,
-        badges: Array.from(new Set((Array.isArray(review?.badges) ? review.badges : [])
-          .map((value) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, 100)).filter(Boolean))).slice(0, 20),
-        helpfulCount: Number.isFinite(helpfulCount) && helpfulCount >= 0 ? Math.trunc(helpfulCount) : undefined,
-        imageSourceUrls,
-        sourceImages: imageSourceUrls.map((sourceUrl) => ({ sourceUrl })),
-        video,
-      }];
-    });
-  const reviewStatus = ['not-opened', 'ready', 'complete', 'partial'].includes(String(reviewCaptureRecord?.status))
-    ? reviewCaptureRecord?.status as 'not-opened' | 'ready' | 'complete' | 'partial'
-    : reviews.length ? 'partial' : 'not-opened';
-  const reviewCapture = reviewCaptureRecord ? {
-    modalDetected: reviewCaptureRecord.modalDetected === true,
-    status: reviewStatus,
-    availableFilters,
-    selectedFilters,
-    results: reviewResults,
-    reviews,
-    warnings: Array.from(new Set([
-      ...(Array.isArray(reviewCaptureRecord.warnings) ? reviewCaptureRecord.warnings : [])
-        .map((value) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, 500)).filter(Boolean),
-      ...(rejectedReviewImages > 0 ? [`已忽略非京东来源评论图片（${rejectedReviewImages} 张）`] : []),
-    ])).slice(0, 100),
-    activeFilterId: String(reviewCaptureRecord.activeFilterId || '').trim().replace(/[^a-zA-Z0-9._:-]/g, '-').slice(0, 500) || undefined,
-    sortText: String(reviewCaptureRecord.sortText || '').replace(/\s+/g, ' ').trim().slice(0, 100) || undefined,
-    scopeText: String(reviewCaptureRecord.scopeText || '').replace(/\s+/g, ' ').trim().slice(0, 100) || undefined,
-  } : undefined;
-  return {
-    ...source,
-    platform: 'jd',
-    externalId,
-    sourceUrl,
-    title,
-    images,
-    reviewOptions: {
-      selectedFilterIds: Array.from(new Set((Array.isArray(source.reviewOptions?.selectedFilterIds) ? source.reviewOptions.selectedFilterIds : [])
-        .map((value) => String(value || '').trim().replace(/[^a-zA-Z0-9._:-]/g, '-').slice(0, 500)).filter(Boolean))).slice(0, 50),
-      selectedFilterLabels: Array.from(new Set((Array.isArray(source.reviewOptions?.selectedFilterLabels) ? source.reviewOptions.selectedFilterLabels : [])
-        .map((value) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, 100)).filter(Boolean))).slice(0, 50),
-      limitPerFilter: Number.isFinite(Number(source.reviewOptions?.limitPerFilter))
-        ? Math.max(1, Math.min(50, Math.trunc(Number(source.reviewOptions?.limitPerFilter))))
-        : 5,
-      captureAll: source.reviewOptions?.captureAll === true,
-    },
-    reviewCapture,
-    missingFields: [
-      ...(Array.isArray(source.missingFields) ? source.missingFields : []),
-      ...(rejectedImages > 0 ? [`已忽略非京东来源图片（${rejectedImages} 张）`] : []),
-    ],
-  };
-}
-
-function validateCapturedJdImageSource(value: unknown): string {
-  const source = validateRemoteMediaSource(value);
-  let hostname = '';
-  try {
-    hostname = new URL(source).hostname.toLowerCase();
-  } catch {
-    throw bridgePayloadError('INVALID_MEDIA_SOURCE', '京东商品图片链接无效');
-  }
-  const allowedSuffixes = ['jd.com', 'jd.hk', 'jdimg.com', '360buyimg.com', 'jcloudcs.com'];
-  if (!allowedSuffixes.some((suffix) => hostname === suffix || hostname.endsWith(`.${suffix}`))) {
-    throw bridgePayloadError('INVALID_MEDIA_SOURCE', '京东商品图片必须来自京东或其图片服务');
-  }
-  return source;
-}
-
-async function localizeCapturedProductImages(input: CapturedProductInput) {
-  const settled = await Promise.allSettled((input.images || []).slice(0, 24).map(async (image, index) => {
-    const sourceUrl = validateCapturedJdImageSource(image.sourceUrl);
-    const response = await fetchWithRetries(sourceUrl, {
-      headers: {
-        'User-Agent': XHS_ASSET_REQUEST_HEADERS['User-Agent'],
-        'Referer': input.sourceUrl,
-        'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
-        'Accept-Language': XHS_ASSET_REQUEST_HEADERS['Accept-Language'],
-      },
-      timeoutMs: 15_000,
-    });
-    validateCapturedJdImageSource(response.url);
-    const contentType = String(response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
-    if (!['image/jpeg', 'image/jpg', 'image/pjpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif'].includes(contentType)) {
-      throw new Error('商品图片响应类型无效');
-    }
-    const declaredSize = Number(response.headers.get('content-length') || 0);
-    if (declaredSize > 12 * 1024 * 1024) throw new Error('商品图片超过 12MB');
-    const buffer = Buffer.from(await response.arrayBuffer());
-    if (!buffer.length || buffer.length > 12 * 1024 * 1024) throw new Error('商品图片为空或超过 12MB');
-    return {
-      name: image.name || `jd-product-${index + 1}`,
-      sourceUrl,
-      role: image.role || (index === 0 ? 'primary' : 'image'),
-      origin: 'capture' as const,
-      dataUrl: `data:${contentType};base64,${buffer.toString('base64')}`,
-    };
-  }));
-  return {
-    images: settled.flatMap((item) => item.status === 'fulfilled' ? [item.value] : []),
-    failedImages: settled.filter((item) => item.status === 'rejected').length,
-  };
-}
-
-async function localizeCapturedProductReviewImages(input: CapturedProductInput) {
-  if (!input.reviewCapture) return { reviewCapture: undefined, failedImages: 0 };
-  const allJobs = input.reviewCapture.reviews.flatMap((review) => (
-    (review.imageSourceUrls || []).map((sourceUrl, index) => ({ reviewId: review.id, sourceUrl, index }))
-  ));
-  const jobs = allJobs.slice(0, 100);
-  const settled = await Promise.allSettled(jobs.map(async (job) => {
-    const sourceUrl = validateCapturedJdImageSource(job.sourceUrl);
-    const response = await fetchWithRetries(sourceUrl, {
-      headers: {
-        'User-Agent': XHS_ASSET_REQUEST_HEADERS['User-Agent'],
-        'Referer': input.sourceUrl,
-        'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
-        'Accept-Language': XHS_ASSET_REQUEST_HEADERS['Accept-Language'],
-      },
-      timeoutMs: 15_000,
-    });
-    validateCapturedJdImageSource(response.url);
-    const contentType = String(response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
-    if (!['image/jpeg', 'image/jpg', 'image/pjpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif'].includes(contentType)) {
-      throw new Error('评论图片响应类型无效');
-    }
-    const declaredSize = Number(response.headers.get('content-length') || 0);
-    if (declaredSize > 12 * 1024 * 1024) throw new Error('评论图片超过 12MB');
-    const buffer = Buffer.from(await response.arrayBuffer());
-    if (!buffer.length || buffer.length > 12 * 1024 * 1024) throw new Error('评论图片为空或超过 12MB');
-    return {
-      reviewId: job.reviewId,
-      image: {
-        name: `jd-review-${job.reviewId}-${job.index + 1}`,
-        sourceUrl,
-        role: 'review-image',
-        origin: 'capture' as const,
-        dataUrl: `data:${contentType};base64,${buffer.toString('base64')}`,
-      },
-    };
-  }));
-  const imagesByReview = new Map<string, NonNullable<CapturedProductInput['reviewCapture']>['reviews'][number]['images']>();
-  const sourceStatus = new Map<string, 'localized' | 'failed' | 'skipped'>();
-  for (let index = 0; index < settled.length; index += 1) {
-    const item = settled[index];
-    const job = jobs[index];
-    sourceStatus.set(`${job.reviewId}:${job.index}`, item.status === 'fulfilled' ? 'localized' : 'failed');
-    if (item.status !== 'fulfilled') continue;
-    const images = imagesByReview.get(item.value.reviewId) || [];
-    images.push(item.value.image);
-    imagesByReview.set(item.value.reviewId, images);
-  }
-  for (const job of allJobs.slice(jobs.length)) sourceStatus.set(`${job.reviewId}:${job.index}`, 'skipped');
-  const failedImages = settled.filter((item) => item.status === 'rejected').length;
-  const skippedImages = Math.max(0, allJobs.length - jobs.length);
-  return {
-    reviewCapture: {
-      ...input.reviewCapture,
-      reviews: input.reviewCapture.reviews.map((review) => ({
-        ...review,
-        images: imagesByReview.get(review.id) || [],
-        sourceImages: (review.imageSourceUrls || []).map((sourceUrl, index) => ({
-          sourceUrl,
-          status: sourceStatus.get(`${review.id}:${index}`) || 'failed',
-        })),
-      })),
-      warnings: Array.from(new Set([
-        ...(input.reviewCapture.warnings || []),
-        ...(failedImages > 0 ? [`评论图片下载失败（${failedImages} 张），已保留来源链接`] : []),
-        ...(skippedImages > 0 ? [`评论图片超过单次 100 张的保存上限（跳过 ${skippedImages} 张），已保留来源链接`] : []),
-      ])),
-    },
-    failedImages,
-  };
-}
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 

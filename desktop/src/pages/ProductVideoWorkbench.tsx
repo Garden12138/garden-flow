@@ -19,6 +19,7 @@ import { buildVideoEditorV2RemotionComposition } from '../../shared/videoAutoEdi
 import { formatProductSceneSeconds, productSceneDurationFrames, snapProductSceneDurationMs } from '../../shared/productVideoTiming';
 import { subscribeDataChanged } from '../bridge/appEvents';
 import { ProductVideoTimeline } from '../components/product-video/ProductVideoTimeline';
+import { TikTokVideoPanel } from '../components/product-video/TikTokVideoPanel';
 import { VideoMotionComposition } from '../components/manuscripts/remotion/VideoMotionComposition';
 import type { RemotionCompositionConfig } from '../components/manuscripts/remotion/types';
 import { appAlert, appConfirm } from '../utils/appDialogs';
@@ -390,6 +391,7 @@ export function ProductVideoWorkbench({ projectId, onClose }: ProductVideoWorkbe
                     <div className="min-w-0"><h1 className="truncate text-sm font-bold">{project.title}</h1><p className="text-[11px] text-text-tertiary">{project.productVideo.productSnapshot.name} · {project.canvas.width}×{project.canvas.height} · {statusLabel(project.status)}</p></div>
                 </div>
                 <div className="flex items-center gap-2">
+                    <TikTokVideoPanel project={project} disabled={Boolean(busy)} />
                     {douyinVersion ? <>
                         <button type="button" onClick={() => setDouyinEditorOpen(true)} className="rounded-lg border border-border px-3 py-2 text-xs font-semibold">抖音稿件 · 第 {douyinVersion.revision} 版</button>
                         <button type="button" onClick={() => setPublisherOpen(true)} className="rounded-lg border border-border px-3 py-2 text-xs font-semibold">准备抖音发布</button>

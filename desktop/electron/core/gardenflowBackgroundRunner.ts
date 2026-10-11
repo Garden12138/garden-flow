@@ -46,6 +46,8 @@ import {
   createJdStructuredCaptureIo,
   runJdStructuredCaptureRound,
 } from './jdStructuredCapture';
+import { marketplaceCapturePlatform, resolveMarketplaceAutoCaptureLaunch } from './marketplaceAutoCaptureSettings';
+import { runProductStructuredCaptureRound } from './productStructuredCapture';
 import {
   normalizeAutomationTaskSource,
   type AutomationTaskSource,
@@ -131,7 +133,7 @@ export interface GardenFlowBuiltinTaskState {
   schedule?: { mode: 'daily'; time: string };
   settings: Record<string, unknown>;
   lastRunAt?: string;
-  lastResult?: RunResult;
+  lastResult?: RunResult | 'partial';
   lastError?: string;
   nextRunAt?: string;
   updatedAt?: string;
@@ -2337,7 +2339,7 @@ export class GardenFlowBackgroundRunner extends EventEmitter {
     }
 
     const state = this.ensureBuiltinTaskState(definition);
-    if (!state.enabled) {
+    if (!state.enabled && reason === 'scheduled') {
       this.emit('log', {
         level: 'info',
         message: `Builtin task skipped because it is disabled: ${definition.id}`,
@@ -2362,7 +2364,9 @@ export class GardenFlowBackgroundRunner extends EventEmitter {
     this.emitStatus();
 
     const settleNextRun = () => {
-      state.nextRunAt = computeNextRunForBuiltinTask(definition, state, Date.now()) || undefined;
+      state.nextRunAt = state.enabled
+        ? computeNextRunForBuiltinTask(definition, state, Date.now()) || undefined
+        : undefined;
       state.updatedAt = nowIso();
     };
 
@@ -2444,17 +2448,21 @@ export class GardenFlowBackgroundRunner extends EventEmitter {
         return;
       }
 
-      if (definition.id === JD_AUTO_CAPTURE_TASK_ID) {
+      if (definition.id === JD_AUTO_CAPTURE_TASK_ID || marketplaceCapturePlatform(definition.id)) {
+        const capturePlatform = marketplaceCapturePlatform(definition.id) || 'jd';
         const captureSpaceId = getActiveSpaceId();
-        const launch = resolveJdAutoCaptureLaunch(state.settings);
+        const launch = capturePlatform === 'jd' ? resolveJdAutoCaptureLaunch(state.settings) : resolveMarketplaceAutoCaptureLaunch(state.settings);
         this.emit('log', {
           level: 'info',
-          message: `Builtin task starting structured JD capture: ${definition.id} keyword=${launch.keyword} maxProducts=${launch.maxProductsPerRun}`,
+          message: `Builtin task starting structured product capture: ${definition.id} keyword=${launch.keyword} maxProducts=${launch.maxProductsPerRun}`,
           reason,
           at: nowIso(),
         });
-        const round = await runJdStructuredCaptureRound(
+        const captureRound = capturePlatform === 'jd' ? runJdStructuredCaptureRound : runProductStructuredCaptureRound;
+        const round = await captureRound(
           {
+            platform: capturePlatform,
+            captureSpaceId,
             keyword: launch.keyword,
             maxProducts: launch.maxProductsPerRun,
             reviewFilterLabels: launch.reviewFilterLabels,
@@ -2467,25 +2475,38 @@ export class GardenFlowBackgroundRunner extends EventEmitter {
         );
         const reportSessionId = this.postCaptureReport(round.summary, `[内置自动化结果:${definition.name}]`, definition.id, captureSpaceId);
         runtime.addArtifact(runtimeTaskId, { type: 'capture-report', label: `${definition.name}采集报告`, metadata: { sessionId: reportSessionId, isolated: true } });
-        if (round.status === 'blocked') {
+        if (round.status === 'partial' || round.status === 'blocked') {
+          const partial = round.status === 'partial' || round.saved + round.recaptured > 0;
           state.lastRunAt = nowIso();
-          state.lastResult = 'skipped';
-          state.lastError = round.reason || '京东商品采集被登录或安全验证阻断';
+          state.lastResult = partial ? 'partial' : 'skipped';
+          state.lastError = round.reason || '商品采集被登录或安全验证阻断';
           settleNextRun();
-          runtime.skipNode(runtimeTaskId, 'execute_tools', state.lastError);
-          runtime.completeTask(runtimeTaskId, `builtin:${definition.id}:skipped`);
+          if (partial) {
+            runtime.addCheckpoint(runtimeTaskId, 'execute_tools', '商品采集部分完成，已保存结果保留', {
+              builtinTaskId: definition.id,
+              saved: round.saved,
+              recaptured: round.recaptured,
+              failed: round.failed,
+              capturedReviews: round.capturedReviews,
+              reason: round.reason,
+            });
+            runtime.completeNode(runtimeTaskId, 'execute_tools', state.lastError);
+          } else {
+            runtime.skipNode(runtimeTaskId, 'execute_tools', state.lastError);
+          }
+          runtime.completeTask(runtimeTaskId, `builtin:${definition.id}:${state.lastResult}`);
           this.emit('log', {
             level: 'warn',
-            message: `Builtin task skipped: ${definition.id}: ${state.lastError}`,
+            message: `Builtin task ${state.lastResult}: ${definition.id}: ${state.lastError}`,
             reason,
             at: nowIso(),
           });
           return;
         }
         if (round.status !== 'captured') {
-          throw new Error(round.reason || '京东商品采集未完成，不记为成功');
+          throw new Error(round.reason || '商品采集未完成，不记为成功');
         }
-        runtime.addCheckpoint(runtimeTaskId, 'execute_tools', '京东商品结构化采集完成', {
+        runtime.addCheckpoint(runtimeTaskId, 'execute_tools', '商品结构化采集完成', {
           builtinTaskId: definition.id,
           saved: round.saved,
           recaptured: round.recaptured,

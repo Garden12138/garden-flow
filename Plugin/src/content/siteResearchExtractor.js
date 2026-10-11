@@ -1,3 +1,4 @@
+import { extractMarketplaceSearch, marketplaceSurface } from './marketplaceSearch.js';
 import { clickElement, typeElement } from './pageActions.js';
 
 const DEFAULT_ITEM_LIMIT = 20;
@@ -71,6 +72,14 @@ const SITE_SEARCH_UI = Object.freeze({
       '[role="search"] button',
       '[class*="search"] button',
     ]),
+  }),
+  taobao: Object.freeze({
+    inputs: Object.freeze(['#q', '#mq', 'input[name="q"]', '[role="search"] input', 'input[placeholder*="搜索"]', 'input[type="search"]']),
+    submits: Object.freeze(['.btn-search', '.search-button', 'button[class*="search"]', '[class*="search"] button', '[role="search"] button', 'button[type="submit"]', 'input[type="submit"]']),
+  }),
+  tmall: Object.freeze({
+    inputs: Object.freeze(['#q', '#mq', 'input[name="q"]', '[role="search"] input', 'input[placeholder*="搜索"]', 'input[type="search"]']),
+    submits: Object.freeze(['.btn-search', '.search-button', 'button[class*="search"]', '[class*="search"] button', '[role="search"] button', 'button[type="submit"]', 'input[type="submit"]']),
   }),
   jd: Object.freeze({
     inputs: Object.freeze([
@@ -152,6 +161,8 @@ export function extractSiteResearch(input = {}) {
     ? extractXiaohongshu(operation, limit, commentLimit, detailOpenMode)
     : site === 'douyin'
       ? extractDouyin(operation, limit, commentLimit, detailOpenMode)
+      : ['taobao', 'tmall'].includes(site)
+        ? extractMarketplaceSearch({ limit, query: String(input.query || '') })
       : site === 'jd'
         ? extractJd(operation, limit, detailOpenMode)
       : site === 'youtube'
@@ -189,9 +200,30 @@ export async function submitSiteResearchSearch(input = {}) {
     ? Math.max(120, Math.min(800, Math.round(configuredInteractionDelayMs / 4)))
     : 80;
   await delay(submitPauseMs);
+  const afterTyping = readPageState(site);
+  if (afterTyping.blocker) return { success: false, reason: afterTyping.blocker, sourceUrl: location.href };
   const submitSelector = spec.submits.find((selector) => firstVisible([selector]));
   if (submitSelector) {
-    const clicked = await clickElement({ selector: submitSelector });
+    const button = firstVisible([submitSelector]);
+    const form = button?.closest('form') || firstVisible([inputSelector])?.closest('form');
+    const originalTarget = form?.getAttribute('target');
+    const originalFormTarget = button?.getAttribute('formtarget');
+    if (['taobao', 'tmall'].includes(site)) { form?.setAttribute('target', '_self'); button?.setAttribute('formtarget', '_self'); }
+    let clicked;
+    const searchInput = firstVisible([inputSelector]);
+    const label = text(button).replace(/\s+/g, '') || button?.value || button?.getAttribute('aria-label') || '';
+    const isMarketplaceSearchSubmit = ['taobao', 'tmall'].includes(site) && form?.contains(searchInput)
+      && /^(?:搜索|搜一下|搜索商品|search)$/i.test(label)
+      && !/(?:delete|publish|order|payment|删除|购买|支付)/i.test(`${button?.className || ''} ${button?.id || ''} ${form?.getAttribute('action') || ''}`);
+    // A verified marketplace search form may use type=submit, which the generic
+    // page action otherwise rejects. Keep this exception local to typed search.
+    try { clicked = await clickElement({ selector: submitSelector, force: isMarketplaceSearchSubmit }); }
+    finally {
+      if (['taobao', 'tmall'].includes(site)) {
+        if (originalTarget == null) form?.removeAttribute('target'); else form?.setAttribute('target', originalTarget);
+        if (originalFormTarget == null) button?.removeAttribute('formtarget'); else button?.setAttribute('formtarget', originalFormTarget);
+      }
+    }
     if (clicked?.success === true) {
       return { success: true, submitted: true, method: 'click', inputSelector, submitSelector, sourceUrl: location.href };
     }
@@ -749,9 +781,12 @@ function readPageState(site) {
   ]);
   const path = `${location.pathname}${location.search}`.toLowerCase();
   const hostname = location.hostname.toLowerCase();
-  const loginPage = /(^|\.)(?:passport|plogin)\.jd\.(?:com|hk)$/.test(hostname)
+  const loginPage = /(^|\.)(?:login|passport)\.(?:taobao|tmall)\.com$/.test(hostname)
+    || /(^|\.)(?:passport|plogin)\.jd\.(?:com|hk)$/.test(hostname)
     || /(?:^|\/)(?:login|signin)(?:[./?]|$)/.test(path);
-  const unavailableText = `${document.title || ''}\n${String(document.body?.innerText || '').slice(0, 4_000)}`;
+  const unavailableText = `${document.title || ''}\n${String(document.body?.innerText || document.body?.textContent || '').slice(0, 4_000)}`;
+  const marketplaceGate = ['taobao', 'tmall'].includes(site) && /请完成安全验证|请拖动滑块|拖动滑块完成验证|滑动验证|请通过验证/.test(unavailableText);
+  const marketplaceLogin = ['taobao', 'tmall'].includes(site) && /请先登录后|登录后查看搜索结果|请登录后继续/.test(unavailableText);
   const unavailable = /\/404(?:\/|\?|$)/.test(location.pathname.toLowerCase())
     || /(?:你访问的页面不见了|当前笔记暂时无法浏览|视频已失效|内容不存在)/i.test(unavailableText);
   const rateLimited = /访问频繁|操作频繁|请求过于频繁|稍后再试|too many requests|rate limit/i.test(unavailableText);
@@ -759,9 +794,9 @@ function readPageState(site) {
     ? 'content_unavailable'
     : rateLimited
       ? 'rate_limited'
-      : security
+      : security || marketplaceGate
         ? 'security_verification_required'
-        : modal || loginPage
+        : modal || loginPage || marketplaceLogin
           ? 'login_required'
           : null;
   return {
@@ -792,6 +827,7 @@ function detectSiteSurface(site, blocker) {
     if (/search/.test(pathname)) return 'search_results';
     return 'entry';
   }
+  if (['taobao', 'tmall'].includes(site)) return marketplaceSurface(location.href);
   if (site === 'jd') {
     if (/^\/\d+\.html$/i.test(pathname)) return 'detail';
     if (location.hostname.toLowerCase().startsWith('search.') || /\/search/i.test(pathname)) return 'search_results';
@@ -932,7 +968,7 @@ function readMeta(names) {
 }
 
 function normalizeSite(value) {
-  const aliases = { xhs: 'xiaohongshu', redbook: 'xiaohongshu', rednote: 'xiaohongshu', dy: 'douyin', jingdong: 'jd', yt: 'youtube', generic_web: 'web', generic: 'web' };
+  const aliases = { xhs: 'xiaohongshu', redbook: 'xiaohongshu', rednote: 'xiaohongshu', dy: 'douyin', jingdong: 'jd', tb: 'taobao', tm: 'tmall', yt: 'youtube', generic_web: 'web', generic: 'web' };
   const normalized = String(value || '').trim().toLowerCase();
   return aliases[normalized] || normalized || 'web';
 }
@@ -948,6 +984,8 @@ function inferSite(hostname) {
   if (host.includes('xiaohongshu.com') || host.includes('rednote.com')) return 'xiaohongshu';
   if (host.includes('douyin.com')) return 'douyin';
   if (host === 'jd.com' || host.endsWith('.jd.com') || host === 'jd.hk' || host.endsWith('.jd.hk')) return 'jd';
+  if (host === 'tmall.com' || host.endsWith('.tmall.com')) return 'tmall';
+  if (host === 'taobao.com' || host.endsWith('.taobao.com')) return 'taobao';
   if (host.includes('youtube.com') || host === 'youtu.be') return 'youtube';
   return 'web';
 }

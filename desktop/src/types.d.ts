@@ -1061,7 +1061,7 @@ declare global {
     settingsSchema: GardenFlowBuiltinAutomationSettingField[];
     documentationUrl?: string;
     lastRunAt?: string;
-    lastResult?: 'success' | 'error' | 'skipped';
+    lastResult?: 'success' | 'partial' | 'error' | 'skipped';
     lastError?: string;
     nextRunAt?: string;
     updatedAt?: string;
