@@ -24,13 +24,16 @@ import { productSceneFrameRanges, snapProductSceneDurationMs } from '../../../sh
 import { normalizeSrtSegments, parseSrt, serializeSegmentsToSrt } from '../video-auto-edit/srtParser';
 import { buildHeuristicAutoEditPlan } from '../video-auto-edit/autoEditPlanner';
 import { buildTimelineFromAutoEditPlan } from '../video-auto-edit/editDecisionEngine';
-import { probeMediaAsset } from '../video-auto-edit/mediaProbeService';
+import { probeMediaAsset, probeVideoTrackDurationMs } from '../video-auto-edit/mediaProbeService';
 import { normalizeQuietMusic } from './productVideoMusicLoudness';
+import { snapProductVideoClipRange } from '../../../shared/productVideoRemix';
+import { productVideoFileHash } from '../productVideoRemixSources';
+import { videoRenderFingerprint } from './videoPublicationPolicy';
 
 const PROJECTS_DIR_NAME = 'video-editor-v2';
 const PROJECT_FILE_NAME = 'project.json';
 const MAX_UNDO_RECORDS = 20;
-const productVideoCreationLocks = new Map<string, Promise<VideoEditorV2Project>>();
+const productVideoCreationLocks = new Map<string, { productId: string; mode: string; promise: Promise<VideoEditorV2Project> }>();
 const productProjectMutationQueues = new Map<string, Promise<void>>();
 
 function enqueueProductProjectMutation<T>(projectId: string, operation: () => Promise<T>): Promise<T> {
@@ -1035,6 +1038,9 @@ export async function importAssetsToVideoEditorV2Project(projectId: string, sour
 export type ProductVideoSourceAssetInput = {
   assetId: string;
   absolutePath: string;
+  kind?: 'brand-product' | 'user-import';
+  contentHash?: string;
+  durationMs?: number;
 };
 
 export async function findProductVideoProjectByProposalId(proposalId: string): Promise<VideoEditorV2Project | null> {
@@ -1135,7 +1141,11 @@ export type CreateProductVideoProjectInput = {
 
 async function createProductVideoProjectUnlocked(input: CreateProductVideoProjectInput): Promise<VideoEditorV2Project> {
   const existing = await findProductVideoProjectByProposalId(input.proposal.proposalId);
-  if (existing) return existing;
+  if (existing) {
+    if (existing.productVideo?.proposal.productId !== input.proposal.productId
+      || (existing.productVideo?.proposal.compositionMode || 'product-images') !== (input.proposal.compositionMode || 'product-images')) throw new Error('提案 ID 已用于另一商品或视频模式');
+    return existing;
+  }
   let project = await createVideoEditorV2Project({
     title: input.proposal.title,
     projectKind: 'product-video',
@@ -1148,8 +1158,9 @@ async function createProductVideoProjectUnlocked(input: CreateProductVideoProjec
       const source = sourceByPath.get(path.resolve(asset.sourcePath));
       return source ? {
         ...asset,
+        ...(input.proposal.compositionMode === 'existing-clips' && source.durationMs ? { durationMs: source.durationMs, probe: { ...asset.probe, durationMs: source.durationMs } } : {}),
         provenance: {
-          kind: 'brand-product' as const,
+          kind: source.kind || 'brand-product' as const,
           productId: input.proposal.productId,
           sourceAssetId: source.assetId,
         },
@@ -1158,23 +1169,31 @@ async function createProductVideoProjectUnlocked(input: CreateProductVideoProjec
     const importedBySourceId = new Map(assets
       .filter((asset) => asset.provenance?.sourceAssetId)
       .map((asset) => [String(asset.provenance?.sourceAssetId), asset]));
+    for (const source of input.sourceAssets) {
+      const copied = importedBySourceId.get(source.assetId);
+      if (source.contentHash && (!copied || await productVideoFileHash(copied.projectPath) !== source.contentHash)) throw new Error('视频来源在复制期间已变化，请重新选择并规划');
+    }
     let cursor = 0;
     const primaryClips: VideoTimelineClip[] = [];
     const textClips: VideoTimelineClip[] = [];
     for (const scene of input.proposal.scenes) {
-      const duration = Math.max(500, Math.round(scene.durationMs));
-      const sourceAsset = scene.productAssetIds.map((id) => importedBySourceId.get(id)).find(Boolean);
+      let duration = Math.max(500, Math.round(scene.durationMs));
+      const sourceAsset = scene.source === 'media-clip' ? importedBySourceId.get(scene.mediaAssetId!) : scene.productAssetIds.map((id) => importedBySourceId.get(id)).find(Boolean);
       if (!sourceAsset) throw new Error(`分镜 ${scene.title} 缺少有效商品素材`);
+      const range = scene.source === 'media-clip'
+        ? snapProductVideoClipRange(scene.sourceStartMs!, scene.sourceEndMs!, sourceAsset.durationMs || 0, project.canvas.fps) : null;
+      if (range) duration = range.durationMs;
       primaryClips.push({
         id: `clip_${Date.now()}_${randomUUID().slice(0, 8)}`,
         sceneId: scene.id,
         assetId: sourceAsset.id,
-        sourceStartMs: 0,
-        sourceEndMs: duration,
+        sourceStartMs: range?.startMs || 0,
+        sourceEndMs: range?.endMs || duration,
         timelineStartMs: cursor,
         timelineEndMs: cursor + duration,
         fitMode: scene.fitMode,
         motionPreset: scene.motionPreset,
+        ...(scene.source === 'media-clip' ? { volume: scene.sourceVolume ?? 1 } : {}),
         text: scene.title,
       });
       if (String(scene.overlayText || '').trim()) {
@@ -1192,6 +1211,12 @@ async function createProductVideoProjectUnlocked(input: CreateProductVideoProjec
     }
     const sceneStates = input.proposal.scenes.map((scene) => ({
       ...scene,
+      ...(scene.source === 'media-clip' ? {
+        sourceStartMs: primaryClips.find((clip) => clip.sceneId === scene.id)!.sourceStartMs,
+        sourceEndMs: primaryClips.find((clip) => clip.sceneId === scene.id)!.sourceEndMs,
+        durationMs: primaryClips.find((clip) => clip.sceneId === scene.id)!.timelineEndMs - primaryClips.find((clip) => clip.sceneId === scene.id)!.timelineStartMs,
+        sourceVolume: scene.sourceVolume ?? 1,
+      } : {}),
       generationStatus: scene.source === 'ai-motion' ? 'pending' as const : 'not-required' as const,
       narrationText: input.proposal.voiceoverEnabled === false ? '' : String(scene.overlayText || '').trim(),
       voiceoverStatus: input.proposal.voiceoverEnabled !== false && String(scene.overlayText || '').trim() ? 'needs-configuration' as const : 'not-required' as const,
@@ -1229,16 +1254,21 @@ async function createProductVideoProjectUnlocked(input: CreateProductVideoProjec
 
 export async function createProductVideoProject(input: CreateProductVideoProjectInput): Promise<VideoEditorV2Project> {
   const proposalId = String(input.proposal.proposalId || '').trim();
+  const lockKey = `${getWorkspacePaths().activeSpaceId}:${proposalId}`;
   if (!proposalId) throw new Error('proposalId is required');
-  const pending = productVideoCreationLocks.get(proposalId);
-  if (pending) return pending;
+  const pending = productVideoCreationLocks.get(lockKey);
+  const mode = input.proposal.compositionMode || 'product-images';
+  if (pending) {
+    if (pending.productId !== input.proposal.productId || pending.mode !== mode) throw new Error('提案 ID 正用于另一商品或视频模式');
+    return pending.promise;
+  }
   const operation = createProductVideoProjectUnlocked(input);
-  productVideoCreationLocks.set(proposalId, operation);
+  productVideoCreationLocks.set(lockKey, { productId: input.proposal.productId, mode, promise: operation });
   try {
     return await operation;
   } finally {
-    if (productVideoCreationLocks.get(proposalId) === operation) {
-      productVideoCreationLocks.delete(proposalId);
+    if (productVideoCreationLocks.get(lockKey)?.promise === operation) {
+      productVideoCreationLocks.delete(lockKey);
     }
   }
 }
@@ -1331,6 +1361,12 @@ async function applyProductVideoEditCommandUnlocked(input: {
     : undefined;
   let project = pushTimelineUndo(current, input.command.type);
   const command = input.command;
+  const selectedClip = project.timeline.tracks.find((track) => track.kind === 'primary-video')?.clips.find((clip) => clip.sceneId === ('sceneId' in command ? command.sceneId : ''));
+  const selectedScene = productVideo.scenes.find((scene) => scene.id === ('sceneId' in command ? command.sceneId : ''));
+  if (selectedScene?.source === 'media-clip' && command.type === 'scene.duration') {
+    const asset = project.assets.find((item) => item.id === selectedClip?.assetId);
+    if (!selectedClip || !asset?.durationMs || selectedClip.sourceStartMs + durationMs! > asset.durationMs) throw new Error('镜头时长超出来源视频，请调整截取区间');
+  }
   if (command.type === 'music.remove') {
     project = { ...project, timeline: { ...project.timeline, tracks: project.timeline.tracks.map((track) => track.kind === 'music' ? { ...track, clips: [] } : track) } };
   } else if (command.type === 'voiceover.remove') {
@@ -1358,6 +1394,18 @@ async function applyProductVideoEditCommandUnlocked(input: {
         : narrationText ? 'needs-configuration' as const : 'not-required' as const,
     } : scene);
     project = reflowProductTimeline({ ...project, productVideo: { ...productVideo, scenes } });
+  } else if (command.type === 'scene.trim' || command.type === 'scene.source-volume') {
+    if (selectedScene?.source !== 'media-clip' || !selectedClip) throw new Error('该镜头不是已有视频片段');
+    const asset = project.assets.find((item) => item.id === selectedClip.assetId);
+    const range = command.type === 'scene.trim' ? snapProductVideoClipRange(command.sourceStartMs, command.sourceEndMs, asset?.durationMs || 0, project.canvas.fps) : null;
+    if (range && range.durationMs > 30000) throw new Error('首版单个截取片段不超过 30 秒');
+    const tracks = project.timeline.tracks.map((track) => track.kind === 'primary-video' ? { ...track, clips: track.clips.map((clip) => clip.id !== selectedClip.id ? clip : range
+      ? { ...clip, sourceStartMs: range.startMs, sourceEndMs: range.endMs, timelineEndMs: clip.timelineStartMs + range.durationMs }
+      : { ...clip, volume: command.type === 'scene.source-volume' ? command.volume : clip.volume }) } : track);
+    const scenes = productVideo.scenes.map((scene) => scene.id !== selectedScene.id ? scene : range
+      ? { ...scene, sourceStartMs: range.startMs, sourceEndMs: range.endMs, durationMs: range.durationMs }
+      : { ...scene, sourceVolume: command.type === 'scene.source-volume' ? command.volume : scene.sourceVolume });
+    project = reflowProductTimeline({ ...project, timeline: { ...project.timeline, tracks }, productVideo: { ...productVideo, scenes } });
   } else if (command.type === 'scene.reorder') {
     const order = productVideo.scenes.map((scene) => scene.id);
     const sourceIndex = order.indexOf(command.sceneId);
@@ -1373,16 +1421,28 @@ async function applyProductVideoEditCommandUnlocked(input: {
   } else {
     const primaryTrack = project.timeline.tracks.find((track) => track.kind === 'primary-video');
     if (!primaryTrack?.clips.some((clip) => clip.sceneId === command.sceneId)) throw new Error('分镜不存在');
+    const replacementAsset = command.type === 'scene.asset' && selectedScene?.source === 'media-clip'
+      ? project.assets.find((asset) => asset.id === command.assetId) : undefined;
+    const replacementHash = replacementAsset ? await productVideoFileHash(replacementAsset.projectPath) : undefined;
+    if (replacementAsset) {
+      const durationMs = await probeVideoTrackDurationMs(replacementAsset.projectPath);
+      if (selectedClip!.sourceEndMs > durationMs) throw new Error('替换片段的视频轨道不覆盖当前截取区间');
+      project = { ...project, assets: project.assets.map((asset) => asset.id === replacementAsset.id ? { ...asset, durationMs, probe: { ...asset.probe, durationMs } } : asset) };
+    }
     let tracks = project.timeline.tracks.map((track) => ({
       ...track,
       clips: track.clips.map((clip) => {
         if (clip.sceneId !== command.sceneId) return clip;
         if (command.type === 'scene.duration' && track.kind === 'primary-video') return { ...clip, timelineEndMs: clip.timelineStartMs + durationMs!, sourceEndMs: clip.sourceStartMs + durationMs! };
         if (command.type === 'scene.fit' && track.kind === 'primary-video') return { ...clip, fitMode: command.fitMode };
-        if (command.type === 'scene.motion' && track.kind === 'primary-video') return { ...clip, motionPreset: command.motionPreset };
+        if (command.type === 'scene.motion' && track.kind === 'primary-video') {
+          if (selectedScene?.source === 'media-clip' && command.motionPreset !== 'static') throw new Error('已有视频片段不使用原图动效');
+          return { ...clip, motionPreset: command.motionPreset };
+        }
         if (command.type === 'scene.asset' && track.kind === 'primary-video') {
           const asset = project.assets.find((item) => item.id === command.assetId);
           if (!asset || (asset.kind !== 'image' && asset.kind !== 'video')) throw new Error('替换素材不存在');
+          if (selectedScene?.source === 'media-clip' && (asset.kind !== 'video' || !asset.durationMs || clip.sourceEndMs > asset.durationMs)) throw new Error('替换片段须为工程内视频且覆盖当前截取区间');
           return { ...clip, assetId: command.assetId };
         }
         if (command.type === 'scene.text' && track.kind === 'subtitle') return { ...clip, text: command.text };
@@ -1415,11 +1475,16 @@ async function applyProductVideoEditCommandUnlocked(input: {
     const scenes = productVideo.scenes.map((scene) => scene.id === command.sceneId ? {
       ...scene,
       ...(command.type === 'scene.duration' ? { durationMs: durationMs! } : {}),
+      ...(command.type === 'scene.duration' && scene.source === 'media-clip' ? { sourceEndMs: selectedClip!.sourceStartMs + durationMs! } : {}),
       ...(command.type === 'scene.fit' ? { fitMode: command.fitMode } : {}),
       ...(command.type === 'scene.motion' ? { motionPreset: command.motionPreset } : {}),
       ...(command.type === 'scene.text' ? { overlayText: command.text } : {}),
+      ...(replacementAsset ? { mediaAssetId: replacementAsset.provenance?.sourceAssetId || replacementAsset.id, mediaContentHash: replacementHash } : {}),
     } : scene);
     project = reflowProductTimeline({ ...project, timeline: { ...project.timeline, tracks }, productVideo: { ...productVideo, scenes } });
+  }
+  if (current.status === 'exported' && videoRenderFingerprint(project) !== videoRenderFingerprint(current)) {
+    project = { ...project, status: 'ready' };
   }
   return saveVideoEditorV2Project(project);
 }

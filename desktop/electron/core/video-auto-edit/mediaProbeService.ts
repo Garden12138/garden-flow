@@ -59,7 +59,7 @@ async function writeCache(cachePath: string, cache: Record<string, MediaProbeCac
   await fs.rename(tempPath, cachePath);
 }
 
-async function runFfmpeg(args: string[], options?: { allowNonZero?: boolean; timeoutMs?: number }): Promise<{
+async function runFfmpeg(args: string[], options?: { allowNonZero?: boolean; timeoutMs?: number; onStdout?: (chunk: string) => void }): Promise<{
   code: number | null;
   stdout: string;
   stderr: string;
@@ -75,7 +75,9 @@ async function runFfmpeg(args: string[], options?: { allowNonZero?: boolean; tim
       reject(new Error(`ffmpeg timed out after ${timeoutMs}ms`));
     }, timeoutMs);
     child.stdout.on('data', (chunk) => {
-      stdout += String(chunk || '');
+      const text = String(chunk || '');
+      options?.onStdout?.(text);
+      stdout += text;
       if (stdout.length > 12000) stdout = stdout.slice(-12000);
     });
     child.stderr.on('data', (chunk) => {
@@ -137,12 +139,48 @@ function parseProbeOutput(output: string): MediaProbeRecord {
   };
 }
 
-async function probeMediaMetadata(mediaPath: string): Promise<MediaProbeRecord> {
+export async function probeMediaMetadata(mediaPath: string): Promise<MediaProbeRecord> {
   const result = await runFfmpeg(['-hide_banner', '-i', mediaPath], {
     allowNonZero: true,
     timeoutMs: 15000,
   });
   return parseProbeOutput(`${result.stdout}\n${result.stderr}`);
+}
+
+/** Demux the visual packets without decoding; container duration may include a longer audio tail. */
+export async function probeVideoTrackDurationMs(mediaPath: string): Promise<number> {
+  let numerator = 0;
+  let denominator = 0;
+  let end = 0;
+  let pending = '';
+  const readLine = (line: string) => {
+    const timeBase = line.match(/^#tb 0:\s*(\d+)\/(\d+)/);
+    if (timeBase) {
+      numerator = Number(timeBase[1]);
+      denominator = Number(timeBase[2]);
+      return;
+    }
+    if (!line.startsWith('0,')) return;
+    const fields = line.split(',');
+    const pts = Number(fields[2]);
+    const duration = Number(fields[3]);
+    if (Number.isFinite(pts) && Number.isFinite(duration) && duration >= 0) end = Math.max(end, pts + duration);
+  };
+  await runFfmpeg(['-v', 'error', '-i', mediaPath, '-map', '0:v:0', '-c', 'copy', '-f', 'framecrc', 'pipe:1'], {
+    timeoutMs: 30000,
+    // Parse packets as they arrive: the bounded diagnostic tail can discard the time-base header.
+    onStdout: (chunk) => {
+      pending += chunk;
+      const lines = pending.split('\n');
+      pending = lines.pop() || '';
+      lines.forEach(readLine);
+    },
+  });
+  if (pending) readLine(pending);
+  if (numerator <= 0 || denominator <= 0) throw new Error('无法读取视频轨道时长');
+  const durationMs = Math.floor(end * numerator / denominator * 1000 + 0.000001);
+  if (durationMs <= 0) throw new Error('视频轨道没有可截取画面');
+  return durationMs;
 }
 
 async function generateThumbnail(input: {

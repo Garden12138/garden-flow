@@ -33,7 +33,9 @@ export async function writeXhsMaterialZip(
         archive.on('error', (error: unknown) => settle(() => reject(error)));
         archive.pipe(output);
         for (const entry of textEntries) archive.append(entry.content, { name: entry.name });
-        for (const entry of fileEntries) archive.file(entry.absolutePath, { name: entry.name });
+        // Passing known stats bypasses Archiver's concurrent stat queue, which
+        // otherwise changes page order according to filesystem timing.
+        for (const entry of fileEntries) archive.file(entry.absolutePath, { name: entry.name, stats: fsSync.statSync(entry.absolutePath) });
         void archive.finalize();
     });
 }

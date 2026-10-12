@@ -11,6 +11,9 @@
 | [抖音阶段 3 验收记录](./DOUYIN_STAGE3_ACCEPTANCE.md) | 独立商品视频版本、发布插件及真实页面验收状态 |
 | [淘宝／天猫阶段 4 验收记录](./TAOBAO_TMALL_STAGE4_ACCEPTANCE.md) | 手动商品与评论采集、独立商品同款关联及待验收实页 |
 | [TikTok 阶段 5 验收记录](./TIKTOK_STAGE5_ACCEPTANCE.md) | 国际版独立商品视频、语言建议、Studio 适配与真实验收余项 |
+| [商品套图阶段 6 验收记录](./PRODUCT_IMAGE_SET_ACCEPTANCE.md) | 持久方案确认、独立图文工程、模板编辑、PNG／ZIP 导出与恢复 |
+| [视频混剪阶段 7 验收记录](./PRODUCT_VIDEO_REMIX_ACCEPTANCE.md) | 自有片段选择、持久确认、截取／原音编辑、MP4 导出与恢复 |
+| [商品创作真实验收](./PRODUCT_CREATIVES_REAL_ACCEPTANCE.md) | 伟嘉 3.6kg 真实模型方案、套图与混剪导出、开发版／安装版重开 |
 | [路线图](../ROADMAP.md) | 当前能力、近期改进与反馈驱动的后续方向 |
 | [首轮推广工作包](./launch/README.md) | 发布草稿、录制脚本、贡献任务及人工复盘模板 |
 | [使用手册](./USER_MANUAL.md) | 首次启动、空间、采集、知识、灵感、创作、生成、自动化和隐私 |

@@ -1,5 +1,6 @@
 import path from 'node:path';
-import { getSettings, getWorkspacePaths } from '../../db';
+import { getSettings, getWorkspacePaths, runInWorkspaceSpace } from '../../db';
+import { readProductVideoRemixSources, resolveProductVideoRemixFiles } from '../productVideoRemixSources';
 import { resolveProductVideoMotionCapability } from '../../../shared/productVideoCapability';
 import type { ProductVideoProposal } from '../../../shared/videoAutoEdit';
 import { ProductVideoComposeParamsSchema, type ProductVideoComposeParams } from '../../../shared/productVideoProposal';
@@ -38,7 +39,7 @@ function generatedVideoPath(result: ToolResult): { absolutePath: string; generat
 export class ProductVideoComposeTool extends DeclarativeTool<typeof ProductVideoComposeParamsSchema> {
     readonly name = 'product_video_compose';
     readonly displayName = 'Compose Product Video';
-    readonly description = 'Create an editable product-video project from an approved storyboard. The user must approve the storyboard before any project or AI clip is created.';
+    readonly description = 'Create an editable product-video project from an approved image storyboard or explicitly selected existing video cuts. Existing-clips mode requires verified media IDs, content hashes and source intervals, and never generates media. The user must approve the plan before a project is created.';
     readonly kind = ToolKind.Execute;
     readonly parameterSchema = ProductVideoComposeParamsSchema;
     readonly requiresConfirmation = true;
@@ -52,7 +53,7 @@ export class ProductVideoComposeTool extends DeclarativeTool<typeof ProductVideo
         const voiceoverEnabled = params.voiceoverEnabled !== false;
         const voiceoverCount = voiceoverEnabled ? params.scenes.filter((scene) => String(scene.overlayText || '').trim()).length : 0;
         const sceneLines = params.scenes.map((scene, index) => (
-            `${index + 1}. ${scene.title} · ${(scene.durationMs / 1000).toFixed(1)}s · ${scene.source === 'ai-motion' ? 'AI 动效' : '原始素材'}${scene.overlayText ? ` · ${voiceoverEnabled ? '旁白' : '文字'}：${scene.overlayText}` : ''}`
+            `${index + 1}. ${scene.title} · ${(scene.durationMs / 1000).toFixed(1)}s · ${scene.source === 'media-clip' ? `已有视频 ${(scene.sourceStartMs! / 1000).toFixed(2)}–${(scene.sourceEndMs! / 1000).toFixed(2)} 秒，原音 ${Math.round((scene.sourceVolume ?? 1) * 100)}%` : scene.source === 'ai-motion' ? 'AI 动效' : '原始素材'}${scene.overlayText ? ` · ${voiceoverEnabled ? '旁白' : '文字'}：${scene.overlayText}` : ''}`
         ));
         return {
             type: 'info',
@@ -72,8 +73,15 @@ export class ProductVideoComposeTool extends DeclarativeTool<typeof ProductVideo
     }
 
     async execute(params: ProductVideoComposeParams, signal: AbortSignal): Promise<ToolResult> {
+        return runInWorkspaceSpace(getWorkspacePaths().activeSpaceId, () => this.executeInSpace(params, signal));
+    }
+
+    private async executeInSpace(params: ProductVideoComposeParams, signal: AbortSignal): Promise<ToolResult> {
         try {
+            params = ProductVideoComposeParamsSchema.parse(params);
             const existing = await findProductVideoProjectByProposalId(params.proposalId);
+            if (existing?.productVideo && (existing.productVideo.proposal.productId !== params.productId
+                || (existing.productVideo.proposal.compositionMode || 'product-images') !== (params.compositionMode || 'product-images'))) throw new Error('提案 ID 已用于另一商品或另一种视频模式，请使用新提案重新确认');
             if (signal.aborted) return createErrorResult('Product video composition cancelled.', ToolErrorType.CANCELLED);
             let proposal = params as ProductVideoProposal;
             let project = existing ? await getVideoEditorV2Project(existing.id) : null;
@@ -96,13 +104,24 @@ export class ProductVideoComposeTool extends DeclarativeTool<typeof ProductVideo
             } else {
                 const store = createBrandWorkspaceStore(() => path.join(getWorkspacePaths().subjects, 'brand-workspace'));
                 project = await store.withProductCreativeSnapshot(params.productId, params.productUpdatedAt, async (product, sourceAssets, assertCurrent) => {
-                    if (product.assets.length === 0) throw new Error('商品没有可用于视频编排的图片素材');
+                    const remix = params.compositionMode === 'existing-clips';
+                    if (!remix && product.assets.length === 0) throw new Error('商品没有可用于视频编排的图片素材');
                     const assetMap = new Map(product.assets.map((asset) => [asset.id, asset]));
                     const requestedAssetIds = Array.from(new Set(params.scenes.flatMap((scene) => scene.productAssetIds)));
                     requestedAssetIds.forEach((assetId) => {
                         if (!assetMap.has(assetId)) throw new Error(`商品素材不存在或不属于当前商品：${assetId}`);
                     });
-                    sourcePathMap = new Map(sourceAssets.map((asset) => [asset.assetId, asset.absolutePath]));
+                    let selectedSources = sourceAssets;
+                    if (remix) {
+                        const ids = Array.from(new Set(params.scenes.map((scene) => scene.mediaAssetId!)));
+                        const refs = await readProductVideoRemixSources(ids);
+                        for (const scene of params.scenes) {
+                            const ref = refs.find((item) => item.assetId === scene.mediaAssetId)!;
+                            if (ref.contentHash !== scene.mediaContentHash || scene.sourceEndMs! > ref.durationMs) throw new Error(`视频来源已变化或截取越界：${scene.title}；请重新选择并规划`);
+                        }
+                        selectedSources = await resolveProductVideoRemixFiles(refs);
+                    }
+                    sourcePathMap = new Map(selectedSources.map((asset) => [asset.assetId, asset.absolutePath]));
                     return createProductVideoProject({
                         proposal,
                         assertSnapshotCurrent: () => { assertCurrent(); signal.throwIfAborted(); },
@@ -115,7 +134,7 @@ export class ProductVideoComposeTool extends DeclarativeTool<typeof ProductVideo
                             skus: product.skus,
                             sources: product.sources,
                         },
-                        sourceAssets,
+                        sourceAssets: selectedSources,
                     });
                 });
                 reused = false;

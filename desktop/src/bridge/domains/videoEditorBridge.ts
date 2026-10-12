@@ -24,6 +24,7 @@ export function createVideoEditorBridge(core: BridgeCore) {
       offJobChanged: (listener: (event: unknown, job: unknown) => void) => core.off('tiktok-publisher:job-changed', listener),
     },
     videoEditorV2: {
+      selectRemixSources: <T = unknown>(payload: { assetIds?: string[] } = {}) => core.invokeChannel('videoEditorV2:select-remix-sources', payload) as Promise<T>,
       getOrCreateForManuscript: (payload: { manuscriptPath: string; title?: string }) =>
         core.invokeChannel('videoEditorV2:get-or-create-for-manuscript', payload),
       createProject: (payload?: Record<string, unknown>) =>

@@ -1,0 +1,18 @@
+{
+  "packages": [
+    {
+      "name": "GardenFlow-0.0.1-arm64.dmg",
+      "bytes": 372406824,
+      "sha256": "675776b05dd366546278bdbe808b039cc403261b6c15f7ebfd966e09898560a9"
+    },
+    {
+      "name": "GardenFlow-0.0.1-arm64.zip",
+      "bytes": 364271749,
+      "sha256": "ca24de03ff77454bac7fb9043400277c76aa3b5a68a130220a9cc954aa0c4ff3"
+    }
+  ],
+  "zipCrcValid": true,
+  "zipAsarMatches": true,
+  "appAsarSha256": "6ffb9713c8fd395b05611f40b0cde6cbe6ee3fbcecf70756e7ad0ce111aea13d",
+  "dmgChecksumValid": true
+}

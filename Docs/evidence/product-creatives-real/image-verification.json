@@ -1,0 +1,85 @@
+{
+  "documentVersion": 11,
+  "pageOrder": [
+    "cover",
+    "spec",
+    "flavor",
+    "nutrition",
+    "check"
+  ],
+  "layouts": [
+    "cover",
+    "split",
+    "split",
+    "grid",
+    "split"
+  ],
+  "mediaAssetIds": [
+    "media_1791785543740_fca10991",
+    "media_1791777252664_a6813321",
+    "media_1791777252966_153926f9",
+    "media_1791777253406_e8f93021",
+    "media_1791777253753_37b8dd31"
+  ],
+  "pngs": [
+    {
+      "file": "assets/01-封面.png",
+      "width": 1440,
+      "height": 1920,
+      "sha256": "aa5228c12e465c273c7b34e6a4f73644f261f56b752a2cadb23a69ea0908ea0e"
+    },
+    {
+      "file": "assets/02-内容页.png",
+      "width": 1440,
+      "height": 1920,
+      "sha256": "2fca7e17237562c0e4266d2008af42cde80c0f21f0e68096fcc1be321d74795a"
+    },
+    {
+      "file": "assets/03-内容页.png",
+      "width": 1440,
+      "height": 1920,
+      "sha256": "f5adbac4efc3bd600e3efd0c4f1a119ac4fd8430b79e67420b928d05150210f8"
+    },
+    {
+      "file": "assets/04-内容页.png",
+      "width": 1440,
+      "height": 1920,
+      "sha256": "6769922e3f37b5e123ed8f0afb2f1b6774ada35950dd3666649b4fe887ff4740"
+    },
+    {
+      "file": "assets/05-内容页.png",
+      "width": 1440,
+      "height": 1920,
+      "sha256": "9122dbbb5de2441c2e5447815925bccbe17536ba493227473765109889750b5f"
+    }
+  ],
+  "zipEntries": [
+    "index.html",
+    "content.md",
+    "manifest.json",
+    "assets/01-封面.png",
+    "assets/02-内容页.png",
+    "assets/03-内容页.png",
+    "assets/04-内容页.png",
+    "assets/05-内容页.png"
+  ],
+  "zipCrcValid": true,
+  "utf8Names": true,
+  "missingAssets": 0,
+  "obsoletePages": 0,
+  "confirmationRecoveredExactly": true,
+  "duplicateConfirmationReusesProject": true,
+  "coverOnlyEditReusesOtherFourPngs": true,
+  "finalColdReopenDocumentIdentical": true,
+  "addRemoveControls": {
+    "coverDeleteBlocked": true,
+    "countAfterAdd": 6,
+    "countAfterRemove": 5,
+    "changedPageId": "cover",
+    "sourceRenderer": "http://127.0.0.1:5173/"
+  },
+  "overflow": {
+    "blocked": true,
+    "error": "封面：文字超出排版区域，请缩短文字或调小字号"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "fontFilesMatched": 22,
+  "imageSkillMatchesSource": true,
+  "skill": "dist-electron/builtin-skills/video-director/SKILL.md",
+  "skillMatchesSource": true,
+  "skillSha256": "9de67160db25becedf50a24ea72db4fe8c76da0f3fda2dc16991bc46d7d53562",
+  "mainPath": "dist-electron/appMain-MxtSCgDA.js",
+  "mainMatchesBuild": true,
+  "mainSha256": "c42a0ead7ff3266bc08f0ee15ae1c2245604d7b7a6c5821a84c96ff7bdd79f80",
+  "rendererBuildFilesMatched": 40,
+  "remotionFilesMatched": 105,
+  "appAsarSha256": "6ffb9713c8fd395b05611f40b0cde6cbe6ee3fbcecf70756e7ad0ce111aea13d",
+  "qaScriptMatchesPackage": true
+}

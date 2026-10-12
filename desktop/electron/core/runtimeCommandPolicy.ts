@@ -143,16 +143,17 @@ const readTokenFlag = (tokens: string[], names: string[]): string => {
   return '';
 };
 
+export function parseAppCliAction(command: string): { namespace: string; action: string; tokens: string[] } {
+  const tokens = tokenize(command);
+  while (tokens.length > 0 && ['app-cli', 'app_cli', 'gardenflow-cli'].includes(tokens[0].toLowerCase())) tokens.shift();
+  return { tokens, namespace: normalizeAction(tokens[0] || 'help'), action: normalizeAction(tokens[1] && !tokens[1].startsWith('--') ? tokens[1] : 'list') };
+}
+
 export function analyzeAppCliCommand(command: string, options?: {
   interactive?: boolean;
   runtimeMode?: string;
 }): CommandPermissionAnalysis {
-  const tokens = tokenize(command);
-  while (tokens.length > 0 && ['app-cli', 'app_cli', 'gardenflow-cli'].includes(tokens[0].toLowerCase())) {
-    tokens.shift();
-  }
-  const namespace = normalizeAction(tokens[0] || 'help');
-  const action = normalizeAction(tokens[1] && !tokens[1].startsWith('--') ? tokens[1] : 'list');
+  const { tokens, namespace, action } = parseAppCliAction(command);
   const summary = `app_cli ${namespace} ${action}`.trim();
 
   if (!namespace || namespace === 'help') {

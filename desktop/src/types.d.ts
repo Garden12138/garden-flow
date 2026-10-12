@@ -1739,6 +1739,7 @@ declare global {
         getProject: (payload: { projectId: string }) => Promise<{ success?: boolean; error?: string; project?: VideoEditorV2ProjectSummary }>;
         listProjects: () => Promise<{ success?: boolean; error?: string; projects?: VideoEditorV2ProjectSummary[] }>;
         applyProductCommand: (payload: Record<string, unknown>) => Promise<{ success?: boolean; error?: string; project?: VideoEditorV2ProjectSummary }>;
+        selectRemixSources: <T = unknown>(payload?: { assetIds?: string[] }) => Promise<T>;
         setProductMusic: (payload: { projectId: string; sourcePath?: string }) => Promise<{ success?: boolean; canceled?: boolean; error?: string; project?: VideoEditorV2ProjectSummary }>;
         getProductVoiceoverConfig: () => Promise<{ success?: boolean; config?: { configured: boolean; model: string; voiceId: string; reason?: string } }>;
         generateProductVoiceover: (payload: { projectId: string; sceneId: string }) => Promise<{ success?: boolean; error?: string; project?: VideoEditorV2ProjectSummary }>;
@@ -2018,6 +2019,7 @@ declare global {
         transcribeAudio: (payload: { audioBase64: string; mimeType?: string; fileName?: string }) => Promise<{ success?: boolean; text?: string; error?: string; reason?: string; diagnostic?: string }>;
         cancel: (data?: { sessionId?: string } | string) => void;
         confirmTool: (callId: string, confirmed: boolean) => Promise<ToolConfirmationResolution>;
+        retryProductImageSet: (payload: { sessionId: string; callId: string; modelConfig?: unknown }) => Promise<import('../shared/chatRunState').ChatSendReceipt>;
         retryProductVideo: (payload: { sessionId: string; callId?: string; modelConfig?: unknown }) => Promise<import('../shared/chatRunState').ChatSendReceipt>;
         getPendingToolConfirmation: (sessionId: string) => Promise<ToolConfirmRequest | null>;
         onToolConfirmationUpdated: (listener: (...args: any[]) => void) => void;
@@ -2119,6 +2121,12 @@ declare global {
         read: <T = unknown>(filePath: string) => Promise<T>;
         save: <T = unknown>(payload: Record<string, unknown>) => Promise<T>;
         getXhsNote: <T = unknown>(path: string) => Promise<T>;
+        previewProductImagePage: <T = unknown>(payload: import('../shared/productImageSet').ProductImagePreviewRequest) => Promise<T>;
+        renderProductImagePage: <T = unknown>(payload: import('../shared/productImageSet').ProductImagePageRequest) => Promise<T>;
+        generateProductImagePage: <T = unknown>(payload: import('../shared/productImageSet').ProductImageGenerateRequest) => Promise<T>;
+        importProductImageAsset: <T = unknown>(payload: import('../shared/productImageSet').ProductImagePageRequest & { assetId: string }) => Promise<T>;
+        exportProductImageSet: <T = unknown>(payload: import('../shared/productImageSet').ProductImageExportRequest) => Promise<T>;
+        productImageGenerationConfig: <T = unknown>() => Promise<T>;
         saveXhsNote: <T = unknown>(payload: Record<string, unknown>) => Promise<T>;
         bindXhsNoteMedia: <T = unknown>(payload: Record<string, unknown>) => Promise<T>;
         exportXhsMaterialPackage: <T = unknown>(payload: Record<string, unknown>) => Promise<T>;
@@ -2853,6 +2861,7 @@ declare global {
   }
 
   interface ToolConfirmationDetails {
+    remixSourceReferences?: import('../shared/productVideoRemix').ProductVideoClipReference[];
     type: 'edit' | 'exec' | 'info';
     title: string;
     description: string;

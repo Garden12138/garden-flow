@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
-import { getSettings, getWorkspacePaths } from '../db';
+import { getSettings, getWorkspacePaths, getWorkspacePathsForSpace } from '../db';
 import { createGeneratedMediaAsset, getAbsoluteMediaPath, type MediaAsset } from './mediaLibraryStore';
 import { isPathWithinRoots, resolveAssetSourceToPath, toAppAssetUrl } from './localAssetManager';
 import { generateImagesToMediaLibrary } from './imageGenerationService';
@@ -523,6 +523,7 @@ function artifactForAsset(jobId: string, kind: string, asset: MediaAsset): Media
 }
 
 export class MediaGenerationJobRegistry extends EventEmitter {
+  constructor(private readonly pinnedSpaceId?: string, private readonly stateFile = 'media-jobs.json') { super(); }
   private readonly jobs = new Map<string, StoredMediaJob>();
   private readonly executionRequests = new Map<string, Record<string, unknown>>();
   private readonly activeRuns = new Set<string>();
@@ -532,7 +533,7 @@ export class MediaGenerationJobRegistry extends EventEmitter {
   private writeQueue: Promise<void> = Promise.resolve();
 
   private statePath(): string {
-    return path.join(getWorkspacePaths().base, '.gardenflow', 'media-runtime', 'media-jobs.json');
+    return path.join((this.pinnedSpaceId ? getWorkspacePathsForSpace(this.pinnedSpaceId) : getWorkspacePaths()).base, '.gardenflow', 'media-runtime', this.stateFile);
   }
 
   private async ensureLoaded(): Promise<void> {

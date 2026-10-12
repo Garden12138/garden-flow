@@ -1,3 +1,4 @@
+import { ProductImageSetPane } from '../../components/manuscripts/ProductImageSetPane';
 import { useCallback, useEffect, useMemo, useState, type ReactNode, type VideoHTMLAttributes } from 'react';
 import { AlertTriangle, Check, Copy, Download, Image as ImageIcon, Loader2, Pencil, RefreshCw, Save, Upload, Video } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -155,7 +156,7 @@ function parseSubtitleLines(value: string): XhsSubtitleItem[] {
     }).filter((item) => item.text);
 }
 
-export function XhsNotePreviewPane({ target }: XhsNotePreviewPaneProps) {
+function XhsNoteStandardPreviewPane({ target }: XhsNotePreviewPaneProps) {
     const [tab, setTab] = useState<PreviewTab>('publish');
     const [document, setDocument] = useState<XhsNoteDocument | null>(target.xhsNote || null);
     const [draft, setDraft] = useState<XhsNoteDocument | null>(target.xhsNote || null);
@@ -486,4 +487,9 @@ export function XhsNotePreviewPane({ target }: XhsNotePreviewPaneProps) {
             </div>
         </div>
     );
+}
+
+export function XhsNotePreviewPane(props: XhsNotePreviewPaneProps) {
+    const projectKey = props.target.projectPath || props.target.localPathCandidate || props.target.relativePath || props.target.href;
+    return props.target.xhsNote?.productImageSet ? <ProductImageSetPane key={projectKey} target={props.target} /> : <XhsNoteStandardPreviewPane {...props} />;
 }

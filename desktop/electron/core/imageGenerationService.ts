@@ -39,7 +39,7 @@ export interface GenerateImagesResult {
     aspectRatio?: string;
     assets: MediaAsset[];
 }
-function resolveDefaultImageEndpoint(template: ImageProviderTemplate): string {
+export function resolveDefaultImageEndpoint(template: ImageProviderTemplate): string {
     switch (template) {
         case 'gemini-openai-images':
             return 'https://generativelanguage.googleapis.com/v1beta/openai';
@@ -62,7 +62,7 @@ function resolveDefaultImageEndpoint(template: ImageProviderTemplate): string {
     }
 }
 
-function resolveDefaultImageModel(template: ImageProviderTemplate): string {
+export function resolveDefaultImageModel(template: ImageProviderTemplate): string {
     switch (template) {
         case 'gemini-openai-images':
             return 'gemini-2.5-flash-image';

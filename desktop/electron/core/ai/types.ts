@@ -40,7 +40,7 @@ export type RoleId =
 
 export type ThinkingBudget = 'minimal' | 'low' | 'medium' | 'high';
 
-export type WorkflowKind = 'product-video-compose' | 'xhs-publish';
+export type WorkflowKind = 'product-video-compose' | 'product-image-set-compose' | 'xhs-publish';
 
 export type IntentRoutingFailure = 'unavailable' | 'invalid-output' | 'request-failed' | 'timeout' | 'cancelled' | 'http-error' | 'network-error';
 

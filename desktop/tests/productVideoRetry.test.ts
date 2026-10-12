@@ -16,7 +16,7 @@ function fixture() {
         explicitProductRefs: [{ productId: 'p1' }],
     } }, newerTasks: [] as any[] };
     vm.runInNewContext(code, {
-        ipcMain: { handle: (_: string, fn: any) => { handler = fn; } }, randomUUID: () => 'fresh-id',
+        ipcMain: { handle: (channel: string, fn: any) => { if (channel === 'chat:retry-product-video') handler = fn; } }, randomUUID: () => 'fresh-id',
         getChatSession: (sessionId: string) => sessionId === 's1', getActiveChatRun: () => state.active,
         getWorkspacePaths: () => ({ activeSpaceId: state.spaceId }), getTaskGraphRuntime: () => ({ listTasks: () => [...state.newerTasks, state.task] }),
         brandWorkspaceStore: { getProductCreativeReference: async (id: string) => ({ id, name: '最新商品名称' }) },
@@ -75,6 +75,15 @@ test('visual retry does not revive an older failure after a newer product workfl
     h.state.newerTasks.push({ status: 'completed', metadata: { workflowKind: 'product-video-compose' } });
     assert.equal((await h.run({ sessionId: 's1' })).accepted, false);
     assert.equal(h.sent.length, 0);
+});
+
+test('the explicit visual retry preserves an image-set workflow without starting video planning', async () => {
+    const h = fixture();
+    Object.assign(h.state.task.metadata, { workflowKind: 'product-image-set-compose', productImageSetRequest: { message: '商品五张套图', spaceId: 'default' } });
+    assert.equal((await h.run({ sessionId: 's1' })).accepted, true);
+    assert.equal(h.sent[0].taskHints.workflowKind, 'product-image-set-compose');
+    assert.equal(h.sent[0].taskHints.productImageSetProposalId, 'proposal-fresh-id');
+    assert.equal(h.sent[0].message, '商品五张套图');
 });
 
 test('cold history restores the visual retry action on its owning response, even after a generic error', async () => {

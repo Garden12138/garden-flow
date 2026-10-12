@@ -145,7 +145,8 @@ export function buildVideoEditorV2RemotionComposition(project: VideoEditorV2Proj
       trimInFrames: msToFrames(clip.sourceStartMs, fps),
       motionPreset: clip.motionPreset || (index % 2 === 0 ? 'static' : 'slow-zoom-in'),
       fitMode: clip.fitMode || 'cover',
-      muted: project.projectKind === 'product-video',
+      muted: (project.projectKind === 'product-video' && clip.volume === undefined) || (clip.volume !== undefined && asset?.probe?.hasAudio === false),
+      volume: clip.volume,
       overlays,
     };
   });

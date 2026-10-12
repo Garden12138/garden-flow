@@ -1,3 +1,4 @@
+import { applyProductImageSetWorkflowPolicy } from './productImageSetWorkflowPolicy';
 import { loadAndRenderPrompt } from '../../prompts/runtime';
 import { normalizeApiBaseUrl, safeUrlJoin } from '../urlUtils';
 import { fetchLlmWithRetry } from '../llmFetchRetry';
@@ -355,7 +356,7 @@ export const routeIntent = async (params: {
   llm?: RuntimeLlmConfig;
   signal?: AbortSignal;
 }): Promise<IntentRoute> => {
-  const fallback = applyXhsPublishWorkflowPolicy(applyProductVideoWorkflowPolicy(buildFallbackRoute(params.context), params.context), params.context);
+  const fallback = applyProductImageSetWorkflowPolicy(applyXhsPublishWorkflowPolicy(applyProductVideoWorkflowPolicy(buildFallbackRoute(params.context), params.context), params.context), params.context);
   if (!params.llm?.apiKey || !params.llm.baseURL || !params.llm.model) {
     return { ...fallback, routingFailure: 'unavailable' };
   }
@@ -368,7 +369,7 @@ export const routeIntent = async (params: {
       signal: params.signal,
     });
     if (routed.route) {
-      return { ...applyXhsPublishWorkflowPolicy(applyProductVideoWorkflowPolicy(routed.route, params.context), params.context), routingDiagnostic: routed.diagnostic };
+      return { ...applyProductImageSetWorkflowPolicy(applyXhsPublishWorkflowPolicy(applyProductVideoWorkflowPolicy(routed.route, params.context), params.context), params.context), routingDiagnostic: routed.diagnostic };
     }
     return { ...fallback, routingFailure: 'invalid-output', routingDiagnostic: routed.diagnostic };
   } catch (error) {

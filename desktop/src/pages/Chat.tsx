@@ -435,6 +435,7 @@ export interface ChatShortcutContext {
   attachments?: UploadedFileAttachment[];
   selectedMemberMention: ChatMemberMentionOption | null;
   selectedKnowledgeMentions: ChatKnowledgeMentionOption[];
+  selectedAssetMentions?: ChatAssetMentionOption[];
 }
 
 export type ChatShortcutProvider = ChatShortcut[] | ((context: ChatShortcutContext) => ChatShortcut[]);
@@ -1720,6 +1721,9 @@ export function Chat({
   const [selectedSkillMentions, setSelectedSkillMentions] = useState<ChatSkillMentionOption[]>([]);
   const [assetMentionOptions, setAssetMentionOptions] = useState<ChatAssetMentionOption[]>([]);
   const [selectedAssetMentions, setSelectedAssetMentions] = useState<ChatAssetMentionOption[]>([]);
+  const [remixSourceRequest, setRemixSourceRequest] = useState<{ resolve: (clips: ProductVideoClipReference[] | null) => void } | null>(null);
+  const remixSourceRequestRef = useRef<typeof remixSourceRequest>(null);
+  useEffect(() => () => { remixSourceRequestRef.current?.resolve(null); }, []);
   const [knowledgeMentionOptions, setKnowledgeMentionOptions] = useState<ChatKnowledgeMentionOption[]>([]);
   const [selectedKnowledgeMentions, setSelectedKnowledgeMentions] = useState<ChatKnowledgeMentionOption[]>([]);
   const [dismissedAttachmentActionKey, setDismissedAttachmentActionKey] = useState('');
@@ -4618,7 +4622,9 @@ export function Chat({
     setResolvingConfirmationCallId(callId || 'visual-retry');
     setErrorNotice(null);
     try {
-      const receipt = await window.ipcRenderer.chat.retryProductVideo({ sessionId, callId, modelConfig: getChatModelConfig() });
+      const receipt = callId && confirmRequest?.name === 'product_image_set_compose'
+        ? await window.ipcRenderer.chat.retryProductImageSet({ sessionId, callId, modelConfig: getChatModelConfig() })
+        : await window.ipcRenderer.chat.retryProductVideo({ sessionId, callId, modelConfig: getChatModelConfig() });
       if (!receipt.accepted) throw new Error(receipt.error || '无法重新规划商品视频');
       setConfirmRequest(null);
       if (currentSessionIdRef.current === sessionId) await selectSession(sessionId);
@@ -4707,6 +4713,22 @@ export function Chat({
     const attachments = requestedAttachments.length > 0
       ? requestedAttachments
       : getPendingAttachments();
+    if (shortcutTaskHints?.productVideoCompositionMode === 'existing-clips') {
+      if (remixSourceRequestRef.current) return;
+      if (assetMentions.filter((item) => item.referenceType === 'product').length !== 1) {
+        setErrorNotice('视频混剪需要选择一个主商品。'); return;
+      }
+      try {
+        const clips = await new Promise<ProductVideoClipReference[] | null>((resolve) => {
+          const request = { resolve };
+          remixSourceRequestRef.current = request;
+          setRemixSourceRequest(request);
+        });
+        remixSourceRequestRef.current = null;
+        if (!clips?.length) return;
+        shortcutTaskHints = { ...shortcutTaskHints, explicitVideoClipRefs: clips };
+      } catch (error) { setErrorNotice(error instanceof Error ? error.message : String(error)); return; }
+    }
     const primaryAttachment = attachments[0];
     const safeKnowledgeMentions = knowledgeMentions.filter((item) => item.id);
     uiTraceInteraction('chat', 'send_message', {
@@ -4901,6 +4923,7 @@ export function Chat({
     attachments: shortcutAttachments,
     selectedMemberMention,
     selectedKnowledgeMentions,
+    selectedAssetMentions,
   };
 
   const shortcuts = resolveChatShortcutProvider(
@@ -5552,6 +5575,10 @@ export function Chat({
       className={clsx('flex h-full min-w-0', wideContent && 'chat-layout-wide', narrowContent && 'chat-layout-narrow')}
       {...dragHandlers}
     >
+      {remixSourceRequest && <VideoRemixSourcePicker
+        onSelect={(clips) => { remixSourceRequest.resolve(clips); setRemixSourceRequest(null); }}
+        onCancel={() => { remixSourceRequest.resolve(null); setRemixSourceRequest(null); }}
+      />}
       {/* Main Chat Area */}
       <div className="flex-1 min-w-0 flex flex-col h-full relative overflow-hidden">
         {showChatDropOverlay ? (
@@ -5817,3 +5844,5 @@ export function Chat({
     </div>
   );
 }
+import { VideoRemixSourcePicker } from '../components/product-video/VideoRemixSourcePicker';
+import type { ProductVideoClipReference } from '../../shared/productVideoRemix';

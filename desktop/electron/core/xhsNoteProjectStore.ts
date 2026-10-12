@@ -17,6 +17,7 @@ import {
     createXhsNotePackageManifest,
     isXhsMediaCompatible,
     normalizeXhsNoteDocument,
+    projectProductImageSetDocument,
     renderXhsNoteHtml,
     renderXhsNoteMarkdown,
     sanitizeXhsMaterialFileName,
@@ -38,6 +39,7 @@ interface SaveXhsNoteInput {
     noteType?: XhsNoteType;
     document: unknown;
     expectedRevision?: number;
+    trustedProductImageSetState?: boolean;
 }
 
 interface BindXhsNoteMediaInput {
@@ -96,6 +98,11 @@ function resolveProjectPath(inputPath: string): ResolvedProjectPath {
         : path.resolve(manuscriptsRoot, normalizeRelativeProjectPath(raw));
     if (!isPathWithinRoots(absolutePath, [manuscriptsRoot])) {
         throw new Error('小红书笔记工程路径超出当前稿件目录');
+    }
+    if (fsSync.existsSync(manuscriptsRoot)) {
+        let ancestor = absolutePath;
+        while (!fsSync.existsSync(ancestor) && ancestor !== path.dirname(ancestor)) ancestor = path.dirname(ancestor);
+        if (!isPathWithinRoots(fsSync.realpathSync(ancestor), [fsSync.realpathSync(manuscriptsRoot)])) throw new Error('小红书工程路径不能通过符号链接访问空间外文件');
     }
     const noteType = noteTypeFromProjectName(path.basename(absolutePath));
     if (!noteType) {
@@ -282,16 +289,16 @@ async function resolveSlotAssets(document: XhsNoteDocument): Promise<ResolvedSlo
 
 async function hydratePreviewUrls(document: XhsNoteDocument): Promise<XhsNoteDocument> {
     const resolved = await resolveSlotAssets(document);
-    return {
+    return projectProductImageSetDocument({
         ...document,
         mediaSlots: resolved.map(({ slot, asset, absolutePath, exists }) => ({
             ...slot,
             sourcePath: asset?.relativePath || slot.sourcePath,
             mimeType: asset?.mimeType || slot.mimeType,
             previewUrl: exists && absolutePath ? toAppAssetUrl(absolutePath) : undefined,
-            status: slot.assetId ? (exists ? 'ready' : 'missing') : slot.status,
+            status: slot.assetId ? (exists ? slot.status === 'stale' ? 'stale' : 'ready' : 'missing') : slot.status,
         })),
-    };
+    });
 }
 
 function toSnapshot(project: ResolvedProjectPath, document: XhsNoteDocument): XhsNoteProjectSnapshot {
@@ -312,7 +319,7 @@ export async function getXhsNoteProject(inputPath: string): Promise<XhsNoteProje
     return toSnapshot(project, document);
 }
 
-export async function saveXhsNoteProject(input: SaveXhsNoteInput): Promise<XhsNoteProjectSnapshot> {
+async function saveXhsNoteProjectUnlocked(input: SaveXhsNoteInput): Promise<XhsNoteProjectSnapshot> {
     const requestedType: XhsNoteType = input.noteType === 'video' ? 'video' : 'image';
     const project = input.path ? resolveProjectPath(input.path) : createDefaultProjectPath(requestedType, input.document);
     if (input.noteType && project.noteType !== input.noteType) {
@@ -321,14 +328,30 @@ export async function saveXhsNoteProject(input: SaveXhsNoteInput): Promise<XhsNo
 
     let current: XhsNoteDocument | null = null;
     const projectExists = fsSync.existsSync(project.absolutePath);
-    if (projectExists) {
+    if (projectExists && (!input.trustedProductImageSetState || fsSync.existsSync(path.join(project.absolutePath, XHS_NOTE_FILE)))) {
         current = await readStoredDocument(project);
+        if (current.productImageSet && !input.trustedProductImageSetState && input.expectedRevision === undefined) throw new Error('商品套图保存必须提供 expectedRevision，请先读取最新工程');
         assertExpectedXhsRevision(current.revision, input.expectedRevision);
     }
 
-    const mergedInput = current
+    const mergedInput: Record<string, unknown> = current
         ? { ...current, ...asDocumentRecord(input.document), noteType: project.noteType }
         : { ...asDocumentRecord(input.document), noteType: project.noteType };
+    if (!input.trustedProductImageSetState && (current?.productImageSet || mergedInput.productImageSet)) {
+        const requested = asDocumentRecord(mergedInput.productImageSet);
+        const existing = current?.productImageSet;
+        if (!existing || ['version', 'proposalId', 'spaceId', 'productSnapshot', 'assets', 'generationHistory'].some((key) =>
+            JSON.stringify(requested[key]) !== JSON.stringify((existing as unknown as Record<string, unknown>)[key]))) {
+            throw new Error('商品快照和工程素材只能通过套图工具修改');
+        }
+        const pages = Array.isArray(requested.pages) ? requested.pages.map(asDocumentRecord) : [];
+        for (const page of pages) {
+            const old = existing.pages.find((item) => item.id === page.id);
+            if (JSON.stringify(page.render) !== JSON.stringify(old?.render) || JSON.stringify(page.generation) !== JSON.stringify(old?.generation)) {
+                throw new Error('页面生成和导出记录只能通过套图工具修改');
+            }
+        }
+    }
     const normalized = normalizeXhsNoteDocument(mergedInput, project.noteType);
     const now = new Date().toISOString();
     const nextDocument: XhsNoteDocument = {
@@ -351,7 +374,7 @@ function asDocumentRecord(value: unknown): Record<string, unknown> {
         : {};
 }
 
-export async function bindXhsNoteMedia(input: BindXhsNoteMediaInput): Promise<XhsNoteProjectSnapshot> {
+async function bindXhsNoteMediaUnlocked(input: BindXhsNoteMediaInput): Promise<XhsNoteProjectSnapshot> {
     const project = resolveProjectPath(input.path);
     const current = await readStoredDocument(project);
     assertExpectedXhsRevision(current.revision, input.expectedRevision);
@@ -431,17 +454,18 @@ export async function exportXhsMaterialPackage(input: ExportXhsMaterialPackageIn
     const project = resolveProjectPath(input.path);
     const document = await readStoredDocument(project);
     const resolvedSlots = await resolveSlotAssets(document);
+    if (document.productImageSet && resolvedSlots.some((item) => !item.exists || item.slot.status !== 'ready')) throw new Error('套图含有缺失或过期页面，请使用套图导出入口重新渲染');
     const usedNames = new Set<string>();
     const assetPaths: Record<string, string> = {};
     const fileEntries: Array<{ name: string; absolutePath: string }> = [];
     const packageAssets: XhsNotePackageAsset[] = [];
     const warnings: string[] = [];
 
-    for (const resolved of resolvedSlots) {
+    for (const [index, resolved] of resolvedSlots.entries()) {
         const { slot, asset, absolutePath, exists } = resolved;
         if (asset && absolutePath && exists) {
             const fallbackExtension = slot.role === 'video' ? '.mp4' : '.png';
-            const requestedName = sanitizeXhsMaterialFileName(asset.relativePath || '', `${slot.id}${fallbackExtension}`);
+            const requestedName = document.productImageSet ? `${String(index + 1).padStart(2, '0')}-${slot.role === 'cover' ? '封面' : '内容页'}.png` : sanitizeXhsMaterialFileName(asset.relativePath || '', `${slot.id}${fallbackExtension}`);
             const fileName = uniqueXhsMaterialFileName(requestedName, usedNames);
             const archivePath = `assets/${fileName}`;
             assetPaths[slot.id] = archivePath;
@@ -506,4 +530,35 @@ export function isStructuredXhsNoteProject(projectPath: string): boolean {
     } catch {
         return false;
     }
+}
+
+const xhsMutationQueues = new Map<string, Promise<unknown>>();
+function enqueueXhsMutation<T>(projectPath: string, operation: () => Promise<T>): Promise<T> {
+    if (fsSync.existsSync(projectPath)) projectPath = fsSync.realpathSync(projectPath);
+    const previous = xhsMutationQueues.get(projectPath) || Promise.resolve();
+    const pending = previous.catch(() => undefined).then(operation);
+    xhsMutationQueues.set(projectPath, pending);
+    void pending.finally(() => { if (xhsMutationQueues.get(projectPath) === pending) xhsMutationQueues.delete(projectPath); }).catch(() => undefined);
+    return pending;
+}
+
+export function saveXhsNoteProject(input: SaveXhsNoteInput): Promise<XhsNoteProjectSnapshot> {
+    const project = input.path ? resolveProjectPath(input.path) : createDefaultProjectPath(input.noteType === 'video' ? 'video' : 'image', input.document);
+    return enqueueXhsMutation(project.absolutePath, () => saveXhsNoteProjectUnlocked({ ...input, path: project.absolutePath }));
+}
+
+export function bindXhsNoteMedia(input: BindXhsNoteMediaInput): Promise<XhsNoteProjectSnapshot> {
+    const project = resolveProjectPath(input.path);
+    return enqueueXhsMutation(project.absolutePath, () => bindXhsNoteMediaUnlocked(input));
+}
+
+/** Merge asynchronous results under the same lock as editor saves. Never overwrite a stale document. */
+export function mutateProductImageSetProject(inputPath: string, transform: (snapshot: XhsNoteProjectSnapshot) => void | Promise<void>): Promise<XhsNoteProjectSnapshot> {
+    const project = resolveProjectPath(inputPath);
+    return enqueueXhsMutation(project.absolutePath, async () => {
+        const snapshot = await getXhsNoteProject(project.absolutePath);
+        if (!snapshot.document.productImageSet) throw new Error('工程不是商品套图');
+        await transform(snapshot);
+        return saveXhsNoteProjectUnlocked({ path: project.absolutePath, document: snapshot.document, expectedRevision: snapshot.version, trustedProductImageSetState: true });
+    });
 }

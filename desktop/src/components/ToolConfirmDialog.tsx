@@ -1,3 +1,5 @@
+import type { ProductImagePage } from '../../shared/productImageSet';
+import type { ProductVideoClipReference } from '../../shared/productVideoRemix';
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Terminal, FileEdit, Info, X, Check, Image as ImageIcon, Sparkles } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -34,22 +36,28 @@ type ProductProposalScene = {
     id: string;
     title: string;
     durationMs: number;
-    source: 'product-asset' | 'ai-motion';
+    source: 'product-asset' | 'ai-motion' | 'media-clip';
     productAssetIds: string[];
     overlayText?: string;
     generationPrompt?: string;
+    mediaAssetId?: string;
+    sourceStartMs?: number;
+    sourceEndMs?: number;
+    sourceVolume?: number;
 };
 
 export function ToolConfirmDialog({ request, onConfirm, onCancel, onReplan, isResolving = false }: ToolConfirmDialogProps) {
     const [productReference, setProductReference] = useState<ProductReference | null>(null);
     const [voiceoverConfig, setVoiceoverConfig] = useState<{ configured: boolean; model: string; voiceId: string; reason?: string } | null>(null);
+    const remixRefs = (Array.isArray(request?.details?.remixSourceReferences) ? request.details.remixSourceReferences : []) as ProductVideoClipReference[];
+    const isRemix = request?.params?.compositionMode === 'existing-clips';
 
     useEffect(() => {
         setProductReference(null);
         setVoiceoverConfig(null);
-        if (request?.name !== 'product_video_compose') return;
+        if (request?.name !== 'product_video_compose' && request?.name !== 'product_image_set_compose') return;
         let active = true;
-        void window.ipcRenderer.videoEditorV2.getProductVoiceoverConfig().then((result) => {
+        if (request.name === 'product_video_compose') void window.ipcRenderer.videoEditorV2.getProductVoiceoverConfig().then((result) => {
             if (active) setVoiceoverConfig(result.success && result.config ? result.config : { configured: false, model: '', voiceId: '', reason: '无法读取语音配置' });
         }).catch(() => {
             if (active) setVoiceoverConfig({ configured: false, model: '', voiceId: '', reason: '无法读取语音配置' });
@@ -90,6 +98,7 @@ export function ToolConfirmDialog({ request, onConfirm, onCancel, onReplan, isRe
             idle: '确认并创建工程',
             executing: '正在创建工程…',
         }
+        : request.name === 'product_image_set_compose' ? { idle: '确认并创建套图', executing: '正在创建套图…' }
         : request.name === 'video_generate'
             ? {
                 idle: '确认生成视频',
@@ -114,16 +123,19 @@ export function ToolConfirmDialog({ request, onConfirm, onCancel, onReplan, isRe
                         <h3 className="text-sm font-semibold text-text-primary">
                             {request.details.title}
                         </h3>
-                        <span className="rounded-full border border-border bg-surface-secondary px-2 py-0.5 text-[11px] text-text-tertiary">
+                        {request.name !== 'product_image_set_compose' && <span className="rounded-full border border-border bg-surface-secondary px-2 py-0.5 text-[11px] text-text-tertiary">
                             {request.name}
-                        </span>
+                        </span>}
                     </div>
                     <p className="mt-1 text-xs text-text-tertiary">
-                        {request.name === 'product_video_compose'
+                        {request.name === 'product_image_set_compose'
+                            ? isInvalidated ? '商品资料已变更，请按最新资料重新规划套图。' : '请核对逐页文字、素材与布局。确认后创建可编辑工程，默认付费图片、视频及语音生成均为 0。'
+                            : request.name === 'product_video_compose'
                             ? isInvalidated
                                 ? isExecuting
                                     ? '正在按最新商品资料重新规划。新分镜需要再次确认后才会创建工程。'
                                     : '旧分镜已失效。请按最新资料重新规划，或重新选择商品。'
+                                : isRemix ? isExecuting ? '已确认混剪方案，正在复制来源并创建独立工程。' : '请播放真实来源，核对截取区间、顺序、文字和原音。确认后创建独立工程，付费媒体生成均为 0。'
                                 : isExecuting
                                     ? '已确认分镜，正在创建工程并提交已选的生成任务。'
                                     : '请核对分镜、素材和旁白。确认后才会创建工程并提交可能计费的生成任务。'
@@ -136,6 +148,23 @@ export function ToolConfirmDialog({ request, onConfirm, onCancel, onReplan, isRe
 
             <div className="px-4 py-3 bg-surface-primary">
                 <div className="space-y-3">
+                    {request.name === 'product_image_set_compose' && Array.isArray(request.params?.pages) && (
+                        <div className="space-y-3">
+                            <p className="text-xs text-text-secondary">{productReference?.name || String(request.params.productName || '')}{productSpecification ? ` · ${productSpecification}` : ''}</p>
+                            <p className="text-xs text-text-tertiary">{request.params.pages.length} 张（含封面） · 3:4 · 1440×1920 PNG</p>
+                            <div className="grid max-h-96 gap-3 overflow-y-auto sm:grid-cols-2">
+                                {(request.params.pages as ProductImagePage[]).map((page, index) => <div key={page.id} className="rounded-xl border border-border p-3">
+                                    <div className="mb-2 flex gap-2">{page.productAssetIds.map((id) => {
+                                        const asset = productReference?.assets.find((item) => item.id === id);
+                                        return asset ? <img key={id} src={resolveAssetUrl(asset.previewUrl)} alt="商品素材" className="h-20 w-16 rounded object-contain bg-surface-secondary" /> : <span key={id} className="text-xs text-text-tertiary">正在读取素材…</span>;
+                                    })}</div>
+                                    <p className="text-sm font-medium">{index + 1}. {page.title}</p>
+                                    <p className="mt-1 whitespace-pre-wrap text-xs text-text-secondary">{page.copy}</p>
+                                    <p className="mt-2 text-xs text-text-tertiary">{({ cover: '封面大图', split: '图文分栏', grid: '多图细节' } as const)[page.layout]} · 原图排版</p>
+                                </div>)}
+                            </div>
+                        </div>
+                    )}
                     {request.name === 'product_video_compose' && proposalScenes.length > 0 && (
                         <div className="space-y-2">
                             <div className="flex items-center justify-between text-xs">
@@ -147,13 +176,14 @@ export function ToolConfirmDialog({ request, onConfirm, onCancel, onReplan, isRe
                             <div className="grid max-h-72 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
                                 {proposalScenes.map((scene, index) => {
                                     const assets = productReference?.assets.filter((item) => scene.productAssetIds.includes(item.id)) || [];
+                                    const clip = remixRefs.find((item) => item.assetId === scene.mediaAssetId);
                                     return (
                                         <div key={scene.id} className="flex gap-2 rounded-xl border border-border bg-surface-secondary p-2">
                                             <div className={clsx(
                                                 'grid h-20 w-16 shrink-0 overflow-hidden rounded-lg bg-black/80',
                                                 assets.length > 1 ? 'grid-cols-2' : 'grid-cols-1',
                                             )}>
-                                                {assets.length > 0
+                                                {clip ? <video aria-label={`${scene.title} 来源视频`} src={resolveAssetUrl(clip.previewUrl)} controls muted preload="metadata" className="h-full w-full object-contain" /> : assets.length > 0
                                                     ? assets.map((asset) => (
                                                         <img
                                                             key={asset.id}
@@ -169,7 +199,8 @@ export function ToolConfirmDialog({ request, onConfirm, onCancel, onReplan, isRe
                                                     <span className="text-[10px] font-bold text-text-tertiary">{index + 1}</span>
                                                     <p className="truncate text-xs font-semibold text-text-primary">{scene.title}</p>
                                                 </div>
-                                                <p className="mt-1 text-[10px] text-text-tertiary">{(scene.durationMs / 1000).toFixed(1)} 秒 · {scene.source === 'ai-motion' ? 'AI 动效' : '原始素材'} · {assets.map((asset) => asset.role).join(' + ') || '图片'}</p>
+                                                <p className="mt-1 text-[10px] text-text-tertiary">{(scene.durationMs / 1000).toFixed(1)} 秒 · {scene.source === 'media-clip' ? '已有视频片段' : scene.source === 'ai-motion' ? 'AI 动效' : '原始素材'} · {clip?.title || assets.map((asset) => asset.role).join(' + ') || '图片'}</p>
+                                                {clip && <p className="mt-1 text-[10px] text-text-secondary">截取 {(scene.sourceStartMs! / 1000).toFixed(2)}–{(scene.sourceEndMs! / 1000).toFixed(2)} 秒 ／来源 {(clip.durationMs / 1000).toFixed(2)} 秒 · 原音 {Math.round((scene.sourceVolume ?? 1) * 100)}%</p>}
                                                 {scene.overlayText && <p className="mt-1 line-clamp-2 text-[10px] text-text-secondary">文字：{scene.overlayText}</p>}
                                                 {voiceoverEnabled && scene.overlayText && <p className="mt-1 line-clamp-2 text-[10px] text-[#C05640]">将朗读：{scene.overlayText}</p>}
                                                 {scene.source === 'ai-motion' && <p className="mt-1 inline-flex items-center gap-1 text-[10px] text-amber-700"><Sparkles className="h-3 w-3" />参考图生成，无内置音频</p>}
@@ -181,9 +212,9 @@ export function ToolConfirmDialog({ request, onConfirm, onCancel, onReplan, isRe
                             </div>
                         </div>
                     )}
-                    <div className="text-xs text-text-secondary whitespace-pre-wrap font-mono bg-surface-secondary p-3 rounded-xl border border-border max-h-40 overflow-auto">
+                    {request.name !== 'product_image_set_compose' && <div className="text-xs text-text-secondary whitespace-pre-wrap font-mono bg-surface-secondary p-3 rounded-xl border border-border max-h-40 overflow-auto">
                         {request.details.description}
-                    </div>
+                    </div>}
                     {request.details.warnings && request.details.warnings.length > 0 && (
                         <div className="space-y-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
                             <div className="flex items-center gap-2 text-xs font-semibold text-amber-700 dark:text-amber-400">
@@ -209,7 +240,7 @@ export function ToolConfirmDialog({ request, onConfirm, onCancel, onReplan, isRe
             </div>
 
             {isInvalidated && <div className="px-4 py-3 text-sm text-amber-700 dark:text-amber-300" role="status">
-                {productDeleted ? '商品已删除，旧分镜已失效。请关闭此卡并重新选择商品。' : '商品资料已更新，旧分镜已失效。按最新资料重新规划后，需要再次确认。'}
+                {productDeleted ? `商品已删除，旧${request.name === 'product_image_set_compose' ? '套图方案' : '分镜'}已失效。请关闭此卡并重新选择商品。` : '商品资料已更新，旧方案已失效。按最新资料重新规划后，需要再次确认。'}
             </div>}
             <div className="px-4 py-3 bg-surface-secondary border-t border-border flex items-center justify-end gap-2">
                     <button

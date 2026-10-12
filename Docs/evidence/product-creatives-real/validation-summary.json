@@ -1,0 +1,96 @@
+{
+  "date": "2026-10-12",
+  "status": "completed",
+  "productId": "product_1791510099824_b6bb14ed",
+  "selectedSkuId": "sku_1791510099840_3c56167b",
+  "selectedSku": "300g×12 海洋鱼口味，3.6kg",
+  "realModel": "qwen3.8-max",
+  "modelService": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+  "verifiedVisualImageCount": 12,
+  "realPlanningWorkflows": 2,
+  "totalTextVisionRequestCount": null,
+  "totalTextVisionRequestCountNote": "Not instrumented; includes early failed attempts and successful planning.",
+  "realMediaGenerationRequests": {
+    "image": 0,
+    "video": 0,
+    "voice": 0
+  },
+  "newPaidMediaJobs": 0,
+  "published": false,
+  "acceptanceMethod": "User-authorized actual Electron IPC/preload/renderer controls",
+  "environmentCoverage": {
+    "imageSet": {
+      "planningAndCreation": "packaged",
+      "editExportReopen": [
+        "development",
+        "packaged"
+      ]
+    },
+    "remix": {
+      "planningAndCreation": "development",
+      "editExportReopen": [
+        "development",
+        "packaged"
+      ]
+    }
+  },
+  "imageProject": "xiaohongshu/商品套图-40297282-400f-4a9b-a1eb-63cc0906f597.redpost",
+  "videoProject": "video_edit_v2_1791785758762_10b3825c",
+  "imageApprovalCallId": "call_1ab01a78562744699d1d888b",
+  "remixApprovalCallId": "call_9486e3832c8841be9f7579e3",
+  "checks": {
+    "pnpm test": {
+      "status": "passed",
+      "tests": 433,
+      "failures": 0
+    },
+    "pnpm check": {
+      "status": "passed"
+    },
+    "pnpm build --config.compression=normal": {
+      "status": "passed",
+      "platform": "macOS arm64",
+      "signed": false
+    },
+    "executionOrder": [
+      "test",
+      "check",
+      "build"
+    ]
+  },
+  "baseline": {
+    "files": 28,
+    "unchangedFiles": 27,
+    "changedFiles": [
+      "media/catalog.json"
+    ],
+    "originalProductUnchanged": true,
+    "originalVideoProjectsUnchanged": 8,
+    "originalNotesUnchanged": 18,
+    "sourceVideosUnchanged": true,
+    "mediaAssetsBefore": 117,
+    "mediaAssetsAfter": 126,
+    "newLocalPngs": 6,
+    "newLocalMp4s": 3
+  },
+  "settings": {
+    "proxyRestored": true,
+    "proxyEnabled": false,
+    "proxyUrl": "",
+    "nonProxySettingsAuditsUnchanged": true,
+    "auditCount": 4,
+    "settingsDigest": "ab4f568273f2cdb282c81416bc76cac04b644017ac4af8ef99fae0c9fce92174"
+  },
+  "evidence": [
+    "visual-verification.json",
+    "image-verification.json",
+    "video-verification.json",
+    "package-check.json",
+    "package-parity.json"
+  ],
+  "remainingBoundaries": [
+    "Real paid per-page AI image generation was not submitted.",
+    "Both real source audio tracks are silent; non-silent audio behavior remains covered by isolated integration tests.",
+    "No publishing was performed."
+  ]
+}

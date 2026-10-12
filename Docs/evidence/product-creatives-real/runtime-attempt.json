@@ -1,0 +1,128 @@
+{
+  "date": "2026-10-12",
+  "status": "completed",
+  "sessionId": "session_1791775138264",
+  "attempts": [
+    {
+      "taskId": "task_1791775138695_2vi4xs",
+      "status": "failed",
+      "workflowKind": "product-image-set-compose",
+      "requestedImageCount": 5,
+      "diagnostic": {
+        "modelName": "qwen3.8-max",
+        "productId": "product_1791510099824_b6bb14ed",
+        "productUpdatedAt": "2026-10-09T01:41:39.857Z",
+        "imageCount": 12,
+        "assetIds": [
+          "asset_1791510099824_7891b84f",
+          "asset_1791510099826_649cbdf8",
+          "asset_1791510099827_eb55b81e",
+          "asset_1791510099828_46a78b28",
+          "asset_1791510099829_837a618b",
+          "asset_1791510099829_0ca4c7e1",
+          "asset_1791510099830_d6c2e82d",
+          "asset_1791510099831_48bd41b2",
+          "asset_1791510099833_6a86d0aa",
+          "asset_1791510099833_ccd021c2",
+          "asset_1791510099834_dbaccdc7",
+          "asset_1791510099835_260fc2e5"
+        ],
+        "durationMs": 807,
+        "outcome": "request-failed",
+        "responseParsed": false,
+        "expectedToken": "GF-ECCD7E51A03E"
+      }
+    },
+    {
+      "taskId": "task_1791775164888_7qu81q",
+      "status": "failed",
+      "workflowKind": "product-image-set-compose",
+      "requestedImageCount": null,
+      "diagnostic": {
+        "modelName": "qwen3.8-max",
+        "productId": "product_1791510099824_b6bb14ed",
+        "productUpdatedAt": "2026-10-09T01:41:39.857Z",
+        "imageCount": 12,
+        "assetIds": [
+          "asset_1791510099824_7891b84f",
+          "asset_1791510099826_649cbdf8",
+          "asset_1791510099827_eb55b81e",
+          "asset_1791510099828_46a78b28",
+          "asset_1791510099829_837a618b",
+          "asset_1791510099829_0ca4c7e1",
+          "asset_1791510099830_d6c2e82d",
+          "asset_1791510099831_48bd41b2",
+          "asset_1791510099833_6a86d0aa",
+          "asset_1791510099833_ccd021c2",
+          "asset_1791510099834_dbaccdc7",
+          "asset_1791510099835_260fc2e5"
+        ],
+        "durationMs": 975,
+        "outcome": "request-failed",
+        "responseParsed": false,
+        "expectedToken": "GF-D43FE814D04F"
+      }
+    }
+  ],
+  "uiVerified": [
+    "real product mention selected",
+    "product image set structured shortcut submitted",
+    "retry entry submitted",
+    "failed visual request persisted after reload and cold restart"
+  ],
+  "connectionError": "ECONNRESET before TLS established",
+  "networkProbe": {
+    "modelServiceDirect": {
+      "curlExit": 35,
+      "httpStatus": 0
+    },
+    "modelServiceViaExistingSystemProxy": {
+      "curlExit": 0,
+      "httpStatus": 404,
+      "tlsVerifyResult": 0,
+      "authenticated": false
+    },
+    "proxy": "http://127.0.0.1:6738",
+    "paidModelRequest": false
+  },
+  "temporaryProxyAuthorized": true,
+  "temporaryProxyApplied": true,
+  "paidImageVideoVoiceRequests": 0,
+  "newProjects": 2,
+  "baselineChangedFiles": [
+    "media/catalog.json"
+  ],
+  "uiToolErrors": [
+    "noWindowsAvailable",
+    "elementHasNoFrame",
+    "AXError.invalidUIElement"
+  ],
+  "acceptanceCompleted": true,
+  "proxyRestoredAfterDriverExit": true,
+  "imageApprovalCallId": "call_1ab01a78562744699d1d888b",
+  "imageProject": "xiaohongshu/商品套图-40297282-400f-4a9b-a1eb-63cc0906f597.redpost",
+  "realFindings": [
+    "15 秒来源视频的 framecrc 超过诊断缓存，丢失时间基准；已改为流式解析。",
+    "已有片段模式在 QueryRuntime 仍被图像视觉断言拒绝；已统一使用结构化视觉准备决策。",
+    "修改已导出的工程后界面仍显示已导出；已在渲染摘要变化时恢复 ready，重新导出及冷启动复验通过。"
+  ],
+  "checks": {
+    "desktopTests": 433,
+    "typeChecks": "passed",
+    "fullCheck": "passed",
+    "build": "passed",
+    "buildCommand": "pnpm build --config.compression=normal"
+  },
+  "verifiedVisualRequests": 1,
+  "planningWorkflowsWithRealProposal": 2,
+  "textVisionRequestCount": "not instrumented",
+  "newPaidMediaJobs": 0,
+  "newLocalMediaOutputs": 9,
+  "newLocalPngs": 6,
+  "newLocalMp4s": 3,
+  "initialConnectionErrorResolved": true,
+  "originalNonProxySettingsUnchanged": true,
+  "remixApprovalCallId": "call_9486e3832c8841be9f7579e3",
+  "remixProject": "video_edit_v2_1791785758762_10b3825c",
+  "finalEvidence": "validation-summary.json"
+}

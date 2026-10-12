@@ -9,6 +9,16 @@ activationHint: 'Invoke this before any media generation when the user asks for 
 
 # Video Director
 
+## Existing-video remix mode
+
+When structured metadata `productVideoCompositionMode` is `existing-clips`, use this branch before the image/video generation workflow below:
+
+- Read the one selected product and `explicitVideoClipRefs` / `<selected_video_clips>` injected by the main process. Use only these selected media IDs, content hashes and true source durations. Filenames and metadata are not video understanding: do not invent visible actions, speech or claims; ask the user to describe a shot when its content matters.
+- Plan an ordered cut using existing footage. Default to 1080×1920, 30fps and `contain-blur`; short clips of 2–5 seconds are a starting point, never extend beyond their source. Use original audio only at the explicitly proposed `sourceVolume` (0–1); show it in the confirmation card. Do not generate thumbnails/contact sheets, images, video, narration, or run ASR automatically.
+- Submit `product_video_compose` with `compositionMode: "existing-clips"`, `voiceoverEnabled: false`, and every scene `source: "media-clip"`, `productAssetIds: []`, `motionPreset: "static"`. Each scene must include its selected `mediaAssetId`, matching `mediaContentHash`, `sourceStartMs`, `sourceEndMs`, `durationMs` equal to their difference, `sourceVolume`, title, fit and optional editable overlay text. The whole duration equals the sum of cuts; at most eight scenes, each 0.5–30 seconds.
+- The persistent tool card shows real source videos and cut ranges. Wait for that confirmation, then return the `video-project://` link. No chat wording substitutes for the tool gate. The engineer owns independent copies, local audio and MP4 rendering. Changes to the source product or video invalidate a pending plan; existing projects remain independent.
+- If source footage is missing or outdated, let the user select it again. Never fall back to generated footage or still-image scenes in this mode.
+
 Use this skill before calling `Operate(resource="video", operation="generate", input={ ... })` for video work.
 
 For AI chat, this skill is the single entrypoint for video generation. If the user says "做一个口播视频", "生成一个视频", "产品宣传片", "广告片", "数字人视频", or any similar video request, invoke `video-director` first. Do not start from `cosyvoice-ssml`; that skill is an internal digital-human TTS substep and must not drive the video workflow.

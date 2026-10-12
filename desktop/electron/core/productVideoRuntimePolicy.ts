@@ -1,5 +1,6 @@
 import type { WorkflowKind } from './ai/types';
 import type { ProductVideoVisualGroundingEvidence } from './productVideoVisualGrounding';
+import { ProductVideoClipReferencesSchema, type ProductVideoClipReference } from '../../shared/productVideoRemix.ts';
 
 export type ProductVideoRuntimeRef = {
     productId: string;
@@ -100,7 +101,12 @@ export function evaluateProductVideoToolPolicy(params: {
     args: Record<string, unknown>;
     explicitProductRefs?: ProductVideoRuntimeRef[];
     productAssetVisualGrounding?: ProductVideoVisualGroundingEvidence;
+    productVideoCompositionMode?: string;
+    explicitVideoClipRefs?: ProductVideoClipReference[];
 }): ProductVideoToolPolicyDecision {
+    if (params.productVideoCompositionMode === 'existing-clips' && ['image_generate', 'video_generate', 'audio_generate'].includes(params.toolName)) {
+        return { outcome: 'deny', reason: '已有视频混剪使用已选来源，不自动生成图片、视频或旁白。请提交混剪区间到 product_video_compose。' };
+    }
     if (
         params.workflowKind === 'product-video-compose'
         && (params.toolName === 'video_generate' || params.toolName === 'image_generate')
@@ -143,6 +149,19 @@ export function evaluateProductVideoToolPolicy(params: {
             reason: '分镜中的商品版本与当前已选择商品不一致，请重新读取最新商品资料并修正提案。',
         };
     }
+    if (params.productVideoCompositionMode === 'existing-clips' || params.args.compositionMode === 'existing-clips') {
+        const refs = ProductVideoClipReferencesSchema.safeParse(params.explicitVideoClipRefs);
+        if (params.productVideoCompositionMode !== 'existing-clips' || params.args.compositionMode !== 'existing-clips' || !refs.success || params.args.voiceoverEnabled !== false) return { outcome: 'deny', reason: '混剪需要明确的工作流模式、已验证的来源引用和关闭自动旁白。请重新选择视频素材。' };
+        for (const scene of proposalScenes(params.args)) {
+            const ref = refs.data.find((item) => item.assetId === scene.mediaAssetId);
+            if (scene.source !== 'media-clip' || !ref || scene.mediaContentHash !== ref.contentHash || !Number.isFinite(scene.sourceStartMs)
+                || !Number.isFinite(scene.sourceEndMs) || Number(scene.sourceStartMs) < 0 || Number(scene.sourceEndMs) > ref.durationMs || Number(scene.sourceEndMs) <= Number(scene.sourceStartMs)) {
+                return { outcome: 'deny', reason: '混剪片段引用了未选择、过期或超出来源时长的视频区间。请修正方案。' };
+            }
+        }
+        return null;
+    }
+    if (proposalScenes(params.args).some((scene) => scene.source === 'media-clip')) return { outcome: 'deny', reason: '视频片段只能在明确的已有视频混剪模式使用。' };
     const grounding = params.productAssetVisualGrounding;
     if (
         grounding?.status !== 'verified'

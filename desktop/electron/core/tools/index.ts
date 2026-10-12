@@ -1,3 +1,4 @@
+import { ProductImageSetComposeTool } from './productImageSetComposeTool';
 /**
  * Built-in Tools - 内置工具导出
  */
@@ -140,6 +141,14 @@ const ensureBuiltinToolDescriptorsRegistered = (): void => {
         artifactOutput: ['video'],
         retryPolicy: 'manual',
         create: () => new VideoGenerateTool(),
+    });
+    register({
+        name: 'product_image_set_compose', displayName: 'Compose Product Image Set',
+        description: 'Create an editable product image set after durable user approval. Default local layouts, no paid media generation.',
+        kind: ToolKind.Execute, contexts: ['gardenflow', 'diagnostics'], visibility: 'public', requiresContext: null,
+        preconditions: ['one selected product', 'verified product-owned images', 'explicit user confirmation'],
+        successSignal: 'editable redpost project URI', failureSignal: 'invalid or changed product proposal',
+        artifactOutput: ['project'], retryPolicy: 'manual', create: () => new ProductImageSetComposeTool(),
     });
     register({
         name: 'product_video_compose',

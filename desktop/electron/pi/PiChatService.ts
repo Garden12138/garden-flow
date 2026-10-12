@@ -416,12 +416,13 @@ export class PiChatService {
       return Promise.resolve(ToolConfirmationOutcome.ProceedOnce);
     }
 
-    if (toolName === 'product_video_compose') {
+    if (toolName === 'product_video_compose' || toolName === 'product_image_set_compose') {
       const paramsRecord = params && typeof params === 'object' && !Array.isArray(params)
         ? params as Record<string, unknown>
         : {};
       const taskMetadata = this.activeRuntimeExecution?.task.metadata as Record<string, unknown> | undefined;
-      if (taskMetadata?.productVideoProposalId) paramsRecord.proposalId = String(taskMetadata.productVideoProposalId);
+      if (toolName === 'product_image_set_compose' && taskMetadata?.productImageSetProposalId) paramsRecord.proposalId = String(taskMetadata.productImageSetProposalId);
+      if (toolName === 'product_video_compose' && taskMetadata?.productVideoProposalId) paramsRecord.proposalId = String(taskMetadata.productVideoProposalId);
       const proposalId = String(paramsRecord.proposalId || '').trim();
       const proposalDigest = createHash('sha256').update(stableJson(paramsRecord)).digest('hex');
       const pending = createOrReusePendingToolApproval({
@@ -432,7 +433,7 @@ export class PiChatService {
         proposalId: proposalId || null,
         proposalDigest,
         params: paramsRecord,
-        details: { ...details, spaceId: getWorkspacePaths().activeSpaceId, replanRequest: taskMetadata?.productVideoRequest } as unknown as Record<string, unknown>,
+        details: { ...details, spaceId: getWorkspacePaths().activeSpaceId, replanRequest: toolName === 'product_image_set_compose' ? taskMetadata?.productImageSetRequest : taskMetadata?.productVideoRequest } as unknown as Record<string, unknown>,
       });
       for (const taskId of pending.supersededTaskIds) {
         getTaskGraphRuntime().cancelTask(taskId);
@@ -1108,7 +1109,7 @@ export class PiChatService {
               xhsPublishState = data.kind === 'xhs-publish-prepared' ? 'awaiting-confirmation'
                 : data.kind === 'xhs-publish-source' || data.kind === 'xhs-publish-validation-error' ? 'inspected' : 'blocked';
             }
-            if (toolName === 'product_video_compose') {
+            if (toolName === 'product_video_compose' || toolName === 'product_image_set_compose') {
               const productData = result.data && typeof result.data === 'object' && !Array.isArray(result.data)
                 ? result.data as Record<string, unknown>
                 : {};
@@ -1118,7 +1119,7 @@ export class PiChatService {
                   callId: String(productData.callId || '').trim() || undefined,
                   proposalId: String(productData.proposalId || '').trim() || undefined,
                 };
-              } else if (result.success && productData.kind === 'product-video-project') {
+              } else if (result.success && (productData.kind === 'product-video-project' || productData.kind === 'xiaohongshu-note-project')) {
                 productVideoCompletion.state = {
                   status: 'succeeded',
                   projectId: String(productData.projectId || '').trim(),
@@ -1269,8 +1270,11 @@ export class PiChatService {
             : undefined,
           productAssetVisualGrounding,
           interactive: runtimeMode !== 'background-maintenance',
+          productVideoCompositionMode: String(preparedTaskMetadata.productVideoCompositionMode || ''),
+          explicitVideoClipRefs: readProductVideoClipReferences(preparedTaskMetadata),
           requiresHumanApproval: preparedExecution.route.requiresHumanApproval,
           generationToolConstraints: preparedTaskMetadata.generationToolConstraints,
+          productImageSetEditing: preparedTaskMetadata.productImageSetEditing === true,
           maxCompletionRecoveryAttempts: captureTask ? 8 : undefined,
           completionContract: {
             builtinTaskId: String(preparedTaskMetadata.builtinTaskId || metadata.builtinTaskId || '').trim() || undefined,
@@ -1304,7 +1308,7 @@ export class PiChatService {
         && productVideoCompletion.state.uri
         && !fullResponse.includes(productVideoCompletion.state.uri)
       ) {
-        fullResponse = [fullResponse, `[打开商品视频工程](${productVideoCompletion.state.uri})`]
+        fullResponse = [fullResponse, `[打开${preparedExecution.route.workflowKind === 'product-image-set-compose' ? '商品套图' : '商品视频'}工程](${productVideoCompletion.state.uri})`]
           .filter(Boolean)
           .join('\n\n');
       }
@@ -1361,7 +1365,7 @@ export class PiChatService {
       if (runResult.awaitingApproval) {
         getAgentRuntime().pauseExecution(
           preparedExecution.task.id,
-          '等待用户确认商品视频分镜',
+          runResult.awaitingApproval.toolName === 'product_image_set_compose' ? '等待用户确认商品套图方案' : '等待用户确认商品视频分镜',
           runResult.awaitingApproval,
         );
         this.sendToUI('chat:response-end', { content: fullResponse });
@@ -1639,6 +1643,17 @@ export class PiChatService {
         '若用户修改标题/正文/话题，只改所要求的字段并保留其他文案和已有视频。工具会尝试原地更新已核验归属的发布页，不清空或重新上传媒体；本轮只修改，不同时提交。提交结果未知时先提示用户检查笔记管理，用户明确核实未发布后可在对话恢复并重发。',
         '</xhs_publish_workflow>',
       ].join('\n\n');
+    }
+    if (preparedExecution.route.workflowKind === 'product-image-set-compose') {
+      const skill = this.skillManager.getSkill('product-image-set-director');
+      if (!skill || skill.disabled) throw new Error('商品套图技能不可用，请恢复内置技能后重试');
+      const skillContent = await this.skillManager.activateSkill('product-image-set-director');
+      if (!skillContent) throw new Error('商品套图技能加载失败');
+      preparedSystemPrompt += `
+<forced_skill name="product-image-set-director">
+${skillContent}
+</forced_skill>`;
+      if (emitSkillActivation) this.sendToUI('chat:skill-activated', { name: skill.name, description: skill.description });
     }
     if (preparedExecution.route.workflowKind === 'product-video-compose') {
       const skillName = 'video-director';
@@ -2341,7 +2356,7 @@ export class PiChatService {
       return;
     }
 
-    if (toolName === 'app_cli' && data?.kind === 'xiaohongshu-note-project') {
+    if ((toolName === 'app_cli' || toolName === 'product_image_set_compose') && data?.kind === 'xiaohongshu-note-project') {
       const noteAction = String(data.action || '').trim();
       if (noteAction !== 'note-save' && noteAction !== 'note-bind-media') {
         return;
@@ -4415,3 +4430,4 @@ export class PiChatService {
 }
 
 export default PiChatService;
+import { readProductVideoClipReferences } from '../../shared/productVideoRemix';

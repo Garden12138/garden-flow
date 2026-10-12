@@ -10,6 +10,7 @@ import {
   getWorkspacePaths,
   getWorkspacePathsForSpace,
   getChatMessages,
+  runInWorkspaceSpace,
   type PendingToolApprovalSnapshot,
 } from '../db';
 import path from 'node:path';
@@ -25,6 +26,8 @@ import {
 } from './productVideoRuntimePolicy';
 import { ProductVideoComposeTool } from './tools/productVideoComposeTool';
 import type { ProductVideoVisualGroundingEvidence } from './productVideoVisualGrounding';
+import { readProductVideoClipReferences } from '../../shared/productVideoRemix';
+import { resolveProductVideoRemixFiles } from './productVideoRemixSources';
 
 export type ProductVideoApprovalRequest = {
   callId: string;
@@ -78,7 +81,7 @@ export function invalidateProductVideoApprovals(change: ProductChange): void {
 
 async function refreshApproval(approval: PendingToolApprovalSnapshot): Promise<PendingToolApprovalSnapshot> {
   if (approval.status !== 'pending') return approval;
-  if (await findProductVideoProjectByProposalId(String(approval.proposal_id || ''))) return approval;
+  if (await runInWorkspaceSpace(approvalSpace(approval), () => findProductVideoProjectByProposalId(String(approval.proposal_id || '')))) return approval;
   const root = path.join(getWorkspacePathsForSpace(approvalSpace(approval)).subjects, 'brand-workspace');
   const store = createBrandWorkspaceStore(() => root);
   const product = await store.getProductCreativeReference(String(approval.params.productId || '')).catch((error) => {
@@ -94,7 +97,7 @@ export async function reconcileProductVideoApprovals(): Promise<void> {
   for (const approval of listProductVideoApprovals()) await refreshApproval(approval);
 }
 
-export async function getProductVideoReplanInput(sessionId: string, callId: string): Promise<{ message: string; productId: string }> {
+export async function getProductVideoReplanInput(sessionId: string, callId: string): Promise<{ message: string; productId: string; remixClips?: import('../../shared/productVideoRemix').ProductVideoClipReference[] }> {
   const stored = getPendingToolApproval(callId);
   if (!stored || stored.session_id !== sessionId || stored.tool_name !== 'product_video_compose') throw new Error('分镜不属于当前会话');
   if (approvalSpace(stored) !== getWorkspacePaths().activeSpaceId) throw new Error('请切换回分镜所属空间后重新规划');
@@ -104,6 +107,12 @@ export async function getProductVideoReplanInput(sessionId: string, callId: stri
   const original = getChatMessages(sessionId).filter((message) => message.role === 'user' && message.timestamp <= approval.created_at).at(-1);
   const message = String(request.message || original?.display_content || original?.content || '').split('<selected_product_assets>')[0].trim();
   if (!message) throw new Error('原始创作要求不可用，请重新输入视频要求');
+  if (approval.params.compositionMode === 'existing-clips') {
+    const task = approval.task_id ? getTaskGraphRuntime().getTask(approval.task_id) : null;
+    const clips = readProductVideoClipReferences(task?.metadata);
+    await runInWorkspaceSpace(approvalSpace(approval), () => resolveProductVideoRemixFiles(clips));
+    return { message, productId: String(approval.params.productId || ''), remixClips: clips };
+  }
   return { message, productId: String(approval.params.productId || '') };
 }
 
@@ -151,6 +160,8 @@ function approvalSafetyError(approval: PendingToolApprovalSnapshot): string | nu
       && !Array.isArray(taskMetadata.productAssetVisualGrounding)
       ? taskMetadata.productAssetVisualGrounding as ProductVideoVisualGroundingEvidence
       : undefined,
+    productVideoCompositionMode: String(taskMetadata.productVideoCompositionMode || ''),
+    explicitVideoClipRefs: readProductVideoClipReferences(taskMetadata),
   });
   return decision?.reason || null;
 }
@@ -180,6 +191,13 @@ export async function getProductVideoApprovalRequest(sessionId: string): Promise
   const taskMetadata = task?.metadata && typeof task.metadata === 'object' && !Array.isArray(task.metadata)
     ? task.metadata as Record<string, unknown>
     : {};
+  if (approval.params.compositionMode === 'existing-clips' && !await runInWorkspaceSpace(approvalSpace(approval), () => findProductVideoProjectByProposalId(String(approval.proposal_id || '')))) {
+    try { await runInWorkspaceSpace(approvalSpace(approval), () => resolveProductVideoRemixFiles(readProductVideoClipReferences(taskMetadata))); }
+    catch (error) {
+      failUnsafeApproval(approval, `混剪视频来源已删除、更新或不可读取：${error instanceof Error ? error.message : String(error)}。请重新选择视频并规划。`);
+      return null;
+    }
+  }
   const grounding = taskMetadata.productAssetVisualGrounding
     && typeof taskMetadata.productAssetVisualGrounding === 'object'
     && !Array.isArray(taskMetadata.productAssetVisualGrounding)
@@ -198,6 +216,7 @@ export async function getProductVideoApprovalRequest(sessionId: string): Promise
     params: approval.params,
     details: {
       ...approval.details,
+      ...(approval.params.compositionMode === 'existing-clips' ? { remixSourceReferences: readProductVideoClipReferences(taskMetadata) } : {}),
       ...((storedWarnings.length > 0 || computedWarnings.length > 0) ? {
         warnings: Array.from(new Set([...storedWarnings, ...computedWarnings])),
       } : {}),
@@ -251,7 +270,7 @@ async function executeApprovedProductVideo(
   }
 
   if (approval.task_id) getTaskGraphRuntime().resumeTask(approval.task_id);
-  const result = await new ProductVideoComposeTool().execute(parsed.data, new AbortController().signal);
+  const result = await runInWorkspaceSpace(approvalSpace(approval), () => new ProductVideoComposeTool().execute(parsed.data, new AbortController().signal));
   const data = resultData(result.data);
   if (!result.success && (data.code === 'PRODUCT_SNAPSHOT_CHANGED' || data.code === 'PRODUCT_NOT_FOUND')) {
     invalidateApproval(approval, data.code === 'PRODUCT_NOT_FOUND' ? 'product-deleted' : 'product-updated', undefined, 'executing');

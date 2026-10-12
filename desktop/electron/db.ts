@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import path from 'path';
 import { app } from 'electron';
 import { fileURLToPath } from 'url';
@@ -1280,9 +1281,14 @@ export const getWorkspacePathsForSpace = (spaceId: string) => {
   };
 };
 
+const workspaceSpaceContext = new AsyncLocalStorage<string>();
+
+/** Pin asynchronous writes to their initiating space, independent of UI navigation. */
+export const runInWorkspaceSpace = <T>(spaceId: string, operation: () => T): T => workspaceSpaceContext.run(spaceId, operation);
+
 export const getWorkspacePaths = () => {
   const settings = getSettings() as { active_space_id?: string } | undefined;
-  const activeSpaceId = settings?.active_space_id || DEFAULT_SPACE_ID;
+  const activeSpaceId = workspaceSpaceContext.getStore() || settings?.active_space_id || DEFAULT_SPACE_ID;
   return getWorkspacePathsForSpace(activeSpaceId);
 };
 
@@ -2694,6 +2700,16 @@ export const getPendingToolApprovalForSession = (sessionId: string): PendingTool
 export const listProductVideoApprovals = (): PendingToolApprovalSnapshot[] => (
   (db.prepare("SELECT * FROM pending_tool_approvals WHERE tool_name = 'product_video_compose' AND status IN ('pending', 'invalidated')").all() as PendingToolApprovalRecord[])
     .map((row) => parsePendingToolApproval(row)!)
+);
+
+export const listProductImageSetApprovals = (): PendingToolApprovalSnapshot[] => (
+  (db.prepare("SELECT * FROM pending_tool_approvals WHERE tool_name = 'product_image_set_compose' AND status IN ('pending', 'invalidated')").all() as PendingToolApprovalRecord[])
+    .map((row) => parsePendingToolApproval(row)!)
+);
+
+export const getLatestProductImageSetApproval = (sessionId: string): PendingToolApprovalSnapshot | null => parsePendingToolApproval(
+  db.prepare("SELECT * FROM pending_tool_approvals WHERE session_id = ? AND tool_name = 'product_image_set_compose' ORDER BY created_at DESC, rowid DESC LIMIT 1")
+    .get(sessionId) as PendingToolApprovalRecord | undefined,
 );
 
 export const getLatestProductVideoApproval = (sessionId: string): PendingToolApprovalSnapshot | null => parsePendingToolApproval(

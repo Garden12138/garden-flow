@@ -4,12 +4,17 @@ const ProductVideoProposalSceneSchema = z.object({
   id: z.string().min(1),
   title: z.string().min(1),
   durationMs: z.number().int().min(500).max(30_000),
-  source: z.enum(['product-asset', 'ai-motion']),
-  productAssetIds: z.array(z.string().min(1)).min(1).max(3),
+  source: z.enum(['product-asset', 'ai-motion', 'media-clip']),
+  productAssetIds: z.array(z.string().min(1)).max(3),
   overlayText: z.string().max(120).optional(),
   generationPrompt: z.string().max(4_000).optional(),
   fitMode: z.enum(['contain-blur', 'cover']),
   motionPreset: z.enum(['static', 'slow-zoom-in', 'slow-zoom-out', 'pan-left', 'pan-right']),
+  mediaAssetId: z.string().min(1).optional(),
+  mediaContentHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  sourceStartMs: z.number().int().nonnegative().optional(),
+  sourceEndMs: z.number().int().positive().optional(),
+  sourceVolume: z.number().min(0).max(1).optional(),
 }).strict();
 
 export const ProductVideoComposeParamsSchema = z.object({
@@ -28,6 +33,7 @@ export const ProductVideoComposeParamsSchema = z.object({
   }).strict(),
   durationMs: z.number().int().min(1_000).max(300_000),
   voiceoverEnabled: z.boolean().optional().describe('Whether approval authorizes automatic narration from screen copy. Set false for a silent video; omitted retains the existing narration default.'),
+  compositionMode: z.enum(['product-images', 'existing-clips']).optional(),
   scenes: z.array(ProductVideoProposalSceneSchema).min(1).max(8),
 }).strict().superRefine((value, context) => {
   const uniqueProductIds = Array.from(new Set(value.referencedProductIds));
@@ -39,10 +45,22 @@ export const ProductVideoComposeParamsSchema = z.object({
     context.addIssue({ code: z.ZodIssueCode.custom, message: 'durationMs must equal the sum of scene durations.', path: ['durationMs'] });
   }
   const aiCount = value.scenes.filter((scene) => scene.source === 'ai-motion').length;
+  if (new Set(value.scenes.map((scene) => scene.id)).size !== value.scenes.length) context.addIssue({ code: z.ZodIssueCode.custom, message: '分镜 ID 不得重复', path: ['scenes'] });
+  if (value.compositionMode === 'existing-clips' && (value.voiceoverEnabled !== false || value.scenes.some((scene) => scene.source !== 'media-clip'))) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: '混剪只能使用已选视频片段，必须关闭自动旁白', path: ['compositionMode'] });
+  }
   if (aiCount > 2) {
     context.addIssue({ code: z.ZodIssueCode.custom, message: 'Phase 2 supports at most two AI motion scenes.', path: ['scenes'] });
   }
   for (const scene of value.scenes) {
+    if (scene.source === 'media-clip') {
+      if (value.compositionMode !== 'existing-clips' || scene.productAssetIds.length || !scene.mediaAssetId || !scene.mediaContentHash
+        || scene.sourceStartMs === undefined || scene.sourceEndMs === undefined || scene.sourceEndMs - scene.sourceStartMs !== scene.durationMs || scene.motionPreset !== 'static') {
+        context.addIssue({ code: z.ZodIssueCode.custom, message: '视频片段必须声明混剪模式、来源摘要和准确截取区间，不添加原图动效', path: ['scenes'] });
+      }
+    } else if (scene.productAssetIds.length < 1 || scene.mediaAssetId !== undefined || scene.mediaContentHash !== undefined || scene.sourceVolume !== undefined || scene.sourceStartMs !== undefined || scene.sourceEndMs !== undefined) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: '原图／AI 镜头必须使用商品图片，不得携带混剪来源', path: ['scenes'] });
+    }
     if (scene.source === 'ai-motion' && !String(scene.generationPrompt || '').trim()) {
       context.addIssue({ code: z.ZodIssueCode.custom, message: 'AI motion scenes require generationPrompt.', path: ['scenes'] });
       break;
@@ -59,6 +77,8 @@ export const ProductVideoEditCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('scene.text'), sceneId: z.string().min(1), text: z.string().max(120) }).strict(),
   z.object({ type: z.literal('scene.narration-text'), sceneId: z.string().min(1), text: z.string().max(500) }).strict(),
   z.object({ type: z.literal('scene.asset'), sceneId: z.string().min(1), assetId: z.string().min(1) }).strict(),
+  z.object({ type: z.literal('scene.trim'), sceneId: z.string().min(1), sourceStartMs: z.number().int().nonnegative(), sourceEndMs: z.number().int().positive() }).strict(),
+  z.object({ type: z.literal('scene.source-volume'), sceneId: z.string().min(1), volume: z.number().min(0).max(1) }).strict(),
   z.object({ type: z.literal('scene.delete'), sceneId: z.string().min(1) }).strict(),
   z.object({ type: z.literal('voiceover.remove'), sceneId: z.string().min(1) }).strict(),
   z.object({ type: z.literal('music.remove') }).strict(),

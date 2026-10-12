@@ -1,0 +1,12 @@
+{
+  "skill": "dist-electron/builtin-skills/video-director/SKILL.md",
+  "skillMatchesSource": true,
+  "skillSha256": "9de67160db25becedf50a24ea72db4fe8c76da0f3fda2dc16991bc46d7d53562",
+  "mainPath": "dist-electron/appMain-Djn3723u.js",
+  "mainMatchesBuild": true,
+  "mainSha256": "ed9d7b491155d1c997f9399971c73d7e0e90eedb573cc9220b5d66bd82482112",
+  "rendererBuildFilesMatched": 40,
+  "remotionFilesMatched": 105,
+  "appAsarSha256": "5ab928b5845a83ff70efd93fe4e5dd419b1ba43942546c29b57b814eb0876159",
+  "qaScriptMatchesPackage": true
+}

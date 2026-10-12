@@ -952,11 +952,16 @@ function SceneLayerContent({
                     <Img src={source} style={contentStyle} />
                 </>
             ) : showBaseMedia && scene.assetKind === 'video' ? (
-                runtime === 'preview' ? (
+                <>
+                {scene.fitMode === 'contain-blur' && scene.volume !== undefined && (runtime === 'preview'
+                    ? <Html5Video src={source} muted volume={0} startFrom={scene.trimInFrames || 0} endAt={(scene.trimInFrames || 0) + scene.durationInFrames} style={{ position: 'absolute', inset: '-6%', width: '112%', height: '112%', objectFit: 'cover', filter: 'blur(42px)', opacity: 0.48 }} />
+                    : <OffthreadVideo src={source} muted volume={0} startFrom={scene.trimInFrames || 0} endAt={(scene.trimInFrames || 0) + scene.durationInFrames} style={{ position: 'absolute', inset: '-6%', width: '112%', height: '112%', objectFit: 'cover', filter: 'blur(42px)', opacity: 0.48 }} />)}
+                {runtime === 'preview' ? (
                     <Html5Video
                         src={source}
                         style={contentStyle}
                         muted={scene.muted ?? !enableMediaAudio}
+                        volume={Math.max(0, Math.min(1, Number(scene.volume ?? 1)))}
                         startFrom={scene.trimInFrames || 0}
                         endAt={(scene.trimInFrames || 0) + scene.durationInFrames}
                     />
@@ -965,10 +970,12 @@ function SceneLayerContent({
                         src={source}
                         style={contentStyle}
                         muted={scene.muted ?? !enableMediaAudio}
+                        volume={Math.max(0, Math.min(1, Number(scene.volume ?? 1)))}
                         startFrom={scene.trimInFrames || 0}
                         endAt={(scene.trimInFrames || 0) + scene.durationInFrames}
                     />
-                )
+                )}
+                </>
             ) : shouldRenderVisualPlaceholder(scene.assetKind, showBaseMedia) ? (
                 <AbsoluteFill
                     style={{

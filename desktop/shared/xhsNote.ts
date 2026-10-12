@@ -1,8 +1,10 @@
+import { ProductImageSetSchema, productImageInputKey, productImageSlotId, type ProductImageSet } from './productImageSet.ts';
+
 export const XHS_NOTE_SCHEMA_VERSION = 1 as const;
 
 export type XhsNoteType = 'image' | 'video';
 export type XhsMediaSlotRole = 'cover' | 'image-page' | 'video';
-export type XhsMediaStatus = 'empty' | 'planned' | 'ready' | 'missing' | 'failed';
+export type XhsMediaStatus = 'empty' | 'planned' | 'ready' | 'missing' | 'failed' | 'stale';
 export type XhsGenerationStatus = 'draft' | 'ready' | 'generating' | 'generated' | 'failed';
 
 export interface XhsMediaSlot {
@@ -67,6 +69,7 @@ export interface XhsSubtitleItem {
 }
 
 export interface XhsNoteDocument {
+    productImageSet?: ProductImageSet;
     schemaVersion: typeof XHS_NOTE_SCHEMA_VERSION;
     revision: number;
     noteType: XhsNoteType;
@@ -394,7 +397,7 @@ const normalizeHashtag = (value: string): string => value.replace(/^#+/, '').tri
 
 const normalizeMediaStatus = (value: unknown): XhsMediaStatus => {
     const normalized = asString(value) as XhsMediaStatus;
-    return ['empty', 'planned', 'ready', 'missing', 'failed'].includes(normalized) ? normalized : 'empty';
+    return ['empty', 'planned', 'ready', 'missing', 'failed', 'stale'].includes(normalized) ? normalized : 'empty';
 };
 
 const normalizeGenerationStatus = (value: unknown): XhsGenerationStatus => {
@@ -516,7 +519,8 @@ export function normalizeXhsNoteDocument(value: unknown, forcedType?: XhsNoteTyp
         };
     });
 
-    return {
+    const document: XhsNoteDocument = {
+        productImageSet: noteType === 'image' && input.productImageSet ? ProductImageSetSchema.parse(input.productImageSet) : undefined,
         schemaVersion: XHS_NOTE_SCHEMA_VERSION,
         revision: Math.max(0, Math.trunc(asNumber(input.revision, 0))),
         noteType,
@@ -538,6 +542,26 @@ export function normalizeXhsNoteDocument(value: unknown, forcedType?: XhsNoteTyp
         createdAt: asString(input.createdAt) || now,
         updatedAt: asString(input.updatedAt) || now,
     };
+    return projectProductImageSetDocument(document);
+}
+
+export function projectProductImageSetDocument(document: XhsNoteDocument): XhsNoteDocument {
+    const set = document.productImageSet;
+    if (!set) return document;
+    const mediaSlots = set.pages.map((page): XhsMediaSlot => {
+        const slotId = productImageSlotId(page);
+        const slot = document.mediaSlots.find((item) => item.id === slotId);
+        const current = Boolean(page.render && page.render.inputKey === productImageInputKey(set, page));
+        return { ...slot, id: slotId, role: page.role === 'cover' ? 'cover' : 'image-page',
+            label: page.role === 'cover' ? '封面' : page.title || '内容页', pageId: page.id,
+            assetId: page.render?.assetId,
+            status: current ? (slot?.status === 'missing' ? 'missing' : 'ready') : page.render ? 'stale' : 'planned',
+            previewUrl: current ? slot?.previewUrl : undefined };
+    });
+    return { ...document, aspectRatio: '3:4', coverText: set.pages[0].title,
+        imagePages: set.pages.slice(1).map((page, index) => ({ id: page.id, index: index + 1,
+            title: page.title, copy: page.copy, visualBrief: page.layout, imagePrompt: page.aiPrompt, mediaSlotId: productImageSlotId(page) })),
+        mediaSlots, generationStatus: mediaSlots.every((slot) => slot.status === 'ready') ? 'generated' : 'draft' };
 }
 
 export function renderXhsNoteMarkdown(

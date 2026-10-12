@@ -32,7 +32,10 @@ export const resolveProductVideoVisualPreparation = (input: {
   metadata?: unknown;
 }): ProductVideoVisualPreparationDecision => {
   const productRefs = readExplicitProductRefs(input.metadata);
-  if (input.workflowKind !== 'product-video-compose') {
+  if (input.workflowKind === 'product-video-compose' && (input.metadata as Record<string, unknown> | undefined)?.productVideoCompositionMode === 'existing-clips') {
+    return productRefs.length === 1 ? { action: 'skip', productRefs } : { action: 'require-product-selection', productRefs };
+  }
+  if (input.workflowKind !== 'product-video-compose' && input.workflowKind !== 'product-image-set-compose') {
     return { action: 'skip', productRefs };
   }
   if (productRefs.length === 1) {

@@ -70,9 +70,12 @@ export interface RuntimeConfig {
   workflowKind?: WorkflowKind;
   explicitProductRefs?: Array<{ productId: string; name: string; updatedAt: string }>;
   productAssetVisualGrounding?: ProductVideoVisualGroundingEvidence;
+  productVideoCompositionMode?: string;
+  explicitVideoClipRefs?: import('../../shared/productVideoRemix').ProductVideoClipReference[];
   interactive?: boolean;
   requiresHumanApproval?: boolean;
   generationToolConstraints?: unknown;
+  productImageSetEditing?: boolean;
   maxCompletionRecoveryAttempts?: number;
   completionContract?: {
     builtinTaskId?: string;

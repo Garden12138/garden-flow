@@ -31,6 +31,7 @@ import {
   summarizeProductVideoRuntimeVisualInput,
 } from './productVideoVisualGrounding';
 import { collectProductVideoReviewWarnings } from './productVideoRuntimePolicy';
+import { resolveProductVideoVisualPreparation } from './ai/productVideoWorkflowPolicy';
 import { isXhsPublishWorkflowTool } from './ai/xhsPublishWorkflowPolicy';
 
 type LlmToolCall = {
@@ -189,7 +190,12 @@ export class QueryRuntime {
     const maxTimeMs = (this.config.maxTimeMinutes || 12) * 60 * 1000;
 
     let productVideoVisualSummary: ReturnType<typeof summarizeProductVideoRuntimeVisualInput> | null = null;
-    if (this.config.workflowKind === 'product-video-compose') {
+    const visualPreparation = resolveProductVideoVisualPreparation({
+      workflowKind: this.config.workflowKind,
+      metadata: { explicitProductRefs: this.config.explicitProductRefs, productVideoCompositionMode: this.config.productVideoCompositionMode },
+    });
+    if ((this.config.workflowKind === 'product-video-compose' || this.config.workflowKind === 'product-image-set-compose')
+      && visualPreparation.action !== 'skip') {
       try {
         productVideoVisualSummary = assertProductVideoRuntimeVisualInput({
           content: this.config.userInputContent,
@@ -487,7 +493,7 @@ export class QueryRuntime {
             reviewWarnings.length > 0
               ? ['请在确认前核对以下非阻断提示：', ...reviewWarnings].join('\n')
               : '',
-            '分镜确认卡已准备好，当前分镜提案处于等待确认状态。确认卡会保留到你明确确认、取消或提交新的修改方案；等待期间不会创建工程，也不会提交 AI 生成任务。',
+            awaitingApproval.toolName === 'product_image_set_compose' ? '商品套图确认卡已准备好。确认后将创建可编辑图文工程；默认使用原图排版，不提交付费媒体生成。确认卡会保留到你确认、取消或提交新方案。' : '分镜确认卡已准备好，当前分镜提案处于等待确认状态。确认卡会保留到你明确确认、取消或提交新的修改方案；等待期间不会创建工程，也不会提交 AI 生成任务。',
           ].filter(Boolean).join('\n\n');
           this.adapter.onEvent({ type: 'response_chunk', content: responseText });
           this.adapter.onEvent({ type: 'response_end', content: responseText });
@@ -979,6 +985,9 @@ export class QueryRuntime {
         workflowKind: this.config.workflowKind,
         explicitProductRefs: this.config.explicitProductRefs,
         productAssetVisualGrounding: this.config.productAssetVisualGrounding,
+        productVideoCompositionMode: this.config.productVideoCompositionMode,
+        explicitVideoClipRefs: this.config.explicitVideoClipRefs,
+        productImageSetEditing: this.config.productImageSetEditing,
         interactive: this.config.interactive !== false,
         requiresHumanApproval: this.config.requiresHumanApproval,
       },

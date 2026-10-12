@@ -83,9 +83,9 @@ async function readCatalog(): Promise<MediaCatalog> {
         assets: parsed.assets,
       };
     }
-    return DEFAULT_CATALOG;
+    return { ...DEFAULT_CATALOG, assets: [] };
   } catch {
-    return DEFAULT_CATALOG;
+    return { ...DEFAULT_CATALOG, assets: [] };
   }
 }
 

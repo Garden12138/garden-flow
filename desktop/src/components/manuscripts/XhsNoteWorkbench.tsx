@@ -20,8 +20,9 @@ function buildXhsEditorContext(target: ChatMessageLinkTarget): string {
   const projectPath = target.projectPath || target.localPathCandidate || target.relativePath || target.href;
   const noteType = target.noteType === 'video' ? '视频笔记' : '图文笔记';
   return [
+    ...(target.xhsNote?.productImageSet ? ['当前是商品套图工程。页面标题、文案、图片 ID、布局和统一配色在 document.productImageSet.pages/style 中编辑，imagePages 和 mediaSlots 由系统投影。商品快照、素材清单和 render/generation 记录不可自行改写；付费图片生成由工作台按页确认，禁止直接 image_generate。'] : []),
     '当前对话嵌入在小红书稿件工作台右侧，所有修改都作用于左侧当前打开的结构化笔记。',
-    '每次修改前先用 manuscripts note-get 读取最新 revision；保存时使用 manuscripts note-save，禁止用普通 Markdown 写入覆盖结构化工程。',
+    '每次修改前先用 manuscripts note-get 读取最新 revision；保存时使用 manuscripts note-save --expected-revision <刚读取的版本>，禁止用普通 Markdown 写入覆盖结构化工程。',
     `当前工程路径：${projectPath}`,
     `当前工程 URI：${target.uri || target.href}`,
     `当前笔记类型：${noteType}`,
@@ -50,6 +51,7 @@ export function XhsNoteWorkbench({
     activeXhsNotePath: projectPath,
     activeXhsNoteUri: target.uri || target.href,
     xhsNoteType: target.noteType,
+    productImageSetEditing: Boolean(target.xhsNote?.productImageSet),
     initialContext: buildXhsEditorContext(target),
   }), [editorSessionMetadata, projectPath, target]);
 

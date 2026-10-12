@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 interface ConfirmDialogProps {
     open: boolean;
     title: string;
@@ -8,6 +10,7 @@ interface ConfirmDialogProps {
     hideCancel?: boolean;
     onConfirm: () => void;
     onCancel: () => void;
+    children?: ReactNode;
 }
 
 export function ConfirmDialog({
@@ -20,6 +23,7 @@ export function ConfirmDialog({
     hideCancel = false,
     onConfirm,
     onCancel,
+    children,
 }: ConfirmDialogProps) {
     if (!open) return null;
 
@@ -35,6 +39,7 @@ export function ConfirmDialog({
                     <div className="mt-1 text-xs leading-5 text-text-tertiary whitespace-pre-wrap">
                         {description}
                     </div>
+                    {children}
                 </div>
                 <div className="px-5 py-4 flex items-center justify-end gap-2">
                     {!hideCancel && (

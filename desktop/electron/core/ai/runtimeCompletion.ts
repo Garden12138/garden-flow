@@ -62,6 +62,12 @@ export function validateRuntimeCompletion(input: {
   if (input.route.workflowKind === 'xhs-publish') {
     return validateXhsPublishCompletion(input.xhsPublishState || 'not-called', input.route.xhsPublishAction);
   }
+  if (input.route.workflowKind === 'product-image-set-compose') {
+    const state = input.productVideoState || { status: 'not-called' };
+    if (['awaiting-approval', 'cancelled', 'failed'].includes(state.status)) return { complete: true };
+    if (state.status === 'succeeded' && input.artifacts?.some((artifact) => artifact.type === 'xiaohongshu-note-project')) return { complete: true };
+    return { complete: false, maxRecoveryAttempts: 3, feedback: '请调用 product_image_set_compose 提交完整套图方案并等待确认卡。只输出文字、独立图片或普通稿件不能代替套图工程。' };
+  }
   if (input.route.workflowKind === 'product-video-compose') {
     const state = input.productVideoState || { status: 'not-called' };
     if (state.status === 'awaiting-approval') {

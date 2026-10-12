@@ -1,0 +1,45 @@
+{
+  "projectId": "video_edit_v2_1791785758762_10b3825c",
+  "mediaAssetId": "media_1791786726923_8a311aae",
+  "outputSha256": "43acf39071f64a612a370c3dac518765d4756e7151d838342b0523410eadc1c1",
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "frameCount": 180,
+  "videoTrackDurationMs": 6000,
+  "containerDurationApproxMs": 6060,
+  "sceneOrder": [
+    "scene-2",
+    "scene-1"
+  ],
+  "sourceRangesMs": [
+    [
+      0,
+      3000
+    ],
+    [
+      500,
+      3500
+    ]
+  ],
+  "sourceVolumes": [
+    0.5,
+    0
+  ],
+  "sourceAudioRms": [
+    0.0,
+    0.0
+  ],
+  "outputAudioRms": 0.0,
+  "realSourceAudioIsSilent": true,
+  "sourceCopiesMatch": true,
+  "originalSourceSha256": {
+    "media_1791517548550_c9ccb00b": "92a6a3dc8eaab99136ddd0bfa7c76bda45887a2b078bfdcc81c4ea7d26442770",
+    "media_1791623698700_6e7481ac": "bdb2e7316fb0f9b50cf2c2b3f76353d5ee50f20963b3e7fd3bde97ca965961f7"
+  },
+  "confirmationRecoveredExactly": true,
+  "duplicateConfirmationReusesProject": true,
+  "changedExportedProjectStatus": "ready",
+  "afterExportStatus": "exported",
+  "finalColdReopenTimelineScenesOutputsIdentical": true
+}

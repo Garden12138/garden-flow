@@ -1,0 +1,36 @@
+{
+  "date": "2026-10-12",
+  "productId": "product_1791510099824_b6bb14ed",
+  "selectedSkuId": "sku_1791510099840_3c56167b",
+  "selectedSku": "300g×12 海洋鱼口味，3.6kg",
+  "sourceMediaIds": [
+    "media_1791517548550_c9ccb00b",
+    "media_1791623698700_6e7481ac"
+  ],
+  "sourceVideoDurationMs": [
+    15000,
+    15000
+  ],
+  "decodedProductImages": 16,
+  "existingVideoProjects": 8,
+  "existingNotes": 18,
+  "baselineFileCount": 28,
+  "baselineChangedFiles": [
+    "media/catalog.json"
+  ],
+  "paidMediaRequests": 0,
+  "acceptanceNotYetCompleted": false,
+  "attemptedVisualWorkflows": 2,
+  "runtimeEvidence": "runtime-attempt.json",
+  "initialPreflight": {
+    "status": "preflight-passed-runtime-blocked",
+    "newModelRequests": 4,
+    "successfulModelRequests": 0,
+    "toolBlocker": "CUA screenshots recovered temporarily, but controls remain unreliable with noWindowsAvailable / elementHasNoFrame. Real visual requests fail on direct TLS; existing system proxy HEAD probe succeeds. Temporary proxy authorized, not yet saved; alternate IPC driver authorization pending."
+  },
+  "status": "acceptance-completed",
+  "successfulPlanningWorkflows": 2,
+  "totalTextVisionRequestCount": null,
+  "totalTextVisionRequestCountNote": "Not instrumented; initial failed attempt count is preserved under initialPreflight.",
+  "finalEvidence": "validation-summary.json"
+}

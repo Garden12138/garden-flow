@@ -79,6 +79,7 @@ export enum ToolErrorType {
  * 工具确认详情
  */
 export interface ToolConfirmationDetails {
+    remixSourceReferences?: import('../../shared/productVideoRemix').ProductVideoClipReference[];
     /** 确认类型 */
     type: 'edit' | 'exec' | 'info';
     /** 确认标题 */

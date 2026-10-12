@@ -1,5 +1,6 @@
+import { evaluateProductImageSetToolPolicy } from './ai/productImageSetWorkflowPolicy';
 import { getBuiltinToolDescriptor } from './tools/catalog';
-import { analyzeAppCliCommand, analyzeBashCommand } from './runtimeCommandPolicy';
+import { analyzeAppCliCommand, analyzeBashCommand, parseAppCliAction } from './runtimeCommandPolicy';
 import {
     MUTATOR_KINDS,
     ToolKind,
@@ -25,6 +26,9 @@ export interface RuntimePermissionContext {
     workflowKind?: WorkflowKind;
     explicitProductRefs?: Array<{ productId: string; name: string; updatedAt: string }>;
     productAssetVisualGrounding?: ProductVideoVisualGroundingEvidence;
+    productVideoCompositionMode?: string;
+    explicitVideoClipRefs?: import('../../shared/productVideoRemix').ProductVideoClipReference[];
+    productImageSetEditing?: boolean;
 }
 
 export interface RuntimePermissionDecision {
@@ -74,6 +78,10 @@ export const evaluateRuntimeToolPermission = (params: {
     const descriptor = getBuiltinToolDescriptor(toolName);
     const interactive = context.interactive !== false;
     const runtimeMode = String(context.runtimeMode || '').trim();
+    if (context.productImageSetEditing && ['image_generate', 'video_generate', 'audio_generate', 'product_image_set_compose', 'product_video_compose'].includes(toolName)) {
+        return { outcome: 'deny', reason: '商品套图编辑中的付费生成由工作台按页确认，请通过稿件工具保存文字和布局。', source: 'runtime-policy' };
+    }
+    if (context.productImageSetEditing && toolName === 'bash') return { outcome: 'deny', reason: '商品套图通过 manuscripts note-get/note-save 读取和修改；页面生成由工作台确认。', source: 'runtime-policy' };
     if (toolName === 'xhs_publish_prepare' && context.workflowKind !== 'xhs-publish') {
         return { outcome: 'deny', reason: '该工具仅用于结构化小红书发布工作流，创作请求不能自行转为发布。', source: 'runtime-policy' };
     }
@@ -84,12 +92,22 @@ export const evaluateRuntimeToolPermission = (params: {
         return { outcome: 'deny', reason: '小红书发布工作流只能通过 xhs_publish_prepare 准备已有成片和持久化确认卡，禁止重新生成媒体或自行操作浏览器发布。', source: 'runtime-policy' };
     }
 
+    const imageSetPolicy = evaluateProductImageSetToolPolicy({
+        workflowKind: context.workflowKind,
+        toolName,
+        args,
+        explicitProductRefs: context.explicitProductRefs,
+        productAssetVisualGrounding: context.productAssetVisualGrounding,
+    });
+    if (imageSetPolicy) return { ...imageSetPolicy, source: 'runtime-policy' };
     const productVideoPolicy = evaluateProductVideoToolPolicy({
         workflowKind: context.workflowKind,
         toolName,
         args,
         explicitProductRefs: context.explicitProductRefs,
         productAssetVisualGrounding: context.productAssetVisualGrounding,
+        productVideoCompositionMode: context.productVideoCompositionMode,
+        explicitVideoClipRefs: context.explicitVideoClipRefs,
     });
     if (productVideoPolicy) {
         return {
@@ -155,6 +173,10 @@ export const evaluateRuntimeToolPermission = (params: {
             interactive,
             runtimeMode,
         });
+        const commandAction = parseAppCliAction(String(args.command || ''));
+        if (context.productImageSetEditing && analysis.className !== 'read-only' && !(commandAction.namespace === 'manuscripts' && commandAction.action === 'note-save')) {
+            return { outcome: 'deny', reason: '商品套图编辑仅允许保存稿件文字和布局，付费生成由工作台按页确认。', source: 'runtime-policy' };
+        }
         if (analysis.className === 'deny') {
             return {
                 outcome: 'deny',
@@ -261,6 +283,7 @@ export const evaluateRuntimeToolPermission = (params: {
             details: interactive
                 ? {
                     ...details,
+                    ...(toolName === 'product_video_compose' && args.compositionMode === 'existing-clips' ? { remixSourceReferences: context.explicitVideoClipRefs } : {}),
                     ...(productVideoWarnings.length > 0 ? { warnings: productVideoWarnings } : {}),
                 }
                 : null,

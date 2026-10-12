@@ -1,5 +1,7 @@
 # 测试与验收
 
+商品图文套图的回归为 `desktop/tests/productImageSet.test.ts`，包含审批恢复／幂等、商品和空间隔离、逐页过期与导出复用、ZIP 顺序及模拟 AI 的请求去重和失败恢复。实际 Electron 工作台与打包程序的隔离验收命令见[套图验收记录](PRODUCT_IMAGE_SET_ACCEPTANCE.md)；不调用真实付费图片、视频或语音模型。
+
 ## 自动检查
 
 在 Node.js 22、pnpm 10.28.2 环境运行：
@@ -86,3 +88,7 @@ README 截图统一 1600×900，浅色为主并保留一张深色模式。逐张
 - 文字清晰，没有 loading、错误 toast 或调试浮层；
 - 图片被 README 引用，单图经过压缩；
 - 不提交重复大图或未引用 GIF。
+
+已有视频混剪使用 `desktop/tests/productVideoRemix.test.ts`（desktop 目录运行 `node --test tests/productVideoRemix.test.ts`），完整集成使用 `desktop/scripts/product-video-remix-electron-qa.cjs`。开发版／安装包创建、导出、重开及真实来源选择入口的隔离验收见[视频混剪首版记录](./PRODUCT_VIDEO_REMIX_ACCEPTANCE.md)。所有来源为本地合成片段，规划审批为夹具，真实付费媒体调用为零。
+
+真实商品补充验收见[商品创作真实验收](./PRODUCT_CREATIVES_REAL_ACCEPTANCE.md)。`desktop/tests/productVideoRemixRuntime.test.ts` 可在 desktop 目录运行 `node --test tests/productVideoRemixRuntime.test.ts`；它直接覆盖统一运行时到人工审批的混剪路径，并验证普通商品视频／套图不能绕过图片视觉输入校验。来源时长测试增加超出 FFmpeg 诊断缓存长度的 15 秒视频，编辑测试增加已导出工程的过期状态和无内容变化命令。

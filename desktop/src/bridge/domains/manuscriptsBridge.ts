@@ -1,3 +1,4 @@
+import type { ProductImagePageRequest, ProductImagePreviewRequest, ProductImageGenerateRequest, ProductImageExportRequest } from '../../../shared/productImageSet';
 import type { BridgeCore, Listener } from '../types';
 
 export function createManuscriptsBridge(core: BridgeCore) {
@@ -6,6 +7,12 @@ export function createManuscriptsBridge(core: BridgeCore) {
       list: <T = unknown>() => core.invokeChannel('manuscripts:list') as Promise<T>,
       read: <T = unknown>(filePath: string) => core.invokeChannel('manuscripts:read', filePath) as Promise<T>,
       save: <T = unknown>(payload: Record<string, unknown>) => core.invokeChannel('manuscripts:save', payload) as Promise<T>,
+      previewProductImagePage: <T = unknown>(payload: ProductImagePreviewRequest) => core.invokeChannel('manuscripts:preview-product-image-page', payload) as Promise<T>,
+      renderProductImagePage: <T = unknown>(payload: ProductImagePageRequest) => core.invokeChannel('manuscripts:render-product-image-page', payload) as Promise<T>,
+      generateProductImagePage: <T = unknown>(payload: ProductImageGenerateRequest) => core.invokeChannel('manuscripts:generate-product-image-page', payload) as Promise<T>,
+      importProductImageAsset: <T = unknown>(payload: ProductImagePageRequest & { assetId: string }) => core.invokeChannel('manuscripts:import-product-image-asset', payload) as Promise<T>,
+      exportProductImageSet: <T = unknown>(payload: ProductImageExportRequest) => core.invokeChannel('manuscripts:export-product-image-set', payload) as Promise<T>,
+      productImageGenerationConfig: <T = unknown>() => core.invokeChannel('manuscripts:product-image-generation-config') as Promise<T>,
       getXhsNote: <T = unknown>(path: string) => core.invokeChannel('manuscripts:get-xhs-note', { path }) as Promise<T>,
       saveXhsNote: <T = unknown>(payload: Record<string, unknown>) => core.invokeChannel('manuscripts:save-xhs-note', payload) as Promise<T>,
       bindXhsNoteMedia: <T = unknown>(payload: Record<string, unknown>) => core.invokeChannel('manuscripts:bind-xhs-note-media', payload) as Promise<T>,

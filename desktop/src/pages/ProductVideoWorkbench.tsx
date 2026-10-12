@@ -73,6 +73,7 @@ export function ProductVideoWorkbench({ projectId, onClose }: ProductVideoWorkbe
     const [loading, setLoading] = useState(true);
     const [busy, setBusy] = useState('');
     const [error, setError] = useState('');
+    const [sourceCut, setSourceCut] = useState({ start: '0', end: '0' });
     const [musicPickerOpen, setMusicPickerOpen] = useState(false);
     const [voicePickerOpen, setVoicePickerOpen] = useState(false);
     const [libraryAudio, setLibraryAudio] = useState<LibraryAudioAsset[]>([]);
@@ -275,7 +276,12 @@ export function ProductVideoWorkbench({ projectId, onClose }: ProductVideoWorkbe
 
     const scenes = project?.productVideo?.scenes || [];
     const selectedScene = scenes.find((scene) => scene.id === selectedSceneId) || scenes[0] || null;
-    const visualAssets = project?.assets.filter((asset) => asset.kind === 'image' || asset.kind === 'video') || [];
+    const selectedVideoClip = project?.timeline.tracks.find((track) => track.kind === 'primary-video')?.clips.find((clip) => clip.sceneId === selectedScene?.id);
+    const selectedVideoAsset = project?.assets.find((asset) => asset.id === selectedVideoClip?.assetId);
+    useEffect(() => {
+        setSourceCut({ start: String((selectedVideoClip?.sourceStartMs || 0) / 1000), end: String((selectedVideoClip?.sourceEndMs || 0) / 1000) });
+    }, [selectedScene?.id, selectedVideoClip?.sourceStartMs, selectedVideoClip?.sourceEndMs]);
+    const visualAssets = project?.assets.filter((asset) => project.productVideo?.proposal.compositionMode === 'existing-clips' ? asset.kind === 'video' : asset.kind === 'image' || asset.kind === 'video') || [];
     const musicTrack = project?.timeline.tracks.find((track) => track.kind === 'music');
     const selectedVoiceAsset = project?.assets.find((asset) => asset.id === selectedScene?.voiceoverAssetId);
     const composition = useMemo(() => project ? buildVideoEditorV2RemotionComposition(project) : null, [project]);
@@ -465,8 +471,8 @@ export function ProductVideoWorkbench({ projectId, onClose }: ProductVideoWorkbe
                             const source = resolveAssetUrl(asset.thumbnailPath || asset.projectPath);
                             const generated = asset.provenance?.kind === 'ai-generated';
                             return <button key={asset.id} type="button" onClick={() => selectedScene && void applyCommand({ type: 'scene.asset', sceneId: selectedScene.id, assetId: asset.id })} className="group flex w-full gap-2 rounded-xl border border-border bg-[#F7F8FA] p-2 text-left hover:border-[#0F766E]/40">
-                                <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-[#0D1117]">{asset.kind === 'video' ? <video src={source} muted className="h-full w-full object-cover" /> : <img src={source} alt="" className="h-full w-full object-cover" />}</div>
-                                <div className="min-w-0 py-0.5"><p className="line-clamp-2 text-[11px] font-semibold">{asset.title}</p><span className={generated ? 'mt-1 inline-flex items-center gap-1 text-[10px] text-amber-700' : 'mt-1 inline-flex items-center gap-1 text-[10px] text-text-tertiary'}>{generated ? <Sparkles className="h-3 w-3" /> : <ImageIcon className="h-3 w-3" />}{generated ? 'AI 动效' : '商品原图'}</span></div>
+                                <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-[#0D1117]">{asset.kind === 'video' && !asset.thumbnailPath ? <video src={resolveAssetUrl(asset.projectPath)} muted preload="metadata" className="h-full w-full object-cover" /> : <img src={source} alt={asset.title} className="h-full w-full object-cover" />}</div>
+                                <div className="min-w-0 py-0.5"><p className="line-clamp-2 text-[11px] font-semibold">{asset.title}</p><span className={generated ? 'mt-1 inline-flex items-center gap-1 text-[10px] text-amber-700' : 'mt-1 inline-flex items-center gap-1 text-[10px] text-text-tertiary'}>{generated ? <Sparkles className="h-3 w-3" /> : <ImageIcon className="h-3 w-3" />}{generated ? 'AI 动效' : asset.kind === 'video' ? '已有视频' : '商品原图'}</span></div>
                             </button>;
                         })}
                     </div>
@@ -487,6 +493,21 @@ export function ProductVideoWorkbench({ projectId, onClose }: ProductVideoWorkbe
 
                 <aside className="min-h-0 overflow-y-auto border-l border-border bg-white p-4">
                     {selectedScene ? <div className="space-y-5">
+                        {selectedScene.source === 'media-clip' && <section className="space-y-3 rounded-xl border border-border p-3" aria-label="来源视频截取">
+                            <p className="text-xs font-semibold">已有视频 · {selectedVideoAsset?.title}</p>
+                            <p className="text-[11px] text-text-tertiary">来源 {(Number(selectedVideoAsset?.durationMs || 0) / 1000).toFixed(2)} 秒 · {selectedVideoAsset?.probe?.hasAudio ? '含原音' : '无音轨'}</p>
+                            <div className="grid grid-cols-2 gap-2">{(['start', 'end'] as const).map((key) => <label key={key} className="text-xs">{key === 'start' ? '开始（秒）' : '结束（秒）'}<input aria-label={key === 'start' ? '截取开始秒' : '截取结束秒'} type="number" min="0" step="0.001" disabled={Boolean(busy)} value={sourceCut[key]} onChange={(event) => setSourceCut({ ...sourceCut, [key]: event.target.value })} className="mt-1 w-full rounded-lg border border-border px-2 py-1.5" /></label>)}</div>
+                            <button className="rounded-lg border border-border px-3 py-1.5 text-xs disabled:opacity-40" disabled={Boolean(busy) || !sourceCut.start || !sourceCut.end} onClick={() => {
+                                const start = Number(sourceCut.start), end = Number(sourceCut.end);
+                                if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start) { void appAlert('请填写有效的来源截取区间。'); return; }
+                                void applyCommand({ type: 'scene.trim', sceneId: selectedScene.id, sourceStartMs: Math.round(start * 1000), sourceEndMs: Math.round(end * 1000) });
+                            }}>保存截取区间</button>
+                            <label className="block text-xs">原声音量（0–100%）<input aria-label="来源视频音量" type="number" min="0" max="100" step="5" disabled={Boolean(busy)} defaultValue={Math.round((selectedVideoClip?.volume ?? 1) * 100)} key={`${selectedScene.id}-${selectedVideoClip?.volume}`} className="mt-1 w-full rounded-lg border border-border px-2 py-1.5" onBlur={(event) => {
+                                const volume = Number(event.target.value) / 100;
+                                if (!event.target.value || !Number.isFinite(volume) || volume < 0 || volume > 1) { event.target.value = String(Math.round((selectedVideoClip?.volume ?? 1) * 100)); return; }
+                                if (volume !== selectedVideoClip?.volume) void applyCommand({ type: 'scene.source-volume', sceneId: selectedScene.id, volume });
+                            }} /></label>
+                        </section>}
                         <div><div className="flex items-center justify-between"><h2 className="text-sm font-bold">{selectedScene.title}</h2><span className="rounded-full bg-surface-secondary px-2 py-1 text-[10px] text-text-tertiary">{selectedScene.source === 'ai-motion' ? 'AI 动效' : '原始素材'}</span></div>{selectedScene.generationStatus === 'failed' && <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800"><p>{selectedScene.error || '生成失败，当前使用原图回退。'}</p><button type="button" onClick={() => void retryScene()} disabled={busy === 'retry'} className="mt-2 inline-flex items-center gap-1 font-bold"><RefreshCw className={busy === 'retry' ? 'h-3 w-3 animate-spin' : 'h-3 w-3'} />重试此镜头</button></div>}{selectedScene.generationStatus === 'ready' && <p className="mt-2 inline-flex items-center gap-1 text-xs text-[#0F766E]"><CheckCircle2 className="h-3.5 w-3.5" />AI 镜头已生成</p>}</div>
                         <div>
                             <label className="block text-xs font-semibold">镜头时长（秒）<input type="number" min={Math.round(1000 / project.canvas.fps) / 1000} max="30" step="0.001" disabled={Boolean(busy)} defaultValue={formatProductSceneSeconds(selectedScene.durationMs)} key={`${selectedScene.id}-${selectedScene.durationMs}`} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); }} onBlur={(event) => {
@@ -512,7 +533,7 @@ export function ProductVideoWorkbench({ projectId, onClose }: ProductVideoWorkbe
                             <p className="mt-1.5 text-[10px] text-text-tertiary">按 {project.canvas.fps}fps 对齐到最近一帧，也可拖动时间线两侧调整。</p>
                         </div>
                         <label className="block text-xs font-semibold">画面适配<select value={selectedScene.fitMode} onChange={(event) => void applyCommand({ type: 'scene.fit', sceneId: selectedScene.id, fitMode: event.target.value as ProductVideoFitMode })} className="mt-2 w-full rounded-lg border border-border bg-[#F7F8FA] px-3 py-2 text-sm">{FIT_OPTIONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
-                        <label className="block text-xs font-semibold">静态动效<select value={selectedScene.motionPreset} onChange={(event) => void applyCommand({ type: 'scene.motion', sceneId: selectedScene.id, motionPreset: event.target.value as ProductVideoMotionPreset })} className="mt-2 w-full rounded-lg border border-border bg-[#F7F8FA] px-3 py-2 text-sm">{MOTION_OPTIONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+                        {selectedScene.source !== 'media-clip' && <label className="block text-xs font-semibold">静态动效<select value={selectedScene.motionPreset} onChange={(event) => void applyCommand({ type: 'scene.motion', sceneId: selectedScene.id, motionPreset: event.target.value as ProductVideoMotionPreset })} className="mt-2 w-full rounded-lg border border-border bg-[#F7F8FA] px-3 py-2 text-sm">{MOTION_OPTIONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>}
                         <label className="block text-xs font-semibold">屏幕文字<textarea defaultValue={selectedScene.overlayText || ''} key={`${selectedScene.id}-${selectedScene.overlayText}`} onBlur={(event) => void applyCommand({ type: 'scene.text', sceneId: selectedScene.id, text: event.target.value.trim() })} rows={4} className="mt-2 w-full resize-none rounded-lg border border-border bg-[#F7F8FA] px-3 py-2 text-sm" /></label>
                         <div className="border-t border-border pt-4">
                             <div className="flex items-center justify-between"><h3 className="inline-flex items-center gap-1.5 text-xs font-bold"><Mic2 className="h-3.5 w-3.5 text-[#C05640]" />镜头旁白</h3><span className="text-[10px] text-text-tertiary">独立于屏幕文字 · 音量 100%</span></div>

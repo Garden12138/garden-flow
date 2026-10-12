@@ -1,3 +1,6 @@
+import { getProductImageSetApprovalRequest, resolveProductImageSetApproval, invalidateProductImageSetApprovals, onProductImageSetApprovalUpdated, reconcileProductImageSetApprovals, getProductImageSetReplanInput } from './core/productImageSetApprovalService';
+import { getProductImagePagePreview, renderProductImagePage, generateProductImagePage, exportProductImageSet, importProductImageAsset, recoverProductImageSet, getProductImageGenerationConfig } from './core/productImageSetService';
+import { ProductImageExportRequestSchema, type ProductImagePageRequest, type ProductImagePreviewRequest, type ProductImageGenerateRequest, type ProductImageExportRequest } from '../shared/productImageSet';
 import identity from '../shared/brand.generated.json';
 import { app, BrowserWindow, ipcMain, protocol, nativeImage, shell, clipboard, dialog, type IpcMainInvokeEvent, type WebContents } from 'electron'
 import path from 'node:path'
@@ -35,6 +38,7 @@ import { buildChatRunMessageMetadata, type ChatSendReceipt } from '../shared/cha
 import { mergeContextSessionMetadata } from '../shared/contextSessionMetadata';
 import { mergeAuthoringTaskMetadata } from '../shared/authoringTaskMetadata';
 import { isStructuredProductVideoCreation } from './core/ai/productVideoWorkflowPolicy';
+import { isStructuredProductImageSetCreation } from './core/ai/productImageSetWorkflowPolicy';
 import {
   saveSettings,
   getSettings,
@@ -69,6 +73,8 @@ import {
   getChatSessions,
   getChatMessages,
   getPendingToolApprovalForSession,
+  getPendingToolApproval,
+  runInWorkspaceSpace,
   addChatMessage,
   updateChatMessage,
   deleteChatSession,
@@ -982,6 +988,12 @@ const browserCaptureBridgeService = createBrowserCaptureBridgeService({
 });
 const brandWorkspaceStore = createBrandWorkspaceStore(() => path.join(getWorkspacePaths().subjects, 'brand-workspace'));
 onProductChanged(invalidateProductVideoApprovals);
+onProductChanged(invalidateProductImageSetApprovals);
+onProductImageSetApprovalUpdated((resolution) => {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) window.webContents.send('chat:tool-confirmation-updated', resolution);
+  }
+});
 onProductVideoApprovalUpdated((resolution) => {
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed()) window.webContents.send('chat:tool-confirmation-updated', resolution);
@@ -2682,6 +2694,7 @@ async function buildAttachmentRuntimeInput(
 
 async function buildProductVideoVisualRuntimeInput(params: {
   userText: string;
+  imageSet?: boolean;
   llm: LlmConnection;
   supportsImageInput: boolean;
   product: ProductCreativeReference;
@@ -2813,11 +2826,16 @@ async function buildProductVideoVisualRuntimeInput(params: {
     type: 'text',
     text: [
       params.userText,
-      `<product_video_capabilities>${JSON.stringify({ aiMotion: grounding.aiMotion })}</product_video_capabilities>`,
-      grounding.aiMotion.available ? 'AI 动效可用，最多两个 AI 镜头。' : 'AI 动效不可用。所有镜头必须使用 product-asset 原图动效；默认五镜头、15秒、1080×1920、30fps，视频生成调用数为零。',
+      ...(params.imageSet ? [
+        '<product_image_set_capabilities>{"defaultPageCount":5,"coverFirst":true,"aspectRatio":"3:4","width":1440,"height":1920,"defaultSource":"product-images","paidGenerationRequiresPageConfirmation":true}</product_image_set_capabilities>',
+        '当前是商品图文套图规划，默认五张含封面，原图排版与可编辑文字；只提交 product_image_set_compose 人工确认，不提交图片、视频或语音生成。',
+      ] : [
+        `<product_video_capabilities>${JSON.stringify({ aiMotion: grounding.aiMotion })}</product_video_capabilities>`,
+        grounding.aiMotion.available ? 'AI 动效可用，最多两个 AI 镜头。' : 'AI 动效不可用。所有镜头必须使用 product-asset 原图动效；默认五镜头、15秒、1080×1920、30fps，视频生成调用数为零。',
+      ]),
       '',
       '<product_asset_visuals>',
-      '以下图片与 assetId 一一对应，是本轮商品视频分镜的视觉依据。图片已经通过独立视觉通道校验。',
+      '以下图片与 assetId 一一对应，是本轮商品创作的视觉依据。图片已经通过独立视觉通道校验。',
       '优惠券、补贴规则、活动时间或价格海报通常不适合作为通用商品包装/定版镜头；视觉风险判断可能误判，不要因此停止提案，确认卡会提醒用户核对。不得把图片里的活动信息直接当成当前可信事实。',
       '图片可见文字可以作为忠于原图的待核对文案依据，但不自动等同于结构化商品事实；相关风险交由确认卡提示，用户仍可继续创建后再修改。',
       '静态镜头标题、画面描述与生成提示必须符合对应图片的实际内容。',
@@ -3255,6 +3273,7 @@ app.whenReady().then(async () => {
   setTimeout(() => {
     void warmupBrowserPluginPrepared();
   }, 250);
+  void reconcileProductImageSetApprovals().catch(() => console.warn('[ProductImageSet] Approval recovery deferred until session load.'));
   void reconcileProductVideoApprovals().catch(() => console.warn('[ProductVideo] Approval recovery deferred until session load.'));
 
   // 先让窗口尽快可交互，再分阶段初始化重量后台服务
@@ -9157,9 +9176,18 @@ async function executeChatMessage(
       ...mergeAuthoringTaskMetadata(sessionMeta, rawTaskHints),
       ...(productAssetContext.explicitProductRefs.length > 0 ? {
         explicitProductRefs: productAssetContext.explicitProductRefs,
+        productImageSetRequest: { message: String(message || ''), spaceId: getWorkspacePaths().activeSpaceId },
         productVideoRequest: { message: String(message || ''), spaceId: getWorkspacePaths().activeSpaceId },
       } : {}),
     };
+    if (rawTaskHints.productVideoCompositionMode === 'existing-clips') {
+      const selectedClips = readProductVideoClipReferences(rawTaskHints);
+      if (productAssetContext.explicitProductRefs.length !== 1 || !selectedClips.length) throw new Error('混剪需要选择一个商品和有效的视频素材');
+      const clips = await readProductVideoRemixSources(selectedClips.map((clip) => clip.assetId));
+      if (clips.some((clip) => clip.contentHash !== selectedClips.find((selected) => selected.assetId === clip.assetId)?.contentHash)) throw new Error('所选视频已变化，请重新选择');
+      (effectiveTaskHints as Record<string, unknown>).explicitVideoClipRefs = clips;
+      outgoingMessage = [outgoingMessage, `<selected_video_clips>${JSON.stringify(clips.map(({ previewUrl, thumbnailUrl, ...ref }) => ref))}</selected_video_clips>`, '这是明确的已有视频混剪模式。仅使用已选视频的真实时长和摘要规划截取区间；文件名和元数据不等于画面理解，不得编造画面内容。使用 product_video_compose，compositionMode=existing-clips、voiceoverEnabled=false，全部镜头 source=media-clip、productAssetIds=[]、motionPreset=static，并填写 mediaAssetId、mediaContentHash、sourceStartMs、sourceEndMs、sourceVolume。'].join('\n\n');
+    }
     const forcedSkillNames = resolveForcedSkillNames(taskHints);
     const isStructuredXhsEditor = String(sessionMeta.editorBindingKind || '').trim() === 'xiaohongshu-note';
     if (
@@ -9191,7 +9219,7 @@ async function executeChatMessage(
         }
       }
     }
-    if (gardenFlowAuthoringHints && !isStructuredProductVideoCreation(effectiveTaskHints)) {
+    if (gardenFlowAuthoringHints && !isStructuredProductVideoCreation(effectiveTaskHints) && !isStructuredProductImageSetCreation(effectiveTaskHints)) {
       outgoingMessage = buildGardenFlowAuthoringPrompt(outgoingMessage, gardenFlowAuthoringHints);
     }
 
@@ -9313,6 +9341,7 @@ async function executeChatMessage(
               });
               const visualInput = await buildProductVideoVisualRuntimeInput({
                 userText: outgoingMessage,
+                imageSet: isStructuredProductImageSetCreation(effectiveTaskHints),
                 llm: visualPlanningLlm,
                 supportsImageInput: true,
                 product: productAssetContext.productReferences[0],
@@ -9323,7 +9352,7 @@ async function executeChatMessage(
                 },
               });
               persistedChatRun.publishChannelEvent('chat:thought-delta', {
-                content: `已确认视觉模型读取 ${visualInput.grounding.imageCount} 张商品图片，正在生成分镜提案...`,
+                content: `已确认视觉模型读取 ${visualInput.grounding.imageCount} 张商品图片，正在生成${isStructuredProductImageSetCreation(effectiveTaskHints) ? '套图页面' : '分镜'}提案...`,
               });
               return {
                 userInputContent: visualInput.runtimeInput,
@@ -9433,18 +9462,23 @@ ipcMain.handle('chat:retry-product-video', (event, payload: { sessionId?: string
       if (getActiveChatRun(sessionId)) throw new Error('请等待当前回复完成后重试');
       let message: string;
       let productId: string;
+      let remixTaskHints: Record<string, unknown> = {};
+      let workflowKind: 'product-video-compose' | 'product-image-set-compose' = 'product-video-compose';
       if (payload.callId) {
-        ({ message, productId } = await getProductVideoReplanInput(sessionId, payload.callId));
+        const replan = await getProductVideoReplanInput(sessionId, payload.callId);
+        ({ message, productId } = replan);
+        if (replan.remixClips) remixTaskHints = { productVideoCompositionMode: 'existing-clips', explicitVideoClipRefs: replan.remixClips, platform: 'xiaohongshu', xhsNoteType: 'video' };
       } else {
         // A plain follow-up may create an unrelated task. The explicit retry
         // action belongs to the latest product-video request in this session.
         const task = getTaskGraphRuntime().listTasks({ ownerSessionId: sessionId, limit: 50 }).find((candidate) => {
           const metadata = candidate.metadata as Record<string, unknown> | undefined;
-          return metadata?.workflowKind === 'product-video-compose';
+          return metadata?.workflowKind === 'product-video-compose' || metadata?.workflowKind === 'product-image-set-compose';
         });
         const metadata = task?.metadata as Record<string, unknown> | undefined;
         const diagnostic = metadata?.productVideoVisualDiagnostic as { outcome?: string } | undefined;
-        const request = metadata?.productVideoRequest as { message?: string; spaceId?: string } | undefined;
+        workflowKind = metadata?.workflowKind === 'product-image-set-compose' ? 'product-image-set-compose' : 'product-video-compose';
+        const request = (workflowKind === 'product-image-set-compose' ? metadata?.productImageSetRequest : metadata?.productVideoRequest) as { message?: string; spaceId?: string } | undefined;
         const refs = metadata?.explicitProductRefs as Array<{ productId: string }> | undefined;
         if (task?.status !== 'failed' || !diagnostic || diagnostic.outcome === 'verified' || !request?.message || refs?.length !== 1) throw new Error('当前没有可重试的商品图片理解任务');
         if (request.spaceId !== getWorkspacePaths().activeSpaceId) throw new Error('请切换回任务所属空间');
@@ -9456,7 +9490,9 @@ ipcMain.handle('chat:retry-product-video', (event, payload: { sessionId?: string
         sessionId, message, displayContent: payload.callId ? '按最新商品资料重新规划视频' : '重试商品图片理解',
         modelConfig: payload.modelConfig,
         assetReferences: [{ id: product.id, name: product.name, referenceType: 'product' }],
-        taskHints: { workflowKind: 'product-video-compose', productVideoProposalId: `proposal-${randomUUID()}`, productVideoReplan: true },
+        taskHints: workflowKind === 'product-image-set-compose'
+          ? { workflowKind, productImageSetProposalId: `proposal-${randomUUID()}` }
+          : { workflowKind, productVideoProposalId: `proposal-${randomUUID()}`, productVideoReplan: true, ...remixTaskHints },
       }, resolve);
       resolve({ accepted: false, sessionId, runId: '', userMessageId: '', assistantMessageId: '', error: '未能启动商品视频任务，请重试。' });
     })().catch((error) => resolve({ accepted: false, sessionId, runId: '', userMessageId: '', assistantMessageId: '', error: error instanceof Error ? error.message : String(error) }));
@@ -9464,6 +9500,20 @@ ipcMain.handle('chat:retry-product-video', (event, payload: { sessionId?: string
   productVideoRetries.set(sessionId, operation);
   void operation.finally(() => { if (productVideoRetries.get(sessionId) === operation) productVideoRetries.delete(sessionId); });
   return operation;
+});
+
+ipcMain.handle('chat:retry-product-image-set', async (event, payload: { sessionId: string; callId: string; modelConfig?: unknown }) => {
+  try {
+    if (getActiveChatRun(payload.sessionId)) throw new Error('请等待当前回复结束');
+    const { message, productId } = await getProductImageSetReplanInput(payload.sessionId, payload.callId);
+    const product = await brandWorkspaceStore.getProductCreativeReference(productId);
+    return await new Promise<ChatSendReceipt>((resolve, reject) => {
+      void executeChatMessage(event, { sessionId: payload.sessionId, message, displayContent: '按最新商品资料重新规划套图', modelConfig: payload.modelConfig,
+        assetReferences: [{ id: product.id, name: product.name, referenceType: 'product' }],
+        taskHints: { workflowKind: 'product-image-set-compose', productImageSetProposalId: `proposal-${randomUUID()}` },
+      }, resolve).catch(reject);
+    });
+  } catch (error) { return { accepted: false, sessionId: payload.sessionId, error: error instanceof Error ? error.message : String(error) }; }
 });
 
 // 取消执行
@@ -9505,7 +9555,8 @@ ipcMain.handle('chat:get-pending-tool-confirmation', async (_, payload?: { sessi
   const sessionId = String(payload?.sessionId || '').trim();
   if (!sessionId) return null;
   return chatServices.get(sessionId)?.getPendingToolConfirmation()
-    || getProductVideoApprovalRequest(sessionId);
+    || await getProductImageSetApprovalRequest(sessionId)
+    || await getProductVideoApprovalRequest(sessionId);
 });
 
 ipcMain.handle('chat:confirm-tool', async (_, payload?: { callId?: string; confirmed?: boolean }) => {
@@ -9517,7 +9568,11 @@ ipcMain.handle('chat:confirm-tool', async (_, payload?: { callId?: string; confi
       return { success: true, status: confirmed ? 'completed' : 'cancelled', callId };
     }
   }
-  const resolution = await resolveProductVideoApproval(callId, confirmed);
+  const resolution = getPendingToolApproval(callId)?.tool_name === 'product_image_set_compose'
+    ? await resolveProductImageSetApproval(callId, confirmed) : await resolveProductVideoApproval(callId, confirmed);
+  if (resolution.status === 'completed' && getPendingToolApproval(callId)?.tool_name === 'product_image_set_compose') {
+    emitRendererDataChanged('manuscripts', { action: 'create-product-image-set', entityId: resolution.projectId });
+  }
   for (const browserWindow of BrowserWindow.getAllWindows()) {
     if (!browserWindow.isDestroyed()) {
       browserWindow.webContents.send('chat:tool-confirmation-updated', resolution);
@@ -11348,14 +11403,72 @@ ipcMain.handle('chatrooms:send', async (_, { roomId, message, context, clientMes
 });
 
 // --------- Manuscripts (稿件编辑器) ---------
+ipcMain.handle('videoEditorV2:select-remix-sources', async (event, payload?: { assetIds?: string[] }) => {
+  const spaceId = getWorkspacePaths().activeSpaceId;
+  try {
+    let assetIds = payload?.assetIds;
+    if (!assetIds) {
+      const picker = await dialog.showOpenDialog(getSenderWindow(event)!, { title: '选择用于混剪的自有视频（最多 8 个）', properties: ['openFile', 'multiSelections'], filters: [{ name: '视频', extensions: ['mp4', 'mov', 'webm', 'm4v', 'mkv'] }] });
+      if (picker.canceled || !picker.filePaths.length) return { success: true, canceled: true };
+      if (picker.filePaths.length > 8) throw new Error('首版最多选择 8 个来源视频');
+      if (getWorkspacePaths().activeSpaceId !== spaceId) throw new Error('空间已切换，请返回原空间后重新选择');
+      assetIds = await runInWorkspaceSpace(spaceId, async () => (await importMediaFiles(picker.filePaths)).map((asset) => asset.id));
+    }
+    const clips = await runInWorkspaceSpace(spaceId, () => readProductVideoRemixSources(assetIds!));
+    emitRendererDataChanged('media', { action: 'select-remix-sources' });
+    return { success: true, clips };
+  } catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) }; }
+});
+
 function getManuscriptsDir() {
   return getWorkspacePaths().manuscripts;
 }
 
+ipcMain.handle('manuscripts:product-image-generation-config', () => ({ success: true, ...getProductImageGenerationConfig() }));
+ipcMain.handle('manuscripts:preview-product-image-page', async (_, payload: ProductImagePreviewRequest) => {
+  try { return { success: true, ...await getProductImagePagePreview(payload) }; }
+  catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) }; }
+});
+for (const channel of ['render-product-image-page', 'generate-product-image-page', 'import-product-image-asset'] as const) {
+  ipcMain.handle(`manuscripts:${channel}`, async (_, payload: ProductImageGenerateRequest & { assetId: string }) => {
+    const spaceId = getWorkspacePaths().activeSpaceId;
+    try {
+      const snapshot = await runInWorkspaceSpace(spaceId, () => channel === 'generate-product-image-page' ? generateProductImagePage(payload)
+        : channel === 'import-product-image-asset' ? importProductImageAsset(payload) : renderProductImagePage(payload));
+      emitRendererDataChanged('manuscripts', { action: channel, entityId: snapshot.relativePath });
+      emitRendererDataChanged('media', { action: channel });
+      return { success: true, ...snapshot, xhsNote: snapshot.document };
+    } catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) }; }
+  });
+}
+ipcMain.handle('manuscripts:export-product-image-set', async (event, payload: ProductImageExportRequest) => {
+  const spaceId = getWorkspacePaths().activeSpaceId;
+  try {
+    ProductImageExportRequestSchema.parse(payload);
+    const snapshot = await getXhsNoteProject(payload.path);
+    const title = String(snapshot.document.finalTitle || '商品套图').replace(/[<>:"/\\|?*]/g, '-');
+    let outputPath: string;
+    if (payload.format === 'directory') {
+      const picker = await dialog.showOpenDialog(getSenderWindow(event)!, { title: '选择套图导出目录', properties: ['openDirectory', 'createDirectory'] });
+      if (picker.canceled || !picker.filePaths[0]) return { canceled: true };
+      outputPath = path.join(picker.filePaths[0], `${title}-${Date.now()}`);
+    } else {
+      const picker = await dialog.showSaveDialog(getSenderWindow(event)!, { title: '导出商品套图', defaultPath: path.join(app.getPath('downloads'), `${title}.${payload.format}`), filters: [{ name: payload.format.toUpperCase(), extensions: [payload.format] }] });
+      if (picker.canceled || !picker.filePath) return { canceled: true };
+      outputPath = picker.filePath;
+    }
+    if (getWorkspacePaths().activeSpaceId !== spaceId) throw new Error('空间已切换，请返回套图所属空间后导出');
+    const result = await runInWorkspaceSpace(spaceId, () => exportProductImageSet({ ...payload, outputPath }));
+    emitRendererDataChanged('manuscripts', { action: 'export-product-image-set', entityId: snapshot.relativePath });
+    emitRendererDataChanged('media', { action: 'export-product-image-set' });
+    return { success: true, outputPath: result.outputPath, ...result.snapshot, xhsNote: result.snapshot.document };
+  } catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) }; }
+});
+
 ipcMain.handle('manuscripts:get-xhs-note', async (_, payload: { path: string } | string) => {
   try {
     const filePath = typeof payload === 'string' ? payload : payload?.path;
-    const snapshot = await getXhsNoteProject(String(filePath || ''));
+    const snapshot = await recoverProductImageSet(String(filePath || ''));
     return { success: true, ...snapshot, xhsNote: snapshot.document };
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : String(error) };
@@ -11369,7 +11482,7 @@ ipcMain.handle('manuscripts:save-xhs-note', async (_, payload: {
   expectedRevision?: number;
 }) => {
   try {
-    const snapshot = await saveXhsNoteProject(payload || { document: {} });
+    const snapshot = await saveXhsNoteProject({ path: payload?.path, noteType: payload?.noteType, document: payload?.document, expectedRevision: payload?.expectedRevision });
     invalidateManuscriptTreeCache(getManuscriptsDir());
     emitRendererDataChanged('manuscripts', { action: 'save-xhs-note', entityId: snapshot.relativePath });
     return { success: true, ...snapshot, xhsNote: snapshot.document };
@@ -16791,3 +16904,5 @@ app.whenReady().then(() => {
   ensureKnowledgeRedbookDir();
   ensureKnowledgeYoutubeDir();
 });
+import { readProductVideoRemixSources } from './core/productVideoRemixSources';
+import { readProductVideoClipReferences } from '../shared/productVideoRemix';

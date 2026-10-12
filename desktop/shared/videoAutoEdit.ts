@@ -14,7 +14,7 @@ export type VideoEditorV2AssetKind = 'video' | 'audio' | 'image';
 export type VideoEditorV2TrackKind = 'primary-video' | 'b-roll' | 'subtitle' | 'music' | 'voiceover' | 'effect';
 export type ProductVideoFitMode = 'contain-blur' | 'cover';
 export type ProductVideoMotionPreset = 'static' | 'slow-zoom-in' | 'slow-zoom-out' | 'pan-left' | 'pan-right';
-export type ProductVideoSceneSource = 'product-asset' | 'ai-motion';
+export type ProductVideoSceneSource = 'product-asset' | 'ai-motion' | 'media-clip';
 export type ProductVideoGenerationStatus = 'not-required' | 'pending' | 'generating' | 'ready' | 'failed';
 export type ProductVideoVoiceoverStatus = 'not-required' | 'needs-configuration' | 'queued' | 'generating' | 'ready' | 'failed' | 'duration-conflict' | 'stale';
 export type SrtSegmentTag = 'keep' | 'remove' | 'highlight' | 'hook' | 'filler' | 'unclear';
@@ -71,6 +71,11 @@ export interface ProductVideoProposalScene {
   generationPrompt?: string;
   fitMode: ProductVideoFitMode;
   motionPreset: ProductVideoMotionPreset;
+  mediaAssetId?: string;
+  mediaContentHash?: string;
+  sourceStartMs?: number;
+  sourceEndMs?: number;
+  sourceVolume?: number;
 }
 
 export interface ProductVideoProposal {
@@ -86,6 +91,7 @@ export interface ProductVideoProposal {
   scenes: ProductVideoProposalScene[];
   /** Initial automatic narration; omitted preserves legacy approval behavior. */
   voiceoverEnabled?: boolean;
+  compositionMode?: 'product-images' | 'existing-clips';
 }
 
 export interface ProductVideoSceneState extends ProductVideoProposalScene {
@@ -304,6 +310,8 @@ export type ProductVideoEditCommand =
   | { type: 'scene.text'; sceneId: string; text: string }
   | { type: 'scene.narration-text'; sceneId: string; text: string }
   | { type: 'scene.asset'; sceneId: string; assetId: string }
+  | { type: 'scene.trim'; sceneId: string; sourceStartMs: number; sourceEndMs: number }
+  | { type: 'scene.source-volume'; sceneId: string; volume: number }
   | { type: 'scene.delete'; sceneId: string }
   | { type: 'voiceover.remove'; sceneId: string }
   | { type: 'music.remove' };

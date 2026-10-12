@@ -9,7 +9,7 @@ import type { ProductVideoProposal, VideoEditorV2Project } from '../../shared/vi
 
 // Real approval SQL, project/catalog/media stores and job registry; only host, router,
 // image/video providers and the TTS HTTP boundary are isolated from user data.
-export async function productVideoHarness(options: { platformVersions?: boolean } = {}) {
+export async function productVideoHarness(options: { platformVersions?: boolean; productImageSets?: boolean } = {}) {
     const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'gardenflow-video-closeout-')));
     const source = await fs.readFile(new URL('../../electron/db.ts', import.meta.url), 'utf8');
     let sql = new DatabaseSync(path.join(root, 'approvals.db'));
@@ -24,7 +24,8 @@ export async function productVideoHarness(options: { platformVersions?: boolean 
     }
     const state = {
         root, spaceId: 'default', settings: {} as Record<string, unknown>,
-        messages: [] as Array<Record<string, any>>, tasks: new Map<string, any>(), videoCalls: 0, ttsCalls: 0,
+        messages: [] as Array<Record<string, any>>, tasks: new Map<string, any>(), sessions: new Map<string, any>(), videoCalls: 0, ttsCalls: 0,
+        imageCalls: 0, renderCalls: 0, renderBytes: Buffer.alloc(0), imageHook: null as null | ((input: any) => Promise<any>), renderHook: null as null | ((html: string) => Promise<void>),
         audio: Buffer.alloc(0), failSpeech: false, localizationCalls: 0, localizationResponse: {} as any,
     };
     const db = {
@@ -41,10 +42,15 @@ export async function productVideoHarness(options: { platformVersions?: boolean 
         ? source.slice(source.indexOf('type DouyinVersionRow ='), source.indexOf('export const findXhsPublishJobByCandidate')) + '\n' + source.slice(source.indexOf('type TikTokDocumentRow ='))
         : '';
     const mocks: Record<string, string> = {
-        db: `const state = globalThis.__fixture; const db = globalThis.__fixtureDb;
+        db: `import { AsyncLocalStorage } from 'node:async_hooks';
+            const workspaceContext = new AsyncLocalStorage();
+            export const runInWorkspaceSpace = (spaceId, operation) => workspaceContext.run(spaceId, operation);
+            const state = globalThis.__fixture; const db = globalThis.__fixtureDb;
+            export const updateChatSessionMetadata = (id, metadata) => state.sessions.set(id, { metadata: JSON.stringify(metadata) });
+            export const getChatSession = id => state.sessions.get(id) || { metadata: '{}' };
             export const getSettings = () => state.settings;
             export const getWorkspacePathsForSpace = (spaceId) => { const base = state.root + '/' + spaceId; return { base, media: base + '/media', subjects: base + '/subjects', manuscripts: base + '/manuscripts', activeSpaceId: spaceId }; };
-            export const getWorkspacePaths = () => getWorkspacePathsForSpace(state.spaceId);
+            export const getWorkspacePaths = () => getWorkspacePathsForSpace(workspaceContext.getStore() || state.spaceId);
             export const getActiveSpaceId = () => state.spaceId;
             export const addChatMessage = (message) => state.messages.push(message);
             export const getChatMessages = (session) => state.messages.filter((message) => message.session_id === session);
@@ -55,7 +61,12 @@ export async function productVideoHarness(options: { platformVersions?: boolean 
             export const getTaskGraphRuntime = () => runtime;
             export const getAgentRuntime = () => ({ failExecution: (id) => {state.tasks.get(id).status = 'failed';}, completeExecution: (id) => {state.tasks.get(id).status = 'completed';} });`,
         video: `export class VideoGenerateTool { async execute() { globalThis.__fixture.videoCalls++; throw new Error('unexpected video generation'); } }`,
-        imageProvider: `export const generateImagesToMediaLibrary = async () => { throw new Error('unexpected image generation'); };`,
+        imageProvider: `export const generateImagesToMediaLibrary = async (input) => { const state = globalThis.__fixture; state.imageCalls++; if (state.imageHook) return state.imageHook(input); throw new Error('unexpected image generation'); };
+            export const resolveDefaultImageModel = () => 'fixture-image';
+            export const resolveDefaultImageEndpoint = () => 'https://image.invalid/v1';`,
+        imageRenderer: `export const getProductImageFontCss = async () => '';
+            export const productImageDataUrl = async () => 'data:image/png;base64,' + globalThis.__fixture.renderBytes.toString('base64');
+            export const renderProductImagePng = async (html) => { const state = globalThis.__fixture; state.renderCalls++; if(state.renderHook) await state.renderHook(html); return state.renderBytes; };`,
         videoProvider: `export const generateVideosToMediaLibrary = async () => { throw new Error('unexpected video generation'); };`,
         electron: `export const app = { isPackaged: false, getAppPath: () => ${JSON.stringify(path.resolve(import.meta.dirname, '../..'))} };`,
     };
@@ -67,15 +78,22 @@ export async function productVideoHarness(options: { platformVersions?: boolean 
         export * from './electron/core/video-editor-v2/renderExportService';
         export * from './electron/core/mediaGenerationJobRegistry';
         export * from './electron/db';
+        ${options.productImageSets ? `export * from './electron/core/productImageSetApprovalService';
+        export * from './electron/core/productImageSetService';
+        export * from './electron/core/productVideoRemixSources';
+        export * from './electron/core/tools/productImageSetComposeTool';
+        export * from './electron/core/xhsNoteProjectStore';
+        export * from './electron/core/mediaLibraryStore';
+        export * from './electron/core/runtimePermissions';` : ''}
         ${options.platformVersions ? `export * from './electron/core/douyinVideoVersionService';
         export * from './electron/core/tiktokVideoVersionService';
         export * from './electron/core/tiktokLocalization';
         export * from './electron/core/xhsNoteProjectStore';` : ''}`;
     const bundled = await build({ stdin: { contents: exports, resolveDir: path.resolve(import.meta.dirname, '../..') }, bundle: true, write: false, platform: 'node', format: 'cjs', packages: 'external', define: { 'import.meta.url': JSON.stringify(new URL('../../package.json', import.meta.url).href) },
         plugins: [{ name: 'isolated-video-host', setup(builder) {
-            builder.onResolve({ filter: /(?:^electron$|(?:^|\/)db(?:\.ts)?$|(?:^|\/)ai$|mediaGenerationTools$|imageGenerationService$|videoGenerationService$)/ }, (args) => {
+            builder.onResolve({ filter: /(?:^electron$|(?:^|\/)db(?:\.ts)?$|(?:^|\/)ai$|mediaGenerationTools$|imageGenerationService$|videoGenerationService$|productImageRenderer$)/ }, (args) => {
                 const key = args.path === 'electron' ? 'electron' : /\/db(?:\.ts)?$/.test(args.path) ? 'db' : args.path.endsWith('/ai') ? 'ai'
-                    : args.path.endsWith('mediaGenerationTools') ? 'video' : args.path.endsWith('imageGenerationService') ? 'imageProvider' : 'videoProvider';
+                    : args.path.endsWith('mediaGenerationTools') ? 'video' : args.path.endsWith('imageGenerationService') ? 'imageProvider' : args.path.endsWith('productImageRenderer') ? 'imageRenderer' : 'videoProvider';
                 return { path: key, namespace: 'fixture' };
             });
             builder.onLoad({ filter: /.*/, namespace: 'fixture' }, ({ path: key }) => ({ contents: mocks[key], loader: 'ts' }));
@@ -104,12 +122,12 @@ export async function productVideoHarness(options: { platformVersions?: boolean 
     };
     let api = loadRuntime();
     let store = api.createBrandWorkspaceStore(() => path.join(root, state.spaceId, 'subjects/brand-workspace'));
-    let unsubscribe = api.onProductChanged(api.invalidateProductVideoApprovals);
+    let unsubscribe = api.onProductChanged(options.productImageSets ? api.invalidateProductImageSetApprovals : api.invalidateProductVideoApprovals);
     return { root, state, get api() { return api; }, get store() { return store; }, get sql() { return sql; },
         restart() {
             unsubscribe(); sql.close(); sql = new DatabaseSync(path.join(root, 'approvals.db'));
             sql.exec('PRAGMA foreign_keys=OFF');
-            api = loadRuntime(); unsubscribe = api.onProductChanged(api.invalidateProductVideoApprovals);
+            api = loadRuntime(); unsubscribe = api.onProductChanged(options.productImageSets ? api.invalidateProductImageSetApprovals : api.invalidateProductVideoApprovals);
             store = api.createBrandWorkspaceStore(() => path.join(root, state.spaceId, 'subjects/brand-workspace'));
         },
         async close() { unsubscribe(); sql.close(); await fs.rm(root, { recursive: true, force: true }); },
