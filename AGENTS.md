@@ -26,6 +26,13 @@
 - Extension tests and static checks run with `pnpm --dir Plugin check`.
 - If you add tests, document the command and keep test file names explicit (for example, `*.test.ts`) near the code they cover.
 
+## Documentation & Local Development Records
+- Public documentation should help users or contributors: usage guides, architecture, supported capabilities, known limitations, and reproducible test commands.
+- Keep agent plans, task checklists, acceptance journals, raw evidence, execution logs, and promotional drafts in `.local-development/`; this directory is ignored by Git. Do not force-add these records or link to them from public documentation.
+- Preserve local records before removing previously tracked auxiliary documentation. Use ordinary commits to remove it from the current remote tree; do not rewrite shared history.
+- Public screenshots must be selected for a specific explanation, authorized for publication, and checked for credentials and private information. Put curated images in `images/`, with captions that distinguish demonstration data from real user content.
+- Summarize current behavior and limitations in the public roadmap instead of appending agent execution history or individual acceptance reports.
+
 ## Commit & Pull Request Guidelines
 - Commit messages are short and pragmatic, often in Chinese, with occasional `feat:` prefixes. Match this tone.
 - PRs should include a clear description, the affected areas (e.g., `desktop/electron/`), and any UI screenshots for renderer changes.

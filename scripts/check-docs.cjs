@@ -31,8 +31,12 @@ for (const file of new Set(files)) {
             continue;
         }
         const resolved = path.resolve(path.dirname(absolutePath), target);
+        const relative = path.relative(root, resolved).split(path.sep).join('/');
         if (!resolved.startsWith(`${root}${path.sep}`) && resolved !== root) {
             failures.push(`${file}: local link escapes the repository: ${match[1]}`);
+        } else if (/^(?:\.local-development|specs|Docs\/(?:evidence|launch))(?:\/|$)/.test(relative)
+            || /^Docs\/[^/]*_(?:ACCEPTANCE(?:_[^/]*)?|IMPLEMENTATION)\.md$/i.test(relative)) {
+            failures.push(`${file}: public documentation links to local development records: ${match[1]}`);
         } else if (!fs.existsSync(resolved)) {
             failures.push(`${file}: broken local link: ${match[1]}`);
         }

@@ -20,6 +20,18 @@ GardenFlow 是本地优先的 AI 内容创作工作台，把素材、选题、AI
 
 [用 GardenFlow 介绍 GardenFlow](./Docs/FIRST_CREATION.md)：下载公开示例资料 → 添加到知识库 → 选择角度 → 带来源写作并保存 → 可选生成封面。教程提供输入资料和分步提示词，先完成文字稿，再逐步启用其他能力。
 
+## 从商品到视频与套图
+
+选择已入库商品，先确定小红书、抖音或 TikTok 目标，再规划、确认并创建独立工程。在同一作品的编辑对话中连续修改，或手动调整镜头、页面与文案；导出后通过“准备发布 → 上传核对 → 最终确认”完成发布。
+
+支持三平台视频、已有片段混剪和小红书套图。默认复用商品原图或已有片段，付费图片、视频和语音生成需另行确认；文本模型请求仍可能产生费用。详见[商品创作与发布](./Docs/PRODUCT_CREATION.md)。本节说明当前源码能力，较早安装包可能尚未包含全部入口。
+
+| 创作前选择平台、形式与规格 | 逐页模板编辑与工程专用对话 |
+| --- | --- |
+| ![商品创作目标选择](./images/product-creation-target.png) | ![商品套图编辑工作台](./images/product-image-set-workbench.png) |
+
+这两张截图来自获授权的实际验收界面，商品和文案用于演示流程，商品表述仍需另行核对。
+
 ## 为什么选择 GardenFlow
 
 - **从研究直接进入创作**：浏览器采集进入知识库，灵感池把证据和选题交给创作工作台。
@@ -43,7 +55,7 @@ flowchart LR
 
 ## 产品界面
 
-以下截图来自同一个实际使用中的 GardenFlow 空间，展示的是已有素材、选题、稿件和媒体产物，而不是静态原型。
+以下通用工作台截图来自同一个实际使用中的 GardenFlow 空间，展示已有素材、选题、稿件和媒体产物。
 
 ![GardenFlow 浅色主工作台](./images/workbench-light.jpg)
 
@@ -75,6 +87,8 @@ flowchart LR
 | 知识 | 文档索引、全文检索、向量检索、来源回看、空间隔离 | 可检索知识库 |
 | 灵感 | 素材漫步、评论洞察、候选选题、证据绑定 | 选题与创作方向 |
 | 创作 | 多会话 AI、引用上下文、任务时间线、结构化小红书稿件、封面工作台 | 文章、脚本、卡片、封面 |
+| 商品作品 | 平台前置、原图视频、已有片段混剪、套图模板、持续对话编辑与独立平台版本 | MP4、PNG、图片目录、ZIP |
+| 发布 | 计划页统一管理、账号与页面核验、上传核对与最终按钮确认 | 发布任务、回执与历史 |
 | 生成 | 图片、视频、音频、语音、视频工程与字幕 | 媒体资产与工程文件 |
 | 自动化 | 定时任务、内置采集任务、后台执行、审批与运行记录 | 可追踪任务和产物 |
 
@@ -174,7 +188,7 @@ Native Messaging ── browser extensions
 - `desktop/src/`：React、TypeScript、TailwindCSS renderer。
 - `desktop/electron/`：Electron 主进程、SQLite、AI runtime、工具、媒体和自动化服务。
 - `Plugin/`：内容采集与浏览器控制扩展。
-- `PublishPlugin/`：小红书、抖音与国际版 TikTok 发布辅助扩展；TikTok 实际商品发布仍待验收。
+- `PublishPlugin/`：小红书、抖音和国际版 TikTok 发布辅助扩展。
 - `desktop/src/vendor/freecut/`：带独立归属声明的 FreeCut 工程能力。
 
 深入了解见[架构文档](./Docs/ARCHITECTURE.md)。
@@ -190,7 +204,8 @@ Native Messaging ── browser extensions
 ## 文档
 
 - [首次创作教程](./Docs/FIRST_CREATION.md)
-- [演示与验证记录](./Docs/DEMO.md)
+- [演示与示例](./Docs/DEMO.md)
+- [商品创作与发布](./Docs/PRODUCT_CREATION.md)
 - [路线图](./ROADMAP.md)
 - [文档导航](./Docs/README.md)
 - [使用手册](./Docs/USER_MANUAL.md)

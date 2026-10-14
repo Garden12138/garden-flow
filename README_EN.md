@@ -20,6 +20,18 @@ If this workflow is useful to you, star the repository for updates or share feed
 
 [Introduce GardenFlow with GardenFlow](./Docs/FIRST_CREATION_EN.md): download the public sample → add it to your knowledge library → choose an angle → write with sources and save → optionally generate a cover. The tutorial includes input material and prompts; finish a text draft before enabling more capabilities.
 
+## Product videos and image sets
+
+Choose a saved product and its target platform before planning. Confirm the proposal, then edit the independent project through its own conversation or manual controls. Export the result and use separate upload-review and final-publish confirmations.
+
+The current source supports Xiaohongshu, Douyin and TikTok videos, remixes of existing clips, and Xiaohongshu image sets. The default flow reuses product photos or existing clips. Image, video and voice generation require separate confirmation; text-model requests may still incur provider charges. Older release builds may lack some of these features. See the [product creation guide (Chinese)](./Docs/PRODUCT_CREATION.md).
+
+| Choose the target and format | Edit pages and continue in the project conversation |
+| --- | --- |
+| ![Product creation target selector](./images/product-creation-target.png) | ![Product image-set workbench](./images/product-image-set-workbench.png) |
+
+These authorized screenshots come from actual application verification. The product and copy demonstrate the workflow; product claims still require review.
+
 ## Why GardenFlow
 
 - **Research flows into creation** through browser capture, the knowledge base and evidence-backed ideas.
@@ -43,7 +55,7 @@ flowchart LR
 
 ## Product tour
 
-These screenshots come from one actively used GardenFlow workspace. They show existing sources, ideas, drafts, and generated media rather than static mockups.
+The general workbench screenshots below come from one actively used GardenFlow workspace, showing existing sources, ideas, drafts and media.
 
 ![GardenFlow light workbench](./images/workbench-light.jpg)
 
@@ -75,6 +87,8 @@ The dark theme keeps the same hierarchy and information density:
 | Knowledge | Document indexing, full-text and vector search, source inspection, isolated spaces | Searchable knowledge base |
 | Ideation | Source exploration, comment insights, idea candidates, evidence binding | Topics and creative directions |
 | Creation | Multi-session AI, citations, task timeline, structured Xiaohongshu drafts, cover studio | Articles, scripts, cards, covers |
+| Product projects | Platform selection, photo videos, clip remixes, image templates, persistent editing conversations, independent platform versions | MP4, PNG, image folders, ZIP |
+| Publishing | Unified task management, account and page checks, separate upload-review and final button confirmations | Tasks, receipts, history |
 | Generation | Image, video, audio, voice, subtitles, and video projects | Media assets and project files |
 | Automation | Scheduled tasks, built-in capture jobs, background runs, approvals, local run history | Traceable tasks and artifacts |
 
@@ -165,7 +179,7 @@ Native Messaging ── browser extensions
 - `desktop/src/`: React, TypeScript, and TailwindCSS renderer.
 - `desktop/electron/`: Electron main process, SQLite, AI runtime, tools, media, and automation.
 - `Plugin/`: capture and browser-control extension.
-- `PublishPlugin/`: Xiaohongshu publishing helper extension.
+- `PublishPlugin/`: Xiaohongshu, Douyin and TikTok publishing helper extension.
 - `desktop/src/vendor/freecut/`: FreeCut project capabilities with separate attribution.
 
 Read the [architecture guide](./Docs/ARCHITECTURE.md) for details.
@@ -181,7 +195,8 @@ Read the [architecture guide](./Docs/ARCHITECTURE.md) for details.
 ## Documentation
 
 - [First creation](./Docs/FIRST_CREATION_EN.md)
-- [Demo and verification](./Docs/DEMO.md)
+- [Demo and examples](./Docs/DEMO.md)
+- [Product creation and publishing (Chinese)](./Docs/PRODUCT_CREATION.md)
 - [Roadmap](./ROADMAP.md)
 - [Documentation index](./Docs/README.md)
 - [User guide](./Docs/USER_MANUAL.md)

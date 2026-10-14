@@ -29,3 +29,12 @@ developer_id.certSigningRequest
 # Local backups and staging data
 .gardenflow-backups/
 .gardenflow-stage*/
+
+# Local development notes, plans, acceptance reports, and raw evidence
+.local-development/
+specs/
+Docs/evidence/
+Docs/launch/
+Docs/*_ACCEPTANCE.md
+Docs/*_ACCEPTANCE_*.md
+Docs/*_IMPLEMENTATION.md

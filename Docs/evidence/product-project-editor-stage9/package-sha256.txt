@@ -1,3 +1,0 @@
-b27adb7b890357a9d97ba144c091caa17275e0e0f0a5544b4a1a11cd13efcaa2  desktop/release/mac-arm64/GardenFlow.app/Contents/Resources/app.asar
-2296352f1653168476c478c5a1cb09dd35ca60354b28eb2bad2efc40067f0175  desktop/release/GardenFlow-0.0.1-arm64.dmg
-213c31caa09b36c47dd448968f79313c6fced45c0254cd5b37b027eb1648912b  desktop/release/GardenFlow-0.0.1-arm64.zip
