@@ -8,11 +8,11 @@ GardenFlow 通过 GitHub Releases 提供公开安装包。项目采用非商业 
 node --version
 pnpm --version
 pnpm run setup
-pnpm check
 pnpm test
+pnpm check
 ```
 
-要求 Node.js 22 与 pnpm 10.28.2。构建会准备两个浏览器扩展、Native Host、FFmpeg、prompt library、renderer 和 Electron main bundle。
+要求 Node.js 22 与 pnpm 10.28.2。构建会准备两个浏览器扩展、Native Host、FFmpeg、prompt library、renderer 和 Electron main bundle。插件打包使用当前采集和发布目录白名单，本机遗留的其他插件目录不进入安装包。
 
 ## 当前平台无签名构建
 
@@ -38,8 +38,8 @@ pnpm --dir desktop build:release:linux:x64
 `.github/workflows/release.yml` 仅接受稳定版 tag。发布前先把 `desktop/package.json` 的 `version` 更新为目标版本并合并到 `main`，然后创建并推送对应 tag：
 
 ```bash
-git tag -a v0.0.1 -m "GardenFlow v0.0.1"
-git push origin v0.0.1
+git tag -a v0.0.2 -m "GardenFlow v0.0.2"
+git push origin v0.0.2
 ```
 
 约束如下：
@@ -71,7 +71,7 @@ sha256sum -c SHA256SUMS.txt
 也可以使用 GitHub CLI 验证构建来源证明：
 
 ```bash
-gh attestation verify GardenFlow-0.0.1-arm64.dmg --repo Garden12138/garden-flow
+gh attestation verify GardenFlow-0.0.2-arm64.dmg --repo Garden12138/garden-flow
 ```
 
 ## 无签名包提示
@@ -98,7 +98,7 @@ gh attestation verify GardenFlow-0.0.1-arm64.dmg --repo Garden12138/garden-flow
 - 检查窗口、图标、应用 ID、数据库名和 Native Host。
 - 验证卸载不会删除用户主动选择的外部 workspace。
 - 验证两个内置扩展及其版本。
-- 遍历 `Docs/TESTING.md` 的产品漫游与隐私检查。
+- 按[测试文档](./TESTING.md)核对隔离工程、实际媒体、重开恢复和隐私边界。
 - 核对 Release 的五个安装包、SHA-256、来源证明、自动生成说明与许可证。
 
 应用内自动更新当前保持关闭；tag 自动发行只负责生成和公开下载产物。

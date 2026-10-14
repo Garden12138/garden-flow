@@ -1,6 +1,6 @@
 {
   "name": "gardenflow-desktop",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Local-first AI workspace for research, ideation, writing, media generation, and automation.",
   "author": "Garden12138",
   "license": "SEE LICENSE IN ../LICENSE",
@@ -82,7 +82,8 @@
       "dist-electron/**",
       "dist/**",
       "electron/system-skills/**",
-      ".plugin-runtime/**",
+      ".plugin-runtime/browser-extension/**",
+      ".plugin-runtime/xhs-publisher-extension/**",
       "scripts/**",
       "package.json",
       "gardenflow.png",
