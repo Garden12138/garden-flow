@@ -1,3 +1,4 @@
+import { PUBLICATION_REVIEW_CAPABILITY, XHS_ACCOUNT_BOUND_CAPABILITY } from '../../shared/publication.ts';
 import os from 'node:os';
 import path from 'node:path';
 import {
@@ -31,7 +32,7 @@ export const BROWSER_CAPTURE_ALLOWED_METHODS = new Set([
 ]);
 
 export const BROWSER_CAPTURE_CAPABILITIES = ['knowledge.ingest', 'assets.ingestProduct', 'extension.register'] as const;
-export const XHS_PUBLISHER_CAPABILITIES = [XHS_PUBLISHER_CAPABILITY, DOUYIN_PUBLISHER_CAPABILITY, DOUYIN_IMAGE_COVER_CAPABILITY, TIKTOK_PUBLISHER_CAPABILITY, 'extension.register'] as const;
+export const XHS_PUBLISHER_CAPABILITIES = [XHS_PUBLISHER_CAPABILITY, DOUYIN_PUBLISHER_CAPABILITY, DOUYIN_IMAGE_COVER_CAPABILITY, TIKTOK_PUBLISHER_CAPABILITY, PUBLICATION_REVIEW_CAPABILITY, XHS_ACCOUNT_BOUND_CAPABILITY, 'extension.register'] as const;
 
 /**
  * 桌面 → native host → 插件方向允许转发的方法。

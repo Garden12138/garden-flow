@@ -53,6 +53,7 @@ test('actual snapshot reader finds a visible video file label without a video el
     childNodes: [{ nodeType: 3, textContent: 'media_1790242761384_97f48d4e.mp4' }, { nodeType: 1, textContent: '' }] });
   const hiddenLabel = node('hidden.mp4', { hidden: true });
   const document = { body: { innerText: '视频文件 重新上传 media_1790242761384_97f48d4e.mp4' },
+    querySelector: () => null,
     querySelectorAll: selector => {
       if (selector === 'input,textarea') return [title];
       if (selector === '[contenteditable="true"],textarea') return [body];

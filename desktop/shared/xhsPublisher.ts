@@ -43,7 +43,7 @@ export function hasXhsUnpublishedReview(job: XhsPublishJob): boolean {
 }
 
 export function xhsSubmissionNeedsReview(job: XhsPublishJob): boolean {
-    return (job.publishStatus === 'unknown' || job.publishStatus === 'submitted')
+    return (job.publishStatus === 'unknown' || job.publishStatus === 'submitted' || job.publishStatus === 'pending_review')
         && !(job.status === 'superseded' && job.errorCode === 'USER_VERIFIED_NOT_PUBLISHED');
 }
 
@@ -80,6 +80,11 @@ export interface XhsPublishRequestV1 extends PlatformPublishRequestBaseV1 {
     body: string;
     hashtags: string[];
     media: XhsPublishMediaV1[];
+    confirmationVersion?: 2;
+    accountId?: string;
+    accountLabel?: string;
+    mediaSha256?: string[];
+    uploadPageFingerprint?: string;
 }
 
 export interface XhsDraftAmendmentV1 {
@@ -92,8 +97,8 @@ export interface XhsDraftAmendmentV1 {
     request: XhsPublishRequestV1;
 }
 
-export type XhsPublishJobStatus = Exclude<PlatformPublishJobStatus, 'submitted_pending_review'>;
-export type XhsPublishStatus = Exclude<PlatformPublishStatus, 'pending_review'>;
+export type XhsPublishJobStatus = PlatformPublishJobStatus;
+export type XhsPublishStatus = PlatformPublishStatus;
 export type XhsPublishResetStatus = PlatformPublishResetStatus;
 
 export interface XhsPublishJob {
@@ -133,6 +138,9 @@ export interface XhsPublisherBrowserStatus {
     pageState?: 'ready' | 'draft' | 'login_required' | 'security_challenge' | 'success' | 'unsupported';
     publishTarget?: 'image' | 'video';
     detail?: string;
+    accountId?: string;
+    accountLabel?: string;
+    ownedJobId?: string;
 }
 
 export interface XhsPublisherStatus {
@@ -177,6 +185,7 @@ export function isXhsPublishJobStatus(value: unknown): value is XhsPublishJobSta
         'preflighting',
         'uploading',
         'submitting',
+        'submitted_pending_review',
         'published',
         'returning',
         'completed',
@@ -189,7 +198,7 @@ export function isXhsPublishJobStatus(value: unknown): value is XhsPublishJobSta
 }
 
 export function isTerminalXhsPublishStatus(status: XhsPublishJobStatus): boolean {
-    return ['completed', 'cancelled', 'superseded', 'submit_result_unknown'].includes(status);
+    return ['completed', 'cancelled', 'superseded', 'submit_result_unknown', 'submitted_pending_review'].includes(status);
 }
 
 export function reconcileInterruptedXhsPublishJob(job: XhsPublishJob, now: number): XhsPublishJob | null {

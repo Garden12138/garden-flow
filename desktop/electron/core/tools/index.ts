@@ -44,6 +44,7 @@ import { BashTool } from './bashTool';
 import { AppCliTool } from './appCliTool';
 import { AudioGenerateTool, ImageGenerateTool, VideoGenerateTool } from './mediaGenerationTools';
 import { ProductVideoComposeTool } from './productVideoComposeTool';
+import { ProductProjectReadTool, ProductProjectEditTool, ProductProjectUndoTool } from './productProjectEditorTools';
 import { XhsPublishPrepareTool } from './xhsPublishPrepareTool';
 import { WorkspaceTool } from './workspaceTool';
 import {
@@ -66,6 +67,11 @@ const ensureBuiltinToolDescriptorsRegistered = (): void => {
     const register = (descriptor: Parameters<typeof registerBuiltinToolDescriptor>[0]) => {
         registerBuiltinToolDescriptor(descriptor);
     };
+    for (const Tool of [ProductProjectReadTool, ProductProjectEditTool, ProductProjectUndoTool]) {
+        const tool = new Tool();
+        register({ name: tool.name, displayName: tool.displayName, description: tool.description, kind: tool.kind,
+            contexts: ['gardenflow'], visibility: 'public', requiresContext: null, create: () => new Tool() });
+    }
 
     registerBuiltinToolDescriptor({
         name: 'workspace',

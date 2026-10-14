@@ -97,7 +97,7 @@ export async function reconcileProductVideoApprovals(): Promise<void> {
   for (const approval of listProductVideoApprovals()) await refreshApproval(approval);
 }
 
-export async function getProductVideoReplanInput(sessionId: string, callId: string): Promise<{ message: string; productId: string; remixClips?: import('../../shared/productVideoRemix').ProductVideoClipReference[] }> {
+export async function getProductVideoReplanInput(sessionId: string, callId: string): Promise<{ message: string; creationTarget?: import('../../shared/productCreationTarget').ProductCreationTarget; productId: string; remixClips?: import('../../shared/productVideoRemix').ProductVideoClipReference[] }> {
   const stored = getPendingToolApproval(callId);
   if (!stored || stored.session_id !== sessionId || stored.tool_name !== 'product_video_compose') throw new Error('分镜不属于当前会话');
   if (approvalSpace(stored) !== getWorkspacePaths().activeSpaceId) throw new Error('请切换回分镜所属空间后重新规划');
@@ -111,9 +111,9 @@ export async function getProductVideoReplanInput(sessionId: string, callId: stri
     const task = approval.task_id ? getTaskGraphRuntime().getTask(approval.task_id) : null;
     const clips = readProductVideoClipReferences(task?.metadata);
     await runInWorkspaceSpace(approvalSpace(approval), () => resolveProductVideoRemixFiles(clips));
-    return { message, productId: String(approval.params.productId || ''), remixClips: clips };
+    return { message, creationTarget: approval.params.creationTarget as import('../../shared/productCreationTarget').ProductCreationTarget | undefined, productId: String(approval.params.productId || ''), remixClips: clips };
   }
-  return { message, productId: String(approval.params.productId || '') };
+  return { message, creationTarget: approval.params.creationTarget as import('../../shared/productCreationTarget').ProductCreationTarget | undefined, productId: String(approval.params.productId || '') };
 }
 
 function resultData(value: unknown): Record<string, unknown> {
@@ -154,6 +154,7 @@ function approvalSafetyError(approval: PendingToolApprovalSnapshot): string | nu
     workflowKind: task?.route?.workflowKind,
     toolName: 'product_video_compose',
     args: parsed.data,
+    creationTarget: taskMetadata.creationTarget as import('../../shared/productCreationTarget').ProductCreationTarget | undefined,
     explicitProductRefs: readExplicitProductRefs(taskMetadata),
     productAssetVisualGrounding: taskMetadata.productAssetVisualGrounding
       && typeof taskMetadata.productAssetVisualGrounding === 'object'

@@ -1,0 +1,89 @@
+{
+  "mp4": [
+    {
+      "file": "xiaohongshu-postfix-repeat-2.mp4",
+      "sha256": "dbe5d78bdc6067ecde88d3c02cda5e41dbb4ef1238ab8a6c01929a8467091bf9",
+      "width": 1080,
+      "height": 1920,
+      "fps": "30/1",
+      "videoDuration": "15.000000",
+      "containerDuration": "15.061333",
+      "videoFrames": "450",
+      "hasAudioStream": true
+    },
+    {
+      "file": "douyin-video-final.mp4",
+      "sha256": "a9726592aa15194e760a19ff9df765959f96c8577d8f2e4dc90882a5349359ff",
+      "width": 1080,
+      "height": 1920,
+      "fps": "30/1",
+      "videoDuration": "15.000000",
+      "containerDuration": "15.061333",
+      "videoFrames": "450",
+      "hasAudioStream": true
+    },
+    {
+      "file": "tiktok-video-final.mp4",
+      "sha256": "a49c2d0810ba27a15ccd759eaf83618feff3f9eca1562b66e722196deb9ec07d",
+      "width": 1080,
+      "height": 1920,
+      "fps": "30/1",
+      "videoDuration": "15.000000",
+      "containerDuration": "15.061333",
+      "videoFrames": "450",
+      "hasAudioStream": true
+    },
+    {
+      "file": "tiktok-remix-round6.mp4",
+      "sha256": "86d34c169b5f2c604d70f87f2f252fa2e607fd1c805b75383c91ce630f9f8597",
+      "width": 1080,
+      "height": 1920,
+      "fps": "30/1",
+      "videoDuration": "6.000000",
+      "containerDuration": "6.058667",
+      "videoFrames": "180",
+      "hasAudioStream": true
+    }
+  ],
+  "zip": {
+    "file": "image-set-round7.zip",
+    "crcPassed": true,
+    "filesInOrder": [
+      {
+        "file": "assets/01-封面.png",
+        "width": 1440,
+        "height": 1920,
+        "sha256": "a73433b978c342dd9e79f3f8d69c892986cc0f8203aa7d48234c59274c9bcaaf"
+      },
+      {
+        "file": "assets/02-内容页.png",
+        "width": 1440,
+        "height": 1920,
+        "sha256": "6645a101b275ac66fd33b69d2af6022d70aee0e0c1b66f224006515e1780a80d"
+      },
+      {
+        "file": "assets/03-内容页.png",
+        "width": 1440,
+        "height": 1920,
+        "sha256": "e946e1f071bf345a8a050836bb5653ffce45bd1187cf97c2d05c1b57c456f65d"
+      },
+      {
+        "file": "assets/04-内容页.png",
+        "width": 1440,
+        "height": 1920,
+        "sha256": "2957cc37ecbb3ffdccb9ca45530e9820177a3345ff1502e8f11f260f7235282b"
+      },
+      {
+        "file": "assets/05-内容页.png",
+        "width": 1440,
+        "height": 1920,
+        "sha256": "3f351de839f7047624bf2ee8923c7723c24a0a33d396c539bedfcdb9b79779b9"
+      }
+    ],
+    "extraFiles": [
+      "index.html",
+      "content.md",
+      "manifest.json"
+    ]
+  }
+}

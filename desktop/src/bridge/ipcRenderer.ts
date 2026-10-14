@@ -1,3 +1,4 @@
+import { createPublicationBridge } from './domains/publicationBridge';
 import { createBridgeCore } from './core';
 import type { InvokeGuardOptions } from './types';
 import { createAccountsBridge } from './domains/accountsBridge';
@@ -82,6 +83,7 @@ function createIpcRenderer() {
     ...createManuscriptsBridge(core),
     ...createGardenFlowBridge(core),
     ...createXhsPublisherBridge(core),
+    ...createPublicationBridge(core),
     ...createTeamRuntimeBridge(core),
     ...createSystemBridge(core),
   };

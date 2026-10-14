@@ -65,7 +65,7 @@ export interface BuiltinAutomationDefinition {
     documentationUrl?: string;
     trigger:
         | { kind: 'schedule'; schedule: { mode: 'daily'; time: string } }
-        | { kind: 'artifact-ready'; artifactType: 'xiaohongshu-note' };
+        | { kind: 'artifact-ready'; artifactType: 'xiaohongshu-note' | 'product-video' };
     /** 执行前强制激活的技能 */
     requiredSkills: string[];
     settingsSchema: BuiltinAutomationSettingField[];
@@ -75,6 +75,9 @@ export interface BuiltinAutomationDefinition {
 
 const XHS_AUTO_CAPTURE_ID = XHS_AUTO_CAPTURE_TASK_ID;
 export const XHS_AUTO_PUBLISH_TASK_ID = 'xhs-auto-publish';
+export const PUBLICATION_AUTOMATION_IDS = { xiaohongshu: XHS_AUTO_PUBLISH_TASK_ID, douyin: 'douyin-auto-publish', tiktok: 'tiktok-auto-publish' } as const;
+export const isPublicationAutomationTask = (id: string): boolean => Object.values(PUBLICATION_AUTOMATION_IDS).includes(id as any);
+
 
 function nowIso(): string {
     return new Date().toISOString();
@@ -386,71 +389,16 @@ const BUILTIN_AUTOMATION_DEFINITIONS: BuiltinAutomationDefinition[] = [
     },
     marketplaceAutoCaptureDefinition('taobao'),
     marketplaceAutoCaptureDefinition('tmall'),
-    {
-        id: XHS_AUTO_PUBLISH_TASK_ID,
-        name: '小红书自动发布',
-        description: '小红书图片或视频制作完成后在对话中询问；只有用户明确确认当前版本，才会交给专用发布浏览器。默认关闭。',
+    ...(['xiaohongshu', 'douyin', 'tiktok'] as const).map((platform): BuiltinAutomationDefinition => ({
+        id: PUBLICATION_AUTOMATION_IDS[platform],
+        name: `${{ xiaohongshu: '小红书', douyin: '抖音', tiktok: 'TikTok' }[platform]}完成后询问是否发布`,
+        description: '完整作品导出后在当前工程编辑对话中询问。允许离线开启；上传核对和最终发布必须分别点击确认。默认关闭。',
         supportedPlatforms: ['darwin', 'win32', 'linux'],
-        trigger: { kind: 'artifact-ready', artifactType: 'xiaohongshu-note' },
-        requiredSkills: ['xhs-auto-publish'],
-        settingsSchema: [],
-        buildPrompt: () => '',
-        checkReadiness: async () => {
-            const bridge = getBrowserCaptureBridgeService();
-            const instances = (bridge?.getStatus().instances || [])
-                .filter((instance) => instance.extensionKind === 'xhs-publisher');
-            const binding = getXhsPublisherBinding();
-            const bound = instances.find((instance) => instance.extensionInstanceId === binding);
-            const checks: BuiltinAutomationReadinessCheck[] = [
-                {
-                    id: 'publisher-plugin',
-                    label: '独立发布插件',
-                    status: instances.length > 0 ? 'ok' : 'failed',
-                    detail: instances.length > 0 ? `已连接 ${instances.length} 个发布插件实例` : '未检测到发布插件',
-                    hint: instances.length > 0 ? undefined : '请在专用发布浏览器中加载“小红书发布插件”。',
-                },
-                {
-                    id: 'publisher-binding',
-                    label: '发布浏览器绑定',
-                    status: bound ? 'ok' : 'failed',
-                    detail: bound ? `${bound.browser || '浏览器'} · ${bound.extensionInstanceId}` : '尚未绑定已连接的发布浏览器',
-                    hint: bound ? undefined : '请在设置 → 隐私与诊断 → 小红书发布浏览器中，选择已连接的发布插件实例并点击“绑定此浏览器”。',
-                },
-            ];
-            if (bound) {
-                let pageReady = false;
-                let pageDetail = '无法读取发布页状态';
-                try {
-                    const raw = await bridge?.invokeBrowserControl('publisher.status', {}, {
-                        extensionInstanceId: bound.extensionInstanceId,
-                        extensionKind: 'xhs-publisher',
-                        requiredCapability: XHS_PUBLISHER_CAPABILITY,
-                        timeoutMs: 8_000,
-                    });
-                    const status = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
-                    pageReady = Number(status.publishTabCount) === 1 && status.pageState === 'ready';
-                    pageDetail = String(status.detail || (pageReady ? '发布页空白且可用' : '发布页未就绪'));
-                } catch (error) {
-                    pageDetail = error instanceof Error ? error.message : String(error);
-                }
-                checks.push({
-                    id: 'publisher-page',
-                    label: '专用发布页',
-                    status: pageReady ? 'ok' : 'failed',
-                    detail: pageDetail,
-                    hint: pageReady ? undefined : '请仅保留一个已登录且内容为空的小红书官方发布页。',
-                });
-            }
-            const blocking = checks.find((check) => check.status === 'failed');
-            return {
-                taskId: XHS_AUTO_PUBLISH_TASK_ID,
-                ready: !blocking,
-                checkedAt: nowIso(),
-                blockingReason: blocking ? `${blocking.label}：${blocking.detail}` : '',
-                checks,
-            };
-        },
-    },
+        trigger: { kind: 'artifact-ready', artifactType: platform === 'xiaohongshu' ? 'xiaohongshu-note' : 'product-video' },
+        requiredSkills: [], settingsSchema: [], buildPrompt: () => '',
+        checkReadiness: async () => ({ taskId: PUBLICATION_AUTOMATION_IDS[platform], ready: true, checkedAt: nowIso(), blockingReason: '',
+            checks: [{ id: 'local-prompt', label: '本地完成询问', status: 'ok', detail: '无需插件在线；实际准备发布时再核验账号、插件和发布页' }] }),
+    })),
 ];
 
 export function listBuiltinAutomationDefinitions(): BuiltinAutomationDefinition[] {

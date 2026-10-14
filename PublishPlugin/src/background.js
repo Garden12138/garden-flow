@@ -1,3 +1,4 @@
+import { publicationUploadReview, readXhsPublisherAccount, verifyXhsImagePrefix } from './publicationReview.js';
 import {
   PUBLISH_URL,
   buildPublishModeUrl,
@@ -131,7 +132,7 @@ async function refreshNativeConnection() {
       extensionId: chrome.runtime.id,
       extensionInstanceId: await instanceId(),
       extensionKind: EXTENSION_KIND,
-      capabilities: [CAPABILITY, DOUYIN_CAPABILITY, DOUYIN_COVER_CAPABILITY, TIKTOK_CAPABILITY],
+      capabilities: [CAPABILITY, DOUYIN_CAPABILITY, DOUYIN_COVER_CAPABILITY, TIKTOK_CAPABILITY, 'xiaohongshu.account-bound.v1', 'publisher.upload-review.v1'],
       version: manifest.version_name || manifest.version,
       browser: navigator.userAgent.includes('Edg/') ? 'edge' : navigator.userAgent.includes('Brave') ? 'brave' : 'chrome',
     }, 4000);
@@ -312,6 +313,7 @@ async function currentStatus() {
     return { nativeConnected, publishTabCount: tabs.length, pageState: 'unsupported', detail: tabs.length === 0 ? '请打开一个小红书官方发布页' : '请只保留一个小红书官方发布页' };
   }
   const state = await inspectTab(tabs[0].id);
+  const account = await execute(tabs[0].id, readXhsPublisherAccount);
   const publishTarget = publishTargetFromState(state);
   const ownership = await preparedOwnership();
   let publishControl = null;
@@ -340,6 +342,7 @@ async function currentStatus() {
   return {
     nativeConnected,
     nativeConnectionError,
+    accountId: account?.accountId, accountLabel: account?.accountLabel,
     publishTabCount: 1,
     pageState: state.pageState,
     publishTarget,
@@ -434,8 +437,13 @@ function readPreparedEditorSnapshot() {
         .map((id) => document.getElementById(id)).filter((node) => node && visible(node)).map((node) => node.textContent.trim()).filter(Boolean);
     });
   const editorRoot = title?.closest('main,[class*="publish"],[class*="editor"]') || document.body;
-  const mediaSources = Array.from(editorRoot.querySelectorAll('[class*="upload"] img,[class*="preview"] img,[class*="upload"] video,[class*="preview"] video'))
-    .map((node) => String(node.currentSrc || node.src || '')).filter(Boolean);
+  // The creator image editor repeats each picture in the phone and cover
+  // previews. Only its numbered editing cards describe the uploaded order.
+  const imageCards = Array.from(document.querySelectorAll('main .img-container')).filter(visible)
+    .filter(card => card.querySelector('.format-img > img.img.preview') && card.querySelector('.img-idx'));
+  const cards = imageCards.length ? imageCards : Array.from(editorRoot.querySelectorAll('[data-upload-item],[class*="upload-item"],[class*="image-item"],[class*="preview-item"]')).filter(visible);
+  const mediaNodes = cards.length ? cards.map(card => card.querySelector('img,video')).filter(Boolean) : Array.from(editorRoot.querySelectorAll('[class*="upload"] img,[class*="preview"] img,[class*="upload"] video,[class*="preview"] video')).filter(visible);
+  const mediaSources = mediaNodes.map(node => String(node.currentSrc || node.src || '')).filter(Boolean);
   // Older publisher pages do not always wrap the video in upload/preview
   // classes. A unique visible video is a legacy anchor, not a media override.
   if (!mediaSources.length) {
@@ -458,6 +466,15 @@ function readPreparedEditorSnapshot() {
         node.getAttribute('title'),
       ].map((value) => String(value || '').trim())),
   ].filter((name) => /^[^/\\\r\n]+\.(?:mp4|mov|m4v|webm|avi)$/i.test(name)))].sort();
+  const settingRoot = document.querySelector('main') || editorRoot;
+  const permission = Array.from(settingRoot.querySelectorAll('.permission-card-wrapper .d-select-description')).filter(visible);
+  const switches = Array.from(settingRoot.querySelectorAll('.custom-switch-card')).filter(visible);
+  const checked = label => {
+    const matches = switches.filter(card => card.textContent.trim() === label);
+    return matches.length === 1 ? matches[0].querySelector('input[type="checkbox"]')?.checked : undefined;
+  };
+  const settings = { visibilityLabel: permission.length === 1 ? permission[0].textContent.trim() : '',
+    original: checked('原创声明'), allowCopy: checked('允许正文复制'), scheduled: checked('定时发布') };
   return {
     titleValue,
     bodyValue,
@@ -465,6 +482,7 @@ function readPreparedEditorSnapshot() {
     validationErrors,
     mediaSources,
     mediaFileNames,
+    settings,
   };
 }
 
@@ -539,7 +557,7 @@ async function inspectTrustedPublishTarget(tabId) {
   }
 }
 
-async function dispatchTrustedPublishClick(tabId) {
+async function dispatchTrustedPublishClick(tabId, request, ownership) {
   await chrome.debugger.attach({ tabId }, '1.3');
   const observationKey = `gardenflowPublishClick_${crypto.randomUUID()}`;
   let objectId;
@@ -571,6 +589,16 @@ async function dispatchTrustedPublishClick(tabId) {
     });
     const beforePress = await call(readTrustedPublishClick, observationKey);
     if (!beforePress?.hitTestable) return { ok: false, code: 'PUBLISH_BUTTON_OBSCURED', message: '发布按钮被遮挡或位置已变化，未点击' };
+    if (request?.confirmationVersion === 2) {
+      const account = await execute(tabId, readXhsPublisherAccount);
+      const latest = await execute(tabId, readPreparedEditorSnapshot);
+      const verified = verifyPreparedEditorSnapshot(latest, editorVerificationPayload(request));
+      if (account?.accountId !== request.accountId || account?.accountLabel !== request.accountLabel
+        || !verified?.ok || !preparedMediaMatches(latest, ownership)
+        || !request.uploadPageFingerprint || publicationUploadReview(request, { ...verified, ...account }, request.media.length).pageFingerprint !== request.uploadPageFingerprint) {
+        return { ok: false, code: 'FINAL_REVIEW_CHANGED', message: '最终点击前账号或页面内容已变化，未提交' };
+      }
+    }
     // Mark uncertainty BEFORE dispatch: a transport error is not proof that
     // the browser did not receive the event. Never retry a click here.
     mayHaveDispatched = true;
@@ -736,8 +764,35 @@ async function clearPreparedOwnership(jobId) {
   if (!current || !jobId || current.jobId === jobId) await chrome.storage.local.remove(PREPARED_JOB_KEY);
 }
 
-function preparedResult(jobId) {
-  return { ...result(jobId, true, 'not_submitted', 'not_started'), prepared: true };
+function preparedResult(jobId, request, state) {
+  if (request?.confirmationVersion === 2 && !state?.settings?.visibilityLabel) return result(jobId, false, 'not_submitted', 'not_started', 'PAGE_SETTINGS_UNVERIFIED', '无法回读当前小红书可见范围，未获得最终发布授权');
+  if (request?.confirmationVersion === 2 && state?.settings?.scheduled === true) return result(jobId, false, 'not_submitted', 'not_started', 'SCHEDULED_PUBLISH_UNSUPPORTED', '当前确认流程只支持立即发布，请先关闭页面定时发布');
+  return { ...result(jobId, true, 'not_submitted', 'not_started'), prepared: true, contentDigest: request?.contentDigest,
+    uploadReview: request?.confirmationVersion === 2 ? publicationUploadReview(request, state, request.media.length) : undefined };
+}
+
+async function uploadXhsImagesInOrder(tabId, request, anchors = []) {
+  const files = request.media.filter(item => item.role !== 'video').sort((a, b) => a.order - b.order).map(item => item.path);
+  const current = [...anchors];
+  for (let index = current.length; index < files.length; index++) {
+    const account = await execute(tabId, readXhsPublisherAccount);
+    if (!account || account.accountId !== request.accountId || account.accountLabel !== request.accountLabel) return { ok: false, code: 'ACCOUNT_CHANGED', message: '图片上传前账号已变化，已停止' };
+    const before = await execute(tabId, readPreparedEditorSnapshot);
+    if (JSON.stringify(before.mediaSources) !== JSON.stringify(current) || !canResumeOwnedPreparingDraft(before, 'preparing')) return { ok: false, code: 'IMAGE_DRAFT_CHANGED', message: '图片或页面文字在上传期间已变化，未覆盖' };
+    if (await setFiles(tabId, [files[index]], 'image') !== 1) return { ok: false, code: 'IMAGE_INPUT_NOT_FOUND', message: `第 ${index + 1} 张图片控件无法按顺序上传` };
+    const deadline = Date.now() + 120000; let page;
+    while (Date.now() < deadline) {
+      page = await execute(tabId, readPreparedEditorSnapshot);
+      if (!page.mediaBusy && page.mediaSources.length === current.length + 1) break;
+      await sleep(500);
+    }
+    if (!page || page.mediaBusy || page.mediaSources.length !== current.length + 1 || current.some((anchor, position) => page.mediaSources[position] !== anchor)) return { ok: false, code: 'IMAGE_ORDER_UNVERIFIED', message: `第 ${index + 1} 张图片的数量或顺序无法核对，请检查本任务草稿` };
+    current.push(page.mediaSources.at(-1));
+    const ownership = await preparedOwnership();
+    if (!ownership || ownership.jobId !== request.jobId || ownership.contentDigest !== request.contentDigest) return { ok: false, code: 'DRAFT_OWNERSHIP_CHANGED', message: '上传草稿归属已变化，已停止' };
+    await savePreparedOwnership({ ...ownership, imageUploadAnchors: [...current] });
+  }
+  return { ok: true, anchors: current };
 }
 
 async function waitForPreparedEditor(tabId, payload, timeoutMs) {
@@ -768,20 +823,41 @@ async function preparePublish(payload) {
     const tabs = await publishTabs();
     if (tabs.length !== 1 || !tabs[0]?.id) return result(payload.jobId, false, 'not_submitted', 'not_started', tabs.length ? 'MULTIPLE_PUBLISH_TABS' : 'PUBLISH_TAB_NOT_FOUND', tabs.length ? '请只保留一个小红书发布页' : '请打开小红书官方发布页');
     const tabId = tabs[0].id;
+    if (payload.confirmationVersion === 2) { const account = await execute(tabId, readXhsPublisherAccount);
+      if (!account || account.accountId !== payload.accountId || account.accountLabel !== payload.accountLabel) return result(payload.jobId, false, 'not_submitted', 'not_started', 'ACCOUNT_CHANGED', '无法核对确认卡中的小红书账号'); }
     const initial = await inspectTab(tabId);
-    const ownership = await preparedOwnership();
+    let ownership = await preparedOwnership();
     const ownedDraft = initial.pageState === 'draft'
       && (ownership?.status === 'prepared' || ownership?.status === 'preparing')
       && ownership.jobId === payload.jobId
       && ownership.contentDigest === payload.contentDigest
       && ownership.tabId === tabId;
     if (ownedDraft) {
+      if (payload.confirmationVersion === 2 && (ownership.confirmationVersion !== 2 || ownership.accountId !== payload.accountId
+        || ownership.accountLabel !== payload.accountLabel || !samePublishMedia(ownership.media, payload.media)
+        || JSON.stringify(ownership.mediaSha256) !== JSON.stringify(payload.mediaSha256))) return result(payload.jobId, false, 'not_submitted', 'not_started', 'UPLOAD_REVIEW_MISSING', '旧草稿缺少本次账号和有序素材核验，不会覆盖');
       if ((ownership.noteType && ownership.noteType !== payload.noteType)
         || !publishModeMatches(initial.probe?.uploadLandingEvidence, payload.noteType)) {
         return result(payload.jobId, false, 'not_submitted', 'not_started', 'PUBLISH_MODE_CHANGED', '当前任务所在页面的图文/视频模式已变化，未继续操作');
       }
       const verificationPayload = editorVerificationPayload(payload);
       let snapshot = await execute(tabId, readPreparedEditorSnapshot);
+      if (payload.confirmationVersion === 2 && payload.noteType === 'image' && ownership.status === 'preparing'
+        && snapshot.mediaSources.length < payload.media.length && canResumeOwnedPreparingDraft(snapshot, ownership.status)) {
+        let anchors = ownership.imageUploadAnchors;
+        if (!Array.isArray(anchors) || JSON.stringify(anchors) !== JSON.stringify(snapshot.mediaSources)) {
+          // A pre-checkpoint partial upload is adopted only when the editor's
+          // own blob bytes match every expected PNG in the ordered prefix.
+          const verifiedPrefix = await execute(tabId, verifyXhsImagePrefix, [payload.mediaSha256]);
+          if (!verifiedPrefix?.ok || JSON.stringify(verifiedPrefix.mediaSources) !== JSON.stringify(snapshot.mediaSources)) return result(payload.jobId, false, 'not_submitted', 'not_started', 'PARTIAL_UPLOAD_UNVERIFIED', '部分图片缺少可靠的顺序与内容核验，未重复上传或覆盖');
+          anchors = snapshot.mediaSources;
+          await savePreparedOwnership({ ...ownership, imageUploadAnchors: [...anchors] });
+        }
+        const remaining = await uploadXhsImagesInOrder(tabId, payload, anchors);
+        if (!remaining.ok) return result(payload.jobId, false, 'not_submitted', 'not_started', remaining.code, remaining.message);
+        ownership = await preparedOwnership();
+        snapshot = await execute(tabId, readPreparedEditorSnapshot);
+      }
       if (canResumeOwnedPreparingDraft(snapshot, ownership.status)) {
         const filled = await execute(tabId, fillEditor, [{
           title: payload.title,
@@ -812,7 +888,7 @@ async function preparePublish(payload) {
       if (verified?.ok) {
         if (!preparedMediaMatches(verified, ownership)) return result(payload.jobId, false, 'not_submitted', 'not_started', 'PREPARED_MEDIA_CHANGED', '已准备的媒体发生变化，未提交');
         await savePreparedOwnership({ ...ownership, noteType: payload.noteType, status: 'prepared', preparedAt: ownership.preparedAt || Date.now(), mediaSources: verified.mediaSources, mediaFileNames: verified.mediaFileNames });
-        return preparedResult(payload.jobId);
+        return preparedResult(payload.jobId, payload, { ...verified, accountId: payload.accountId, accountLabel: payload.accountLabel });
       }
       const failure = preparedEditorFailure(verified);
       return result(payload.jobId, false, 'not_submitted', 'not_started', failure.code, failure.message);
@@ -835,14 +911,16 @@ async function preparePublish(payload) {
       sessionId: payload.sessionId,
       projectPath: payload.projectPath,
       media: payload.media,
+      accountId: payload.accountId, accountLabel: payload.accountLabel, confirmationVersion: payload.confirmationVersion, mediaSha256: payload.mediaSha256,
     });
     const images = payload.media.filter((item) => item.role !== 'video').sort((a, b) => a.order - b.order).map((item) => item.path);
     const videos = payload.media.filter((item) => item.role === 'video').sort((a, b) => a.order - b.order).map((item) => item.path);
     if (payload.noteType === 'video') {
       if (videos.length !== 1 || await setFiles(tabId, videos, 'video') !== videos.length) return result(payload.jobId, false, 'not_submitted', 'not_started', 'VIDEO_INPUT_NOT_FOUND', '未找到可用的视频上传控件或文件选择数量不一致');
-    } else if (await setFiles(tabId, images, 'image') !== images.length) {
-      return result(payload.jobId, false, 'not_submitted', 'not_started', 'IMAGE_INPUT_NOT_FOUND', '未找到可用的图片上传控件');
-    }
+    } else if (payload.confirmationVersion === 2) {
+      const uploaded = await uploadXhsImagesInOrder(tabId, payload);
+      if (!uploaded.ok) return result(payload.jobId, false, 'not_submitted', 'not_started', uploaded.code, uploaded.message);
+    } else if (await setFiles(tabId, images, 'image') !== images.length) { return result(payload.jobId, false, 'not_submitted', 'not_started', 'IMAGE_INPUT_NOT_FOUND', '未找到可用的图片上传控件'); }
     await sleep(payload.noteType === 'video' ? 2500 : 1200);
     if (payload.noteType === 'video' && images.length) {
       const coverCount = await setFiles(tabId, [images[0]], 'image').catch(() => 0);
@@ -872,8 +950,11 @@ async function preparePublish(payload) {
       sessionId: payload.sessionId,
       projectPath: payload.projectPath,
       media: payload.media,
+      accountId: payload.accountId, accountLabel: payload.accountLabel, confirmationVersion: payload.confirmationVersion, mediaSha256: payload.mediaSha256,
     });
-    return preparedResult(payload.jobId);
+    if (payload.confirmationVersion === 2) { const account = await execute(tabId, readXhsPublisherAccount);
+      if (account?.accountId !== payload.accountId || account?.accountLabel !== payload.accountLabel || (payload.noteType === 'image' && prepared.mediaSources.length !== payload.media.length)) return result(payload.jobId, false, 'not_submitted', 'not_started', 'UPLOAD_REVIEW_MISMATCH', '上传后账号或图片清单回读不一致'); }
+    return preparedResult(payload.jobId, payload, { ...prepared, accountId: payload.accountId, accountLabel: payload.accountLabel });
   } catch (error) {
     const failure = messageError(error);
     return result(payload.jobId, false, 'not_submitted', 'not_started', failure.code, failure.message);
@@ -906,9 +987,17 @@ async function submitPrepared(payload) {
     if (!validation.ok || request.jobId !== jobId || request.contentDigest !== contentDigest) {
       return result(jobId, false, 'not_submitted', 'not_started', validation.code || 'INVALID_REQUEST', validation.message || '提交内容与已准备任务不一致');
     }
+    if (request.confirmationVersion === 2 && (ownership.confirmationVersion !== 2
+      || ownership.accountId !== request.accountId || ownership.accountLabel !== request.accountLabel
+      || JSON.stringify(ownership.mediaSha256) !== JSON.stringify(request.mediaSha256)
+      || !samePublishMedia(ownership.media, request.media))) {
+      return result(jobId, false, 'not_submitted', 'not_started', 'UPLOAD_REVIEW_MISSING', '旧确认或素材与上传核验不一致，请重新准备');
+    }
     if (ownership.noteType !== request.noteType) {
       return result(jobId, false, 'not_submitted', 'not_started', 'PUBLISH_MODE_CHANGED', '准备任务的图文/视频类型与提交请求不一致');
     }
+    if (request.confirmationVersion === 2) { const account = await execute(ownership.tabId, readXhsPublisherAccount);
+      if (account?.accountId !== request.accountId || account?.accountLabel !== request.accountLabel) return result(jobId, false, 'not_submitted', 'not_started', 'ACCOUNT_CHANGED', '小红书账号已变化，未提交'); }
     const submitState = await inspectTab(ownership.tabId);
     if (!publishModeMatches(submitState.probe?.uploadLandingEvidence, request.noteType)) {
       return result(jobId, false, 'not_submitted', 'not_started', 'PUBLISH_MODE_CHANGED', '发布页的图文/视频模式在提交前发生变化，未点击发布');
@@ -919,8 +1008,10 @@ async function submitPrepared(payload) {
     const verified = verifyPreparedEditorSnapshot(snapshot, editorVerificationPayload(request));
     if (!verified?.ok) return result(jobId, false, 'not_submitted', 'not_started', 'PREPARED_EDITOR_CHANGED', '发布页内容在提交前发生变化，未点击发布');
     if (!preparedMediaMatches(snapshot, ownership)) return result(jobId, false, 'not_submitted', 'not_started', 'PREPARED_MEDIA_CHANGED', '发布页媒体在提交前发生变化，未点击发布');
+    if (request.confirmationVersion === 2 && (!request.uploadPageFingerprint
+      || publicationUploadReview(request, { ...verified, accountId: request.accountId, accountLabel: request.accountLabel }, request.media.length).pageFingerprint !== request.uploadPageFingerprint)) return result(jobId, false, 'not_submitted', 'not_started', 'UPLOAD_PAGE_CHANGED', '上传核对后页面文案、图片或发布设置已变化，请重新核对');
     await savePreparedOwnership({ ...ownership, status: 'submitting', submittedAt: Date.now() });
-    const clicked = await dispatchTrustedPublishClick(ownership.tabId);
+    const clicked = await dispatchTrustedPublishClick(ownership.tabId, request, ownership);
     submitted = clicked?.mayHaveDispatched === true || clicked?.ok === true;
     if (!submitted) {
       await savePreparedOwnership(ownership);
@@ -1146,3 +1237,7 @@ chrome.runtime.onStartup.addListener(() => {
 });
 
 void connectNative().catch(() => {});
+
+function samePublishMedia(left, right) {
+  return Array.isArray(left) && Array.isArray(right) && left.length === right.length && left.every((item, index) => { const other = right[index]; return ['slotId', 'role', 'path', 'mimeType', 'order'].every(key => item[key] === other[key]); });
+}

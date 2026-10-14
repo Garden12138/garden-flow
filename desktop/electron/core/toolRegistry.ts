@@ -500,7 +500,7 @@ export function zodToJsonSchema(schema: z.ZodType<any>): Record<string, unknown>
         }
 
         // 7. 处理 ZodUnion (关键修复: 之前缺失)
-        if (typeName === 'ZodUnion') {
+        if (typeName === 'ZodUnion' || typeName === 'ZodDiscriminatedUnion') {
             return {
                 anyOf: def.options.map((opt: z.ZodType<any>) => zodToJsonSchema(opt)),
                 description: schema.description,

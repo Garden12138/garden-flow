@@ -1,3 +1,9 @@
+import { getCachedPublicationStatuses, refreshPublicationStatuses, bindPublicationBrowser, listPublicationJobs, readPublicationJob, preparePublication, actOnPublication } from './core/unifiedPublisherService';
+import { readPublicationSource } from './core/publicationSource';
+import { recordCompletedPublication, recoverPublicationCompletions, dismissPublicationOffer } from './core/publicationCompletionService';
+import { listPublicationCompletions } from './db';
+import { PublicationSourceSchema, PublicationPlatformSchema } from '../shared/publication';
+import { withPublicationButton } from './core/publicationAuthorization';
 import { getProductImageSetApprovalRequest, resolveProductImageSetApproval, invalidateProductImageSetApprovals, onProductImageSetApprovalUpdated, reconcileProductImageSetApprovals, getProductImageSetReplanInput } from './core/productImageSetApprovalService';
 import { getProductImagePagePreview, renderProductImagePage, generateProductImagePage, exportProductImageSet, importProductImageAsset, recoverProductImageSet, getProductImageGenerationConfig } from './core/productImageSetService';
 import { ProductImageExportRequestSchema, type ProductImagePageRequest, type ProductImagePreviewRequest, type ProductImageGenerateRequest, type ProductImageExportRequest } from '../shared/productImageSet';
@@ -220,6 +226,12 @@ import {
   getProductVideoReplanInput,
 } from './core/productVideoApprovalService';
 import { renderVideoEditorV2Project } from './core/video-editor-v2/renderExportService';
+import { listXhsPublishJobs } from './db';
+import { assertProductPublicationTarget } from './core/productWorkVersionService';
+import { getProductProjectEditorSession, resolveProductNoteEditor, readProductProjectEditor, validateProductEditorBinding, applyProductProjectEdit, undoProductProjectEdit, syncProductEditorDraft, recoverProductProjectEdits } from './core/productProjectEditorService';
+import { ProductProjectEditorRefSchema, ProductProjectEditRequestSchema, type ProductProjectEditorBinding, type ProductProjectEditorTurn } from '../shared/productProjectEditor';
+import { PRODUCT_CREATION_CAPABILITIES, PRODUCT_CREATION_PROFILES, PRODUCT_TARGET_RULES, ProductCreationTargetSchema, productTargetLabel } from '../shared/productCreationTarget';
+import { createProductTargetVariant, listProductWorkVariants, bindLegacyProductWorkTarget, reviewProductVariantCopy } from './core/productWorkVersionService';
 import { createDouyinVideoVersion, saveDouyinVideoVersion } from './core/douyinVideoVersionService';
 import { getDouyinPublisherService } from './core/douyinPublisherService';
 import { createTikTokVideoVersion, saveTikTokVideoVersion } from './core/tiktokVideoVersionService';
@@ -603,6 +615,7 @@ function recoverActiveXhsSessionBinding(
 ): Record<string, unknown> {
   const session = getChatSession(sessionId);
   const metadata = parseChatSessionMetadata(session?.metadata);
+  if (metadata.editorBindingKind === 'product-project' && metadata.productProjectEditorBinding) return metadata;
   const directCandidates = [explicitPath, metadata.activeXhsNotePath, metadata.activeXhsNoteUri];
   let activePath = directCandidates
     .map(resolveExistingXhsProjectPath)
@@ -1093,7 +1106,8 @@ function resolveForcedSkillNames(input: unknown): string[] {
         .filter(Boolean)
     : [];
   const forcedSkillNames = Array.from(new Set(explicitSkillNames));
-  const platform = String(record.platform || '').trim();
+  const selectedTarget = record.creationTarget ? ProductCreationTargetSchema.parse(record.creationTarget) : undefined;
+  const platform = selectedTarget?.platform || String(record.platform || '').trim();
   const formatTarget = String(record.formatTarget || '').trim();
   const xhsNoteType = String(record.xhsNoteType || '').trim();
   if (platform === 'xiaohongshu') {
@@ -1436,8 +1450,8 @@ const isUsableXhsPublisherPluginDir = async (candidate: string): Promise<boolean
       || !serviceWorker
       || !popup
       || extensionId !== XHS_PUBLISHER_EXTENSION_ID
-      || manifest.host_permissions?.length !== 1
-      || manifest.host_permissions[0] !== 'https://creator.xiaohongshu.com/*'
+      || manifest.host_permissions?.length !== 3
+      || !['https://creator.xiaohongshu.com/*', 'https://creator.douyin.com/*', 'https://www.tiktok.com/*'].every(host => manifest.host_permissions?.includes(host))
       || manifest.permissions?.includes('cookies')) return false;
     await Promise.all([fs.access(path.join(candidate, serviceWorker)), fs.access(path.join(candidate, popup))]);
     return true;
@@ -3259,6 +3273,8 @@ async function ensureSessionBridgeStarted() {
 
 app.whenReady().then(async () => {
   if (!appSingleInstanceLock) return;
+  await recoverProductProjectEdits();
+  await recoverPublicationCompletions();
   markStartupPhase('app.whenReady');
   registerLocalAssetProtocols();
   markStartupPhase('local-asset-protocols-registered');
@@ -4626,7 +4642,7 @@ ipcMain.handle('xhs-publisher:get-job', async (_, payload: { jobId?: string }) =
 ipcMain.handle('xhs-publisher:confirm', async (_, payload: { jobId?: string }) => {
   try {
     const { getXhsPublisherService } = await import('./core/xhsPublisherService');
-    return { success: true, job: await getXhsPublisherService().confirm(String(payload?.jobId || '')) };
+    return { success: true, job: await withPublicationButton('submit', String(payload?.jobId || ''), () => getXhsPublisherService().confirm(String(payload?.jobId || ''))) };
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
@@ -5899,6 +5915,12 @@ ipcMain.handle('chat:bind-editor-session', async (_, payload?: {
     const contextType = normalizeBindingText(binding?.contextType) || 'file';
     const contextId = normalizeBindingText(binding?.contextId);
     const filePath = normalizeBindingText(binding?.filePath) || contextId;
+    const productNote = filePath ? await getXhsNoteProject(filePath).catch(() => null) : null;
+    const productEditorRef = productNote ? await resolveProductNoteEditor(productNote.relativePath) : null;
+    if (productEditorRef) {
+      const editor = await getProductProjectEditorSession(productEditorRef);
+      return getChatSession(editor.sessionId);
+    }
     const metadata = normalizeBindingMetadata(payload?.metadata);
     const title = normalizeBindingText(binding?.title)
       || (filePath ? stripManuscriptExtension(path.basename(filePath)) : 'New Chat');
@@ -5977,6 +5999,60 @@ ipcMain.handle('chat:bind-editor-session', async (_, payload?: {
       error: error instanceof Error ? error.message : String(error),
     };
   }
+});
+
+async function publicationReply(operation: () => unknown) {
+  try { return { success: true, ...await runInWorkspaceSpace(getWorkspacePaths().activeSpaceId, operation) as object }; } catch (error) { return { success: false, error: String(error) }; }
+}
+ipcMain.handle('publication:source', (_, payload) => publicationReply(async () => ({ snapshot: await readPublicationSource(PublicationSourceSchema.parse(payload?.source), true, false) })));
+ipcMain.handle('publication:status', (_, payload) => publicationReply(async () => ({ statuses: payload?.refresh === true ? await refreshPublicationStatuses() : getCachedPublicationStatuses() })));
+ipcMain.handle('publication:list', () => publicationReply(() => ({ jobs: listPublicationJobs(), offers: listPublicationCompletions() })));
+ipcMain.handle('publication:get-job', (_, payload) => publicationReply(() => ({ job: readPublicationJob(PublicationPlatformSchema.parse(payload?.platform), String(payload?.jobId || '')) })));
+ipcMain.handle('publication:prepare', (_, payload) => publicationReply(async () => ({ job: await preparePublication(payload) })));
+ipcMain.handle('publication:upload', (_, payload) => publicationReply(async () => ({ job: await withPublicationButton('upload', String(payload?.jobId || ''), () => actOnPublication(payload, 'upload')) })));
+ipcMain.handle('publication:submit', (_, payload) => publicationReply(async () => ({ job: await withPublicationButton('submit', String(payload?.jobId || ''), () => actOnPublication(payload, 'submit')) })));
+ipcMain.handle('publication:cancel', (_, payload) => publicationReply(async () => ({ job: await actOnPublication(payload, 'cancel') })));
+ipcMain.handle('publication:recover', (_, payload) => publicationReply(async () => ({ job: await actOnPublication(payload, 'recover') })));
+ipcMain.handle('publication:review', (_, payload) => publicationReply(async () => ({ job: await actOnPublication(payload, 'review') })));
+ipcMain.handle('publication:receipt', (_, payload) => publicationReply(async () => ({ job: await actOnPublication(payload, 'receipt') })));
+ipcMain.handle('publication:bind', (_, payload) => publicationReply(() => { bindPublicationBrowser(PublicationPlatformSchema.parse(payload?.platform), String(payload?.extensionInstanceId || '')); return {}; }));
+ipcMain.handle('publication:dismiss-offer', (_, payload) => publicationReply(() => { dismissPublicationOffer(String(payload?.id || '')); return {}; }));
+
+ipcMain.handle('product-project-editor:session', async (_, payload: { project: unknown; selectedId?: string }) => {
+  try { return { success: true, ...await getProductProjectEditorSession(ProductProjectEditorRefSchema.parse(payload?.project), payload?.selectedId) }; }
+  catch (error) { return { success: false, error: String(error) }; }
+});
+ipcMain.handle('product-project-editor:read', async (_, payload: { project: unknown; selectedId?: string }) => {
+  try { return { success: true, snapshot: await readProductProjectEditor(ProductProjectEditorRefSchema.parse(payload?.project), payload?.selectedId) }; }
+  catch (error) { return { success: false, error: String(error) }; }
+});
+ipcMain.handle('product-project-editor:draft', async (_, payload: { project: unknown; dirty?: boolean }) => {
+  try {
+    if (typeof payload?.dirty !== 'boolean') throw new Error('dirty 必须是布尔值');
+    return { success: true, ...await syncProductEditorDraft(ProductProjectEditorRefSchema.parse(payload.project), payload.dirty) };
+  } catch (error) { return { success: false, error: String(error) }; }
+});
+ipcMain.handle('product-project-editor:apply', async (_, payload: unknown) => {
+  try {
+    const result = await applyProductProjectEdit(ProductProjectEditRequestSchema.parse(payload));
+    emitRendererDataChanged(result.video ? 'video-editor-v2' : 'manuscripts', { action: 'product-project-edit', entityId: result.video?.id || result.imageSet?.relativePath });
+    return { success: true, result };
+  } catch (error) { return { success: false, error: String(error) }; }
+});
+ipcMain.handle('product-project-editor:save-manual', async (_, payload: unknown) => {
+  try {
+    const result = await applyProductProjectEdit(ProductProjectEditRequestSchema.parse(payload), true);
+    emitRendererDataChanged(result.video ? 'video-editor-v2' : 'manuscripts', { action: 'product-project-save', entityId: result.video?.id || result.imageSet?.relativePath });
+    return { success: true, result };
+  } catch (error) { return { success: false, error: String(error) }; }
+});
+ipcMain.handle('product-project-editor:undo', async (_, payload: unknown) => {
+  try {
+    const request = ProductProjectEditRequestSchema.parse({ ...(payload as object), operations: [{ type: 'music.remove' }] });
+    const result = await undoProductProjectEdit(request);
+    emitRendererDataChanged(result.video ? 'video-editor-v2' : 'manuscripts', { action: 'product-project-undo', entityId: result.video?.id || result.imageSet?.relativePath });
+    return { success: true, result };
+  } catch (error) { return { success: false, error: String(error) }; }
 });
 
 // 获取或创建上下文关联的会话 (知识库聊天)
@@ -6845,7 +6921,11 @@ ipcMain.handle('douyin-publisher:bind-instance', async (_, payload?: { extension
 ipcMain.handle('douyin-publisher:prepare', async (_, payload?: { versionId?: string; sessionId?: string }) => {
   try {
     const service = getDouyinPublisherService();
-    const job = await service.prepare(String(payload?.versionId || ''), String(payload?.sessionId || ''));
+    const version = getDouyinVideoVersion(String(payload?.versionId || ''));
+    if (!version) throw new Error('平台版本不存在或不属于当前空间');
+    const snapshot = await readPublicationSource({ kind: 'video', projectId: version.projectId });
+    const view = await preparePublication({ source: snapshot.source, expectedRevision: snapshot.revision });
+    const job = service.getJob(view.id)!;
     return { success: true, job, videoPreviewUrl: service.previewUrl(job) };
   } catch (error) { return { success: false, error: String(error) }; }
 });
@@ -6855,11 +6935,11 @@ ipcMain.handle('douyin-publisher:get-job', async (_, payload?: { jobId?: string;
   return { success: Boolean(job), job, videoPreviewUrl: job ? service.previewUrl(job) : undefined };
 });
 ipcMain.handle('douyin-publisher:confirm', async (_, payload?: { jobId?: string }) => {
-  try { return { success: true, job: await getDouyinPublisherService().confirm(String(payload?.jobId || '')) }; }
+  try { return { success: true, job: await withPublicationButton('submit', String(payload?.jobId || ''), () => getDouyinPublisherService().confirm(String(payload?.jobId || ''))) }; }
   catch (error) { return { success: false, error: String(error) }; }
 });
 ipcMain.handle('douyin-publisher:stage-draft', async (_, payload?: { jobId?: string }) => {
-  try { return { success: true, job: await getDouyinPublisherService().stageDraft(String(payload?.jobId || '')) }; }
+  try { return { success: true, job: await withPublicationButton('upload', String(payload?.jobId || ''), () => getDouyinPublisherService().stageDraft(String(payload?.jobId || ''))) }; }
   catch (error) { return { success: false, error: String(error) }; }
 });
 ipcMain.handle('douyin-publisher:cancel', async (_, payload?: { jobId?: string }) => {
@@ -6873,6 +6953,35 @@ ipcMain.handle('douyin-publisher:recover-unpublished', async (_, payload?: { job
 ipcMain.handle('douyin-publisher:review-published', async (_, payload?: { jobId?: string; acknowledgedPublished?: boolean }) => {
   try { return { success: true, job: await getDouyinPublisherService().reviewPublished(String(payload?.jobId || ''), payload?.acknowledgedPublished === true) }; }
   catch (error) { return { success: false, error: String(error) }; }
+});
+
+ipcMain.handle('product-creatives:prepare-xhs', async (_, payload?: { projectId?: string }) => {
+  try {
+    const snapshot = await readPublicationSource({ kind: 'video', projectId: String(payload?.projectId || '') });
+    if (snapshot.platform !== 'xiaohongshu') throw new Error('此工程未绑定小红书');
+    const job = await preparePublication({ source: snapshot.source, expectedRevision: snapshot.revision });
+    return { success: true, sessionId: job.sessionId, jobId: job.id };
+  } catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) }; }
+});
+ipcMain.handle('product-creatives:capabilities', () => ({ success: true, capabilities: PRODUCT_CREATION_CAPABILITIES, profiles: PRODUCT_CREATION_PROFILES, rules: PRODUCT_TARGET_RULES }));
+ipcMain.handle('product-creatives:variants', async (_, payload?: { projectId?: string }) => {
+  try { return { success: true, variants: await listProductWorkVariants(String(payload?.projectId || '')) }; }
+  catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) }; }
+});
+ipcMain.handle('product-creatives:review-copy', async (_, payload) => {
+  try { const project = await reviewProductVariantCopy(payload); emitRendererDataChanged('video-editor-v2', { action: 'platform-copy-reviewed', entityId: project.id }); return { success: true, project }; }
+  catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) }; }
+});
+ipcMain.handle('product-creatives:bind-target', async (_, payload) => {
+  try { const project = await bindLegacyProductWorkTarget(payload); emitRendererDataChanged('video-editor-v2', { action: 'platform-bind', entityId: project.id }); return { success: true, project }; }
+  catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) }; }
+});
+ipcMain.handle('product-creatives:create-variant', async (_, payload) => {
+  try {
+    const project = await createProductTargetVariant(payload);
+    emitRendererDataChanged('video-editor-v2', { action: 'platform-version-create', entityId: project.id });
+    return { success: true, project };
+  } catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) }; }
 });
 
 ipcMain.handle('tiktok:video-version-create', async (_, payload?: {
@@ -6955,7 +7064,11 @@ ipcMain.handle('tiktok-publisher:bind-instance', async (_, payload?: { extension
 ipcMain.handle('tiktok-publisher:prepare', async (_, payload?: { versionId?: string; sessionId?: string }) => {
   try {
     const service = getTikTokPublisherService();
-    const job = await service.prepare(String(payload?.versionId || ''), String(payload?.sessionId || ''));
+    const version = getTikTokVideoVersion(String(payload?.versionId || ''));
+    if (!version) throw new Error('平台版本不存在或不属于当前空间');
+    const snapshot = await readPublicationSource({ kind: 'video', projectId: version.projectId });
+    const view = await preparePublication({ source: snapshot.source, expectedRevision: snapshot.revision });
+    const job = service.getJob(view.id)!;
     return { success: true, job, videoPreviewUrl: service.previewUrl(job) };
   } catch (error) { return { success: false, error: String(error) }; }
 });
@@ -6965,11 +7078,11 @@ ipcMain.handle('tiktok-publisher:get-job', async (_, payload?: { jobId?: string;
   return { success: Boolean(job), job, videoPreviewUrl: job ? service.previewUrl(job) : undefined };
 });
 ipcMain.handle('tiktok-publisher:confirm', async (_, payload?: { jobId?: string }) => {
-  try { return { success: true, job: await getTikTokPublisherService().confirm(String(payload?.jobId || '')) }; }
+  try { return { success: true, job: await withPublicationButton('submit', String(payload?.jobId || ''), () => getTikTokPublisherService().confirm(String(payload?.jobId || ''))) }; }
   catch (error) { return { success: false, error: String(error) }; }
 });
 ipcMain.handle('tiktok-publisher:stage-draft', async (_, payload?: { jobId?: string }) => {
-  try { return { success: true, job: await getTikTokPublisherService().stageDraft(String(payload?.jobId || '')) }; }
+  try { return { success: true, job: await withPublicationButton('upload', String(payload?.jobId || ''), () => getTikTokPublisherService().stageDraft(String(payload?.jobId || ''))) }; }
   catch (error) { return { success: false, error: String(error) }; }
 });
 ipcMain.handle('tiktok-publisher:cancel', async (_, payload?: { jobId?: string }) => {
@@ -7017,13 +7130,14 @@ ipcMain.handle('videoEditorV2:list-projects', async () => {
 
 ipcMain.handle('videoEditorV2:apply-product-command', async (_, payload?: {
   projectId?: string;
+  expectedUpdatedAt?: string;
   command?: import('../shared/videoAutoEdit').ProductVideoEditCommand;
 }) => {
   try {
     const projectId = String(payload?.projectId || '').trim();
     if (!projectId || !payload?.command) return { success: false, error: 'projectId and command are required' };
     const command = ProductVideoEditCommandSchema.parse(payload.command);
-    const project = await applyProductVideoEditCommand({ projectId, command });
+    const project = await applyProductVideoEditCommand({ projectId, command, expectedUpdatedAt: payload?.expectedUpdatedAt });
     emitRendererDataChanged('video-editor-v2', { action: command.type, entityId: project.id });
     return { success: true, project };
   } catch (error) {
@@ -9180,7 +9294,33 @@ async function executeChatMessage(
         productVideoRequest: { message: String(message || ''), spaceId: getWorkspacePaths().activeSpaceId },
       } : {}),
     };
-    if (rawTaskHints.productVideoCompositionMode === 'existing-clips') {
+    if (sessionMeta.editorBindingKind === 'xiaohongshu-note' && sessionMeta.activeXhsNotePath) {
+      const ref = await resolveProductNoteEditor(String(sessionMeta.activeXhsNotePath));
+      if (ref) {
+        const uri = ref.kind === 'video' ? `video-project://${ref.projectId}` : `manuscripts://${ref.path}`;
+        throw new Error(`请从 [继续编辑此作品](${uri}) 进入当前版本的工程编辑对话，发送前会保存手动输入。`);
+      }
+    }
+    const productEditorBinding = sessionMeta.productProjectEditorBinding as ProductProjectEditorBinding | undefined;
+    const isProductProjectEditor = sessionMeta.editorBindingKind === 'product-project' && Boolean(productEditorBinding);
+    if (isProductProjectEditor) {
+      const sent = rawTaskHints.productProjectEditorTurn as ProductProjectEditorTurn | undefined;
+      if (!sent?.requestId || !sent.expectedRevision || !Number.isInteger(sent.expectedDraftEpoch)) throw new Error('请在工程编辑器保存当前输入后重试');
+      const snapshot = await validateProductEditorBinding({ ...productEditorBinding!, selectedId: sent.binding?.selectedId });
+      if (snapshot.dirty || snapshot.revision !== sent.expectedRevision || snapshot.draftEpoch !== sent.expectedDraftEpoch) throw new Error('工程或输入已变化，请按最新工程重试');
+      const turn: ProductProjectEditorTurn = { binding: snapshot.binding, requestId: sent.requestId, expectedRevision: snapshot.revision, expectedDraftEpoch: snapshot.draftEpoch };
+      Object.assign(effectiveTaskHints, { workflowKind: 'product-project-edit', productProjectEditorTurn: turn,
+        productImageSetEditing: false, creationTarget: undefined, productVideoCompositionMode: undefined,
+        explicitProductRefs: [], explicitVideoClipRefs: [], skipSubagentOrchestration: true });
+      outgoingMessage += `\n\n<current_product_project>\n${JSON.stringify(snapshot)}\n</current_product_project>\n仅编辑此工程，每轮重新读取最新快照；工程绑定和本轮版本凭据由主进程固定。`;
+    }
+    if (!isProductProjectEditor && rawTaskHints.creationTarget) {
+      const target = ProductCreationTargetSchema.parse(rawTaskHints.creationTarget);
+      if (target.profileVersion === 0 || productAssetContext.explicitProductRefs.length !== 1) throw new Error('请选择一个商品和有效的当前目标规格');
+      Object.assign(effectiveTaskHints, { creationTarget: target, platform: target.platform, xhsNoteType: target.platform === 'xiaohongshu' ? target.contentKind === 'video' ? 'video' : 'image' : undefined, workflowKind: target.contentKind === 'video' ? 'product-video-compose' : 'product-image-set-compose', productVideoCompositionMode: target.compositionMode, activeXhsNotePath: '', activeXhsNoteUri: '', editorBindingKind: '', productImageSetEditing: false });
+      outgoingMessage += `\n\n用户已选择 ${productTargetLabel(target)}。目标规格快照：${JSON.stringify(target)}。请原样放入提案 creationTarget；视频必须提供 publicationCopy（title、description、hashtags）并令 voiceoverEnabled=false，使用原素材，不规划付费媒体。${target.platform === 'xiaohongshu' ? '发布标题不超过20字符。' : '按当前目标平台规划，不创建小红书稿件。'}`;
+    }
+    if ((effectiveTaskHints as Record<string, unknown>).productVideoCompositionMode === 'existing-clips') {
       const selectedClips = readProductVideoClipReferences(rawTaskHints);
       if (productAssetContext.explicitProductRefs.length !== 1 || !selectedClips.length) throw new Error('混剪需要选择一个商品和有效的视频素材');
       const clips = await readProductVideoRemixSources(selectedClips.map((clip) => clip.assetId));
@@ -9189,7 +9329,7 @@ async function executeChatMessage(
       outgoingMessage = [outgoingMessage, `<selected_video_clips>${JSON.stringify(clips.map(({ previewUrl, thumbnailUrl, ...ref }) => ref))}</selected_video_clips>`, '这是明确的已有视频混剪模式。仅使用已选视频的真实时长和摘要规划截取区间；文件名和元数据不等于画面理解，不得编造画面内容。使用 product_video_compose，compositionMode=existing-clips、voiceoverEnabled=false，全部镜头 source=media-clip、productAssetIds=[]、motionPreset=static，并填写 mediaAssetId、mediaContentHash、sourceStartMs、sourceEndMs、sourceVolume。'].join('\n\n');
     }
     const forcedSkillNames = resolveForcedSkillNames(taskHints);
-    const isStructuredXhsEditor = String(sessionMeta.editorBindingKind || '').trim() === 'xiaohongshu-note';
+    const isStructuredXhsEditor = !isProductProjectEditor && !rawTaskHints.creationTarget && String(sessionMeta.editorBindingKind || '').trim() === 'xiaohongshu-note';
     if (
       isStructuredXhsEditor
       && gardenFlowAuthoringHints?.editorAction === 'generate-video'
@@ -9219,11 +9359,11 @@ async function executeChatMessage(
         }
       }
     }
-    if (gardenFlowAuthoringHints && !isStructuredProductVideoCreation(effectiveTaskHints) && !isStructuredProductImageSetCreation(effectiveTaskHints)) {
+    if (!isProductProjectEditor && gardenFlowAuthoringHints && !isStructuredProductVideoCreation(effectiveTaskHints) && !isStructuredProductImageSetCreation(effectiveTaskHints)) {
       outgoingMessage = buildGardenFlowAuthoringPrompt(outgoingMessage, gardenFlowAuthoringHints);
     }
 
-    const runtimeMode = String(sessionMeta.editorBindingKind || '').trim() === 'xiaohongshu-note'
+    const runtimeMode = isProductProjectEditor || String(sessionMeta.editorBindingKind || '').trim() === 'xiaohongshu-note'
       ? 'gardenflow'
       : resolveRuntimeModeForSession(String(sessionMeta.contextType || ''));
     const routeAnalysis = getAgentRuntime().analyzeRuntimeContext({
@@ -9467,7 +9607,8 @@ ipcMain.handle('chat:retry-product-video', (event, payload: { sessionId?: string
       if (payload.callId) {
         const replan = await getProductVideoReplanInput(sessionId, payload.callId);
         ({ message, productId } = replan);
-        if (replan.remixClips) remixTaskHints = { productVideoCompositionMode: 'existing-clips', explicitVideoClipRefs: replan.remixClips, platform: 'xiaohongshu', xhsNoteType: 'video' };
+        if (replan.creationTarget) remixTaskHints.creationTarget = replan.creationTarget;
+        if (replan.remixClips) remixTaskHints = { ...remixTaskHints, productVideoCompositionMode: 'existing-clips', explicitVideoClipRefs: replan.remixClips, platform: 'xiaohongshu', xhsNoteType: 'video' };
       } else {
         // A plain follow-up may create an unrelated task. The explicit retry
         // action belongs to the latest product-video request in this session.
@@ -9484,6 +9625,7 @@ ipcMain.handle('chat:retry-product-video', (event, payload: { sessionId?: string
         if (request.spaceId !== getWorkspacePaths().activeSpaceId) throw new Error('请切换回任务所属空间');
         message = request.message;
         productId = refs[0].productId;
+        if (metadata?.creationTarget) remixTaskHints.creationTarget = metadata.creationTarget;
       }
       const product = await brandWorkspaceStore.getProductCreativeReference(productId);
       await executeChatMessage(event, {
@@ -9491,7 +9633,7 @@ ipcMain.handle('chat:retry-product-video', (event, payload: { sessionId?: string
         modelConfig: payload.modelConfig,
         assetReferences: [{ id: product.id, name: product.name, referenceType: 'product' }],
         taskHints: workflowKind === 'product-image-set-compose'
-          ? { workflowKind, productImageSetProposalId: `proposal-${randomUUID()}` }
+          ? { workflowKind, productImageSetProposalId: `proposal-${randomUUID()}`, ...remixTaskHints }
           : { workflowKind, productVideoProposalId: `proposal-${randomUUID()}`, productVideoReplan: true, ...remixTaskHints },
       }, resolve);
       resolve({ accepted: false, sessionId, runId: '', userMessageId: '', assistantMessageId: '', error: '未能启动商品视频任务，请重试。' });
@@ -9505,12 +9647,12 @@ ipcMain.handle('chat:retry-product-video', (event, payload: { sessionId?: string
 ipcMain.handle('chat:retry-product-image-set', async (event, payload: { sessionId: string; callId: string; modelConfig?: unknown }) => {
   try {
     if (getActiveChatRun(payload.sessionId)) throw new Error('请等待当前回复结束');
-    const { message, productId } = await getProductImageSetReplanInput(payload.sessionId, payload.callId);
+    const { message, productId, creationTarget } = await getProductImageSetReplanInput(payload.sessionId, payload.callId);
     const product = await brandWorkspaceStore.getProductCreativeReference(productId);
     return await new Promise<ChatSendReceipt>((resolve, reject) => {
       void executeChatMessage(event, { sessionId: payload.sessionId, message, displayContent: '按最新商品资料重新规划套图', modelConfig: payload.modelConfig,
         assetReferences: [{ id: product.id, name: product.name, referenceType: 'product' }],
-        taskHints: { workflowKind: 'product-image-set-compose', productImageSetProposalId: `proposal-${randomUUID()}` },
+        taskHints: { workflowKind: 'product-image-set-compose', productImageSetProposalId: `proposal-${randomUUID()}`, creationTarget },
       }, resolve).catch(reject);
     });
   } catch (error) { return { accepted: false, sessionId: payload.sessionId, error: error instanceof Error ? error.message : String(error) }; }

@@ -1,4 +1,5 @@
 import { ProductImageSetSchema, productImageInputKey, productImageSlotId, type ProductImageSet } from './productImageSet.ts';
+import { ProductCreationTargetSchema, ProductWorkVersionSchema, assertProductTargetMatch, type ProductCreationTarget, type ProductWorkVersion } from './productCreationTarget.ts';
 
 export const XHS_NOTE_SCHEMA_VERSION = 1 as const;
 
@@ -69,6 +70,8 @@ export interface XhsSubtitleItem {
 }
 
 export interface XhsNoteDocument {
+    creationTarget?: ProductCreationTarget;
+    workVersion?: ProductWorkVersion;
     productImageSet?: ProductImageSet;
     schemaVersion: typeof XHS_NOTE_SCHEMA_VERSION;
     revision: number;
@@ -107,6 +110,8 @@ export interface XhsNotePackageAsset {
 }
 
 export interface XhsNotePackageManifest {
+    creationTarget?: ProductCreationTarget;
+    workVersion?: ProductWorkVersion;
     schema: 'gardenflow-xiaohongshu-material-package';
     schemaVersion: typeof XHS_NOTE_SCHEMA_VERSION;
     noteType: XhsNoteType;
@@ -344,6 +349,8 @@ export function createXhsNotePackageManifest(input: {
         title: input.document.finalTitle,
         generationStatus: input.document.generationStatus,
         exportedAt: input.exportedAt || new Date().toISOString(),
+        ...(input.document.creationTarget ? { creationTarget: input.document.creationTarget } : {}),
+        ...(input.document.workVersion ? { workVersion: input.document.workVersion } : {}),
         assets: input.assets,
         warnings: input.warnings,
     };
@@ -520,6 +527,8 @@ export function normalizeXhsNoteDocument(value: unknown, forcedType?: XhsNoteTyp
     });
 
     const document: XhsNoteDocument = {
+        creationTarget: input.creationTarget ? ProductCreationTargetSchema.parse(input.creationTarget) : undefined,
+        workVersion: input.workVersion ? ProductWorkVersionSchema.parse(input.workVersion) : undefined,
         productImageSet: noteType === 'image' && input.productImageSet ? ProductImageSetSchema.parse(input.productImageSet) : undefined,
         schemaVersion: XHS_NOTE_SCHEMA_VERSION,
         revision: Math.max(0, Math.trunc(asNumber(input.revision, 0))),
@@ -542,6 +551,8 @@ export function normalizeXhsNoteDocument(value: unknown, forcedType?: XhsNoteTyp
         createdAt: asString(input.createdAt) || now,
         updatedAt: asString(input.updatedAt) || now,
     };
+    if (document.creationTarget && (document.creationTarget.contentKind === 'video') !== (noteType === 'video')) throw new Error('文档形式与目标规格不一致');
+    if (document.productImageSet) { assertProductTargetMatch(document.creationTarget, document.productImageSet.creationTarget); }
     return projectProductImageSetDocument(document);
 }
 

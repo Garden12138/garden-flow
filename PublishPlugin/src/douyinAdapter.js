@@ -140,8 +140,9 @@ export function probeDouyinPage() {
   const fileNames = [...new Set(Array.from(document.querySelectorAll('span,p,div'))
     .filter(visible).map((node) => String(node.textContent || '').trim())
     .filter((value) => value.length <= 180 && /(?:^|[\\/\s])[^\\/\s]+\.(?:mp4|mov|webm)$/i.test(value)))];
+  const videoSource = videoNodes.length === 1 ? String(videoNodes[0].currentSrc || videoNodes[0].src || '').trim() : '';
   const mediaSignature = videoNodes.length === 1
-    ? String(videoNodes[0].currentSrc || videoNodes[0].src || videoNodes[0].poster || '').trim()
+    ? videoSource || String(videoNodes[0].poster || '').trim()
     : fileNames.length === 1 ? `filename:${fileNames[0]}` : '';
   const buttons = Array.from(document.querySelectorAll('button,[role="button"]')).filter(visible);
   const publishButtons = buttons.filter((node) => /^(发布|发布作品)$/.test(String(node.textContent || '').trim()));
@@ -169,7 +170,7 @@ export function probeDouyinPage() {
     href: location.href, uploadPage, editorPage, loginRequired, securityChallenge,
     accountId, accountLabel, title, titleEditorCount: titleEditors.length,
     description, descriptionEditorCount: descriptionEditor ? 1 : 0,
-    videoInputCount, mediaSignature, videoCount: videoNodes.length,
+    videoInputCount, mediaSignature, videoCount: videoNodes.length, videoSourceReady: Boolean(videoSource),
     hasDraft: Boolean(description || mediaSignature || restorableDraft), restorableDraft, uploadBusy,
     publishButtonCount: publishButtons.length,
     publishButtonEnabled: publishButtons.length === 1 && !publishButtons[0].disabled,
@@ -195,6 +196,7 @@ export function showDouyinVideoPreview() {
   // Never search arbitrary page text or click publication controls.
   const tabs = Array.from(document.querySelectorAll('[class*="previewTab-"] [class*="tabItem-"]'))
     .filter(visible).filter((node) => String(node.textContent || '').replace(/\s/gu, '') === '预览视频');
+  if (!tabs.length) return { ok: false, code: 'VIDEO_PREVIEW_NOT_READY' };
   if (tabs.length !== 1) return { ok: false, code: 'VIDEO_PREVIEW_NOT_UNIQUE' };
   tabs[0].click();
   return { ok: true };

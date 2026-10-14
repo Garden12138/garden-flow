@@ -1,0 +1,73 @@
+{
+  "projects": [
+    {
+      "ref": {
+        "kind": "video",
+        "projectId": "video_edit_v2_1791878233439_2a00d775"
+      },
+      "revision": "c9bf2b69b9582e6f1d90c9c7a204155bfbf04e9fe9dee9dcc6dfb53867004fdb",
+      "sessionId": "product_editor_c5fccda6403975a48a150adc7fb1",
+      "contentUnchanged": true,
+      "undoCount": 0
+    },
+    {
+      "ref": {
+        "kind": "video",
+        "projectId": "video_edit_v2_1791872672063_253e0625"
+      },
+      "revision": "96200ec3a49eb80cf8a9261cafbb1937accb033b06fca463e7a2b8d5154b5eab",
+      "sessionId": "product_editor_05b7f3acc3a44baaf1071372fd4c",
+      "contentUnchanged": true,
+      "undoCount": 4
+    },
+    {
+      "ref": {
+        "kind": "video",
+        "projectId": "video_edit_v2_1791873082859_33de6922"
+      },
+      "revision": "24461322facca3bcd9da454b927430a8e56e257b8f6df368fbd7b589b2c409f8",
+      "sessionId": "product_editor_ced3484011c1217f8c2c1fb02378",
+      "contentUnchanged": true,
+      "undoCount": 5
+    },
+    {
+      "ref": {
+        "kind": "video",
+        "projectId": "video_edit_v2_1791873199549_1dfc6cda"
+      },
+      "revision": "43a0ac72edcb3956567afcd1133566fdecc0dbf5d5f930be997da7a3d4251574",
+      "sessionId": "product_editor_44101bc7fe9e79d609b8f8c1fd5b",
+      "contentUnchanged": true,
+      "undoCount": 5
+    },
+    {
+      "ref": {
+        "kind": "video",
+        "projectId": "video_edit_v2_1791873336346_4849812b"
+      },
+      "revision": "c66ce8cb926b7bee2cd8079e07a62671152a0996b8938762ebb506dfa3bb9a8d",
+      "sessionId": "product_editor_515bcee8cc681f695324936d2525",
+      "contentUnchanged": true,
+      "undoCount": 4
+    },
+    {
+      "ref": {
+        "kind": "image-set",
+        "path": "xiaohongshu/商品套图-98218b28-e4ea-41bb-b1ad-bcb35879115b.redpost"
+      },
+      "revision": "55871e4b941a896dabc55bfb63d185865614a0bff5ba858b0d1ad5ffd276aeba",
+      "sessionId": "product_editor_a14d7233f55f6325034d71c235a5",
+      "contentUnchanged": true,
+      "undoCount": 5
+    }
+  ],
+  "allContentUnchanged": true,
+  "publicationProjectionUnchanged": true,
+  "offers": 16,
+  "coldModelCalls": 0,
+  "paidMediaRequests": {
+    "image": 0,
+    "video": 0,
+    "voice": 0
+  }
+}

@@ -34,6 +34,7 @@ import {
   resolveJdAutoCaptureLaunch,
   resolveXhsAutoCaptureLaunch,
   XHS_AUTO_PUBLISH_TASK_ID,
+  isPublicationAutomationTask,
   type BuiltinAutomationDefinition,
   type BuiltinAutomationReadinessReport,
 } from './builtinAutomationTasks';
@@ -1592,9 +1593,9 @@ export class GardenFlowBackgroundRunner extends EventEmitter {
       state.enabled = false;
       state.nextRunAt = undefined;
       state.updatedAt = nowIso();
-      if (definition.id === XHS_AUTO_PUBLISH_TASK_ID) {
-        const { getXhsPublisherService } = await import('./xhsPublisherService');
-        getXhsPublisherService().cancelPendingJobs();
+      if (isPublicationAutomationTask(definition.id)) {
+        const { cancelAutomaticPublications } = await import('./publicationCompletionService');
+        await cancelAutomaticPublications(definition.id);
       }
       await this.persistConfig();
       this.emitStatus();

@@ -1,0 +1,143 @@
+{
+  "allFivePublishedTasksRestored": true,
+  "fiveFrozenSnapshotsAndManualReviewsUnchanged": true,
+  "twoTrustedTikTokReceiptsPreserved": true,
+  "threeOtherPlatformLinksRemainMissing": true,
+  "sixProjectsAndBindingsUnchanged": true,
+  "offersUnchanged": true,
+  "protectedOriginalFiles": 176,
+  "allOriginalFilesUnchanged": true,
+  "settingsUnchanged": true,
+  "jobs": [
+    {
+      "id": "douyin_publish_9edc0d22-216a-40e0-9b9c-54ff335668b5",
+      "contentDigest": "93050d338cd831d4a9b31efa0fa676e4d1ec5cea4fed955d04757f3f79737927",
+      "status": "completed",
+      "phase": "awaiting-submit",
+      "publishStatus": "published",
+      "resetStatus": "ready",
+      "receiptUrl": null,
+      "receiptSource": "user-verified",
+      "accountId": "27605448237",
+      "extensionInstanceId": "xhs-publisher-da90d3af-7448-4dc4-886d-b77239f2c657"
+    },
+    {
+      "id": "tiktok_publish_1774b80a-aece-4118-9939-4309196e6c1a",
+      "contentDigest": "ee9ed86fa2e1f5bd0d20994b4c8e1fc83a7b96e1605136dd508a10ea8ea12074",
+      "status": "completed",
+      "phase": "awaiting-submit",
+      "publishStatus": "published",
+      "resetStatus": "ready",
+      "receiptUrl": "https://www.tiktok.com/@gardendaemon/video/7696302869577780498",
+      "receiptSource": "tiktok-studio-posts",
+      "accountId": "gardendaemon",
+      "extensionInstanceId": "xhs-publisher-da90d3af-7448-4dc4-886d-b77239f2c657"
+    },
+    {
+      "id": "tiktok_publish_0e72c158-eec4-4ca3-96f8-e78367658e2e",
+      "contentDigest": "a1c4046b25d16f5e56f0d0e31ebc042a83e517c0866ede7af586dc8a5bd7875f",
+      "status": "completed",
+      "phase": "awaiting-submit",
+      "publishStatus": "published",
+      "resetStatus": "ready",
+      "receiptUrl": "https://www.tiktok.com/@gardendaemon/video/7696179513922833670",
+      "receiptSource": "tiktok-studio-posts",
+      "accountId": "gardendaemon",
+      "extensionInstanceId": "xhs-publisher-da90d3af-7448-4dc4-886d-b77239f2c657"
+    },
+    {
+      "id": "xhs_publish_1f323230-4eb8-40e1-a542-ebe4206ecaf4",
+      "contentDigest": "7f218978840200ad4849524b7bb6483779e76aabff8a506fe7b9a71d2352ddc4",
+      "status": "completed",
+      "phase": "awaiting-submit",
+      "publishStatus": "published",
+      "resetStatus": "ready",
+      "receiptUrl": null,
+      "receiptSource": null,
+      "accountId": "69ccbca70000000033001da1",
+      "extensionInstanceId": "xhs-publisher-da90d3af-7448-4dc4-886d-b77239f2c657"
+    },
+    {
+      "id": "xhs_publish_d764065c-13b1-412b-80c7-8adf91400bc0",
+      "contentDigest": "de8147e6127a92fc5e48c47c59c052b529e9605f014af61058304e6ece46bbd7",
+      "status": "completed",
+      "phase": "awaiting-submit",
+      "publishStatus": "published",
+      "resetStatus": "ready",
+      "receiptUrl": null,
+      "receiptSource": null,
+      "accountId": "69ccbca70000000033001da1",
+      "extensionInstanceId": "xhs-publisher-da90d3af-7448-4dc4-886d-b77239f2c657"
+    }
+  ],
+  "projects": [
+    {
+      "ref": {
+        "kind": "video",
+        "projectId": "video_edit_v2_1791878233439_2a00d775"
+      },
+      "revision": "c9bf2b69b9582e6f1d90c9c7a204155bfbf04e9fe9dee9dcc6dfb53867004fdb",
+      "undoCount": 0,
+      "bindingUnchanged": true,
+      "contentUnchanged": true
+    },
+    {
+      "ref": {
+        "kind": "video",
+        "projectId": "video_edit_v2_1791872672063_253e0625"
+      },
+      "revision": "96200ec3a49eb80cf8a9261cafbb1937accb033b06fca463e7a2b8d5154b5eab",
+      "undoCount": 4,
+      "bindingUnchanged": true,
+      "contentUnchanged": true
+    },
+    {
+      "ref": {
+        "kind": "video",
+        "projectId": "video_edit_v2_1791873082859_33de6922"
+      },
+      "revision": "cb15acb2b7d10ac1ec8614a85e3775139f168a7d478f027a17b66a2ae8c9a01a",
+      "undoCount": 6,
+      "bindingUnchanged": true,
+      "contentUnchanged": true
+    },
+    {
+      "ref": {
+        "kind": "video",
+        "projectId": "video_edit_v2_1791873199549_1dfc6cda"
+      },
+      "revision": "43a0ac72edcb3956567afcd1133566fdecc0dbf5d5f930be997da7a3d4251574",
+      "undoCount": 5,
+      "bindingUnchanged": true,
+      "contentUnchanged": true
+    },
+    {
+      "ref": {
+        "kind": "video",
+        "projectId": "video_edit_v2_1791873336346_4849812b"
+      },
+      "revision": "70361359f0e9c99d6bf2ed30f99524dbd55b1cfaf1e9600a64a5a3c3dc792fc8",
+      "undoCount": 5,
+      "bindingUnchanged": true,
+      "contentUnchanged": true
+    },
+    {
+      "ref": {
+        "kind": "image-set",
+        "path": "xiaohongshu/商品套图-98218b28-e4ea-41bb-b1ad-bcb35879115b.redpost"
+      },
+      "revision": "55871e4b941a896dabc55bfb63d185865614a0bff5ba858b0d1ad5ffd276aeba",
+      "undoCount": 5,
+      "bindingUnchanged": true,
+      "contentUnchanged": true
+    }
+  ],
+  "audit": {
+    "network": [],
+    "paidMediaRequests": {
+      "image": 0,
+      "video": 0,
+      "voice": 0
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "sha256": "2f71bd1ec7d80fa0e55c84aa7ac4c9e2ae8d51f2ad4031127052aa314cf643ec",
+  "sizeBytes": 12424940,
+  "ffprobe": {
+    "programs": [],
+    "stream_groups": [],
+    "streams": [
+      {
+        "codec_type": "video",
+        "width": 1080,
+        "height": 1920,
+        "r_frame_rate": "30/1",
+        "duration": "15.000000",
+        "nb_frames": "450",
+        "side_data_list": [
+          {}
+        ]
+      },
+      {
+        "codec_type": "audio",
+        "r_frame_rate": "0/0",
+        "duration": "15.061333",
+        "nb_frames": "706"
+      }
+    ],
+    "format": {
+      "duration": "15.061333"
+    }
+  }
+}

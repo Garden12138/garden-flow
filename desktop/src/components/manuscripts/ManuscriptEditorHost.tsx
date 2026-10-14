@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { dispatchAppIntent } from '../../features/app-shell/appIntent';
 import {
     FileText,
     Folder,
@@ -1685,8 +1686,13 @@ export function ManuscriptEditorHost({ filePath, onNavigateToGenerationStudio, i
         let cancelled = false;
         void window.ipcRenderer.chat.bindEditorSession(editorChatBinding)
             .then((session) => {
-                const sessionRecord = session as { id?: string } | null;
+                const sessionRecord = session as { id?: string; metadata?: string } | null;
                 if (cancelled || !sessionRecord?.id) return;
+                const metadata = JSON.parse(sessionRecord.metadata || '{}') as { productProjectEditorBinding?: import('../../../shared/productProjectEditor').ProductProjectEditorBinding };
+                if (metadata.productProjectEditorBinding?.project.kind === 'video') {
+                    dispatchAppIntent({ type: 'video-project.open', projectId: metadata.productProjectEditorBinding.project.projectId });
+                    return;
+                }
                 setEditorChatSessionId(sessionRecord.id);
                 setEditorChatSessionReady(true);
             })

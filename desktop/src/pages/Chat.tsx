@@ -520,6 +520,7 @@ interface ChatProps {
   showMessageAttachments?: boolean;
   collapseEmptyFixedSession?: boolean;
   fixedSessionTaskHints?: unknown;
+  beforeSend?: () => Promise<Record<string, unknown>>;
   messageLinkRenderMode?: ChatMessageLinkRenderMode;
   onMessageLinkPreview?: (target: ChatMessageLinkTarget) => void;
   activePreviewHref?: string | null;
@@ -1677,6 +1678,7 @@ export function Chat({
   showMessageAttachments = true,
   collapseEmptyFixedSession = false,
   fixedSessionTaskHints,
+  beforeSend,
   messageLinkRenderMode = 'default',
   onMessageLinkPreview,
   activePreviewHref = null,
@@ -1714,6 +1716,8 @@ export function Chat({
     readFixedSessionWarmSnapshot(fixedSessionId)?.contextUsage || null
   ));
   const [errorNotice, setErrorNotice] = useState<string | StructuredChatErrorNotice | null>(null);
+  const preparingEditorSend = useRef(false);
+  const lastEditorMessage = useRef('');
   const [chatModelOptions, setChatModelOptions] = useState<ChatModelOption[]>([]);
   const [memberMentionOptions, setMemberMentionOptions] = useState<ChatMemberMentionOption[]>([]);
   const [selectedMemberMention, setSelectedMemberMention] = useState<ChatMemberMentionOption | null>(null);
@@ -1721,6 +1725,8 @@ export function Chat({
   const [selectedSkillMentions, setSelectedSkillMentions] = useState<ChatSkillMentionOption[]>([]);
   const [assetMentionOptions, setAssetMentionOptions] = useState<ChatAssetMentionOption[]>([]);
   const [selectedAssetMentions, setSelectedAssetMentions] = useState<ChatAssetMentionOption[]>([]);
+  const [productTargetRequest, setProductTargetRequest] = useState<{ initial: ProductCreationSelection; initialBrief: string; resolve: (value: { target: ProductCreationTarget; durationSeconds: number; pageCount: number; brief: string } | null) => void } | null>(null);
+  const productTargetPendingRef = useRef(false);
   const [remixSourceRequest, setRemixSourceRequest] = useState<{ resolve: (clips: ProductVideoClipReference[] | null) => void } | null>(null);
   const remixSourceRequestRef = useRef<typeof remixSourceRequest>(null);
   useEffect(() => () => { remixSourceRequestRef.current?.resolve(null); }, []);
@@ -2965,6 +2971,7 @@ export function Chat({
           messageType: role === 'ai' ? 'reply' : undefined,
           content: msg.content,
           xhsPublishConsent: xhsPublishConsentFromMessageMetadata(msg.metadata),
+          publicationOffer: metadata.publicationOffer as Message['publicationOffer'],
           displayContent: msg.displayContent || msg.display_content || undefined,
           attachment: attachment,
           attachments,
@@ -3120,6 +3127,12 @@ export function Chat({
       setResolvingConfirmationCallId(null);
     }
   }, [resolvingConfirmationCallId]);
+
+  useEffect(() => {
+    const refresh = () => { const id = currentSessionIdRef.current; if (id && isActiveRef.current && !isProcessing) void selectSession(id); };
+    window.ipcRenderer.publication.onChanged(refresh);
+    return () => window.ipcRenderer.publication.offChanged(refresh);
+  }, [currentSessionId, isProcessing]);
 
   const handleConfirmTool = useCallback((callId: string) => {
     void resolveToolConfirmation(callId, true);
@@ -4713,6 +4726,18 @@ export function Chat({
     const attachments = requestedAttachments.length > 0
       ? requestedAttachments
       : getPendingAttachments();
+    if (shortcutTaskHints?.productCreationSetup === true && !shortcutTaskHints.creationTarget) {
+      if (productTargetPendingRef.current) return;
+      if (assetMentions.filter(item => item.referenceType === 'product').length !== 1) { setErrorNotice('商品创作需要选择一个主商品。'); return; }
+      productTargetPendingRef.current = true;
+      const selection = await new Promise<{ target: ProductCreationTarget; durationSeconds: number; pageCount: number; brief: string } | null>(resolve => setProductTargetRequest({ initialBrief: input, initial: { contentKind: shortcutTaskHints?.workflowKind === 'product-image-set-compose' ? 'image-set' : 'video', compositionMode: shortcutTaskHints?.productVideoCompositionMode === 'existing-clips' ? 'existing-clips' : 'product-images' }, resolve }));
+      productTargetPendingRef.current = false;
+      if (!selection) return;
+      const target = selection.target;
+      shortcutTaskHints = { ...shortcutTaskHints, productCreationSetup: false, creationTarget: target, workflowKind: target.contentKind === 'video' ? 'product-video-compose' : 'product-image-set-compose', platform: target.platform, xhsNoteType: target.platform === 'xiaohongshu' ? target.contentKind === 'video' ? 'video' : 'image' : undefined, productVideoCompositionMode: target.compositionMode, productImageSetCount: selection.pageCount, xhsVideoDurationSeconds: selection.durationSeconds, xhsVideoAspectRatio: target.spec.aspectRatio };
+      content = selection.brief.trim() || '请围绕当前选择的商品规划作品，先提交人工确认方案。';
+      content += `\n目标时长 ${selection.durationSeconds} 秒；若为套图则 ${selection.pageCount} 张含封面。以已选目标规格为准。`;
+    }
     if (shortcutTaskHints?.productVideoCompositionMode === 'existing-clips') {
       if (remixSourceRequestRef.current) return;
       if (assetMentions.filter((item) => item.referenceType === 'product').length !== 1) {
@@ -4767,6 +4792,16 @@ export function Chat({
       return;
     }
     const runtimeMessage = normalizedContent || displayBody || displayText || (hasAttachments ? '请分析这些附件。' : '');
+    let savedEditorHints: Record<string, unknown> | undefined;
+    if (beforeSend && preparingEditorSend.current) return;
+    preparingEditorSend.current = Boolean(beforeSend);
+    try {
+      savedEditorHints = await beforeSend?.();
+    } catch (error) {
+      setErrorNotice(error instanceof Error ? error.message : String(error));
+      return;
+    } finally { preparingEditorSend.current = false; }
+    if (beforeSend) lastEditorMessage.current = runtimeMessage;
     const assetReferencesForSend = assetMentions.map((item) => ({
       id: item.id,
       name: item.name,
@@ -4900,7 +4935,7 @@ export function Chat({
       modelConfig: resolvedModelConfig || getChatModelConfig(),
       taskHints: mergeSkillMentionsIntoTaskHints(
         mergeShortcutTaskHints(
-          mergeShortcutTaskHints(fixedSessionTaskHints, activeComposerModeTaskHints),
+          mergeShortcutTaskHints(mergeShortcutTaskHints(fixedSessionTaskHints, savedEditorHints), activeComposerModeTaskHints),
           shortcutTaskHints,
         ),
         skillMentions,
@@ -5575,6 +5610,7 @@ export function Chat({
       className={clsx('flex h-full min-w-0', wideContent && 'chat-layout-wide', narrowContent && 'chat-layout-narrow')}
       {...dragHandlers}
     >
+      {productTargetRequest && <ProductCreationSetup initialBrief={productTargetRequest.initialBrief} initial={productTargetRequest.initial} onSelect={value => { productTargetRequest.resolve(value); setProductTargetRequest(null); }} onCancel={() => { productTargetRequest.resolve(null); setProductTargetRequest(null); }} />}
       {remixSourceRequest && <VideoRemixSourcePicker
         onSelect={(clips) => { remixSourceRequest.resolve(clips); setRemixSourceRequest(null); }}
         onCancel={() => { remixSourceRequest.resolve(null); setRemixSourceRequest(null); }}
@@ -5789,6 +5825,8 @@ export function Chat({
                               重试图片理解
                             </button>
                           )}
+                          {beforeSend && lastEditorMessage.current && <button type="button" disabled={isProcessing} className="shrink-0 rounded-md border px-2 py-1 text-xs"
+                            onClick={() => { void sendMessage(lastEditorMessage.current); }}>按最新工程重试</button>}
                           {structuredNotice?.action?.target === 'settings-ai' && (
                             <button
                               type="button"
@@ -5844,5 +5882,7 @@ export function Chat({
     </div>
   );
 }
+import { ProductCreationSetup } from '../components/product-video/ProductCreationSetup';
+import type { ProductCreationSelection, ProductCreationTarget } from '../../shared/productCreationTarget';
 import { VideoRemixSourcePicker } from '../components/product-video/VideoRemixSourcePicker';
 import type { ProductVideoClipReference } from '../../shared/productVideoRemix';

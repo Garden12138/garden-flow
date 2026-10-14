@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'rea
 import { Music2, RotateCcw, Sparkles } from 'lucide-react';
 import type { ProductVideoSceneState, VideoEditorV2Project } from '../../../shared/videoAutoEdit';
 import { formatProductSceneSeconds, productSceneDurationFrames, resizeProductSceneDurationMs, snapProductSceneDurationMs } from '../../../shared/productVideoTiming';
+import { useProductEditorContext } from './ProductEditorContext';
 
 type ResizeGesture = {
     sceneId: string;
@@ -24,10 +25,12 @@ type Props = {
     onResize: (sceneId: string, durationMs: number) => Promise<void>;
     onReorder: (sceneId: string, targetSceneId: string) => void;
     onUndo: () => Promise<void>;
+    undoCount?: number;
     onAddMusic: () => void;
 };
 
-export function ProductVideoTimeline({ project, selectedSceneId, busy, onSelect, onResize, onReorder, onUndo, onAddMusic }: Props) {
+export function ProductVideoTimeline({ project, selectedSceneId, busy, onSelect, onResize, onReorder, onUndo, onAddMusic, undoCount }: Props) {
+    const editor = useProductEditorContext();
     const [pixelsPerSecond, setPixelsPerSecond] = useState(40);
     const [draft, setDraft] = useState<{ sceneId: string; durationMs: number } | null>(null);
     const [draggedSceneId, setDraggedSceneId] = useState('');
@@ -54,8 +57,13 @@ export function ProductVideoTimeline({ project, selectedSceneId, busy, onSelect,
             }
         } finally {
             setDraft(null);
+            await editor?.settleDraft();
+            await window.ipcRenderer.videoEditorV2.syncProductEditorDraft({ project: { kind: 'video', projectId: project.id }, dirty: false });
         }
     }, [fps, onResize]);
+    useEffect(() => editor?.registerFlush('video-timeline', async () => {
+        if (gesture.current) throw new Error('请先完成当前时间线拖动，消息尚未发送');
+    }), [editor?.registerFlush]);
 
     useEffect(() => {
         const cancel = (event: KeyboardEvent) => {
@@ -87,6 +95,7 @@ export function ProductVideoTimeline({ project, selectedSceneId, busy, onSelect,
         event.stopPropagation();
         event.currentTarget.focus({ preventScroll: true });
         onSelect(scene.id);
+        editor?.markDirty();
         event.currentTarget.setPointerCapture(event.pointerId);
         gesture.current = {
             sceneId: scene.id, edge, pointerId: event.pointerId, startX: event.clientX,
@@ -113,7 +122,7 @@ export function ProductVideoTimeline({ project, selectedSceneId, busy, onSelect,
             <div className="flex min-w-0 items-center gap-2"><h2 className="shrink-0 text-xs font-bold">时间线</h2><span className="text-[10px] tabular-nums text-white/60">{formatProductSceneSeconds(totalMs)}s</span><span className="truncate text-[10px] text-white/45">拖动两侧调整时长 · Shift＋拖动微调 · Esc 取消</span></div>
             <div className="flex shrink-0 items-center gap-3">
                 <label className="flex items-center gap-1.5 text-[10px] text-white/60">缩放<input aria-label="时间线缩放" type="range" min="10" max="600" step="10" value={pixelsPerSecond} disabled={Boolean(draft)} onChange={(event) => setPixelsPerSecond(Number(event.target.value))} className="w-20 accent-[#2DD4BF]" /></label>
-                <button type="button" onClick={() => void onUndo()} disabled={!project.undoStack.length || busy || Boolean(draft)} className="inline-flex items-center gap-1 text-[11px] text-white/60 disabled:opacity-30"><RotateCcw className="h-3 w-3" />撤销</button>
+                <button type="button" onClick={() => void onUndo()} disabled={!(undoCount ?? project.undoStack.length) || busy || Boolean(draft)} className="inline-flex items-center gap-1 text-[11px] text-white/60 disabled:opacity-30"><RotateCcw className="h-3 w-3" />撤销</button>
             </div>
         </div>
         <div className="grid grid-cols-[58px_minmax(0,1fr)] text-[10px]">

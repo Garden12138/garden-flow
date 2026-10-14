@@ -19,6 +19,7 @@ export function applyProductImageSetWorkflowPolicy(route: IntentRoute, context: 
 
 export function evaluateProductImageSetToolPolicy(input: {
     workflowKind?: IntentRoute['workflowKind']; toolName: string; args: Record<string, unknown>;
+    creationTarget?: import('../../../shared/productCreationTarget').ProductCreationTarget;
     explicitProductRefs?: ReturnType<typeof readExplicitProductRefs>; productAssetVisualGrounding?: ProductVideoVisualGroundingEvidence;
 }): { outcome: 'deny'; reason: string } | null {
     if (input.workflowKind === 'product-image-set-compose' && ['image_generate', 'video_generate', 'audio_generate', 'app_cli', 'bash', 'product_video_compose'].includes(input.toolName)) {

@@ -95,7 +95,7 @@ export async function reconcileProductImageSetApprovals(): Promise<void> {
   for (const approval of listProductImageSetApprovals()) await refreshApproval(approval);
 }
 
-export async function getProductImageSetReplanInput(sessionId: string, callId: string): Promise<{ message: string; productId: string }> {
+export async function getProductImageSetReplanInput(sessionId: string, callId: string): Promise<{ message: string; creationTarget?: import('../../shared/productCreationTarget').ProductCreationTarget; productId: string }> {
   const stored = getPendingToolApproval(callId);
   if (!stored || stored.session_id !== sessionId || stored.tool_name !== 'product_image_set_compose') throw new Error('页面方案不属于当前会话');
   if (approvalSpace(stored) !== getWorkspacePaths().activeSpaceId) throw new Error('请切换回页面方案所属空间后重新规划');
@@ -105,7 +105,7 @@ export async function getProductImageSetReplanInput(sessionId: string, callId: s
   const original = getChatMessages(sessionId).filter((message) => message.role === 'user' && message.timestamp <= approval.created_at).at(-1);
   const message = String(request.message || original?.display_content || original?.content || '').split('<selected_product_assets>')[0].trim();
   if (!message) throw new Error('原始创作要求不可用，请重新输入套图要求');
-  return { message, productId: String(approval.params.productId || '') };
+  return { message, creationTarget: approval.params.creationTarget as import('../../shared/productCreationTarget').ProductCreationTarget | undefined, productId: String(approval.params.productId || '') };
 }
 
 function resultData(value: unknown): Record<string, unknown> {
@@ -146,6 +146,7 @@ function approvalSafetyError(approval: PendingToolApprovalSnapshot): string | nu
     workflowKind: task?.route?.workflowKind,
     toolName: 'product_image_set_compose',
     args: parsed.data,
+    creationTarget: taskMetadata.creationTarget as import('../../shared/productCreationTarget').ProductCreationTarget | undefined,
     explicitProductRefs: readExplicitProductRefs(taskMetadata),
     productAssetVisualGrounding: taskMetadata.productAssetVisualGrounding
       && typeof taskMetadata.productAssetVisualGrounding === 'object'

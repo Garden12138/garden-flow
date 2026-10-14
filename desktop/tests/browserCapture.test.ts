@@ -355,7 +355,7 @@ test('Desktop Bridge authenticates token and origin, enforces registration and a
             origin: XHS_PUBLISHER_EXTENSION_ORIGIN,
             hostInstanceId: 'publisher-test-host',
         });
-        assert.deepEqual(publisherHello.result?.acceptedCapabilities, [XHS_PUBLISHER_CAPABILITY, 'douyin.publish.v1', 'douyin.image-cover.v1', 'tiktok.publish.v1', 'extension.register']);
+        assert.deepEqual(publisherHello.result?.acceptedCapabilities, [XHS_PUBLISHER_CAPABILITY, 'douyin.publish.v1', 'douyin.image-cover.v1', 'tiktok.publish.v1', 'publisher.upload-review.v1', 'xiaohongshu.account-bound.v1', 'extension.register']);
         const publisherRegistration = await publisherClient.request('extension.register', {
             extensionId: XHS_PUBLISHER_EXTENSION_ID,
             extensionInstanceId: 'publisher-test-instance',

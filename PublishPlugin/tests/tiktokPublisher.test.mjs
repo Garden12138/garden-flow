@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { tiktokPublish, tiktokStatus } from '../src/tiktokPublisher.js';
-import { validateTikTokRequest, isTikTokUploadUrl, tikTokCaption, tikTokEditorIssues } from '../src/tiktokAdapter.js';
+import { validateTikTokRequest, isTikTokUploadUrl, tikTokCaption, tikTokEditorIssues, matchTikTokPostReceipt } from '../src/tiktokAdapter.js';
 
 const request = {
   platform: 'tiktok', protocolVersion: 1, jobId: 'tiktok_publish_fixture', sessionId: 'session',
@@ -127,6 +127,19 @@ test('receipt enrichment reads only an already verified publication and never up
     assert.equal(state.presses, 0);
     assert.equal(state.assignments.length, 0);
   });
+});
+
+test('verified receipt matching distinguishes different durations with the same caption without guessing duplicate posts', () => {
+  const post = { videoId: '7000000000000000001', url: 'https://www.tiktok.com/@fixture_handle/video/7000000000000000001',
+    accountId: request.accountId, caption: 'Product details #Product', visibility: 'everyone', durationText: '00:15', publishedLabel: 'Oct 13, 11:47 PM' };
+  const remix = { ...post, videoId: '7000000000000000002', url: 'https://www.tiktok.com/@fixture_handle/video/7000000000000000002', durationText: '00:06' };
+  const page = { href: 'https://www.tiktok.com/tiktokstudio/content', posts: [post, remix] };
+  assert.equal(matchTikTokPostReceipt(page, { ...request, mediaDurationMs: 15_061 }).videoId, post.videoId);
+  assert.equal(matchTikTokPostReceipt(page, { ...request, mediaDurationMs: 6_058 }).videoId, remix.videoId);
+  assert.equal(matchTikTokPostReceipt(page, request), null, 'legacy requests without a duration remain ambiguous');
+  assert.equal(matchTikTokPostReceipt({ ...page, posts: [remix, { ...remix, videoId: '7000000000000000003' }] }, { ...request, mediaDurationMs: 6_000 }), null);
+  assert.equal(matchTikTokPostReceipt(page, { ...request, mediaDurationMs: 6_000 }, post.url), null, 'an existing receipt cannot be rebound');
+  for (const value of [0, -1, Infinity, NaN, '6000', null]) assert.equal(validateTikTokRequest({ ...request, mediaDurationMs: value }).ok, false);
 });
 
 test('TikTok requests require explicit account, current file, caption and all publish settings', () => {
@@ -376,5 +389,37 @@ test('human review only releases the exact original task on an empty page for it
     assert.equal((await tiktokPublish(command('prepare'))).publishStatus, 'published');
     assert.equal((await tiktokPublish(command('submit'))).publishStatus, 'published');
     assert.equal(state.presses, 1);
+  });
+});
+
+
+test('TikTok upload rejects the exclusive 10GB boundary before any browser work', () => {
+  assert.equal(validateTikTokRequest({ ...request, mediaSize: 9_999_999_999 }).ok, true);
+  assert.equal(validateTikTokRequest({ ...request, mediaSize: 10_000_000_000 }).ok, false);
+  assert.equal(validateTikTokRequest({ ...request, mediaSize: 30 * 1024 ** 3 }).ok, false);
+});
+
+test('concurrent status probes serialize account-menu reads and leave a restored upload page', async () => {
+  await withFixture(async ({chrome}) => {
+    const execute=chrome.scripting.executeScript;let active=0,max=0,reads=0;
+    chrome.scripting.executeScript=async options=>{
+      if(options.func.name!=='readTikTokAccount')return execute(options);
+      active++;max=Math.max(max,active);reads++;
+      await new Promise(resolve=>setTimeout(resolve,30));
+      const result=await execute(options);active--;return result;
+    };
+    const results=await Promise.all([tiktokStatus(true),tiktokStatus(true),tiktokStatus(true)]);
+    assert.equal(max,1);assert.equal(reads,3);assert.ok(results.every(r=>r.pageState==='ready'&&r.accountId===request.accountId));
+  });
+});
+test('dashboard status during caption entry does not read the account menu or steal focus',async()=>{
+  await withFixture(async({chrome})=>{
+    const execute=chrome.scripting.executeScript;let reads=0;chrome.scripting.executeScript=options=>{if(options.func.name==='readTikTokAccount')reads++;return execute(options);};
+    const send=chrome.debugger.sendCommand;let checked=false;
+    chrome.debugger.sendCommand=async(...args)=>{
+      if(args[1]==='Input.insertText'&&!checked){checked=true;const before=reads;const status=await tiktokStatus(true);assert.equal(status.pageState,'unsupported');assert.equal(status.accountId,undefined);assert.equal(reads,before);}
+      return send(...args);
+    };
+    assert.equal((await tiktokPublish(command('prepare'))).prepared,true);assert.equal(checked,true);
   });
 });

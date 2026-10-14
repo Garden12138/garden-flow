@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ProductCreationTargetSchema, type ProductCreationTarget } from './productCreationTarget.ts';
 
 export const PRODUCT_IMAGE_WIDTH = 1440;
 export const PRODUCT_IMAGE_HEIGHT = 1920;
@@ -38,6 +39,7 @@ export const ProductImagePageSchema = z.object({
 }).strict();
 
 export const ProductImageSetProposalSchema = z.object({
+    creationTarget: ProductCreationTargetSchema.optional(),
     proposalId: z.string().min(1).max(160),
     productId: z.string().min(1),
     productUpdatedAt: z.string().min(1),
@@ -48,6 +50,8 @@ export const ProductImageSetProposalSchema = z.object({
     style: ProductImageStyleSchema.default({}),
     pages: z.array(ProductImagePageSchema.omit({ backgroundAssetId: true, render: true, generation: true })).min(1).max(20),
 }).strict().superRefine((value, context) => {
+    if (value.creationTarget && (value.creationTarget.contentKind !== 'image-set' || value.creationTarget.profileVersion === 0)) context.addIssue({ code: z.ZodIssueCode.custom, message: '套图目标规格无效' });
+    if (value.creationTarget && value.finalTitle.length > 20) context.addIssue({ code: z.ZodIssueCode.custom, message: '小红书标题最多 20 个字符' });
     if (value.pages[0]?.role !== 'cover' || value.pages.slice(1).some((page) => page.role === 'cover')) {
         context.addIssue({ code: z.ZodIssueCode.custom, path: ['pages'], message: '封面必须是唯一的首张图片' });
     }
@@ -57,6 +61,7 @@ export const ProductImageSetProposalSchema = z.object({
 });
 
 export const ProductImageSetSchema = z.object({
+    creationTarget: ProductCreationTargetSchema.optional(),
     version: z.literal(1),
     proposalId: z.string().min(1),
     spaceId: z.string().min(1),
@@ -71,6 +76,7 @@ export const ProductImageSetSchema = z.object({
     pages: z.array(ProductImagePageSchema).min(1).max(20),
     generationHistory: z.array(ProductImageGenerationSchema.extend({ pageId: z.string(), assetId: z.string().optional() })).default([]),
 }).strict().superRefine((value, context) => {
+    if (value.creationTarget?.contentKind === 'video') context.addIssue({ code: z.ZodIssueCode.custom, message: '套图不能使用视频目标' });
     const assetIds = new Set(value.assets.map((asset) => asset.id));
     if (assetIds.size !== value.assets.length || new Set(value.pages.map((page) => page.id)).size !== value.pages.length
         || value.pages[0]?.role !== 'cover' || value.pages.slice(1).some((page) => page.role === 'cover')) {
@@ -87,6 +93,10 @@ export type ProductImageSetProposal = z.infer<typeof ProductImageSetProposalSche
 export type ProductImageSet = z.infer<typeof ProductImageSetSchema>;
 export type ProductImagePage = z.infer<typeof ProductImagePageSchema>;
 
+export function productImageSpec(set: { creationTarget?: ProductCreationTarget }): { width: number; height: number; aspectRatio: string } {
+    return { width: set.creationTarget?.spec.width || PRODUCT_IMAGE_WIDTH, height: set.creationTarget?.spec.height || PRODUCT_IMAGE_HEIGHT, aspectRatio: set.creationTarget?.spec.aspectRatio || '3:4' };
+}
+
 export function productImageSlotId(page: Pick<ProductImagePage, 'id' | 'role'>): string {
     return page.role === 'cover' ? 'cover' : `product-page-${page.id}`;
 }
@@ -96,6 +106,7 @@ export function productImageInputKey(set: ProductImageSet, page: ProductImagePag
     const assetIds = page.backgroundAssetId ? [page.backgroundAssetId] : page.productAssetIds;
     return JSON.stringify({
         templateVersion: PRODUCT_IMAGE_TEMPLATE_VERSION,
+        ...(set.creationTarget?.profileVersion ? { spec: productImageSpec(set) } : {}),
         style: set.style,
         page: { id: page.id, role: page.role, title: page.title, copy: page.copy, layout: page.layout,
             fit: page.fit, cropX: page.cropX, cropY: page.cropY, fontScale: page.fontScale },
@@ -111,6 +122,7 @@ const escapeHtml = (value: string): string => value.replace(/[&<>"']/g, (char) =
 
 /** All markup is application-owned. Caller resolves verified local assets and bundled fonts. */
 export function renderProductImageHtml(set: ProductImageSet, page: ProductImagePage, sources: Record<string, string>, fontCss = ''): string {
+    const spec = productImageSpec(set);
     const codePoints = [...page.title + page.copy].map((character) => character.codePointAt(0)!);
     const selectedFontCss = Array.from(fontCss.matchAll(/@font-face\s*\{[^}]+\}/g)).map((match) => match[0]).filter((rule) => {
         const range = rule.match(/unicode-range\s*:\s*([^;}]+)/i)?.[1];
@@ -129,9 +141,9 @@ export function renderProductImageHtml(set: ProductImageSet, page: ProductImageP
         return `<img src="${source}" alt="" style="object-fit:${page.fit};object-position:${page.cropX}% ${page.cropY}%">`;
     }).join('');
     return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'; script-src 'none'"><style>${selectedFontCss}
-        *{box-sizing:border-box}html,body{margin:0;width:1440px;height:1920px;overflow:hidden}
+        *{box-sizing:border-box}html,body{margin:0;width:${spec.width}px;height:${spec.height}px;overflow:hidden}
         body{font-family:'Noto Sans SC',sans-serif;color:${set.style.foreground};background:${set.style.background}}
-        .page{width:1440px;height:1920px;padding:100px;display:flex;flex-direction:column;gap:64px}
+        .page{width:${spec.width}px;height:${spec.height}px;padding:100px;display:flex;flex-direction:column;gap:64px}
         .text{flex-shrink:0;overflow:visible;max-height:650px;overflow-wrap:anywhere}
         h1{margin:0;font-size:${Math.round(94 * page.fontScale)}px;line-height:1.25;font-weight:700;white-space:pre-wrap;text-wrap:balance;color:${set.style.accent}}
         p{margin:36px 0 0;font-size:${Math.round(46 * page.fontScale)}px;line-height:1.6;white-space:pre-wrap}

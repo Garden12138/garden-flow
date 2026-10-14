@@ -12,6 +12,9 @@ import { getXhsNoteProject } from './xhsNoteProjectStore';
 import { cloneProductVideoProject, getVideoEditorV2Project } from './video-editor-v2/videoEditorV2ProjectStore';
 import type { DouyinVideoVersion } from '../../shared/platformVideoVersion';
 
+import { createProductTargetVariant } from './productWorkVersionService';
+import { resolveProductCreationTarget } from '../../shared/productCreationTarget';
+
 const creatingVersions = new Map<string, Promise<DouyinVideoVersion>>();
 
 export async function createDouyinVideoVersion(input: {
@@ -21,6 +24,14 @@ export async function createDouyinVideoVersion(input: {
 }): Promise<DouyinVideoVersion> {
     const spaceId = getActiveSpaceId();
     const sourceProjectId = String(input.sourceProjectId || '').trim();
+    const sourceTarget = await getVideoEditorV2Project(sourceProjectId);
+    if (sourceTarget?.creationTarget) {
+        const target = resolveProductCreationTarget({ platform: 'douyin', compositionMode: sourceTarget.productVideo?.proposal.compositionMode || 'product-images' });
+        const project = await createProductTargetVariant({ sourceProjectId, expectedUpdatedAt: sourceTarget.updatedAt, target, duplicate: input.duplicate });
+        const bound = getDouyinVideoVersionByProject(project.id, spaceId);
+        if (!bound) throw new Error('平台版本绑定未完成，请重试');
+        return bound;
+    }
     const key = `${spaceId}:${sourceProjectId}`;
     if (!input.duplicate) {
         const existing = getDouyinVideoVersionByProject(sourceProjectId, spaceId)
@@ -107,6 +118,10 @@ export async function saveDouyinVideoVersion(input: {
         revision: existing.revision + 1,
         updatedAt: Date.now(),
     };
-    if (!updateDouyinVideoVersion(next, existing.revision)) throw new Error('抖音版本已更新，请重新加载后再保存');
+    const project = await getVideoEditorV2Project(existing.projectId);
+    if (project?.productVideo) {
+        const { saveManualProductPublication } = await import('./productProjectEditorService');
+        await saveManualProductPublication(existing, next);
+    } else if (!updateDouyinVideoVersion(next, existing.revision)) throw new Error('抖音版本已更新，请重新加载后再保存');
     return next;
 }

@@ -1,17 +1,20 @@
+import { PublicationButton } from '../publication/PublicationPanel';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, Download, Loader2, Plus, RefreshCw, Save, Sparkles, Trash2, Upload } from 'lucide-react';
 import type { ChatMessageLinkTarget } from '../MessageItem';
 import { ConfirmDialog } from '../ConfirmDialog';
 import { subscribeDataChanged } from '../../bridge/appEvents';
 import { resolveAssetUrl } from '../../utils/pathManager';
-import { ProductImagePageSchema, productImageSlotId, type ProductImagePage, type ProductImageSet } from '../../../shared/productImageSet';
+import { ProductImagePageSchema, productImageSpec, productImageSlotId, type ProductImagePage, type ProductImageSet } from '../../../shared/productImageSet';
 import type { XhsNoteDocument, XhsNoteProjectSnapshot } from '../../../shared/xhsNote';
+import { useProductEditorContext } from '../product-video/ProductEditorContext';
 
 type Result = Partial<XhsNoteProjectSnapshot> & { success?: boolean; error?: string; canceled?: boolean; outputPath?: string; xhsNote?: XhsNoteDocument; html?: string };
 const control = 'w-full rounded-lg border border-border bg-surface-primary px-2.5 py-2 text-xs text-text-primary';
 const button = 'inline-flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs text-text-secondary hover:bg-surface-secondary disabled:opacity-40';
 
 export function ProductImageSetPane({ target }: { target: ChatMessageLinkTarget }) {
+    const editor = useProductEditorContext();
     const projectPath = target.projectPath || target.localPathCandidate || target.relativePath || target.href;
     const [snapshot, setSnapshot] = useState<XhsNoteProjectSnapshot | null>(null);
     const [draft, setDraft] = useState<XhsNoteDocument | null>(target.xhsNote || null);
@@ -36,7 +39,7 @@ export function ProductImageSetPane({ target }: { target: ChatMessageLinkTarget 
         if (!result.success || !result.projectPath || !result.document) throw new Error(result.error || '无法读取套图工程');
         const next = result as XhsNoteProjectSnapshot;
         refreshSequenceRef.current++;
-        setSnapshot(next); setDraft(next.document); setDirty(false); dirtyRef.current = false;
+        setSnapshot(next); setDraft(next.document); setDirty(false); dirtyRef.current = false; setMessage('');
         setActiveId((id) => next.document.productImageSet?.pages.some((item) => item.id === id) ? id : next.document.productImageSet?.pages[0]?.id || '');
     }, []);
 
@@ -87,22 +90,41 @@ export function ProductImageSetPane({ target }: { target: ChatMessageLinkTarget 
     useEffect(() => {
         const parent = previewRef.current;
         if (!parent) return;
-        const update = () => parent.style.setProperty('--product-preview-scale', String(parent.clientWidth / 1440));
+        const update = () => parent.style.setProperty('--product-preview-scale', String(parent.clientWidth / (set ? productImageSpec(set).width : 1440)));
         update(); const observer = new ResizeObserver(update); observer.observe(parent);
         return () => observer.disconnect();
     }, [Boolean(set)]);
 
-    const edit = (next: XhsNoteDocument) => { editSequenceRef.current++; setDraft(next); setDirty(true); dirtyRef.current = true; };
+    const edit = (next: XhsNoteDocument) => { editSequenceRef.current++; setDraft(next); setDirty(true); dirtyRef.current = true; editor?.markDirty(); };
     const editSet = (next: ProductImageSet) => { if (draft) edit({ ...draft, productImageSet: next }); };
     const editPage = (patch: Partial<ProductImagePage>) => { if (set && page) editSet({ ...set, pages: set.pages.map((item) => item.id === page.id ? { ...item, ...patch } : item) }); };
 
     const save = async (): Promise<XhsNoteProjectSnapshot> => {
         if (!draft || !snapshot) throw new Error('工程尚未加载');
         if (!dirty) return snapshot;
+        await editor?.settleDraft();
+        const editing = editSequenceRef.current;
         const result = await window.ipcRenderer.manuscripts.saveXhsNote<Result>({ path: projectPath, document: draft, expectedRevision: snapshot.version });
+        if (editing !== editSequenceRef.current) throw new Error('保存期间出现新输入，已保留草稿，请重新保存');
         apply(result);
         return result as XhsNoteProjectSnapshot;
     };
+    useEffect(() => editor?.registerFlush('image-set', async () => {
+        if (busyRef.current) throw new Error('工程正在处理，请稍后发送');
+        busyRef.current = true; setBusy('save');
+        try { return await save(); }
+        finally { busyRef.current = false; setBusy(''); }
+    }));
+    useEffect(() => { editor?.select(page?.id); }, [editor, page?.id]);
+    const undo = () => perform('undo', async () => {
+        await save();
+        const current = await window.ipcRenderer.videoEditorV2.readProductEditor({ project: { kind: 'image-set', path: projectPath } });
+        if (!current.success || !current.snapshot) throw new Error(current.error || '读取撤销凭据失败');
+        const value = current.snapshot;
+        const result = await window.ipcRenderer.videoEditorV2.undoProductEditor({ binding: value.binding, requestId: crypto.randomUUID(), expectedRevision: value.revision, expectedDraftEpoch: value.draftEpoch });
+        if (!result.success || !result.result?.imageSet) throw new Error(result.error || '撤销失败');
+        apply({ ...result.result.imageSet, success: true }); setMessage('已撤销；发布确认需重新准备');
+    });
 
     const perform = async (name: string, operation: () => Promise<void>) => {
         if (busyRef.current) return;
@@ -159,9 +181,11 @@ export function ProductImageSetPane({ target }: { target: ChatMessageLinkTarget 
 
     return <div className="flex h-full min-h-0 flex-col bg-surface-primary text-text-primary">
         <header className="flex flex-wrap items-center gap-2 border-b border-border p-3">
-            <div className="mr-auto"><h2 className="text-sm font-semibold">商品套图 · {set.pages.length} 张</h2><p className="text-[11px] text-text-tertiary">3:4 · 1440×1920 PNG · {dirty ? '有未保存修改' : `版本 ${snapshot?.version || ''}`}</p></div>
+            <div className="mr-auto"><h2 className="text-sm font-semibold">商品套图 · {set.pages.length} 张</h2><p className="text-[11px] text-text-tertiary">{productImageSpec(set).aspectRatio} · {productImageSpec(set).width}×{productImageSpec(set).height} PNG · 应用发布上限 18 张 · {dirty ? '有未保存修改' : `版本 ${snapshot?.version || ''}`}</p></div>
             <button className={button} disabled={Boolean(busy)} onClick={() => dirty ? setRefreshConfirm(true) : void refresh()}><RefreshCw className="h-3.5 w-3.5" />刷新</button>
             <button className={button} disabled={Boolean(busy) || !dirty} onClick={() => void perform('save', async () => { await save(); setMessage('已保存'); })}><Save className="h-3.5 w-3.5" />保存</button>
+            <button className={button} disabled={Boolean(busy)} onClick={() => void undo()}>撤销</button>
+            <PublicationButton source={{ kind: 'image-set', path: projectPath }} />
             <button className={button} disabled={Boolean(busy)} onClick={() => void exportImages('zip')}><Download className="h-3.5 w-3.5" />导出 ZIP</button>
         </header>
         {message && <div role="status" className="border-b border-border bg-surface-secondary px-4 py-2 text-xs whitespace-pre-wrap">{message}</div>}
@@ -180,9 +204,9 @@ export function ProductImageSetPane({ target }: { target: ChatMessageLinkTarget 
             <div className="overflow-y-auto p-4">
                 <div className="mx-auto max-w-[500px]">
                     <div ref={previewRef} className="relative aspect-[3/4] overflow-hidden rounded-xl border border-border bg-surface-secondary">
-                        {html ? <iframe title="商品套图页面预览" sandbox="allow-same-origin" srcDoc={html} width="1440" height="1920" className="absolute left-0 top-0 border-0 origin-top-left" style={{ transform: 'scale(var(--product-preview-scale))', width: 1440, height: 1920 }} onLoad={(event) => {
+                        {html ? <iframe title="商品套图页面预览" sandbox="allow-same-origin" srcDoc={html} width={productImageSpec(set).width} height={productImageSpec(set).height} className="absolute left-0 top-0 border-0 origin-top-left" style={{ transform: 'scale(var(--product-preview-scale))', width: productImageSpec(set).width, height: productImageSpec(set).height }} onLoad={(event) => {
                             const frame = event.currentTarget; const parent = frame.parentElement;
-                            if (parent) parent.style.setProperty('--product-preview-scale', String(parent.clientWidth / 1440));
+                            if (parent) parent.style.setProperty('--product-preview-scale', String(parent.clientWidth / (set ? productImageSpec(set).width : 1440)));
                         }} /> : <div className="flex h-full items-center justify-center text-xs text-text-tertiary">正在生成预览…</div>}
                     </div>
                     <div className="my-3 flex flex-wrap gap-2">

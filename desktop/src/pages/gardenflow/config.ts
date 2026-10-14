@@ -145,12 +145,12 @@ export function createGardenFlowComposerShortcuts(
 export function createGardenFlowComposerShortcutsForContext(context: ChatShortcutContext): ChatShortcut[] {
     const scene = resolveGardenFlowComposerShortcutScene(context);
     const shortcuts = createGardenFlowComposerShortcuts(GARDENFLOW_COMPOSER_SHORTCUT_INPUTS_BY_SCENE[scene]);
-    if (context.selectedAssetMentions?.some((item) => item.referenceType === 'product')) return [{
+    if (context.selectedAssetMentions?.some((item) => item.referenceType === 'product')) return [{ label: '商品创作', text: '请为当前选择的商品规划作品，先提交人工确认方案。', action: 'send', taskHints: { productCreationSetup: true } }, {
         label: '商品套图', text: '请围绕当前选择的商品制作一套 5 张小红书图文套图（包含封面），先提交可确认的逐页方案。',
-        action: 'send', taskHints: { workflowKind: 'product-image-set-compose', productImageSetCount: 5, platform: 'xiaohongshu', xhsNoteType: 'image' },
+        action: 'send', taskHints: { productCreationSetup: true, workflowKind: 'product-image-set-compose', productImageSetCount: 5, platform: 'xiaohongshu', xhsNoteType: 'image' },
     }, {
         label: '视频混剪', text: '请使用我选择的已有视频为当前商品规划混剪，明确每个片段的来源、截取起止、顺序和屏幕文字，先提交人工确认。不要生成新的媒体。',
-        action: 'send', taskHints: { workflowKind: 'product-video-compose', productVideoCompositionMode: 'existing-clips', platform: 'xiaohongshu', xhsNoteType: 'video' },
+        action: 'send', taskHints: { productCreationSetup: true, workflowKind: 'product-video-compose', productVideoCompositionMode: 'existing-clips', platform: 'xiaohongshu', xhsNoteType: 'video' },
     }, ...shortcuts];
     return shortcuts;
 }

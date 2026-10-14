@@ -23,6 +23,9 @@ import {
 import { VideoGenerateTool } from './mediaGenerationTools';
 import { getProductVideoVoiceoverConfig, submitApprovedProductVideoVoiceovers } from '../video-editor-v2/productVideoVoiceoverService';
 
+import { assertProductTargetMatch, productTargetLabel } from '../../../shared/productCreationTarget';
+import { ensureProductVideoWorkBinding } from '../productWorkVersionService';
+
 function record(value: unknown): Record<string, unknown> {
     return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
@@ -59,6 +62,7 @@ export class ProductVideoComposeTool extends DeclarativeTool<typeof ProductVideo
             type: 'info',
             title: `确认商品视频分镜 · ${params.productName}`,
             description: [
+                ...(params.creationTarget ? [productTargetLabel(params.creationTarget), `规格版本：${params.creationTarget.profileVersion}`, `发布标题：${params.publicationCopy?.title || ''}`, `发布正文：${params.publicationCopy?.description || ''}`, `话题：${params.publicationCopy?.hashtags.join(' · ') || ''}`] : []),
                 `${params.canvas.width}×${params.canvas.height} · ${params.canvas.fps}fps · ${(params.durationMs / 1000).toFixed(1)}s`,
                 `AI 动效镜头：${params.scenes.filter((scene) => scene.source === 'ai-motion').length}`,
                 `旁白任务：${voiceover.configured ? voiceoverCount : 0} 段（${!voiceoverEnabled ? '已关闭自动旁白，保留画面文字' : voiceover.configured ? `${voiceover.model} · ${voiceover.voiceId}` : '语音服务未配置，工程仍可创建'}）`,
@@ -80,6 +84,7 @@ export class ProductVideoComposeTool extends DeclarativeTool<typeof ProductVideo
         try {
             params = ProductVideoComposeParamsSchema.parse(params);
             const existing = await findProductVideoProjectByProposalId(params.proposalId);
+            if (existing) assertProductTargetMatch(existing.creationTarget?.profileVersion === 0 ? undefined : existing.creationTarget, params.creationTarget);
             if (existing?.productVideo && (existing.productVideo.proposal.productId !== params.productId
                 || (existing.productVideo.proposal.compositionMode || 'product-images') !== (params.compositionMode || 'product-images'))) throw new Error('提案 ID 已用于另一商品或另一种视频模式，请使用新提案重新确认');
             if (signal.aborted) return createErrorResult('Product video composition cancelled.', ToolErrorType.CANCELLED);
@@ -89,6 +94,7 @@ export class ProductVideoComposeTool extends DeclarativeTool<typeof ProductVideo
             let reused = Boolean(existing);
 
             if (project) {
+                project = await ensureProductVideoWorkBinding(project);
                 if (project.status !== 'generating' || !project.productVideo) {
                     if (project.productVideo?.voiceoverAutoApprovedAt) {
                         await submitApprovedProductVideoVoiceovers(project.id).catch((error) => {
@@ -141,7 +147,7 @@ export class ProductVideoComposeTool extends DeclarativeTool<typeof ProductVideo
             }
 
             if (!project) throw new Error('商品视频工程创建失败');
-            const activeProject = project;
+            const activeProject = await ensureProductVideoWorkBinding(project);
             sourcePathMap = new Map(activeProject.assets
                 .filter((asset) => asset.provenance?.sourceAssetId)
                 .map((asset) => [String(asset.provenance?.sourceAssetId), asset.projectPath]));

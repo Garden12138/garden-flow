@@ -1,0 +1,254 @@
+{
+  "productId": "product_1791849959120_fe12e3c0",
+  "videoCount": 16,
+  "zipCount": 4,
+  "unchangedPagePngAndMediaReused": true,
+  "safeInsets": {
+    "top": 120,
+    "right": 144,
+    "bottom": 320,
+    "left": 72
+  },
+  "exports": [
+    {
+      "file": "development-douyin-video-3.mp4",
+      "sha256": "55ecc6234b07e4147d29fe3ff21956a6e13aeda40f1e666efe952667b9c4ec71",
+      "width": 1080,
+      "height": 1920,
+      "fps": "30/1",
+      "videoDuration": "1.000000",
+      "containerDuration": "1.045333"
+    },
+    {
+      "file": "development-douyin-video-6.mp4",
+      "sha256": "29a5c656e3332cc2ee0991de36a9584839c7d832fa9ba0df62d482a9f3593e54",
+      "width": 1080,
+      "height": 1920,
+      "fps": "30/1",
+      "videoDuration": "1.000000",
+      "containerDuration": "1.045333"
+    },
+    {
+      "file": "development-tiktok-remix-3.mp4",
+      "sha256": "8b00e7cce9af0ae601521a8e5924f4026cbd86163be7aafdaef492a5ea4f01d0",
+      "width": 1080,
+      "height": 1920,
+      "fps": "30/1",
+      "videoDuration": "1.000000",
+      "containerDuration": "1.045333"
+    },
+    {
+      "file": "development-tiktok-remix-6.mp4",
+      "sha256": "ca016472d22000338e2f2360bcd9aef49922c607cada285ce2fbab2ae05b4ad4",
+      "width": 1080,
+      "height": 1920,
+      "fps": "30/1",
+      "videoDuration": "1.000000",
+      "containerDuration": "1.045333"
+    },
+    {
+      "file": "development-tiktok-video-3.mp4",
+      "sha256": "51b359fdca6ad040ca560bffc42934a4f88e84f30553204de0559f441ed1e0c9",
+      "width": 1080,
+      "height": 1920,
+      "fps": "30/1",
+      "videoDuration": "1.000000",
+      "containerDuration": "1.045333"
+    },
+    {
+      "file": "development-tiktok-video-6.mp4",
+      "sha256": "0dcfe6e5608bea47e37681704c0885e8e096949e737c85185b0c3a5e119ff6d6",
+      "width": 1080,
+      "height": 1920,
+      "fps": "30/1",
+      "videoDuration": "1.000000",
+      "containerDuration": "1.045333"
+    },
+    {
+      "file": "development-xiaohongshu-video-3.mp4",
+      "sha256": "eb48ad600a12b9609b1ab43435f45ffd3a1152fc4ac4be15145c762af42b7c39",
+      "width": 1080,
+      "height": 1920,
+      "fps": "30/1",
+      "videoDuration": "1.000000",
+      "containerDuration": "1.045333"
+    },
+    {
+      "file": "development-xiaohongshu-video-6.mp4",
+      "sha256": "eb48ad600a12b9609b1ab43435f45ffd3a1152fc4ac4be15145c762af42b7c39",
+      "width": 1080,
+      "height": 1920,
+      "fps": "30/1",
+      "videoDuration": "1.000000",
+      "containerDuration": "1.045333"
+    },
+    {
+      "file": "native-douyin-video-3.mp4",
+      "sha256": "55ecc6234b07e4147d29fe3ff21956a6e13aeda40f1e666efe952667b9c4ec71",
+      "width": 1080,
+      "height": 1920,
+      "fps": "30/1",
+      "videoDuration": "1.000000",
+      "containerDuration": "1.045333"
+    },
+    {
+      "file": "native-douyin-video-6.mp4",
+      "sha256": "55ecc6234b07e4147d29fe3ff21956a6e13aeda40f1e666efe952667b9c4ec71",
+      "width": 1080,
+      "height": 1920,
+      "fps": "30/1",
+      "videoDuration": "1.000000",
+      "containerDuration": "1.045333"
+    },
+    {
+      "file": "native-tiktok-remix-3.mp4",
+      "sha256": "4609ff134a99a484a83e81cea2b70ac7ca5cc61e75ee57af31f9fc023f4ea8ba",
+      "width": 1080,
+      "height": 1920,
+      "fps": "30/1",
+      "videoDuration": "1.000000",
+      "containerDuration": "1.045333"
+    },
+    {
+      "file": "native-tiktok-remix-6.mp4",
+      "sha256": "ca016472d22000338e2f2360bcd9aef49922c607cada285ce2fbab2ae05b4ad4",
+      "width": 1080,
+      "height": 1920,
+      "fps": "30/1",
+      "videoDuration": "1.000000",
+      "containerDuration": "1.045333"
+    },
+    {
+      "file": "native-tiktok-video-3.mp4",
+      "sha256": "42c3a2a8d02fa2b801df6748c0df4f8da6a3b030a942d0dc2d5ccdee4ce15ea6",
+      "width": 1080,
+      "height": 1920,
+      "fps": "30/1",
+      "videoDuration": "1.000000",
+      "containerDuration": "1.045333"
+    },
+    {
+      "file": "native-tiktok-video-6.mp4",
+      "sha256": "197d460c5a7935bd5f1c2b98aa183f31780a174f71ee8cc658d207d2de13c4aa",
+      "width": 1080,
+      "height": 1920,
+      "fps": "30/1",
+      "videoDuration": "1.000000",
+      "containerDuration": "1.045333"
+    },
+    {
+      "file": "native-xiaohongshu-video-3.mp4",
+      "sha256": "55ecc6234b07e4147d29fe3ff21956a6e13aeda40f1e666efe952667b9c4ec71",
+      "width": 1080,
+      "height": 1920,
+      "fps": "30/1",
+      "videoDuration": "1.000000",
+      "containerDuration": "1.045333"
+    },
+    {
+      "file": "native-xiaohongshu-video-6.mp4",
+      "sha256": "28b4348dbd829245b4417f8d802514855bf0f2efb8cb773a5ef0d6441fda052d",
+      "width": 1080,
+      "height": 1920,
+      "fps": "30/1",
+      "videoDuration": "1.000000",
+      "containerDuration": "1.045333"
+    },
+    {
+      "file": "development-xiaohongshu-image-set-3.zip",
+      "sha256": "fccadea6f29a1072f00922c57f89a4f1d3035bd7c9518ce8041b99547c30723d",
+      "pngDimensions": [
+        1440,
+        1920
+      ],
+      "pages": 5,
+      "order": [
+        "assets/01-封面.png",
+        "assets/02-内容页.png",
+        "assets/03-内容页.png",
+        "assets/04-内容页.png",
+        "assets/05-内容页.png"
+      ],
+      "slotOrder": [
+        "cover",
+        "product-page-page-1",
+        "product-page-page-2",
+        "product-page-page-3",
+        "product-page-page-4"
+      ]
+    },
+    {
+      "file": "development-xiaohongshu-image-set-6.zip",
+      "sha256": "e9f78559d6b9fa6cfbe2b5f8c8ab207183755cb3c36aa121bad634e96b6b4e29",
+      "pngDimensions": [
+        1440,
+        1920
+      ],
+      "pages": 6,
+      "order": [
+        "assets/01-封面.png",
+        "assets/02-内容页.png",
+        "assets/03-内容页.png",
+        "assets/04-内容页.png",
+        "assets/05-内容页.png",
+        "assets/06-内容页.png"
+      ],
+      "slotOrder": [
+        "cover",
+        "product-page-page-1",
+        "product-page-page-2",
+        "product-page-page-3",
+        "product-page-page-4",
+        "product-page-new-content"
+      ]
+    },
+    {
+      "file": "native-xiaohongshu-image-set-3.zip",
+      "sha256": "081d545bbd2fd80a60edb0d55627df8beb7be9f1fbd40463652926c7564e116f",
+      "pngDimensions": [
+        1440,
+        1920
+      ],
+      "pages": 5,
+      "order": [
+        "assets/01-封面.png",
+        "assets/02-内容页.png",
+        "assets/03-内容页.png",
+        "assets/04-内容页.png",
+        "assets/05-内容页.png"
+      ],
+      "slotOrder": [
+        "cover",
+        "product-page-page-1",
+        "product-page-page-2",
+        "product-page-page-3",
+        "product-page-page-4"
+      ]
+    },
+    {
+      "file": "native-xiaohongshu-image-set-6.zip",
+      "sha256": "1819b5f2c421713a0b3d29e2fdbe4bbe2e80fe654e56f98f000851ec3455f622",
+      "pngDimensions": [
+        1440,
+        1920
+      ],
+      "pages": 6,
+      "order": [
+        "assets/01-封面.png",
+        "assets/02-内容页.png",
+        "assets/03-内容页.png",
+        "assets/04-内容页.png",
+        "assets/05-内容页.png",
+        "assets/06-内容页.png"
+      ],
+      "slotOrder": [
+        "cover",
+        "product-page-page-1",
+        "product-page-page-2",
+        "product-page-page-3",
+        "product-page-page-4",
+        "product-page-new-content"
+      ]
+    }
+  ]
+}

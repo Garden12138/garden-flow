@@ -14,7 +14,11 @@
 | [商品套图阶段 6 验收记录](./PRODUCT_IMAGE_SET_ACCEPTANCE.md) | 持久方案确认、独立图文工程、模板编辑、PNG／ZIP 导出与恢复 |
 | [视频混剪阶段 7 验收记录](./PRODUCT_VIDEO_REMIX_ACCEPTANCE.md) | 自有片段选择、持久确认、截取／原音编辑、MP4 导出与恢复 |
 | [商品创作真实验收](./PRODUCT_CREATIVES_REAL_ACCEPTANCE.md) | 伟嘉 3.6kg 真实模型方案、套图与混剪导出、开发版／安装版重开 |
-| [路线图](../ROADMAP.md) | 当前能力、近期改进与反馈驱动的后续方向 |
+| [目标平台阶段 8 验收](./PRODUCT_TARGET_STAGE8_ACCEPTANCE.md) | 平台前置、规格快照、直接平台工程、独立版本与发布准备校验 |
+| [持续对话编辑阶段 9 验收](./PRODUCT_PROJECT_EDITOR_STAGE9_ACCEPTANCE.md) | 工程绑定、受控批量修改、共享撤销、草稿冲突及本地事务恢复 |
+| [统一发布阶段 10 验收](./PUBLICATION_STAGE10_ACCEPTANCE.md) | 两步确认、账号与草稿核验、独立完成询问、恢复和隔离验收 |
+| [阶段 8／9／10 真实验收](./PRODUCT_STAGES_8_10_REAL_ACCEPTANCE.md) | 真实商品规划、33 轮对话编辑、实际成片与套图、冷启动、五件逐件发布、两个可信回执、最终冷启动及验收余项 |
+| [路线图](../ROADMAP.md) | 当前能力、阶段 8–10 的平台创作／对话编辑／发布主线及验收余项 |
 | [首轮推广工作包](./launch/README.md) | 发布草稿、录制脚本、贡献任务及人工复盘模板 |
 | [使用手册](./USER_MANUAL.md) | 首次启动、空间、采集、知识、灵感、创作、生成、自动化和隐私 |
 | [AI 供应商](./AI_PROVIDERS.md) | 文本与多媒体供应商、路由、配置检查和错误处理 |

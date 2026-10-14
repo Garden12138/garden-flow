@@ -1103,6 +1103,10 @@ export class PiChatService {
         {
           onEvent: (event) => this.handleQueryRuntimeEvent(event, generatedImages, generatedVideos, generatedAudios, xhsArtifacts),
           onToolResult: (toolName, result, command) => {
+            if (result.success && ['product_project_edit', 'product_project_undo'].includes(toolName)) {
+              const edit = result.data as import('../../shared/productProjectEditor').ProductProjectEditResult;
+              this.sendToUI('data:changed', { scope: edit.video ? 'video-editor-v2' : 'manuscripts', action: toolName, entityId: edit.video?.id || edit.imageSet?.relativePath });
+            }
             this.maybeRegisterArtifactFromRuntimeToolResult(toolName, result, command);
             if (toolName === 'xhs_publish_prepare') {
               const data = result.data && typeof result.data === 'object' ? result.data as Record<string, unknown> : {};
@@ -1270,11 +1274,13 @@ export class PiChatService {
             : undefined,
           productAssetVisualGrounding,
           interactive: runtimeMode !== 'background-maintenance',
+          creationTarget: preparedTaskMetadata.creationTarget as import('../../shared/productCreationTarget').ProductCreationTarget | undefined,
           productVideoCompositionMode: String(preparedTaskMetadata.productVideoCompositionMode || ''),
           explicitVideoClipRefs: readProductVideoClipReferences(preparedTaskMetadata),
           requiresHumanApproval: preparedExecution.route.requiresHumanApproval,
           generationToolConstraints: preparedTaskMetadata.generationToolConstraints,
           productImageSetEditing: preparedTaskMetadata.productImageSetEditing === true,
+          productProjectEditorTurn: preparedTaskMetadata.productProjectEditorTurn as import('../../shared/productProjectEditor').ProductProjectEditorTurn | undefined,
           maxCompletionRecoveryAttempts: captureTask ? 8 : undefined,
           completionContract: {
             builtinTaskId: String(preparedTaskMetadata.builtinTaskId || metadata.builtinTaskId || '').trim() || undefined,
@@ -1380,7 +1386,7 @@ export class PiChatService {
       const isXhsSession = metadata.artifactType === 'xiaohongshu-note'
         || metadata.editorBindingKind === 'xiaohongshu-note'
         || metadata.mode === 'xiaohongshu-note-editing';
-      if (isXhsSession && completedXhsPath) {
+      if (metadata.editorBindingKind !== 'product-project' && isXhsSession && completedXhsPath) {
         void getXhsPublisherService().considerCompletedArtifact(sessionId, completedXhsPath).catch((error) => {
           console.warn('[PiChatService] Failed to create Xiaohongshu publish consent:', error);
         });
@@ -1465,7 +1471,7 @@ export class PiChatService {
       ),
       'https://api.openai.com/v1',
     );
-    const modelScope = resolveModelScopeFromContextType(String(metadata.contextType || ''));
+    const modelScope = resolveModelScopeFromContextType(metadata.editorBindingKind === 'product-project' ? 'gardenflow' : String(metadata.contextType || ''));
     const modelName = String(
       modelOverride?.modelName
       || routed?.modelName
@@ -1644,6 +1650,14 @@ export class PiChatService {
         '</xhs_publish_workflow>',
       ].join('\n\n');
     }
+    if (preparedExecution.route.workflowKind === 'product-project-edit') {
+      const skill = this.skillManager.getSkill('product-project-editor');
+      if (!skill || skill.disabled) throw new Error('商品工程编辑技能不可用，请恢复内置技能后重试');
+      const content = await this.skillManager.activateSkill('product-project-editor');
+      if (!content) throw new Error('商品工程编辑技能加载失败');
+      preparedSystemPrompt += `\n<forced_skill name="product-project-editor">\n${content}\n</forced_skill>`;
+      if (emitSkillActivation) this.sendToUI('chat:skill-activated', { name: skill.name, description: skill.description });
+    }
     if (preparedExecution.route.workflowKind === 'product-image-set-compose') {
       const skill = this.skillManager.getSkill('product-image-set-director');
       if (!skill || skill.disabled) throw new Error('商品套图技能不可用，请恢复内置技能后重试');
@@ -1682,6 +1696,9 @@ ${skillContent}
       }
     }
 
+    if (executionMetadata.creationTarget) {
+      preparedSystemPrompt += `\n\n## 已确认的商品创作目标\n${JSON.stringify(executionMetadata.creationTarget)}\n这是用户选择，优先于一般小红书写作建议；提案 creationTarget 必须原样保留。按目标语言和市场组织文案，保留原图片／视频中已有文字，不宣称已翻译原素材。视频使用 product_video_compose 并提供 publicationCopy（title、description、hashtags），voiceoverEnabled=false；套图使用 product_image_set_compose。默认不得规划或提交付费图片、视频或语音。先提交持久审批卡，确认后由工程工具创建对应目标记录，不自行复制成小红书版本。`;
+    }
     const runtimeMessages = this.historyToRuntimeMessages(sessionId, content, metadata);
     this.emitDebugLog('info', 'runtime:prepare:done', {
       sessionId,
@@ -2276,7 +2293,7 @@ ${skillContent}
     if (String(metadata.runtimeMode || '').trim() === 'background-maintenance') {
       return 'background-maintenance';
     }
-    if (String(metadata.editorBindingKind || '').trim() === 'xiaohongshu-note') return 'gardenflow';
+    if (['xiaohongshu-note', 'product-project'].includes(String(metadata.editorBindingKind || '').trim())) return 'gardenflow';
     if (String(metadata.mode || '').trim() === 'xiaohongshu-note-editing') return 'gardenflow';
     const contextType = String(metadata.contextType || '').trim().toLowerCase();
     if (contextType === 'gardenflow') return 'gardenflow';

@@ -32,6 +32,7 @@ const formatBudgetedText = (text: string, budgetChars: number): string => {
 };
 
 const getPerToolBudget = (registry: ToolRegistry, toolName: string): number => {
+  if (toolName === 'product_project_read') return 64_000;
   const tool = registry.getTool(toolName);
   if (!tool) return 8_000;
 
@@ -57,7 +58,7 @@ export const applyToolResultBudget = (
   inputs: Array<{ toolName: string; result: ToolResult }>,
   totalBudgetChars = DEFAULT_TOTAL_BUDGET_CHARS,
 ): BudgetedToolResult[] => {
-  let remaining = Math.max(DEFAULT_MIN_RESULT_CHARS, totalBudgetChars);
+  let remaining = Math.max(DEFAULT_MIN_RESULT_CHARS, inputs.some(input => input.toolName === 'product_project_read') ? Math.max(totalBudgetChars, 64_000) : totalBudgetChars);
 
   return inputs.map(({ toolName, result }, index) => {
     const originalText = normalizeResultText(result);

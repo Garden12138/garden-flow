@@ -1,3 +1,5 @@
+import type { PublicationJobContext, PublicationCompletion } from '../shared/publication';
+import type { PublicationPlatform } from '../shared/platformPublisher';
 import Database from 'better-sqlite3';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import path from 'path';
@@ -37,6 +39,26 @@ const hasColumn = (tableName: string, columnName: string): boolean => {
 // Initialize tables
 const initDb = () => {
   db.exec(`
+    CREATE TABLE IF NOT EXISTS publication_job_contexts (
+      job_id TEXT PRIMARY KEY, platform TEXT NOT NULL, space_id TEXT NOT NULL, document_json TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_publication_context_space ON publication_job_contexts(space_id, platform);
+    CREATE TABLE IF NOT EXISTS publication_completions (
+      id TEXT PRIMARY KEY, space_id TEXT NOT NULL, source_key TEXT NOT NULL, semantic_digest TEXT NOT NULL,
+      state TEXT NOT NULL, document_json TEXT NOT NULL, created_at INTEGER NOT NULL,
+      UNIQUE(space_id, source_key, semantic_digest)
+    );
+
+    CREATE TABLE IF NOT EXISTS product_project_edits (
+      space_id TEXT NOT NULL, project_key TEXT NOT NULL, request_id TEXT NOT NULL,
+      request_hash TEXT NOT NULL, state TEXT NOT NULL, payload_json TEXT NOT NULL,
+      result_json TEXT, undo_of TEXT, undone INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL,
+      PRIMARY KEY (space_id, project_key, request_id)
+    );
+    CREATE TABLE IF NOT EXISTS product_project_drafts (
+      space_id TEXT NOT NULL, project_key TEXT NOT NULL, epoch INTEGER NOT NULL,
+      dirty INTEGER NOT NULL, PRIMARY KEY (space_id, project_key)
+    );
     CREATE TABLE IF NOT EXISTS settings (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       api_endpoint TEXT,
@@ -1376,7 +1398,7 @@ export const deleteSpace = (id: string): { deletedActiveSpace: boolean; activeSp
 
 export const getActiveSpaceId = (): string => {
   const settings = getSettings() as { active_space_id?: string } | undefined;
-  const id = settings?.active_space_id || DEFAULT_SPACE_ID;
+  const id = workspaceSpaceContext.getStore() || settings?.active_space_id || DEFAULT_SPACE_ID;
   const exists = db.prepare('SELECT 1 FROM spaces WHERE id = ? LIMIT 1').get(id) as { '1': number } | undefined;
   return exists ? id : DEFAULT_SPACE_ID;
 };
@@ -3902,3 +3924,66 @@ export const getTikTokPublisherBinding = (): string => (
 export const setTikTokPublisherBinding = (extensionInstanceId: string): void => {
   db.prepare('UPDATE tiktok_publisher_config SET bound_extension_instance_id = ?, updated_at = ? WHERE id = 1').run(extensionInstanceId, Date.now());
 };
+
+export interface ProductEditJournalRecord {
+  space_id: string; project_key: string; request_id: string; request_hash: string;
+  state: 'prepared' | 'committed' | 'rolled-back'; payload_json: string;
+  result_json: string | null; undo_of: string | null; undone: number; created_at: number;
+}
+export const getProductEditJournal = (spaceId: string, key: string, requestId: string): ProductEditJournalRecord | null => (
+  db.prepare('SELECT * FROM product_project_edits WHERE space_id = ? AND project_key = ? AND request_id = ?').get(spaceId, key, requestId) as ProductEditJournalRecord | undefined || null
+);
+export const listProductEditJournal = (spaceId: string, key?: string): ProductEditJournalRecord[] => (
+  (key ? db.prepare('SELECT * FROM product_project_edits WHERE space_id = ? AND project_key = ? ORDER BY created_at DESC, rowid DESC').all(spaceId, key)
+    : db.prepare('SELECT * FROM product_project_edits WHERE space_id = ? ORDER BY created_at DESC, rowid DESC').all(spaceId)) as ProductEditJournalRecord[]
+);
+export const listPendingProductEdits = (): ProductEditJournalRecord[] => db.prepare("SELECT * FROM product_project_edits WHERE state = 'prepared' ORDER BY created_at, rowid").all() as ProductEditJournalRecord[];
+export const assertProductEditsSettled = (key: string, spaceId = getWorkspacePaths().activeSpaceId): void => {
+  if (db.prepare("SELECT request_id FROM product_project_edits WHERE space_id = ? AND project_key = ? AND state = 'prepared' LIMIT 1").get(spaceId, key)) {
+    throw new Error('工程编辑事务尚在提交或恢复，请完成后重新准备发布');
+  }
+  if (getProductEditorDraft(spaceId, key).dirty) throw new Error('请先保存当前工程输入再准备发布');
+};
+export const getProductEditorPublicationRevision = (projectId: string, spaceId = getWorkspacePaths().activeSpaceId): string => {
+  const row = db.prepare("SELECT request_id FROM product_project_edits WHERE space_id = ? AND project_key = ? AND state = 'committed' ORDER BY created_at DESC, rowid DESC LIMIT 1").get(spaceId, 'video:' + projectId) as { request_id: string } | undefined;
+  return row?.request_id || '';
+};
+export const prepareProductEditJournal = (record: ProductEditJournalRecord): void => {
+  db.prepare(`INSERT INTO product_project_edits (space_id, project_key, request_id, request_hash, state, payload_json, result_json, undo_of, undone, created_at)
+    VALUES (@space_id, @project_key, @request_id, @request_hash, @state, @payload_json, @result_json, @undo_of, @undone, @created_at)`).run(record);
+};
+export const finishProductEditJournal = (spaceId: string, key: string, requestId: string, state: ProductEditJournalRecord['state'], result: unknown, undoOf?: string): void => {
+  db.prepare('UPDATE product_project_edits SET state = ?, result_json = ? WHERE space_id = ? AND project_key = ? AND request_id = ?')
+    .run(state, JSON.stringify(result), spaceId, key, requestId);
+  if (state === 'committed' && undoOf) db.prepare('UPDATE product_project_edits SET undone = 1 WHERE space_id = ? AND project_key = ? AND request_id = ?').run(spaceId, key, undoOf);
+};
+export const runProductEditSqlTransaction = <T>(operation: () => T): T => db.transaction(operation)();
+export const getProductEditorDraft = (spaceId: string, key: string): { epoch: number; dirty: boolean } => {
+  const row = db.prepare('SELECT epoch, dirty FROM product_project_drafts WHERE space_id = ? AND project_key = ?').get(spaceId, key) as { epoch: number; dirty: number } | undefined;
+  return { epoch: row?.epoch || 0, dirty: Boolean(row?.dirty) };
+};
+export const updateProductEditorDraft = (spaceId: string, key: string, dirty: boolean): { epoch: number; dirty: boolean } => {
+  db.prepare(`INSERT INTO product_project_drafts (space_id, project_key, epoch, dirty) VALUES (?, ?, 1, ?)
+    ON CONFLICT (space_id, project_key) DO UPDATE SET epoch = epoch + 1, dirty = excluded.dirty`).run(spaceId, key, Number(dirty));
+  return getProductEditorDraft(spaceId, key);
+};
+
+export const getPublicationJobContext = (platform: PublicationPlatform, jobId: string): PublicationJobContext | null => {
+  const row = db.prepare('SELECT document_json FROM publication_job_contexts WHERE job_id = ? AND platform = ?').get(jobId, platform) as { document_json: string } | undefined;
+  return row ? safeJsonParse(row.document_json, null as PublicationJobContext | null) : null;
+};
+export const savePublicationJobContext = (context: PublicationJobContext): void => {
+  db.prepare('INSERT INTO publication_job_contexts(job_id, platform, space_id, document_json) VALUES (?, ?, ?, ?) ON CONFLICT(job_id) DO UPDATE SET document_json = excluded.document_json WHERE space_id = excluded.space_id AND platform = excluded.platform')
+    .run(context.jobId, context.platform, context.spaceId, JSON.stringify(context));
+};
+export const listPublicationCompletions = (spaceId = getWorkspacePaths().activeSpaceId): PublicationCompletion[] => (
+  (db.prepare('SELECT document_json FROM publication_completions WHERE space_id = ? ORDER BY created_at DESC').all(spaceId) as { document_json: string }[])
+    .map(row => safeJsonParse(row.document_json, null as PublicationCompletion | null)).filter((row): row is PublicationCompletion => Boolean(row))
+);
+export const insertPublicationCompletion = (event: PublicationCompletion): boolean => db.prepare('INSERT OR IGNORE INTO publication_completions(id, space_id, source_key, semantic_digest, state, document_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+  .run(event.id, event.spaceId, JSON.stringify(event.source), event.semanticDigest, event.state, JSON.stringify(event), event.createdAt).changes === 1;
+export const updatePublicationCompletion = (event: PublicationCompletion): void => {
+  db.prepare('UPDATE publication_completions SET state = ?, document_json = ? WHERE id = ? AND space_id = ?').run(event.state, JSON.stringify(event), event.id, event.spaceId);
+};
+export const listPendingPublicationCompletions = (): PublicationCompletion[] => (db.prepare("SELECT document_json FROM publication_completions WHERE state IN ('pending', 'offered') ORDER BY created_at").all() as { document_json: string }[])
+  .map(row => safeJsonParse(row.document_json, null as PublicationCompletion | null)).filter((row): row is PublicationCompletion => Boolean(row));

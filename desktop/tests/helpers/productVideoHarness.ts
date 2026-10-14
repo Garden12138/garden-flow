@@ -9,28 +9,28 @@ import type { ProductVideoProposal, VideoEditorV2Project } from '../../shared/vi
 
 // Real approval SQL, project/catalog/media stores and job registry; only host, router,
 // image/video providers and the TTS HTTP boundary are isolated from user data.
-export async function productVideoHarness(options: { platformVersions?: boolean; productImageSets?: boolean } = {}) {
+export async function productVideoHarness(options: { platformVersions?: boolean; productImageSets?: boolean; publication?: boolean } = {}) {
     const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'gardenflow-video-closeout-')));
     const source = await fs.readFile(new URL('../../electron/db.ts', import.meta.url), 'utf8');
     let sql = new DatabaseSync(path.join(root, 'approvals.db'));
     sql.exec('PRAGMA foreign_keys=OFF');
     sql.exec(source.match(/CREATE TABLE IF NOT EXISTS pending_tool_approvals \([\s\S]*?\n    \);/)![0]);
-    if (options.platformVersions) {
-        for (const table of ['douyin_video_versions', 'douyin_publish_jobs', 'douyin_publisher_config', 'tiktok_video_versions', 'tiktok_publish_jobs', 'tiktok_publisher_config']) {
-            const schema = source.match(new RegExp(`CREATE TABLE IF NOT EXISTS ${table} \\([\\s\\S]*?\\);`))?.[0];
-            if (!schema) throw new Error(`Missing platform version schema: ${table}`);
-            sql.exec(schema);
-        }
+    for (const table of ['publication_job_contexts', 'publication_completions', 'product_project_edits', 'product_project_drafts', 'xhs_publish_jobs', 'douyin_video_versions', 'douyin_publish_jobs', 'douyin_publisher_config', 'tiktok_video_versions', 'tiktok_publish_jobs', 'tiktok_publisher_config']) {
+        const schema = source.match(new RegExp(`CREATE TABLE IF NOT EXISTS ${table} \\([\\s\\S]*?\\);`))?.[0];
+        if (!schema) throw new Error(`Missing platform version schema: ${table}`);
+        sql.exec(schema);
     }
+    sql.exec("INSERT OR IGNORE INTO douyin_publisher_config VALUES (1, 'fixture-browser', 0); INSERT OR IGNORE INTO tiktok_publisher_config VALUES (1, 'fixture-browser', 0);");
     const state = {
-        root, spaceId: 'default', settings: {} as Record<string, unknown>,
+        root, spaceId: 'default', xhsBinding: 'fixture-browser', publisherCalls: [] as any[], connected: true, accountId: 'fixture_account', publisherState: 'ready', submitStatus: 'published', publisherHook: null as null | ((method: string, params: any) => Promise<any>), settings: {} as Record<string, unknown>,
         messages: [] as Array<Record<string, any>>, tasks: new Map<string, any>(), sessions: new Map<string, any>(), videoCalls: 0, ttsCalls: 0,
         imageCalls: 0, renderCalls: 0, renderBytes: Buffer.alloc(0), imageHook: null as null | ((input: any) => Promise<any>), renderHook: null as null | ((html: string) => Promise<void>),
-        audio: Buffer.alloc(0), failSpeech: false, localizationCalls: 0, localizationResponse: {} as any,
+        transactionHook: null as null | (() => void), audio: Buffer.alloc(0), failSpeech: false, localizationCalls: 0, localizationResponse: {} as any,
     };
     const db = {
         prepare: (query: string) => sql.prepare(query),
         transaction: (fn: (...args: any[]) => any) => (...args: any[]) => {
+            state.transactionHook?.();
             sql.exec('BEGIN');
             try { const result = fn(...args); sql.exec('COMMIT'); return result; }
             catch (error) { sql.exec('ROLLBACK'); throw error; }
@@ -38,24 +38,31 @@ export async function productVideoHarness(options: { platformVersions?: boolean;
     };
     const approvalTypes = source.slice(source.indexOf('export type PendingToolApprovalStatus'), source.indexOf('export type AgentTaskStatus'));
     const approvalFunctions = source.slice(source.indexOf('const parsePendingToolApproval'), source.indexOf('/**\n * 获取会话的所有消息', source.indexOf('const parsePendingToolApproval')));
-    const platformFunctions = options.platformVersions
-        ? source.slice(source.indexOf('type DouyinVersionRow ='), source.indexOf('export const findXhsPublishJobByCandidate')) + '\n' + source.slice(source.indexOf('type TikTokDocumentRow ='))
-        : '';
+    const platformFunctions = source.slice(source.indexOf('type DouyinVersionRow ='), source.indexOf('export const findXhsPublishJobByCandidate')) + '\n' + source.slice(source.indexOf('type TikTokDocumentRow ='));
+    const xhsFunctions = source.slice(source.indexOf('type XhsPublishJobRow ='), source.indexOf('type DouyinVersionRow =')) + source.slice(source.indexOf('export const listXhsPublishJobs ='), source.indexOf('export const getXhsPublisherBinding ='));
     const mocks: Record<string, string> = {
         db: `import { AsyncLocalStorage } from 'node:async_hooks';
             const workspaceContext = new AsyncLocalStorage();
             export const runInWorkspaceSpace = (spaceId, operation) => workspaceContext.run(spaceId, operation);
             const state = globalThis.__fixture; const db = globalThis.__fixtureDb;
-            export const updateChatSessionMetadata = (id, metadata) => state.sessions.set(id, { metadata: JSON.stringify(metadata) });
-            export const getChatSession = id => state.sessions.get(id) || { metadata: '{}' };
+            export const updateChatSessionMetadata = (id, metadata) => state.sessions.set(id, { ...state.sessions.get(id), id, metadata: JSON.stringify(metadata) });
+            export const getChatSession = id => state.sessions.get(id) || (id.startsWith('product_editor_') ? null : { id, metadata: '{}' });
+            export const createChatSession = (id, title, metadata) => { const value = {id, title, metadata: JSON.stringify(metadata)}; state.sessions.set(id, value); return value; };
+            export const getChatSessionByFile = file => [...state.sessions.values()].find(value => { const meta = JSON.parse(value.metadata || '{}'); return meta.associatedFilePath === file; }) || null;
+            export const getChatSessionByContext = (contextId, contextType) => [...state.sessions.values()].find(value => { const meta = JSON.parse(value.metadata || '{}'); return meta.contextId === contextId && meta.contextType === contextType; }) || null;
+
             export const getSettings = () => state.settings;
-            export const getWorkspacePathsForSpace = (spaceId) => { const base = state.root + '/' + spaceId; return { base, media: base + '/media', subjects: base + '/subjects', manuscripts: base + '/manuscripts', activeSpaceId: spaceId }; };
+            export const getWorkspacePathsForSpace = (spaceId) => { const base = state.root + '/' + spaceId; return { base, gardenflow: base + '/gardenflow', media: base + '/media', subjects: base + '/subjects', manuscripts: base + '/manuscripts', activeSpaceId: spaceId }; };
             export const getWorkspacePaths = () => getWorkspacePathsForSpace(workspaceContext.getStore() || state.spaceId);
-            export const getActiveSpaceId = () => state.spaceId;
+            export const getActiveSpaceId = () => workspaceContext.getStore() || state.spaceId;
+            export const getXhsPublisherBinding = () => state.xhsBinding; export const setXhsPublisherBinding = id => {state.xhsBinding=id;};
+            export const updateChatMessage = (id, patch) => { const message = state.messages.find(item => item.id === id); if (message) Object.assign(message, patch); };
+            export const findXhsPublishJobByCandidate = (file, revision, digest) => listXhsPublishJobs().find(item => item.revision === revision && item.projectPath === file && item.contentDigest === digest) || null;
             export const addChatMessage = (message) => state.messages.push(message);
+            export const listAgentTasks = () => [...state.tasks.values()]; export const parseAgentTaskRecord = value => value;
             export const getChatMessages = (session) => state.messages.filter((message) => message.session_id === session);
             const safeJsonParse = (value, fallback) => { try { return JSON.parse(value); } catch { return fallback; } };
-            ${approvalTypes}\n${approvalFunctions}\n${platformFunctions}`,
+            ${approvalTypes}\n${approvalFunctions}\n${platformFunctions}\n${xhsFunctions}`,
         ai: `const state = globalThis.__fixture;
             const runtime = { getTask: id => state.tasks.get(id), cancelTask: id => { state.tasks.get(id).status = 'cancelled'; }, resumeTask: id => { state.tasks.get(id).status = 'running'; }, addArtifact: (id, artifact) => state.tasks.get(id).artifacts.push(artifact) };
             export const getTaskGraphRuntime = () => runtime;
@@ -68,16 +75,39 @@ export async function productVideoHarness(options: { platformVersions?: boolean;
             export const productImageDataUrl = async () => 'data:image/png;base64,' + globalThis.__fixture.renderBytes.toString('base64');
             export const renderProductImagePng = async (html) => { const state = globalThis.__fixture; state.renderCalls++; if(state.renderHook) await state.renderHook(html); return state.renderBytes; };`,
         videoProvider: `export const generateVideosToMediaLibrary = async () => { throw new Error('unexpected video generation'); };`,
-        electron: `export const app = { isPackaged: false, getAppPath: () => ${JSON.stringify(path.resolve(import.meta.dirname, '../..'))} };`,
+        completion: `export const recordCompletedPublication = async () => {};`,
+        runner: `export const getGardenFlowBackgroundRunner = () => ({ listBuiltinTasks: async () => [] });`,
+        browser: `const state = globalThis.__fixture; export const getBrowserCaptureBridgeService = () => ({
+            waitForExtensionInstance: async () => {if (!state.connected) throw new Error('disconnected'); return {};},
+            getStatus: () => ({instances: state.connected ? [{extensionInstanceId: state.xhsBinding, browser: 'fixture chrome', extensionKind: 'xhs-publisher', capabilities: ['xiaohongshu.publish.v1','xiaohongshu.account-bound.v1','publisher.upload-review.v1','douyin.publish.v1','tiktok.publish.v1']}] : []}),
+            invokeBrowserControl: async (method, params) => {state.publisherCalls.push({method,params});
+                if (state.publisherHook) { const result = await state.publisherHook(method, params); if (result !== undefined) return result; }
+                if (method === 'publisher.status') return {accountId:state.accountId,accountLabel:'@'+state.accountId,pageState:state.publisherState};
+                const request = params.request;
+                if (params.phase === 'prepare') return {ok:true,prepared:true,jobId:request.jobId,contentDigest:request.contentDigest,publishStatus:'not_submitted',uploadReview:{jobId:request.jobId,contentDigest:request.contentDigest,accountId:state.accountId,pageFingerprint:'fixture page',pageSettings:{visibilityLabel:'公开可见',original:false,allowCopy:true,scheduled:false},mediaCount: request.media?.length || 1}};
+                if (params.phase === 'submit') return {ok:true,jobId:request.jobId,contentDigest:request.contentDigest,publishStatus:state.submitStatus,resetStatus:'ready'};
+                return {ok:true,jobId:params.jobId,contentDigest:params.contentDigest,publishStatus:'not_submitted',resetStatus:'ready'};
+            }
+        });`,
+        electron: `export const BrowserWindow = {getAllWindows: () => []}; export const nativeImage = {createFromBuffer: bytes => ({ isEmpty: () => bytes.length < 40 })}; export const app = { isPackaged: false, getAppPath: () => ${JSON.stringify(path.resolve(import.meta.dirname, '../..'))} };`,
     };
-    const exports = `export * from './electron/core/productVideoApprovalService';
+    const exports = `export * from './electron/core/productProjectEditorService';
+        export * from './electron/core/tools/productProjectEditorTools';
+        export * from './electron/core/productWorkVersionService';
+        export * from './electron/core/productVideoApprovalService';
         export * from './electron/core/tools/productVideoComposeTool';
         export * from './electron/core/brandWorkspaceStore';
         export * from './electron/core/video-editor-v2/videoEditorV2ProjectStore';
         export * from './electron/core/video-editor-v2/productVideoVoiceoverService';
         export * from './electron/core/video-editor-v2/renderExportService';
+        export * from './electron/core/video-editor-v2/productVideoExportCache';
         export * from './electron/core/mediaGenerationJobRegistry';
         export * from './electron/db';
+        ${options.publication ? `export * from './electron/core/unifiedPublisherService';
+        export * from './electron/core/publicationSource'; export * from './electron/core/publicationAuthorization';
+        export * from './electron/core/publicationCompletionService';
+        export * from './electron/core/video-editor-v2/videoPublicationPolicy';
+        export * from './electron/core/xhsPublisherService'; export * from './electron/core/douyinPublisherService'; export * from './electron/core/tiktokPublisherService';` : ''}
         ${options.productImageSets ? `export * from './electron/core/productImageSetApprovalService';
         export * from './electron/core/productImageSetService';
         export * from './electron/core/productVideoRemixSources';
@@ -91,8 +121,9 @@ export async function productVideoHarness(options: { platformVersions?: boolean;
         export * from './electron/core/xhsNoteProjectStore';` : ''}`;
     const bundled = await build({ stdin: { contents: exports, resolveDir: path.resolve(import.meta.dirname, '../..') }, bundle: true, write: false, platform: 'node', format: 'cjs', packages: 'external', define: { 'import.meta.url': JSON.stringify(new URL('../../package.json', import.meta.url).href) },
         plugins: [{ name: 'isolated-video-host', setup(builder) {
-            builder.onResolve({ filter: /(?:^electron$|(?:^|\/)db(?:\.ts)?$|(?:^|\/)ai$|mediaGenerationTools$|imageGenerationService$|videoGenerationService$|productImageRenderer$)/ }, (args) => {
-                const key = args.path === 'electron' ? 'electron' : /\/db(?:\.ts)?$/.test(args.path) ? 'db' : args.path.endsWith('/ai') ? 'ai'
+            builder.onResolve({ filter: /(?:^electron$|(?:^|\/)db(?:\.ts)?$|(?:^|\/)ai$|mediaGenerationTools$|imageGenerationService$|videoGenerationService$|productImageRenderer$|publicationCompletionService$|gardenflowBackgroundRunner$|browserCaptureBridgeService$)/ }, (args) => {
+                if (args.path.endsWith('publicationCompletionService') && options.publication) return undefined;
+                const key = args.path.endsWith('publicationCompletionService') ? 'completion' : args.path.endsWith('gardenflowBackgroundRunner') ? 'runner' : args.path.endsWith('browserCaptureBridgeService') ? 'browser' : args.path === 'electron' ? 'electron' : /\/db(?:\.ts)?$/.test(args.path) ? 'db' : args.path.endsWith('/ai') ? 'ai'
                     : args.path.endsWith('mediaGenerationTools') ? 'video' : args.path.endsWith('imageGenerationService') ? 'imageProvider' : args.path.endsWith('productImageRenderer') ? 'imageRenderer' : 'videoProvider';
                 return { path: key, namespace: 'fixture' };
             });
@@ -130,10 +161,11 @@ export async function productVideoHarness(options: { platformVersions?: boolean;
             api = loadRuntime(); unsubscribe = api.onProductChanged(options.productImageSets ? api.invalidateProductImageSetApprovals : api.invalidateProductVideoApprovals);
             store = api.createBrandWorkspaceStore(() => path.join(root, state.spaceId, 'subjects/brand-workspace'));
         },
-        async close() { unsubscribe(); sql.close(); await fs.rm(root, { recursive: true, force: true }); },
+        async close() { unsubscribe(); sql.close(); await fs.rm(root, { recursive: true, force: true, maxRetries: 4, retryDelay: 100 }); },
         async approveFixture(proposal: ProductVideoProposal, callId = 'approval-1', sessionId = 'session-1') {
             const taskId = `task-${callId}`;
             state.tasks.set(taskId, { id: taskId, status: 'paused', route: { workflowKind: 'product-video-compose' }, artifacts: [], metadata: {
+                creationTarget: proposal.creationTarget,
                 explicitProductRefs: [{ productId: proposal.productId, name: proposal.productName, updatedAt: proposal.productUpdatedAt }],
                 productAssetVisualGrounding: { status: 'verified', productId: proposal.productId, productUpdatedAt: proposal.productUpdatedAt, imageCount: 1, assets: [{ assetId: proposal.scenes[0].productAssetIds[0], visibleText: [], suitability: 'safe' }], aiMotion: { available: false } },
             } });

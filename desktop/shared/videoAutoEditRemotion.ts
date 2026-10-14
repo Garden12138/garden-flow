@@ -17,6 +17,7 @@ export interface VideoEditorV2RemotionOverlay {
 }
 
 export interface VideoEditorV2RemotionScene {
+  safeInsets?: { top: number; right: number; bottom: number; left: number };
   id: string;
   clipId?: string;
   assetId?: string;
@@ -182,7 +183,7 @@ export function buildVideoEditorV2RemotionComposition(project: VideoEditorV2Proj
     durationInFrames: Math.max(1, msToFrames(timeline.durationMs, fps)),
     backgroundColor: '#0d1117',
     renderMode: 'full',
-    scenes: [...scenes, ...audioScenes],
+    scenes: [...scenes, ...audioScenes].map(scene => ({ ...scene, ...(project.creationTarget?.spec.safeInsets ? { safeInsets: project.creationTarget.spec.safeInsets as NonNullable<VideoEditorV2RemotionScene['safeInsets']> } : {}) })),
     transitions: [],
     baseMedia: {
       sourceAssetIds: project.assets.map((asset) => asset.id),

@@ -107,6 +107,7 @@ export async function suggestTikTokLocalization(input: { versionId: string; expe
     const version = getTikTokVideoVersion(input.versionId);
     if (!version || version.revision !== input.expectedRevision) throw new Error('版本已变化，请刷新后生成语言建议');
     const project = await getVideoEditorV2Project(version.projectId);
+    if (project?.creationTarget?.profileVersion && (input.language !== project.creationTarget.language || input.market !== project.creationTarget.market)) throw new Error('目标语言和市场已确定，请创建另一个目标版本');
     if (!project?.productVideo || getActiveSpaceId() !== spaceId) throw new Error('工程不存在或工作空间已变化');
     const proposal = await requestTikTokLocalization({ ...input, version, project });
     if (getActiveSpaceId() !== spaceId || getTikTokVideoVersion(version.id)?.revision !== version.revision

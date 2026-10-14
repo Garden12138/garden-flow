@@ -84,6 +84,7 @@ export interface RemotionSceneEntity {
 }
 
 export interface RemotionScene {
+    safeInsets?: { top: number; right: number; bottom: number; left: number };
     id: string;
     clipId?: string;
     assetId?: string;

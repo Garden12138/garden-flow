@@ -2,6 +2,8 @@ import { ProductImageSetProposalSchema, type ProductImageSetProposal } from '../
 import { createProductImageSet } from '../productImageSetService';
 import { DeclarativeTool, ToolKind, ToolErrorType, createErrorResult, type ToolResult, type ToolConfirmationDetails } from '../toolRegistry';
 
+import { productTargetLabel } from '../../../shared/productCreationTarget';
+
 export class ProductImageSetComposeTool extends DeclarativeTool<typeof ProductImageSetProposalSchema> {
     readonly name = 'product_image_set_compose';
     readonly displayName = 'Compose Product Image Set';
@@ -14,7 +16,7 @@ export class ProductImageSetComposeTool extends DeclarativeTool<typeof ProductIm
 
     getConfirmationDetails(params: ProductImageSetProposal): ToolConfirmationDetails {
         return { type: 'info', title: `确认商品套图 · ${params.productName}`,
-            description: [`${params.pages.length} 张（含封面） · 3:4 · 1440×1920 PNG`, ...params.pages.map((page, index) => `${index + 1}. ${page.title} · ${page.layout}\n${page.copy}`)].join('\n\n'),
+            description: [...(params.creationTarget ? [productTargetLabel(params.creationTarget), `规格版本：${params.creationTarget.profileVersion}`] : []), `${params.pages.length} 张（含封面） · ${params.creationTarget?.spec.aspectRatio || '3:4'} · ${params.creationTarget?.spec.width || 1440}×${params.creationTarget?.spec.height || 1920} PNG`, ...params.pages.map((page, index) => `${index + 1}. ${page.title} · ${page.layout}\n${page.copy}`)].join('\n\n'),
             impact: '确认后会复制商品图片并创建可编辑图文工程。默认使用原图排版，图片、视频及语音生成任务均为 0；AI 画面可稍后按页确认生成。', requiresUserAcknowledgement: true };
     }
 

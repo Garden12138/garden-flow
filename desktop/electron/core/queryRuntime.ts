@@ -861,7 +861,9 @@ export class QueryRuntime {
         model: this.config.model,
         temperature: this.config.temperature ?? 0.5,
         messages,
-        tools: this.registry.getToolSchemas().filter((tool) => this.config.workflowKind !== 'xhs-publish' || isXhsPublishWorkflowTool(tool.function.name)),
+        tools: this.registry.getToolSchemas().filter((tool) => this.config.workflowKind === 'product-project-edit'
+          ? ['product_project_read', 'product_project_edit', 'product_project_undo'].includes(tool.function.name)
+          : this.config.workflowKind !== 'xhs-publish' || isXhsPublishWorkflowTool(tool.function.name)),
       }),
     }, {
       maxAttempts: 2,
@@ -961,6 +963,9 @@ export class QueryRuntime {
       toolCall.args,
       this.config.generationToolConstraints,
     );
+    if (['product_project_read', 'product_project_edit', 'product_project_undo'].includes(toolCall.name)) {
+      effectiveArgs._editorTurn = this.config.workflowKind === 'product-project-edit' ? this.config.productProjectEditorTurn : undefined;
+    }
     const tool = this.registry.getTool(toolCall.name);
     const description = tool?.getDescription(effectiveArgs) || `Executing ${toolCall.name}`;
     const startedAt = now();
@@ -985,6 +990,7 @@ export class QueryRuntime {
         workflowKind: this.config.workflowKind,
         explicitProductRefs: this.config.explicitProductRefs,
         productAssetVisualGrounding: this.config.productAssetVisualGrounding,
+        creationTarget: this.config.creationTarget,
         productVideoCompositionMode: this.config.productVideoCompositionMode,
         explicitVideoClipRefs: this.config.explicitVideoClipRefs,
         productImageSetEditing: this.config.productImageSetEditing,
@@ -1205,6 +1211,7 @@ export class QueryRuntime {
     responseLength: number;
     compacted: boolean;
   }): void {
+    if (this.config.workflowKind === 'product-project-edit') return;
     if (this.config.runtimeMode === 'background-maintenance') {
       return;
     }

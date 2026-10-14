@@ -1,0 +1,139 @@
+{
+  "status": "three-published-two-awaiting-completion",
+  "jobs": [
+    {
+      "id": "douyin_publish_9edc0d22-216a-40e0-9b9c-54ff335668b5",
+      "platform": "douyin",
+      "source": {
+        "kind": "video",
+        "projectId": "video_edit_v2_1791873199549_1dfc6cda"
+      },
+      "accountLabel": "抖音号 27605448237",
+      "phase": "awaiting-submit",
+      "contentDigest": "93050d338cd831d4a9b31efa0fa676e4d1ec5cea4fed955d04757f3f79737927",
+      "publishStatus": "not_submitted",
+      "status": "blocked",
+      "errorMessage": "发布页内容、账号或媒体已改变",
+      "resetStatus": "not_started",
+      "receiptUrl": null,
+      "receiptSource": null,
+      "mediaCount": 1,
+      "hasUploadReview": true
+    },
+    {
+      "id": "tiktok_publish_1774b80a-aece-4118-9939-4309196e6c1a",
+      "platform": "tiktok",
+      "source": {
+        "kind": "video",
+        "projectId": "video_edit_v2_1791873336346_4849812b"
+      },
+      "accountLabel": "@gardendaemon",
+      "phase": "awaiting-submit",
+      "contentDigest": "ee9ed86fa2e1f5bd0d20994b4c8e1fc83a7b96e1605136dd508a10ea8ea12074",
+      "publishStatus": "not_submitted",
+      "status": "awaiting_confirmation",
+      "errorMessage": "",
+      "resetStatus": "not_started",
+      "receiptUrl": null,
+      "receiptSource": null,
+      "mediaCount": 1,
+      "hasUploadReview": true
+    },
+    {
+      "id": "tiktok_publish_0e72c158-eec4-4ca3-96f8-e78367658e2e",
+      "platform": "tiktok",
+      "source": {
+        "kind": "video",
+        "projectId": "video_edit_v2_1791873082859_33de6922"
+      },
+      "accountLabel": "@gardendaemon",
+      "phase": "awaiting-submit",
+      "contentDigest": "a1c4046b25d16f5e56f0d0e31ebc042a83e517c0866ede7af586dc8a5bd7875f",
+      "publishStatus": "published",
+      "status": "completed",
+      "errorMessage": "",
+      "resetStatus": "ready",
+      "receiptUrl": "https://www.tiktok.com/@gardendaemon/video/7696179513922833670",
+      "receiptSource": "tiktok-studio-posts",
+      "mediaCount": 1,
+      "hasUploadReview": true
+    },
+    {
+      "id": "xhs_publish_1f323230-4eb8-40e1-a542-ebe4206ecaf4",
+      "platform": "xiaohongshu",
+      "source": {
+        "kind": "image-set",
+        "path": "xiaohongshu/商品套图-98218b28-e4ea-41bb-b1ad-bcb35879115b.redpost"
+      },
+      "accountLabel": "猫猫的猫",
+      "phase": "awaiting-submit",
+      "contentDigest": "7f218978840200ad4849524b7bb6483779e76aabff8a506fe7b9a71d2352ddc4",
+      "publishStatus": "published",
+      "status": "completed",
+      "errorMessage": "",
+      "resetStatus": "ready",
+      "receiptUrl": null,
+      "receiptSource": null,
+      "mediaCount": 5,
+      "hasUploadReview": true
+    },
+    {
+      "id": "xhs_publish_d764065c-13b1-412b-80c7-8adf91400bc0",
+      "platform": "xiaohongshu",
+      "source": {
+        "kind": "video",
+        "projectId": "video_edit_v2_1791872672063_253e0625"
+      },
+      "accountLabel": "猫猫的猫",
+      "phase": "awaiting-submit",
+      "contentDigest": "de8147e6127a92fc5e48c47c59c052b529e9605f014af61058304e6ece46bbd7",
+      "publishStatus": "published",
+      "status": "completed",
+      "errorMessage": "",
+      "resetStatus": "ready",
+      "receiptUrl": null,
+      "receiptSource": null,
+      "mediaCount": 1,
+      "hasUploadReview": true
+    }
+  ],
+  "xhsImageSetObservedPageCount": 5,
+  "xhsFullSetReadbackPassed": true,
+  "tiktokVideoFileUploadStarted": true,
+  "tiktokVideoUploadedAndReadbackPassed": true,
+  "finalSubmissions": 3,
+  "desktopTests": 487,
+  "publisherPluginTests": 139,
+  "check": "passed",
+  "build": "passed",
+  "chromiumFixture": "passed",
+  "realUploadFixRevalidation": "xhs-suite-and-tiktok-original-video-passed",
+  "coldRecovery": "published-unknown-and-uploaded-snapshots-preserved",
+  "mediaGenerationCalls": {
+    "image": 0,
+    "video": 0,
+    "voice": 0
+  },
+  "uploadedWorkCount": 5,
+  "platformConfirmedPublished": 3,
+  "taskResultUnknown": 0,
+  "tiktokObservedWork": {
+    "source": "tiktok-studio-posts-visible-row",
+    "url": "https://www.tiktok.com/@gardendaemon/video/7696179513922833670",
+    "duration": "00:15",
+    "publishedLabel": "Oct 13, 11:47 PM",
+    "visibility": "Only me",
+    "officialTaskReceiptRecorded": true,
+    "humanVerificationPending": false
+  },
+  "updatedDate": "2026-10-14",
+  "douyinStaleReview": {
+    "previousMediaIdentityKind": "filename",
+    "previousDefaultCoversEmpty": true,
+    "submitButtonDispatched": false,
+    "mediaAndCoverIdentityChanged": true,
+    "newActualVideoSourceReadinessRegression": "passed",
+    "realReuploadAfterFix": "pending"
+  },
+  "latestColdRecovery": "all-five-snapshots-preserved-three-published-one-verified-receipt"
+}

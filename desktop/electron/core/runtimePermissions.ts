@@ -26,6 +26,7 @@ export interface RuntimePermissionContext {
     workflowKind?: WorkflowKind;
     explicitProductRefs?: Array<{ productId: string; name: string; updatedAt: string }>;
     productAssetVisualGrounding?: ProductVideoVisualGroundingEvidence;
+    creationTarget?: import('../../shared/productCreationTarget').ProductCreationTarget;
     productVideoCompositionMode?: string;
     explicitVideoClipRefs?: import('../../shared/productVideoRemix').ProductVideoClipReference[];
     productImageSetEditing?: boolean;
@@ -78,6 +79,13 @@ export const evaluateRuntimeToolPermission = (params: {
     const descriptor = getBuiltinToolDescriptor(toolName);
     const interactive = context.interactive !== false;
     const runtimeMode = String(context.runtimeMode || '').trim();
+    const editorTools = ['product_project_read', 'product_project_edit', 'product_project_undo'];
+    if (context.workflowKind === 'product-project-edit') {
+        return editorTools.includes(toolName) || toolName === 'skill'
+            ? { outcome: 'allow', reason: '当前工程的受控读取、可撤销修改和技能', source: 'runtime-policy' }
+            : { outcome: 'deny', reason: '工程编辑只允许绑定工程的读取、批量修改与撤销；生成请使用工作台确认入口', source: 'runtime-policy' };
+    }
+    if (editorTools.includes(toolName)) return { outcome: 'deny', reason: '编辑工具只能用于已验证的商品工程编辑会话', source: 'runtime-policy' };
     if (context.productImageSetEditing && ['image_generate', 'video_generate', 'audio_generate', 'product_image_set_compose', 'product_video_compose'].includes(toolName)) {
         return { outcome: 'deny', reason: '商品套图编辑中的付费生成由工作台按页确认，请通过稿件工具保存文字和布局。', source: 'runtime-policy' };
     }
@@ -97,6 +105,7 @@ export const evaluateRuntimeToolPermission = (params: {
         toolName,
         args,
         explicitProductRefs: context.explicitProductRefs,
+        creationTarget: context.creationTarget,
         productAssetVisualGrounding: context.productAssetVisualGrounding,
     });
     if (imageSetPolicy) return { ...imageSetPolicy, source: 'runtime-policy' };
@@ -105,6 +114,7 @@ export const evaluateRuntimeToolPermission = (params: {
         toolName,
         args,
         explicitProductRefs: context.explicitProductRefs,
+        creationTarget: context.creationTarget,
         productAssetVisualGrounding: context.productAssetVisualGrounding,
         productVideoCompositionMode: context.productVideoCompositionMode,
         explicitVideoClipRefs: context.explicitVideoClipRefs,

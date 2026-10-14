@@ -15,7 +15,7 @@ const XhsPublishPrepareSchema = z.object({
 export class XhsPublishPrepareTool extends DeclarativeTool<typeof XhsPublishPrepareSchema> {
     readonly name = 'xhs_publish_prepare';
     readonly displayName = 'Prepare Xiaohongshu Publication';
-    readonly description = 'inspect resolves the current session video, latest exported asset and trusted product facts. prepare updates the structured note and confirmation, and amends a verified owned browser draft in place while retaining uploaded media. Preserve fields not requested to change. Title must be at most 20 UTF-16 characters. Correct TITLE_TOO_LONG and retry. Never generates video or submits publication. Users may explicitly request publication of the current version in conversation; runtime handles authorization, review and submission. Multiple candidates require an explicit choice.';
+    readonly description = 'inspect resolves the current session video, latest exported asset and trusted product facts. prepare updates only the local structured note and confirmation. Never uploads, edits browser drafts, generates media or submits publication. Each upload and final submit requires a separate foreground confirmation button. Conversation may only guide the user to open that card. Title is at most 20 UTF-16 characters. Multiple candidates require an explicit choice.';
     readonly kind = ToolKind.Other;
     readonly parameterSchema = XhsPublishPrepareSchema;
     constructor(private readonly getSessionId: () => string) { super(); }
@@ -36,8 +36,8 @@ export class XhsPublishPrepareTool extends DeclarativeTool<typeof XhsPublishPrep
             if (result.kind === 'xhs-publish-source') return { success: true, llmContent: JSON.stringify(result), data: result };
             const pageUpdate = await getXhsPublisherService().refreshPreparedDraft(result.job);
             const publicationState = result.job.publishStatus === 'published' ? '该版本已有发布成功记录，不会重复发布。'
-                : result.job.publishStatus === 'unknown' || result.job.publishStatus === 'submitted' ? '该版本已尝试提交但结果未核实，不代表未发布。请先检查笔记管理，并在对话中告知核实结果。'
-                    : '当前版本尚未提交。可继续在对话修改，或明确要求“重新发布当前版本”；确认卡按钮也可使用。';
+                : result.job.publishStatus === 'unknown' || result.job.publishStatus === 'submitted' ? '该版本已尝试提交但结果未核实，不代表未发布。请先检查笔记管理，再打开发布确认卡记录核实结果。'
+                    : '当前版本尚未提交。可继续对话修改；上传与最终提交分别需要确认卡按钮。';
             return {
                 success: true,
                 llmContent: `已准备第 ${result.note.version} 版小红书稿件，标题：${result.note.document.finalTitle}。[打开稿件](${result.note.uri})。${publicationState}${pageUpdate || ''}${result.job.status === 'blocked' || result.job.status === 'submit_result_unknown' ? ` ${result.job.errorMessage}` : ''}`,

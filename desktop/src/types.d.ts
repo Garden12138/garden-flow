@@ -1148,6 +1148,7 @@ declare global {
 
   interface Window {
     ipcRenderer: {
+      publication: ReturnType<typeof import('./bridge/domains/publicationBridge').createPublicationBridge>['publication'];
       windowControls: {
         startDragging: () => Promise<void>;
         minimize: () => Promise<void>;
@@ -1734,6 +1735,18 @@ declare global {
         };
       };
       videoEditorV2: {
+        saveProductEditorManual: (payload: import('../shared/productProjectEditor').ProductProjectEditRequest) => Promise<{ success: boolean; error?: string; result?: import('../shared/productProjectEditor').ProductProjectEditResult }>;
+        getProductEditorSession: (payload: { project: import('../shared/productProjectEditor').ProductProjectEditorRef; selectedId?: string }) => Promise<{ success: boolean; error?: string; sessionId?: string; snapshot?: import('../shared/productProjectEditor').ProductProjectEditorSnapshot }>;
+        readProductEditor: (payload: { project: import('../shared/productProjectEditor').ProductProjectEditorRef; selectedId?: string }) => Promise<{ success: boolean; error?: string; snapshot?: import('../shared/productProjectEditor').ProductProjectEditorSnapshot }>;
+        syncProductEditorDraft: (payload: { project: import('../shared/productProjectEditor').ProductProjectEditorRef; dirty: boolean }) => Promise<{ success: boolean; error?: string; epoch?: number; dirty?: boolean }>;
+        applyProductEditor: (payload: import('../shared/productProjectEditor').ProductProjectEditRequest) => Promise<{ success: boolean; error?: string; result?: import('../shared/productProjectEditor').ProductProjectEditResult }>;
+        undoProductEditor: (payload: Omit<import('../shared/productProjectEditor').ProductProjectEditRequest, 'operations'>) => Promise<{ success: boolean; error?: string; result?: import('../shared/productProjectEditor').ProductProjectEditResult }>;
+        prepareProductXhs: (payload: { projectId: string }) => Promise<{ success: boolean; sessionId?: string; jobId?: string; error?: string }>;
+        getProductCapabilities: () => Promise<{ success: boolean; error?: string; capabilities: typeof import('../shared/productCreationTarget').PRODUCT_CREATION_CAPABILITIES; profiles: typeof import('../shared/productCreationTarget').PRODUCT_CREATION_PROFILES; rules: typeof import('../shared/productCreationTarget').PRODUCT_TARGET_RULES }>;
+        listProductVariants: (payload: { projectId: string }) => Promise<{ success: boolean; error?: string; variants?: import('../shared/productCreationTarget').ProductWorkVariant[] }>;
+        reviewProductCopy: (payload: { projectId: string; expectedUpdatedAt: string; confirmed: true }) => Promise<{ success: boolean; error?: string }>;
+        bindProductTarget: (payload: import('zod').z.input<typeof import('../shared/productCreationTarget').ProductVariantRequestSchema>) => Promise<{ success: boolean; error?: string; project?: import('../shared/videoAutoEdit').VideoEditorV2Project }>;
+        createProductVariant: (payload: import('zod').z.input<typeof import('../shared/productCreationTarget').ProductVariantRequestSchema>) => Promise<{ success: boolean; error?: string; project?: import('../shared/videoAutoEdit').VideoEditorV2Project }>;
         getOrCreateForManuscript: (payload: { manuscriptPath: string; title?: string }) => Promise<{ success?: boolean; error?: string; project?: VideoEditorV2ProjectSummary }>;
         createProject: (payload?: Record<string, unknown>) => Promise<{ success?: boolean; error?: string; project?: VideoEditorV2ProjectSummary }>;
         getProject: (payload: { projectId: string }) => Promise<{ success?: boolean; error?: string; project?: VideoEditorV2ProjectSummary }>;

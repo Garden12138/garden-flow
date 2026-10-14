@@ -36,7 +36,7 @@ function fixture(failure = '') {
         uploadPage: !state.uploaded, editorPage: state.uploaded, hasDraft: state.uploaded,
         accountId: request.accountId, accountLabel: request.accountLabel, videoInputCount: 1,
         title: state.title, description: state.description, titleEditorCount: 1, descriptionEditorCount: 1,
-        mediaSignature: state.uploaded && state.videoPreview ? state.mediaSignature : '', uploadBusy: state.uploadBusy,
+        mediaSignature: state.uploaded && state.videoPreview ? state.mediaSignature : '', videoSourceReady: state.uploaded && state.videoPreview, uploadBusy: state.uploadBusy,
         publishButtonCount: 1, publishButtonEnabled: state.publishButtonEnabled,
         validationErrors: state.validationErrors, pendingReviewText: state.presses > 0,
       };

@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Globe2, Loader2, X } from 'lucide-react';
 import type { VideoEditorV2Project } from '../../../shared/videoAutoEdit';
 import type { TikTokLocalizationProposal, TikTokPublishJob, TikTokPublishSettings, TikTokVideoVersion } from '../../../shared/tiktokVideo';
 import { dispatchAppIntent } from '../../features/app-shell/appIntent';
 import { appConfirm } from '../../utils/appDialogs';
+import { useProductEditorContext } from './ProductEditorContext';
 import { subscribeDataChanged } from '../../bridge/appEvents';
 
 type Response = { success?: boolean; error?: string; version?: TikTokVideoVersion | null; versions?: TikTokVideoVersion[];
@@ -18,6 +19,10 @@ const statuses: Record<string, string> = { awaiting_confirmation: '等待确认'
     published_reset_failed: '已发布，页面待恢复' };
 
 export function TikTokVideoPanel({ project, disabled }: { project: VideoEditorV2Project; disabled: boolean }) {
+    const editor = useProductEditorContext();
+    const dirtyRef = useRef(false);
+    const localEpoch = useRef(0);
+    const changeDraft = (operation: () => void) => { dirtyRef.current = true; localEpoch.current++; editor?.markDirty(); operation(); };
     const [version, setVersion] = useState<TikTokVideoVersion | null>(null);
     const [versions, setVersions] = useState<TikTokVideoVersion[]>([]);
     const [changed, setChanged] = useState(false);
@@ -44,6 +49,7 @@ export function TikTokVideoPanel({ project, disabled }: { project: VideoEditorV2
     const load = useCallback(async () => {
         const result = await window.ipcRenderer.tiktokVideo.getVersion({ projectId: project.id, sourceProjectId: project.id }) as Response;
         if (!result.success) throw new Error(result.error || '读取 TikTok 版本失败');
+        if (dirtyRef.current) { setError('稿件有新修改，已保留输入；请保存或按最新工程重试'); return; }
         fill(result.version?.projectId === project.id ? result.version : null);
         setVersions(result.versions || []); setChanged(Boolean(result.productChanged));
     }, [fill, project.id]);
@@ -53,7 +59,7 @@ export function TikTokVideoPanel({ project, disabled }: { project: VideoEditorV2
         finally { setBusy(''); }
     };
     useEffect(() => { setOpen(false); setProposal(null); setJob(null); setPreview(''); void load().catch(failure => setError(String(failure))); }, [load]);
-    useEffect(() => subscribeDataChanged(payload => {
+    useEffect(() => subscribeDataChanged((_event, payload) => {
         if (payload?.scope === 'video-editor-v2' && payload.entityId === project.id) void load().catch(failure => setError(String(failure)));
     }), [load, project.id]);
     const loadPublisher = useCallback(async () => {
@@ -78,16 +84,22 @@ export function TikTokVideoPanel({ project, disabled }: { project: VideoEditorV2
         if (!result.success || !result.version) throw new Error(result.error || '创建 TikTok 版本失败');
         dispatchAppIntent({ type: 'video-project.open', projectId: result.version.projectId });
     });
-    const save = () => action('save', async () => {
+    const saveDraft = async () => {
+        await editor?.settleDraft();
+        const editing = localEpoch.current;
         if (!version) return;
         const complete = ['visibility', 'allowComments', 'allowReuse', 'allowRemix', 'audience18Plus', 'commercialContent', 'aiGenerated']
             .every(key => (settings as Record<string, unknown>)[key] !== undefined);
+        if (!complete && Object.values(settings).some(value => value !== undefined)) throw new Error('请补齐发布设置；当前输入已保留，消息尚未发送');
         const result = await window.ipcRenderer.tiktokVideo.saveVersion({ versionId: version.id, expectedRevision: version.revision,
             title, description, hashtags: tags.split(/[\s,，#]+/u).filter(Boolean), language, market,
             publishSettings: complete ? settings : null }) as Response;
         if (!result.success || !result.version) throw new Error(result.error || '保存 TikTok 版本失败');
-        fill(result.version); setProposal(null);
-    });
+        if (editing !== localEpoch.current) throw new Error('保存期间出现新输入，已保留草稿');
+        dirtyRef.current = false; fill(result.version); setProposal(null);
+    };
+    const save = () => action('save', saveDraft);
+    useEffect(() => editor?.registerFlush('tiktok-copy', async () => { if (dirtyRef.current) { await saveDraft(); } }));
     const suggest = () => action('suggest', async () => {
         if (!version) return;
         const result = await window.ipcRenderer.tiktokVideo.suggestLocalization({ versionId: version.id, expectedRevision: version.revision, language, market }) as Response;
@@ -122,7 +134,7 @@ export function TikTokVideoPanel({ project, disabled }: { project: VideoEditorV2
         || tags !== version.hashtags.join(' ') || language !== version.language || market !== version.market
         || JSON.stringify(settings) !== JSON.stringify(version.publishSettings || {})));
     const flag = (key: 'allowComments' | 'allowReuse' | 'allowRemix' | 'audience18Plus' | 'aiGenerated', label: string) => <label className="text-xs">{label}
-        <select className={fieldClass} value={settings[key] === undefined ? '' : String(settings[key])} onChange={event => setSettings(current => ({ ...current, [key]: event.target.value === '' ? undefined : event.target.value === 'true' }))}>
+        <select className={fieldClass} value={settings[key] === undefined ? '' : String(settings[key])} onChange={event => changeDraft(() => setSettings(current => ({ ...current, [key]: event.target.value === '' ? undefined : event.target.value === 'true' })))}>
             <option value="">请选择</option><option value="true">是</option><option value="false">否</option>
         </select></label>;
     return <>
@@ -133,10 +145,10 @@ export function TikTokVideoPanel({ project, disabled }: { project: VideoEditorV2
                 <div className="flex items-center justify-between"><h2 className="font-bold">TikTok · 第 {version.revision} 版</h2><button type="button" onClick={() => setOpen(false)} aria-label="关闭 TikTok 稿件"><X className="h-4 w-4" /></button></div>
                 <p className="text-xs text-text-secondary">此版本的镜头、字幕、旁白和发布文案可独立修改。修改画面或音频后，请在工作台重新保存 MP4。</p>
                 {changed && <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">商品资料已更新，请复核当前事实；此版本保留创作时的商品快照。</p>}
-                <div className="grid grid-cols-2 gap-3"><label className="text-xs">语言代码<input className={fieldClass} value={language} onChange={event => setLanguage(event.target.value)} placeholder="en / ja / en-US" /></label><label className="text-xs">目标市场<input className={fieldClass} value={market} onChange={event => setMarket(event.target.value)} /></label></div>
-                <label className="block text-xs">内部标题<input className={fieldClass} value={title} onChange={event => setTitle(event.target.value)} maxLength={200} /></label>
-                <label className="block text-xs">发布文案<textarea className={fieldClass} value={description} onChange={event => setDescription(event.target.value)} rows={4} maxLength={4000} /></label>
-                <label className="block text-xs">话题<input className={fieldClass} value={tags} onChange={event => setTags(event.target.value)} placeholder="以空格分隔" /></label>
+                <div className="grid grid-cols-2 gap-3"><label className="text-xs">语言代码<input className={fieldClass} value={language} onChange={event => changeDraft(() => setLanguage(event.target.value))} placeholder="en / ja / en-US" /></label><label className="text-xs">目标市场<input className={fieldClass} value={market} onChange={event => changeDraft(() => setMarket(event.target.value))} /></label></div>
+                <label className="block text-xs">内部标题<input className={fieldClass} value={title} onChange={event => changeDraft(() => setTitle(event.target.value))} maxLength={200} /></label>
+                <label className="block text-xs">发布文案<textarea className={fieldClass} value={description} onChange={event => changeDraft(() => setDescription(event.target.value))} rows={4} maxLength={4000} /></label>
+                <label className="block text-xs">话题<input className={fieldClass} value={tags} onChange={event => changeDraft(() => setTags(event.target.value))} placeholder="以空格分隔" /></label>
                 <div className="flex flex-wrap gap-2"><button type="button" className={buttonClass} disabled={blocked} onClick={() => void save()}>保存文案与设置</button><button type="button" className={buttonClass} disabled={blocked} onClick={() => void suggest()}>AI 语言建议</button><button type="button" className={buttonClass} disabled={blocked} onClick={() => void create(true)}>再复制一版</button><button type="button" className={buttonClass} onClick={() => dispatchAppIntent({ type: 'video-project.open', projectId: version.sourceProjectId })}>查看来源工程</button></div>
                 <p className="text-xs text-text-tertiary">AI 使用已配置的文本模型，依据已保存稿件生成建议。旁白音频需在工作台单独生成或导入。</p>
                 {proposal && <div className="space-y-3 rounded-xl border border-border p-4">
@@ -147,8 +159,8 @@ export function TikTokVideoPanel({ project, disabled }: { project: VideoEditorV2
                 </div>}
                 <div className="space-y-3 border-t border-border pt-4">
                     <h3 className="text-sm font-semibold">发布设置</h3>
-                    <div className="grid grid-cols-2 gap-3"><label className="text-xs">可见范围<select className={fieldClass} value={settings.visibility || ''} onChange={event => setSettings(current => ({ ...current, visibility: event.target.value as TikTokPublishSettings['visibility'] || undefined }))}><option value="">请选择</option><option value="everyone">所有人 · Everyone</option><option value="friends">互关好友 · Friends</option><option value="only_me">仅自己 · Only you</option></select></label>
-                        <label className="text-xs">商业内容<select className={fieldClass} value={settings.commercialContent || ''} onChange={event => setSettings(current => ({ ...current, commercialContent: event.target.value as TikTokPublishSettings['commercialContent'] || undefined }))}><option value="">请选择</option><option value="none">无商业披露</option><option value="own_brand">自己的品牌 · Your brand</option><option value="paid_partnership">品牌合作 · Branded content</option></select></label>
+                    <div className="grid grid-cols-2 gap-3"><label className="text-xs">可见范围<select className={fieldClass} value={settings.visibility || ''} onChange={event => changeDraft(() => setSettings(current => ({ ...current, visibility: event.target.value as TikTokPublishSettings['visibility'] || undefined })))}><option value="">请选择</option><option value="everyone">所有人 · Everyone</option><option value="friends">互关好友 · Friends</option><option value="only_me">仅自己 · Only you</option></select></label>
+                        <label className="text-xs">商业内容<select className={fieldClass} value={settings.commercialContent || ''} onChange={event => changeDraft(() => setSettings(current => ({ ...current, commercialContent: event.target.value as TikTokPublishSettings['commercialContent'] || undefined })))}><option value="">请选择</option><option value="none">无商业披露</option><option value="own_brand">自己的品牌 · Your brand</option><option value="paid_partnership">品牌合作 · Branded content</option></select></label>
                         {flag('allowComments', '允许评论')}{flag('allowReuse', '允许内容复用')}{flag('allowRemix', '允许 Remix')}{flag('audience18Plus', '仅限 18 岁以上')}{flag('aiGenerated', '标记 AI 生成内容')}
                     </div>
                     <div className="flex flex-wrap gap-2"><button type="button" className={buttonClass} disabled={blocked} onClick={() => void action('status', loadPublisher)}>检查发布浏览器</button>

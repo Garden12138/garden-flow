@@ -1,3 +1,4 @@
+import { runInWorkspaceSpace, getWorkspacePaths } from '../../db';
 import { app } from 'electron';
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
@@ -9,11 +10,14 @@ import { buildVideoEditorV2RemotionComposition, VIDEO_EDITOR_V2_REMOTION_COMPOSI
 import type { VideoEditorV2RemotionComposition } from '../../../shared/videoAutoEditRemotion';
 import type { RenderOutputRecord, SrtSegment, VideoEditorV2Project } from '../../../shared/videoAutoEdit';
 import { serializeSegmentsToSrt } from '../video-auto-edit/srtParser';
-import { ensureProductVideoMusicAudible, saveVideoEditorV2Project } from './videoEditorV2ProjectStore';
+import { ensureProductVideoMusicAudible, getVideoEditorV2Project, saveVideoEditorV2Project, enqueueProductProjectMutation } from './videoEditorV2ProjectStore';
 import { stageRemotionAssets } from './remotionAssetStaging';
 import { registerRenderedVideoAsset } from '../mediaLibraryStore';
 import { videoRenderFingerprint } from './videoPublicationPolicy';
 import { retryLocalRemotionNavigation } from './localRemotionRetry';
+import { findReusableProductVideoExport, renderedVideoSha256 } from './productVideoExportCache';
+
+import { syncProductVideoTargetExport } from '../productWorkVersionService';
 
 type RenderProgressPayload = {
   projectId: string;
@@ -195,6 +199,8 @@ async function renderRemotionComposition(input: {
       codec: 'h264',
       imageFormat: 'jpeg',
       outputLocation: input.outputPath,
+      // Limit simultaneous Chrome pages to keep local navigation reliable alongside the editor.
+      concurrency: 2,
       inputProps,
       overwrite: true,
       logLevel: 'warn',
@@ -212,7 +218,7 @@ async function renderRemotionComposition(input: {
   }
 }
 
-export async function renderVideoEditorV2Project(input: RenderVideoEditorV2ProjectInput): Promise<{
+async function renderVideoEditorV2ProjectInSpace(input: RenderVideoEditorV2ProjectInput): Promise<{
   project: VideoEditorV2Project;
   outputPath?: string;
   mediaAssetId?: string;
@@ -223,6 +229,9 @@ export async function renderVideoEditorV2Project(input: RenderVideoEditorV2Proje
   if (!project) {
     throw new Error('Video editor V2 project not found');
   }
+  if (input.renderVideo !== false && project.productVideo?.scenes.some(scene => scene.voiceoverAssetId && ['stale', 'duration-conflict'].includes(scene.voiceoverStatus || ''))) {
+    throw new Error('已有配音已过期或长于镜头，请在对应镜头重新生成、移除配音或调整时长后导出');
+  }
   const composition = buildVideoEditorV2RemotionComposition(project);
   if (!composition) {
     throw new Error('生成 Remotion 快照前需要先生成自动粗剪 timeline');
@@ -230,16 +239,42 @@ export async function renderVideoEditorV2Project(input: RenderVideoEditorV2Proje
 
   const renderId = `render_${Date.now()}_${randomUUID().slice(0, 8)}`;
   const compositionPath = path.join(project.projectDir, 'remotion', 'composition.latest.json');
+  const cached = input.renderVideo === false ? null : await findReusableProductVideoExport(project);
+  if (cached) {
+    const outputPath = ensureMp4OutputPath(String(input.outputPath || '').trim() || getDefaultOutputPath(project));
+    await fs.mkdir(path.dirname(outputPath), { recursive: true });
+    if (path.resolve(outputPath) !== cached.sourcePath) await fs.copyFile(cached.sourcePath, outputPath);
+    if (await renderedVideoSha256(outputPath) !== cached.output.outputSha256) throw new Error('缓存成片已变化，请重新导出');
+    const current = await enqueueProductProjectMutation(project.id, async () => {
+      const latest = await getVideoEditorV2Project(project.id);
+      if (!latest || videoRenderFingerprint(latest) !== cached.output.renderFingerprint
+        || latest.renderOutputs[0]?.id !== cached.output.id || latest.renderOutputs[0]?.outputSha256 !== cached.output.outputSha256
+        || latest.productVideo?.scenes.some(scene => scene.voiceoverAssetId && ['stale', 'duration-conflict'].includes(scene.voiceoverStatus || ''))) {
+        throw new Error('工程在复用成片期间已变化，请重新导出');
+      }
+      // Copying an unchanged export must not change the edit credential or revive a prior confirmation.
+      return latest.status === 'exported' ? latest : saveVideoEditorV2Project({ ...latest, status: 'exported', lastError: null }, latest.updatedAt);
+    });
+    await writeJsonAtomic(compositionPath, composition);
+    const subtitlePath = await writeTimelineSrt(current);
+    await syncProductVideoTargetExport(current);
+    input.onProgress?.({ projectId: project.id, stage: '复用当前成片', percent: 100, status: 'completed', outputPath });
+    return { project: current, outputPath, mediaAssetId: cached.output.mediaAssetId, compositionPath, subtitlePath };
+  }
   await writeJsonAtomic(compositionPath, composition);
   const subtitlePath = await writeTimelineSrt(project);
-  let updatedProject = await saveVideoEditorV2Project({
-    ...project,
+  let updatedProject = await enqueueProductProjectMutation(project.id, async () => {
+    const current = await getVideoEditorV2Project(project.id);
+    if (!current || videoRenderFingerprint(current) !== videoRenderFingerprint(project)) throw new Error('工程在准备导出期间已变化，请重新导出');
+    return saveVideoEditorV2Project({
+    ...current,
     status: input.renderVideo === false ? project.status : 'rendering',
     remotionSnapshot: {
       compositionPath,
       updatedAt: nowIso(),
     },
     lastError: null,
+    });
   });
 
   if (input.renderVideo === false) {
@@ -292,15 +327,18 @@ export async function renderVideoEditorV2Project(input: RenderVideoEditorV2Proje
       path: outputPath,
       mediaAssetId: mediaAsset?.id,
       renderFingerprint: videoRenderFingerprint(project),
+      outputSha256: await renderedVideoSha256(outputPath),
       createdAt: nowIso(),
       durationMs: updatedProject.timeline.durationMs,
     };
-    updatedProject = await saveVideoEditorV2Project({
-      ...updatedProject,
-      status: 'exported',
-      renderOutputs: [renderOutput, ...(updatedProject.renderOutputs || [])].slice(0, 20),
-      lastError: null,
+    updatedProject = await enqueueProductProjectMutation(project.id, async () => {
+      const current = await getVideoEditorV2Project(project.id);
+      if (!current) throw new Error('导出工程不存在');
+      const matches = videoRenderFingerprint(current) === renderOutput.renderFingerprint;
+      return saveVideoEditorV2Project({ ...current, status: matches ? 'exported' : current.status,
+        renderOutputs: [renderOutput, ...(current.renderOutputs || [])].slice(0, 20), lastError: matches ? null : current.lastError });
     });
+    if (videoRenderFingerprint(updatedProject) === renderOutput.renderFingerprint) await syncProductVideoTargetExport(updatedProject);
     input.onProgress?.({
       projectId: project.id,
       stage: '导出完成',
@@ -317,10 +355,11 @@ export async function renderVideoEditorV2Project(input: RenderVideoEditorV2Proje
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    updatedProject = await saveVideoEditorV2Project({
-      ...updatedProject,
-      status: 'failed',
-      lastError: message,
+    updatedProject = await enqueueProductProjectMutation(project.id, async () => {
+      const current = await getVideoEditorV2Project(project.id);
+      if (!current) throw error;
+      const matches = videoRenderFingerprint(current) === videoRenderFingerprint(project);
+      return saveVideoEditorV2Project({ ...current, status: matches ? 'failed' : current.status, lastError: matches ? message : current.lastError });
     });
     input.onProgress?.({
       projectId: project.id,
@@ -332,4 +371,12 @@ export async function renderVideoEditorV2Project(input: RenderVideoEditorV2Proje
     });
     throw error;
   }
+}
+
+export function renderVideoEditorV2Project(input: RenderVideoEditorV2ProjectInput): ReturnType<typeof renderVideoEditorV2ProjectInSpace> {
+  return runInWorkspaceSpace(getWorkspacePaths().activeSpaceId, async () => {
+    const result = await renderVideoEditorV2ProjectInSpace(input);
+    if (result.mediaAssetId && result.project.productVideo) await (await import('../publicationCompletionService')).recordCompletedPublication({ kind: 'video', projectId: result.project.id });
+    return result;
+  });
 }

@@ -63,12 +63,12 @@ export async function productImageDataUrl(absolutePath: string): Promise<string>
     return `data:image/jpeg;base64,${decoded.jpeg.toString('base64')}`;
 }
 
-export async function renderProductImagePng(html: string, cacheDirectory: string): Promise<Buffer> {
+export async function renderProductImagePng(html: string, cacheDirectory: string, spec = { width: PRODUCT_IMAGE_WIDTH, height: PRODUCT_IMAGE_HEIGHT }): Promise<Buffer> {
     await fs.mkdir(cacheDirectory, { recursive: true });
     const file = path.join(cacheDirectory, `render-${randomUUID()}.html`);
     await fs.writeFile(file, html, 'utf8');
     const window = new BrowserWindow({
-        width: PRODUCT_IMAGE_WIDTH, height: PRODUCT_IMAGE_HEIGHT, useContentSize: true, show: false,
+        width: spec.width, height: spec.height, useContentSize: true, show: false,
         webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, offscreen: true, backgroundThrottling: false },
     });
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -89,7 +89,7 @@ export async function renderProductImagePng(html: string, cacheDirectory: string
             if (Array.from(document.images).some(image => !image.naturalWidth)) return '图片加载失败';
             const text = document.querySelector('.text');
             const pictures = document.querySelector('.pictures');
-            if (text.scrollHeight > Number.parseFloat(getComputedStyle(text).maxHeight) || pictures.getBoundingClientRect().height < 300 || text.getBoundingClientRect().bottom > 1820) return '文字超出排版区域，请缩短文字或调小字号';
+            if (text.scrollHeight > Number.parseFloat(getComputedStyle(text).maxHeight) || pictures.getBoundingClientRect().height < 300 || text.getBoundingClientRect().bottom > ${spec.height - 100}) return '文字超出排版区域，请缩短文字或调小字号';
             await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
             return '';
         })()`), deadline]);
@@ -97,7 +97,7 @@ export async function renderProductImagePng(html: string, cacheDirectory: string
         // Font loading can finish before offscreen rasterization. Request and consume a full painted frame.
         const painted = new Promise<Electron.NativeImage>((resolve) => {
             const listener = (_event: Electron.Event, dirty: Electron.Rectangle, frame: Electron.NativeImage) => {
-                if (dirty.x !== 0 || dirty.y !== 0 || dirty.width < PRODUCT_IMAGE_WIDTH || dirty.height < PRODUCT_IMAGE_HEIGHT) return;
+                if (dirty.x !== 0 || dirty.y !== 0 || dirty.width < spec.width || dirty.height < spec.height) return;
                 window.webContents.off('paint', listener);
                 resolve(frame);
             };
@@ -106,7 +106,7 @@ export async function renderProductImagePng(html: string, cacheDirectory: string
         });
         const captured = await Promise.race([painted, deadline]);
         if (captured.isEmpty()) throw new Error('套图画面捕捉失败');
-        return captured.resize({ width: PRODUCT_IMAGE_WIDTH, height: PRODUCT_IMAGE_HEIGHT }).toPNG();
+        return captured.resize({ width: spec.width, height: spec.height }).toPNG();
     } finally {
         clearTimeout(timeout);
         window.destroy();

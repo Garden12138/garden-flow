@@ -14,6 +14,7 @@ export type PlatformPublishResetStatus = 'not_started' | 'returning' | 'ready' |
 
 export interface PlatformPublishRequestBaseV1 {
     protocolVersion: 1;
+    confirmationVersion?: 2;
     jobId: string;
     sessionId: string;
     revision: number;
@@ -58,6 +59,7 @@ export interface TikTokPublishRequestV1 extends Omit<DouyinPublishRequestV1, 'pl
     publishSettings: TikTokPublishSettings;
     mediaSha256: string;
     mediaSize: number;
+    mediaDurationMs?: number;
 }
 
 // The browser instance remains the transport target. Legacy Xiaohongshu

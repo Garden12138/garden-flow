@@ -1,0 +1,84 @@
+{
+  "mode": "reopen",
+  "nativeExecutable": true,
+  "sourceRenderer": false,
+  "publisherRequests": [
+    {
+      "method": "publisher.status"
+    },
+    {
+      "method": "publisher.status",
+      "platform": "douyin"
+    },
+    {
+      "method": "publisher.status",
+      "platform": "tiktok"
+    },
+    {
+      "method": "publisher.status"
+    },
+    {
+      "method": "publisher.status",
+      "platform": "douyin"
+    },
+    {
+      "method": "publisher.status",
+      "platform": "tiktok"
+    }
+  ],
+  "simulatedPublisher": true,
+  "textRequests": 0,
+  "toolCounts": {
+    "read": 0,
+    "edit": 0,
+    "undo": 0
+  },
+  "paidMediaRequests": {
+    "image": 0,
+    "video": 0,
+    "voice": 0
+  },
+  "realModelRequests": 0,
+  "results": [
+    {
+      "key": "native-xiaohongshu-video",
+      "projectId": "video_edit_v2_1791860526169_3086f192",
+      "sessionId": "product_editor_26ae403b1e4732f40ac6c187c9b4",
+      "jobId": "xhs_publish_4a5d370b-9a84-41c4-a7b6-db202096d37f",
+      "publicationStatus": "published",
+      "mediaCount": 1
+    },
+    {
+      "key": "native-douyin-video",
+      "projectId": "video_edit_v2_1791860628679_28ca0c73",
+      "sessionId": "product_editor_4144ed0c68c6e5bc39670a299d4f",
+      "jobId": "douyin_publish_27c72e80-03d6-4646-b117-79a6a0553582",
+      "publicationStatus": "published",
+      "mediaCount": 1
+    },
+    {
+      "key": "native-tiktok-video",
+      "projectId": "video_edit_v2_1791860629865_62593f3d",
+      "sessionId": "product_editor_1e208a9cd4402977521c57530132",
+      "jobId": "tiktok_publish_3f49a725-e674-4b24-beb5-9320d02a3c2f",
+      "publicationStatus": "published",
+      "mediaCount": 1
+    },
+    {
+      "key": "native-tiktok-remix",
+      "projectId": "video_edit_v2_1791860631156_d79ef8b3",
+      "sessionId": "product_editor_8bd9434dafd540999b4345dc0755",
+      "jobId": "tiktok_publish_b7ed08cc-8bfc-455b-84b4-e21caccde6ef",
+      "publicationStatus": "published",
+      "mediaCount": 1
+    },
+    {
+      "key": "native-xiaohongshu-image-set",
+      "projectId": "xiaohongshu/商品套图-3fb17be6-ef17-4a43-b67f-28e17bd60a9d.redpost",
+      "sessionId": "product_editor_6b8eed204dcecee669cb0e49a9d6",
+      "jobId": "xhs_publish_e7d82dd0-61c7-4e1d-80fd-f061872f22bb",
+      "publicationStatus": "published",
+      "mediaCount": 5
+    }
+  ]
+}

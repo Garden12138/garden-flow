@@ -1,0 +1,54 @@
+{
+  "mode": "create",
+  "nativeExecutable": false,
+  "sourceRenderer": true,
+  "textRequests": 90,
+  "toolCounts": {
+    "read": 30,
+    "edit": 25,
+    "undo": 5
+  },
+  "paidMediaRequests": {
+    "image": 0,
+    "video": 0,
+    "voice": 0
+  },
+  "realModelRequests": 0,
+  "results": [
+    {
+      "key": "development-xiaohongshu-video",
+      "projectId": "video_edit_v2_1791849961458_3abd4320",
+      "sessionId": "product_editor_4262acee2f6fd7bcde017bddbaf9",
+      "rounds": 6,
+      "revision": "2bafb382a9b31d8696ffff6dda10f88a97f29d301f38c2d16d2efd8a99b916c9"
+    },
+    {
+      "key": "development-douyin-video",
+      "projectId": "video_edit_v2_1791849961914_cfd77bcb",
+      "sessionId": "product_editor_3ecb09e0a02b324d27928534772b",
+      "rounds": 6,
+      "revision": "5f1ecf3344ce6bed86e4c6cd2ba3a0d01eab05b699a06688b44410fca6140e3f"
+    },
+    {
+      "key": "development-tiktok-video",
+      "projectId": "video_edit_v2_1791849962380_ff073966",
+      "sessionId": "product_editor_539c31c74fe7f7f65d70c1b1c1d3",
+      "rounds": 6,
+      "revision": "1b649c60620dc1c748cf101db4229d0611c4fffcf17338efb5e1e24ea5d2e17b"
+    },
+    {
+      "key": "development-tiktok-remix",
+      "projectId": "video_edit_v2_1791849962900_d0213c9c",
+      "sessionId": "product_editor_198eced8b1eff3087f342e56e665",
+      "rounds": 6,
+      "revision": "6046eb6edd2653138cf565423f96eac5621232ce4bd5cdbb0efe9851506fad90"
+    },
+    {
+      "key": "development-xiaohongshu-image-set",
+      "projectId": "xiaohongshu/商品套图-de271959-85e3-4570-be65-1dfe3dcf51ef.redpost",
+      "sessionId": "product_editor_2ef20b3ee0812efeb76c9d87eb76",
+      "rounds": 6,
+      "revision": "5022ec3999d54046292ee190f02f394e3ca917ca3fb9efac11480575d7601d93"
+    }
+  ]
+}

@@ -6,12 +6,23 @@ import { cloneProductVideoProject, getVideoEditorV2Project } from './video-edito
 import type { TikTokVideoVersion } from '../../shared/tiktokVideo';
 import { validateTikTokPublishSettings } from '../../shared/tiktokVideo';
 
+import { createProductTargetVariant } from './productWorkVersionService';
+import { resolveProductCreationTarget } from '../../shared/productCreationTarget';
+
 const creating = new Map<string, Promise<TikTokVideoVersion>>();
 
 export async function createTikTokVideoVersion(input: { sourceProjectId: string; duplicate?: boolean }): Promise<TikTokVideoVersion> {
     const spaceId = getActiveSpaceId();
     const mediaRoot = getWorkspacePaths().media;
     const sourceProjectId = String(input.sourceProjectId || '').trim();
+    const sourceTarget = await getVideoEditorV2Project(sourceProjectId);
+    if (sourceTarget?.creationTarget) {
+        const target = resolveProductCreationTarget({ platform: 'tiktok', compositionMode: sourceTarget.productVideo?.proposal.compositionMode || 'product-images' });
+        const project = await createProductTargetVariant({ sourceProjectId, expectedUpdatedAt: sourceTarget.updatedAt, target, duplicate: input.duplicate });
+        const bound = getTikTokVideoVersionByProject(project.id, spaceId);
+        if (!bound) throw new Error('平台版本绑定未完成，请重试');
+        return bound;
+    }
     const key = `${spaceId}:${sourceProjectId}`;
     if (!input.duplicate) {
         const existing = getTikTokVideoVersionByProject(sourceProjectId, spaceId) || listTikTokVideoVersions(sourceProjectId, spaceId)[0];
@@ -64,12 +75,17 @@ export async function saveTikTokVideoVersion(input: {
     if (!Array.isArray(input.hashtags) || input.hashtags.length > 30
         || input.hashtags.some((tag) => typeof tag !== 'string' || !/^[\p{L}\p{N}_]+$/u.test(tag.replace(/^#+/, '')) || tag.length > 100)) throw new Error('话题须为不含空格的文字、数字或下划线');
     if ([description, input.hashtags.map(tag => '#' + tag.replace(/^#+/, '')).join(' ')].filter(Boolean).join('\n').length > 4000) throw new Error('TikTok 文案与话题合计最多 4000 字符');
+    const project = await getVideoEditorV2Project(existing.projectId);
+    if (project?.creationTarget?.profileVersion && (language !== project.creationTarget.language || market !== project.creationTarget.market)) throw new Error('目标语言和市场已确定，请创建另一个目标版本');
     const next: TikTokVideoVersion = {
         ...existing, title, description, language, market,
         hashtags: [...new Set(input.hashtags.map((tag) => tag.replace(/^#+/, '')))],
         publishSettings: input.publishSettings === undefined ? existing.publishSettings : input.publishSettings === null ? undefined : validateTikTokPublishSettings(input.publishSettings),
         revision: existing.revision + 1, updatedAt: Date.now(),
     };
-    if (!updateTikTokVideoVersion(next, existing.revision)) throw new Error('TikTok 版本已更新，请刷新后保存');
+    if (project?.productVideo) {
+        const { saveManualProductPublication } = await import('./productProjectEditorService');
+        await saveManualProductPublication(existing, next);
+    } else if (!updateTikTokVideoVersion(next, existing.revision)) throw new Error('TikTok 版本已更新，请刷新后保存');
     return next;
 }

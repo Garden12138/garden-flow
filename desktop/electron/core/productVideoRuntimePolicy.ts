@@ -1,3 +1,4 @@
+import { assertProductTargetMatch } from '../../shared/productCreationTarget.ts';
 import type { WorkflowKind } from './ai/types';
 import type { ProductVideoVisualGroundingEvidence } from './productVideoVisualGrounding';
 import { ProductVideoClipReferencesSchema, type ProductVideoClipReference } from '../../shared/productVideoRemix.ts';
@@ -101,9 +102,11 @@ export function evaluateProductVideoToolPolicy(params: {
     args: Record<string, unknown>;
     explicitProductRefs?: ProductVideoRuntimeRef[];
     productAssetVisualGrounding?: ProductVideoVisualGroundingEvidence;
+    creationTarget?: import('../../shared/productCreationTarget').ProductCreationTarget;
     productVideoCompositionMode?: string;
     explicitVideoClipRefs?: ProductVideoClipReference[];
 }): ProductVideoToolPolicyDecision {
+    if (params.creationTarget && !params.creationTarget.allowPaidMedia && ['image_generate', 'video_generate', 'audio_generate'].includes(params.toolName)) return { outcome: 'deny', reason: '当前目标使用本地已有素材；付费媒体生成须另行确认' };
     if (params.productVideoCompositionMode === 'existing-clips' && ['image_generate', 'video_generate', 'audio_generate'].includes(params.toolName)) {
         return { outcome: 'deny', reason: '已有视频混剪使用已选来源，不自动生成图片、视频或旁白。请提交混剪区间到 product_video_compose。' };
     }
@@ -128,6 +131,7 @@ export function evaluateProductVideoToolPolicy(params: {
     }
 
     if (params.toolName !== 'product_video_compose') return null;
+    try { assertProductTargetMatch(params.creationTarget, params.args.creationTarget); } catch (error) { return { outcome: 'deny', reason: (error as Error).message }; }
     const productRefs = Array.isArray(params.explicitProductRefs) ? params.explicitProductRefs : [];
     if (productRefs.length !== 1) {
         return {

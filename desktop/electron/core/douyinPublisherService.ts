@@ -1,9 +1,10 @@
+import { requirePublicationAction, recordPublicationUpload, validatePublicationContext } from './publicationExecutionPolicy';
 import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { BrowserWindow } from 'electron';
 import {
-    getActiveSpaceId, getDouyinPublishJob, getDouyinPublisherBinding, getDouyinVideoVersion,
+    assertProductEditsSettled, getProductEditorPublicationRevision, getActiveSpaceId, getDouyinPublishJob, getDouyinPublisherBinding, getDouyinVideoVersion,
     getWorkspacePaths, listDouyinPublishJobs, setDouyinPublisherBinding, upsertDouyinPublishJob,
 } from '../db';
 import { DOUYIN_PUBLISHER_CAPABILITY, DOUYIN_IMAGE_COVER_CAPABILITY } from '../../shared/xhsPublisher';
@@ -31,7 +32,7 @@ function record(value: unknown): Record<string, unknown> {
 
 function requestForJob(job: DouyinPublishJob): DouyinPublishRequestV1 {
     return {
-        platform: 'douyin', protocolVersion: 1, jobId: job.id, sessionId: job.sessionId,
+        platform: 'douyin', protocolVersion: 1, confirmationVersion: 2, jobId: job.id, sessionId: job.sessionId,
         versionId: job.versionId, revision: job.versionRevision, projectId: job.projectId,
         renderId: job.renderId, mediaAssetId: job.mediaAssetId, mediaPath: job.mediaPath,
         contentDigest: job.contentDigest, accountId: job.accountId, accountLabel: job.accountLabel,
@@ -40,11 +41,16 @@ function requestForJob(job: DouyinPublishJob): DouyinPublishRequestV1 {
     };
 }
 
+import { assertProductPublicationTarget } from './productWorkVersionService';
+import { productTargetKey } from '../../shared/productCreationTarget';
+
 async function candidateForVersion(versionId: string): Promise<Candidate> {
     const version = getDouyinVideoVersion(versionId);
     if (!version) throw new Error('抖音版本不存在或不属于当前空间');
+    assertProductEditsSettled('video:' + version.projectId);
     const project = await getVideoEditorV2Project(version.projectId);
     if (!project?.productVideo || project.projectKind !== 'product-video') throw new Error('抖音视频工程不存在');
+    const variant = await assertProductPublicationTarget(project, 'douyin');
     if (project.canvas.aspectRatio !== '9:16') throw new Error('抖音版本须使用竖屏 9:16 视频');
     const imageCover = await prepareDouyinImageCover(project, version.coverAssetId);
     assertCurrentVideoExport(project);
@@ -58,6 +64,8 @@ async function candidateForVersion(versionId: string): Promise<Candidate> {
     if (!version.description.trim()) throw new Error('请先填写抖音发布描述');
     const digest = createHash('sha256').update(JSON.stringify({
         platform: 'douyin', versionId: version.id, revision: version.revision,
+        ...(getProductEditorPublicationRevision(project.id) ? { editorRevision: getProductEditorPublicationRevision(project.id) } : {}),
+        ...(project.creationTarget?.profileVersion ? { creationTargetKey: productTargetKey(variant.target) } : {}),
         projectId: project.id, renderId: output.id, mediaAssetId: asset.id,
         title: version.title, description: version.description, hashtags: version.hashtags,
         coverAssetId: version.coverAssetId || null,
@@ -95,7 +103,7 @@ export class DouyinPublisherService {
     private save(job: DouyinPublishJob): DouyinPublishJob {
         upsertDouyinPublishJob(job);
         for (const window of BrowserWindow.getAllWindows()) {
-            if (!window.isDestroyed()) window.webContents.send('douyin-publisher:job-changed', job);
+            if (!window.isDestroyed()) { window.webContents.send('douyin-publisher:job-changed', job); window.webContents.send('publication:changed'); }
         }
         return job;
     }
@@ -253,6 +261,7 @@ export class DouyinPublisherService {
     }
 
     private async stageDraftUnlocked(jobId: string): Promise<DouyinPublishJob> {
+        const context = await requirePublicationAction('douyin', jobId, 'upload');
         const job = await this.validateConfirmation(jobId);
         // Recheck after async validation so a concurrent confirmation wins only once.
         if (!['awaiting_confirmation', 'blocked'].includes(getDouyinPublishJob(jobId)?.status || '')) throw new Error('任务状态已变化');
@@ -275,14 +284,21 @@ export class DouyinPublisherService {
             if (getActiveSpaceId() !== job.spaceId || fresh.digest !== job.contentDigest) {
                 return this.save({ ...job, status: 'superseded', errorCode: 'VERSION_CHANGED', errorMessage: '上传期间稿件或封面已变化，未提交', updatedAt: Date.now() });
             }
+            const live = this.getJob(job.id);
+            if (!live || ['cancelled', 'superseded'].includes(live.status)) return live || job;
+            await validatePublicationContext('douyin', jobId, 'upload');
+            recordPublicationUpload(context, response);
             return this.save({ ...job, status: 'awaiting_confirmation', errorCode: '', errorMessage: '', updatedAt: Date.now() });
         } catch (error) {
+            const live = this.getJob(job.id);
+            if (live && ['cancelled', 'superseded'].includes(live.status)) return live;
             return this.save({ ...job, status: 'blocked', errorCode: 'DRAFT_PREPARATION_FAILED',
                 errorMessage: error instanceof Error ? error.message : String(error), updatedAt: Date.now() });
         }
     }
 
     async confirm(jobId: string): Promise<DouyinPublishJob> {
+        await requirePublicationAction('douyin', jobId, 'submit');
         const job = await this.validateConfirmation(jobId);
         if (!['awaiting_confirmation', 'blocked'].includes(getDouyinPublishJob(jobId)?.status || '')) throw new Error('任务状态已变化');
         const queued = this.save({ ...job, status: 'queued', confirmedAt: Date.now(), updatedAt: Date.now(), errorCode: '', errorMessage: '' });
@@ -293,7 +309,7 @@ export class DouyinPublisherService {
     cancel(jobId: string): DouyinPublishJob {
         this.ensureReconciled();
         const job = getDouyinPublishJob(jobId);
-        if (!job || !['awaiting_confirmation', 'queued', 'blocked'].includes(job.status)) throw new Error('此任务已提交或无法取消');
+        if (!job || !['awaiting_confirmation', 'queued', 'uploading', 'blocked'].includes(job.status)) throw new Error('此任务已提交或无法取消');
         return this.save({ ...job, status: 'cancelled', updatedAt: Date.now() });
     }
 
@@ -376,18 +392,15 @@ export class DouyinPublisherService {
                 return;
             }
             job = this.save({ ...job, status: 'preflighting', updatedAt: Date.now() });
-            const prepared = record(await invoke('prepare', 10 * 60_000));
-            job = getDouyinPublishJob(jobId) || job;
-            if (job.status === 'cancelled') return;
-            if (prepared.ok !== true || prepared.prepared !== true || prepared.publishStatus !== 'not_submitted') {
-                this.save({ ...job, status: 'blocked', errorCode: String(prepared.code || 'PREPARE_FAILED'), errorMessage: String(prepared.message || '抖音页面准备失败'), updatedAt: Date.now() });
-                return;
-            }
             const fresh = await candidateForVersion(job.versionId);
             if (getActiveSpaceId() !== job.spaceId || fresh.digest !== job.contentDigest || fresh.renderId !== job.renderId) {
                 this.save({ ...job, status: 'superseded', errorCode: 'VERSION_CHANGED', errorMessage: '准备期间工程已更新，未提交', updatedAt: Date.now() });
                 return;
             }
+            const currentBeforeSubmit = getDouyinPublishJob(job.id);
+            if (!currentBeforeSubmit || currentBeforeSubmit.status === 'superseded' || currentBeforeSubmit.status === 'cancelled') return;
+            await validatePublicationContext('douyin', job.id, 'submit');
+            assertProductEditsSettled('video:' + job.projectId, job.spaceId);
             job = this.save({ ...job, status: 'submitting', publishStatus: 'submitted', submittedAt: Date.now(), updatedAt: Date.now() });
             const response = record(await invoke('submit', 3 * 60_000));
             job = getDouyinPublishJob(jobId) || job;

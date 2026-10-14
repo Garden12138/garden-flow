@@ -1,3 +1,4 @@
+import { publicationUploadReview } from './publicationReview.js';
 import { TIKTOK_TAB_PATTERN, isTikTokUploadUrl, validateTikTokRequest, tikTokCaption,
   tikTokEditorMatches, tikTokEditorIssues, readTikTokAccount, probeTikTokPage, tikTokCaptionPoint,
   tikTokSettingsPage, tikTokSubmitPoint, readTikTokPosts, matchTikTokPostReceipt } from './tiktokAdapter.js';
@@ -5,6 +6,7 @@ import { TIKTOK_TAB_PATTERN, isTikTokUploadUrl, validateTikTokRequest, tikTokCap
 const OWNER_KEY = 'gardenflowTikTokPublisherPreparedJob';
 const RESULTS_KEY = 'gardenflowTikTokPublisherResults';
 let running = false;
+const probes = new Map();
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const outcome = (request, ok, publishStatus = 'not_submitted', code = '', message = '', extra = {}) => ({
   ok, jobId: request?.jobId || '', contentDigest: request?.contentDigest || '', publishStatus,
@@ -30,6 +32,13 @@ const sameRequest = (left, right) => left && right
   && Object.keys(right.publishSettings).every(key => left.publishSettings?.[key] === right.publishSettings[key]);
 
 async function probe(tabId) {
+  const previous = probes.get(tabId) || Promise.resolve();
+  const operation = previous.catch(() => {}).then(() => probeUnlocked(tabId));
+  probes.set(tabId, operation);
+  try { return await operation; }
+  finally { if (probes.get(tabId) === operation) probes.delete(tabId); }
+}
+async function probeUnlocked(tabId) {
   const page = await execute(tabId, probeTikTokPage);
   if (!page || page.loginRequired || page.securityChallenge || (!page.uploadPage && !page.editorPage)) return page;
   const account = await execute(tabId, readTikTokAccount);
@@ -150,6 +159,9 @@ async function fillSettings(tabId, settings) {
 export async function tiktokStatus(nativeConnected = false) {
   const pages = await tabs();
   if (pages.length !== 1) return { nativeConnected, publishTabCount: pages.length, pageState: 'unsupported', detail: '请保留一个 TikTok Studio 视频上传页' };
+  // A dashboard refresh must not open the account menu and steal the caret
+  // while the publisher is entering the caption. Do not report cached identity.
+  if (running) return { nativeConnected, publishTabCount: 1, pageState: 'unsupported', detail: '当前任务正在上传核对，请等待完成后刷新' };
   const state = await probe(pages[0].id);
   const ownership = await owner();
   const pageState = !state ? 'unsupported' : state.loginRequired ? 'login_required' : state.securityChallenge ? 'security_challenge'
@@ -223,7 +235,7 @@ async function prepare(request) {
       '核对未通过：' + issues.map(key => labels[key] || key).join('、') + '。请在页面检查；未提交', { mismatches: issues });
   }
   await setOwner({ ...ownership, status: 'prepared' });
-  return outcome(request, true, 'not_submitted', '', '', { prepared: true });
+  return outcome(request, true, 'not_submitted', '', '', { prepared: true, uploadReview: publicationUploadReview(request, state) });
 }
 
 async function submit(request) {

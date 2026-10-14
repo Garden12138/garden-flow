@@ -466,6 +466,7 @@ export function validatePublishRequest(payload) {
   if (payload.protocolVersion !== 1 || !isNonEmptyString(payload.jobId, 200)) {
     return { ok: false, code: 'INVALID_REQUEST', message: '发布协议或任务 ID 无效' };
   }
+  if (payload.uploadPageFingerprint !== undefined && !isNonEmptyString(payload.uploadPageFingerprint, 200000)) return { ok: false, code: 'INVALID_REQUEST', message: '上传页面核验摘要无效' };
   if (!isNonEmptyString(payload.sessionId, 200)
     || !isNonEmptyString(payload.projectPath, 4096)
     || !Number.isInteger(payload.revision)

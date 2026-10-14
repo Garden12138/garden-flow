@@ -25,6 +25,10 @@ For AI chat, this skill is the single entrypoint for video generation. If the us
 
 If this skill was loaded because the user attached an image and asked for a promotional film / 宣传片 / 视频, treat the attached image as a product or visual reference for the video workflow. Do not generate a replacement product image as an "analysis" step.
 
+## Explicit product creation targets
+
+When structured metadata includes creationTarget, preserve its platform, format, language, market and specification exactly in product_video_compose. Write publicationCopy (title, description, hashtags) for that target; do not apply XHS title/style conventions to Douyin or TikTok. Default to original product images or explicitly selected clips, voiceoverEnabled=false, and no paid generation. A target changes only through an independent platform version. The tool owns platform draft binding. Original image/video lettering is not translated by editing local captions.
+
 ## Default Workflow
 
 Treat the workflow as a gated state machine. Do not skip or reorder states:

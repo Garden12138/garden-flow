@@ -14,10 +14,12 @@ import { isPathWithinRoots } from './localAssetManager';
 import {
     ProductImageSetProposalSchema, ProductImageSetSchema, ProductImagePageSchema, ProductImageStyleSchema, productImageInputKey, productImageGenerationKey,
     ProductImagePageRequestSchema, ProductImagePreviewRequestSchema, ProductImageGenerateRequestSchema, ProductImageExportRequestSchema,
-    productImageSlotId, renderProductImageHtml, type ProductImageSetProposal, type ProductImageSet,
+    productImageSlotId, productImageSpec, renderProductImageHtml, type ProductImageSetProposal, type ProductImageSet,
     type ProductImagePageRequest, type ProductImageGenerateRequest, type ProductImagePreviewRequest,
 } from '../../shared/productImageSet';
 import { applyXhsMediaSlotBinding, assertExpectedXhsRevision, type XhsNoteProjectSnapshot } from '../../shared/xhsNote';
+
+import { assertProductTargetMatch, productTargetKey } from '../../shared/productCreationTarget';
 
 const renders = new Map<string, Promise<XhsNoteProjectSnapshot>>();
 const generations = new Map<string, { requestId: string; promise: Promise<XhsNoteProjectSnapshot> }>();
@@ -86,7 +88,7 @@ export async function findProductImageSetByProposalId(proposalId: string): Promi
 
 export function createProductImageSet(input: ProductImageSetProposal): Promise<XhsNoteProjectSnapshot> {
     const spaceId = getWorkspacePaths().activeSpaceId;
-    const key = `${spaceId}:${input.proposalId}`;
+    const key = `${spaceId}:${input.proposalId}:${productTargetKey(input.creationTarget)}`;
     const pending = creations.get(key);
     if (pending) return pending.productId === input.productId ? pending.promise : Promise.reject(new Error('提案 ID 已用于另一商品'));
     const operation = runInWorkspaceSpace(spaceId, () => createProductImageSetOnce(input));
@@ -99,6 +101,7 @@ async function createProductImageSetOnce(input: ProductImageSetProposal): Promis
     const proposal = ProductImageSetProposalSchema.parse(input);
     const existing = await findProductImageSetByProposalId(proposal.proposalId);
     if (existing) {
+        assertProductTargetMatch(existing.document.productImageSet?.creationTarget?.profileVersion === 0 ? undefined : existing.document.productImageSet?.creationTarget, proposal.creationTarget);
         if (existing.document.productImageSet?.productSnapshot.id !== proposal.productId) throw new Error('提案 ID 已用于另一商品');
         return existing;
     }
@@ -119,8 +122,8 @@ async function createProductImageSetOnce(input: ProductImageSetProposal): Promis
                 assets.push({ id, relativePath, sha256: sha256(bytes), kind: 'product' });
             }
             assertCurrent();
-            const set: ProductImageSet = { version: 1, proposalId: proposal.proposalId, spaceId, productSnapshot: { ...product }, assets, style: proposal.style, pages: proposal.pages, generationHistory: [] };
-            return await saveXhsNoteProject({ path: project, noteType: 'image', document: { finalTitle: proposal.finalTitle, body: proposal.body, hashtags: proposal.hashtags, productImageSet: set }, trustedProductImageSetState: true });
+            const set: ProductImageSet = { creationTarget: proposal.creationTarget, version: 1, proposalId: proposal.proposalId, spaceId, productSnapshot: { ...product }, assets, style: proposal.style, pages: proposal.pages, generationHistory: [] };
+            return await saveXhsNoteProject({ path: project, noteType: 'image', document: { creationTarget: proposal.creationTarget, ...(proposal.creationTarget ? { workVersion: { workId: proposal.proposalId, versionId: proposal.proposalId, publicationBinding: { platform: 'xiaohongshu', notePath: path.relative(getWorkspacePaths().manuscripts, project) } } } : {}), finalTitle: proposal.finalTitle, body: proposal.body, hashtags: proposal.hashtags, productImageSet: set }, trustedProductImageSetState: true });
         } catch (error) {
             await fs.rm(project, { recursive: true, force: true });
             throw error;
@@ -173,9 +176,9 @@ export function renderProductImagePage(input: ProductImagePageRequest): Promise<
         await fs.mkdir(cache, { recursive: true });
         if (!isPathWithinRoots(await fs.realpath(cache), [await fs.realpath(snapshot.projectPath)])) throw new Error('渲染缓存不能位于工程外');
         let bytes: Buffer;
-        try { bytes = await renderProductImagePng(preview.html, cache); }
+        try { bytes = await renderProductImagePng(preview.html, cache, productImageSpec(set)); }
         catch (error) { throw new Error(`${page.role === 'cover' ? '封面' : page.title}：${error instanceof Error ? error.message : String(error)}`); }
-        const asset = await createGeneratedMediaAsset({ prompt: '商品原图与可编辑文字排版', dataBuffer: bytes, mimeType: 'image/png', projectId: set.proposalId, provider: 'local-layout', title: `${snapshot.document.finalTitle} · ${page.title}`, aspectRatio: '3:4', size: '1440x1920' });
+        const asset = await createGeneratedMediaAsset({ prompt: '商品原图与可编辑文字排版', dataBuffer: bytes, mimeType: 'image/png', projectId: set.proposalId, provider: 'local-layout', title: `${snapshot.document.finalTitle} · ${page.title}`, aspectRatio: productImageSpec(set).aspectRatio, size: `${productImageSpec(set).width}x${productImageSpec(set).height}` });
         return mutateSet(input.path, async (current, latest) => {
             const currentPage = current.pages.find((item) => item.id === page.id);
             if (!currentPage || productImageInputKey(current, currentPage) !== inputKey) throw new Error('页面在渲染期间已修改，已保留图片素材，请重新导出');
@@ -239,7 +242,7 @@ export function generateProductImagePage(input: ProductImageGenerateRequest): Pr
         let registry = registries.get(spaceId);
         if (!registry) { registry = new MediaGenerationJobRegistry(spaceId, 'product-image-jobs.json'); registries.set(spaceId, registry); }
         try {
-            const submitted = await registry.submit('image', { ...executionConfig, prompt: `${page.aiPrompt}\n只生成画面，保留参考商品的外观和包装，不添加页面标题、说明文字或水印。`, generationMode: 'reference-guided', referenceImages: references, count: 1, aspectRatio: '3:4', size: '1536x2048', projectId: set.proposalId, manuscriptPath: snapshot.relativePath, clientRequestId: input.requestId, source: 'product-image-set' });
+            const submitted = await registry.submit('image', { ...executionConfig, prompt: `${page.aiPrompt}\n只生成画面，保留参考商品的外观和包装，不添加页面标题、说明文字或水印。`, generationMode: 'reference-guided', referenceImages: references, count: 1, aspectRatio: productImageSpec(set).aspectRatio, size: `${productImageSpec(set).width}x${productImageSpec(set).height}`, projectId: set.proposalId, manuscriptPath: snapshot.relativePath, clientRequestId: input.requestId, source: 'product-image-set' });
             await mutateSet(input.path, (current) => {
                 const currentPage = current.pages.find((item) => item.id === page.id);
                 const history = current.generationHistory.find((item) => item.requestId === input.requestId)!;
@@ -339,8 +342,9 @@ async function importProductImageAssetInSpace(input: ProductImagePageRequest & {
     const relativePath = `sources/${randomUUID()}${path.extname(source)}`;
     await fs.writeFile(path.join(snapshot.projectPath, relativePath), bytes);
     const id = `upload-${randomUUID()}`;
-    return mutateSet(input.path, (current, latest) => {
-        assertExpectedXhsRevision(latest.version, input.expectedRevision);
+    const { commitPreparedProductImageEdit } = await import('./productProjectEditorService');
+    return commitPreparedProductImageEdit(input.path, input.expectedRevision, '替换页面图片', (document) => {
+        const current = document.productImageSet!;
         current.assets.push({ id, relativePath, sha256: sha256(bytes), kind: 'upload' });
         const page = current.pages.find((item) => item.id === input.pageId)!;
         page.productAssetIds = [id];
@@ -351,7 +355,11 @@ async function importProductImageAssetInSpace(input: ProductImagePageRequest & {
 type ProductImageExportInput = { path: string; expectedRevision: number; format: 'png' | 'directory' | 'zip'; pageId?: string; outputPath: string };
 
 export function exportProductImageSet(input: ProductImageExportInput): Promise<{ outputPath: string; snapshot: XhsNoteProjectSnapshot }> {
-    return runInWorkspaceSpace(getWorkspacePaths().activeSpaceId, () => exportProductImageSetInSpace(input));
+    return runInWorkspaceSpace(getWorkspacePaths().activeSpaceId, async () => {
+        const result = await exportProductImageSetInSpace(input);
+        if (input.format !== 'png') await (await import('./publicationCompletionService')).recordCompletedPublication({ kind: 'image-set', path: result.snapshot.relativePath });
+        return result;
+    });
 }
 
 async function exportProductImageSetInSpace(input: ProductImageExportInput): Promise<{ outputPath: string; snapshot: XhsNoteProjectSnapshot }> {

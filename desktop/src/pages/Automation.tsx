@@ -1,3 +1,4 @@
+import { PublicationManagement } from '../components/publication/PublicationManagement';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Check, ChevronDown, Clock3, Loader2, MoreHorizontal, PauseCircle, Pencil, Play, PlayCircle, Plus, Trash2 } from 'lucide-react';
 import {
@@ -159,6 +160,7 @@ function confirmedTaskId(value: unknown, fallbackTaskId: string): string {
 }
 
 export function Automation({ isActive = true, onOpenGardenFlowSession }: AutomationProps) {
+  const [managementTab, setManagementTab] = useState<'automation' | 'publication'>('automation');
   const [items, setItems] = useState<GardenFlowTaskListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -682,6 +684,8 @@ export function Automation({ isActive = true, onOpenGardenFlowSession }: Automat
 
   return (
     <div className="workbench-schedule automation-page h-full min-h-0 overflow-auto">
+      <nav aria-label="计划分区" className="flex gap-3 border-b border-border px-6 py-3"><button onClick={() => setManagementTab('automation')} className="rounded border px-3 py-2 text-xs">自动化</button><button onClick={() => setManagementTab('publication')} className="rounded border px-3 py-2 text-xs">发布</button></nav>
+      {managementTab === 'publication' ? <PublicationManagement isActive={isActive} onOpenSession={onOpenGardenFlowSession} /> : <>
       <button
         type="button"
         onClick={openDialog}
@@ -813,7 +817,7 @@ export function Automation({ isActive = true, onOpenGardenFlowSession }: Automat
           </div>
         </section>
       </main>
-
+      </>}
     </div>
   );
 }

@@ -1,0 +1,8 @@
+{
+  "command": "node --test PublishPlugin/tests/douyinPublisher.test.mjs",
+  "passed": 12,
+  "failed": 0,
+  "productionCodeChangedDuringFollowup": false,
+  "documentationLinks": "passed",
+  "diffWhitespaceCheck": "passed"
+}

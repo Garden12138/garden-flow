@@ -6,6 +6,7 @@ import path from 'node:path';
 import vm from 'node:vm';
 import { createRequire } from 'node:module';
 import { build } from 'esbuild';
+import { resolveProductCreationTarget } from '../shared/productCreationTarget.ts';
 
 test('main process keeps Douyin confirmation, account, review and unknown states durable', async (t) => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'gardenflow-douyin-publish-'));
@@ -21,7 +22,7 @@ test('main process keeps Douyin confirmation, account, review and unknown states
         jobs: new Map<string, any>(), versions: new Map<string, any>(), browserCalls: [] as string[],
         project: {
             id: 'project-1', projectKind: 'product-video', productVideo: { scenes: [] },
-            canvas: { aspectRatio: '9:16' }, renderOutputs: [{ id: 'render-1', mediaAssetId: 'media-1' }],
+            canvas: { aspectRatio: '9:16', width: 1080, height: 1920, fps: 30 }, renderOutputs: [{ id: 'render-1', mediaAssetId: 'media-1' }],
         },
     };
     const version = {
@@ -31,9 +32,19 @@ test('main process keeps Douyin confirmation, account, review and unknown states
     };
     state.versions.set(version.id, version);
     const mocks: Record<string, string> = {
-        db: `const s = globalThis.fixture;
+        execution: `export const requirePublicationAction = async () => ({}); export const validatePublicationContext = async () => ({}); export const recordPublicationUpload = () => {};`,
+        completion: `export const recordCompletedPublication = async () => {};`,
+        source: `export const readPublicationSource = async () => ({media:[]});`,
+
+        editor: `export const saveManualProductPublication = () => { throw new Error('publisher cannot edit projects'); }; export const saveManualProductImageSet = () => { throw new Error('publisher cannot edit image sets'); }; export const resolveProductNoteEditor = async () => null; export const saveManualProductVideoNote = () => { throw new Error('publisher cannot edit product notes'); };`,
+        db: `export const assertProductEditsSettled = () => {}; export const getProductEditorPublicationRevision = () => ''; const s = globalThis.fixture;
             export const getActiveSpaceId = () => s.spaceId;
-            export const getWorkspacePaths = () => ({ media: s.root + '/media' });
+            export const getWorkspacePaths = () => ({ media: s.root + '/media', manuscripts: s.root + '/manuscripts', activeSpaceId: s.spaceId });
+            export const runInWorkspaceSpace = (_space, operation) => operation();
+            export const getDouyinVideoVersionByProject = (id) => [...s.versions.values()].find(v => v.projectId === id && v.spaceId === s.spaceId) || null;
+            export const getTikTokVideoVersionByProject = (id) => null;
+            export const insertDouyinVideoVersion = () => { throw new Error('unexpected version creation'); };
+            export const insertTikTokVideoVersion = () => { throw new Error('unexpected version creation'); };
             export const getDouyinVideoVersion = (id) => { const v=s.versions.get(id); return v?.spaceId === s.spaceId ? v : null; };
             export const getDouyinPublishJob = (id) => { const j=s.jobs.get(id); return j?.spaceId === s.spaceId ? j : null; };
             export const listDouyinPublishJobs = () => [...s.jobs.values()].filter(j => j.spaceId === s.spaceId).sort((a,b)=>b.createdAt-a.createdAt);
@@ -62,20 +73,25 @@ test('main process keeps Douyin confirmation, account, review and unknown states
                     throw new Error('unexpected browser call');
                 },
             });`,
-        media: `const s=globalThis.fixture; export const getAbsoluteMediaPath = (p) => s.root + '/media/' + p;
+        media: `export const bindMediaAssetToManuscript = async () => { throw new Error('publisher cannot bind media'); };const s=globalThis.fixture; export const getAbsoluteMediaPath = (p) => s.root + '/media/' + p;
             export const listMediaAssets = async () => [{ id:'media-1',relativePath:'current.mp4',mimeType:'video/mp4' }];`,
         local: `export const isPathWithinRoots = (p, roots) => p.startsWith(roots[0] + '/');
             export const toAppAssetUrl = (p) => 'app-asset://' + p;`,
-        project: `export const getVideoEditorV2Project = async () => globalThis.fixture.project;`,
+        project: `export const getVideoEditorV2Project = async () => globalThis.fixture.project;
+            export const listVideoEditorV2Projects = async () => [globalThis.fixture.project];
+            export const enqueueProductProjectMutation = (_, operation) => operation();
+            export const updateProductWorkMetadata = async () => { throw new Error('publisher cannot mutate metadata'); };
+            export const saveVideoEditorV2Project = async () => { throw new Error('publisher cannot mutate project'); };
+            export const cloneProductVideoProject = async () => { throw new Error('publisher cannot create project'); };`,
         cover: `const s=globalThis.fixture; export const prepareDouyinImageCover=async (_,assetId)=>assetId ? ({assetId, sourceSha256:s.coverDigest, crop:'center', files:[{orientation:'portrait',path:'/fixture/portrait.jpg',sha256:s.coverDigest,width:1080,height:1440},{orientation:'landscape',path:'/fixture/landscape.jpg',sha256:s.coverDigest,width:1440,height:1080}]}) : undefined;`,
-        policy: `export const assertCurrentVideoExport = (project) => { if (project.renderOutputs[0]?.mediaAssetId !== 'media-1') throw new Error('stale export'); };`,
+        policy: `export const videoRenderFingerprint = () => 'fixture-fingerprint'; export const assertCurrentVideoExport = (project) => { if (project.renderOutputs[0]?.mediaAssetId !== 'media-1') throw new Error('stale export'); };`,
     };
     const code = await build({
         stdin: { contents: `export * from './desktop/electron/core/douyinPublisherService.ts';`, resolveDir: path.resolve(import.meta.dirname, '../..') },
         bundle: true, write: false, platform: 'node', format: 'cjs', packages: 'external',
         plugins: [{ name: 'douyin-host', setup(builder) {
             builder.onResolve({ filter: /.*/ }, (args) => {
-                const key = args.path === 'electron' ? 'electron'
+                const key = args.path.endsWith('/publicationExecutionPolicy') ? 'execution' : args.path.endsWith('/publicationCompletionService') ? 'completion' : args.path.endsWith('/publicationSource') ? 'source' : args.path.endsWith('/productProjectEditorService') ? 'editor' : args.path === 'electron' ? 'electron'
                     : args.path.endsWith('/db') ? 'db'
                         : args.path.endsWith('/browserCaptureBridgeService') ? 'browser'
                             : args.path.endsWith('/mediaLibraryStore') ? 'media'
@@ -130,6 +146,23 @@ test('main process keeps Douyin confirmation, account, review and unknown states
         assert.equal(recoveredStage.submittedAt, undefined);
         service.cancel(replacement.id);
         assert.equal(state.browserCalls.some(call => call.endsWith(':submit')), false);
+    });
+    await t.test('new target/spec binds confirmation digest and wrong platform preserves submitted history', async () => {
+        const legacy = await service.prepare(version.id, 'session-target');
+        (state.project as any).creationTarget = resolveProductCreationTarget({ platform: 'douyin' });
+        const targeted = await service.prepare(version.id, 'session-target');
+        assert.notEqual(targeted.contentDigest, legacy.contentDigest);
+        assert.notEqual(targeted.id, legacy.id);
+        const unknown = { ...targeted, id: 'history-unknown', status: 'submit_result_unknown', publishStatus: 'unknown' };
+        const published = { ...targeted, id: 'history-published', status: 'completed', publishStatus: 'published' };
+        state.jobs.set(unknown.id, unknown); state.jobs.set(published.id, published);
+        const before = JSON.stringify([state.jobs.get(unknown.id), state.jobs.get(published.id)]);
+        (state.project as any).creationTarget = resolveProductCreationTarget({ platform: 'tiktok' });
+        await assert.rejects(service.prepare(version.id, 'session-target'), /目标/);
+        assert.equal(JSON.stringify([state.jobs.get(unknown.id), state.jobs.get(published.id)]), before);
+        state.jobs.delete(unknown.id); state.jobs.delete(published.id);
+        delete (state.project as any).creationTarget;
+        service.cancel(targeted.id);
     });
     const prepared = await service.prepare(version.id, 'session-1');
     assert.equal(prepared.status, 'awaiting_confirmation');
@@ -217,7 +250,7 @@ test('main process keeps Douyin confirmation, account, review and unknown states
     state.disconnected = false;
     state.prepareFailure = true;
     const uploadFailure = await service.prepare(loginVersion.id, 'session-login');
-    await service.confirm(uploadFailure.id);
+    await service.stageDraft(uploadFailure.id);
     for (let index = 0; index < 30 && ['queued', 'preflighting'].includes(service.getJob(uploadFailure.id)?.status || ''); index += 1) await new Promise((resolve) => setTimeout(resolve, 5));
     assert.equal(service.getJob(uploadFailure.id)?.status, 'blocked');
     assert.equal(service.getJob(uploadFailure.id)?.errorCode, 'UPLOAD_FAILED');

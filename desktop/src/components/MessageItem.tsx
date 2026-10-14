@@ -1,3 +1,5 @@
+import { PublicationOfferCard, PublicationPanel } from './publication/PublicationPanel';
+import type { PublicationSource } from '../../shared/publication';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { clsx } from 'clsx';
 import { Components, UrlTransform } from 'react-markdown';
@@ -357,6 +359,7 @@ export interface Message {
   messageType?: 'reply' | 'thinking';
   content: string;
   xhsPublishConsent?: XhsPublishConsentMetadata;
+  publicationOffer?: { id: string; source: PublicationSource; title: string };
   displayContent?: string;
   attachment?: {
     type: 'youtube-video';
@@ -487,173 +490,20 @@ function xhsPublishConsentFromJob(job: XhsPublishJob): XhsPublishConsentMetadata
 }
 
 export function XhsPublishConsentCard({ consent }: { consent: XhsPublishConsentMetadata }) {
-  const [busyAction, setBusyAction] = useState('');
+  const [open, setOpen] = useState(false);
+  const [job, setJob] = useState<import('../../shared/publication').PublicationJobView>();
   const [error, setError] = useState('');
-  const [liveConsent, setLiveConsent] = useState(consent);
-  const [pollingJobId, setPollingJobId] = useState('');
-  const [acknowledgedNotPublished, setAcknowledgedNotPublished] = useState(false);
-
-  useEffect(() => {
-    setLiveConsent(consent);
-    setPollingJobId(consent.jobId);
-    setAcknowledgedNotPublished(false);
-  }, [consent]);
-
-  useEffect(() => {
-    if (!pollingJobId) return undefined;
-    let disposed = false;
-    let timer: number | undefined;
-    const refresh = async () => {
-      const result = await window.ipcRenderer.xhsPublisher.getJob({ jobId: pollingJobId });
-      if (disposed) return;
-      const job = result?.success !== false && result?.job
-        ? result.job as XhsPublishJob
-        : null;
-      if (!job) {
-        setPollingJobId('');
-        return;
-      }
-      setLiveConsent(xhsPublishConsentFromJob(job));
-      if (XHS_PUBLISH_RUNNING_STATUSES.has(job.status)) {
-        timer = window.setTimeout(refresh, 750);
-      } else {
-        setPollingJobId('');
-      }
-    };
-    timer = window.setTimeout(refresh, 250);
-    return () => {
-      disposed = true;
-      if (timer !== undefined) window.clearTimeout(timer);
-    };
-  }, [pollingJobId]);
-
-  const terminal = ['completed', 'cancelled', 'superseded', 'submit_result_unknown'].includes(liveConsent.status);
-  const running = XHS_PUBLISH_RUNNING_STATUSES.has(liveConsent.status);
-  const titleError = xhsTitleValidationError(liveConsent.title);
-  const statusText = liveConsent.status === 'completed'
-    ? '发布成功，已回到空白发布页'
-    : liveConsent.status === 'cancelled'
-      ? '已取消，本版本未发布'
-      : liveConsent.status === 'superseded'
-        ? '内容已更新，本次确认已失效'
-        : liveConsent.status === 'published_reset_failed'
-          ? '笔记已发布，但发布页尚未恢复'
-          : liveConsent.status === 'submit_result_unknown'
-            ? '已提交但结果未知，请人工检查笔记管理页'
-            : liveConsent.status === 'blocked'
-              ? '发布前检查未通过'
-              : running
-                ? '正在通过专用浏览器发布…'
-                : '等待你确认当前版本';
-
-  const act = async (action: 'confirm' | 'cancel' | 'retry' | 'recoverUnpublished') => {
-    setBusyAction(action);
-    setError('');
-    try {
-      const result = action === 'recoverUnpublished'
-        ? await window.ipcRenderer.xhsPublisher.recoverUnpublished({ jobId: liveConsent.jobId, acknowledgedNotPublished })
-        : await window.ipcRenderer.xhsPublisher[action]({ jobId: liveConsent.jobId });
-      if (result?.success === false) throw new Error(String(result.error || '操作失败'));
-      if (result?.job) {
-        const job = result.job as XhsPublishJob;
-        setLiveConsent(xhsPublishConsentFromJob(job));
-        if (XHS_PUBLISH_RUNNING_STATUSES.has(job.status)) setPollingJobId(job.id);
-      }
-    } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : String(actionError));
-    } finally {
-      setBusyAction('');
-    }
-  };
-
-  return (
-    <div className="mt-3 w-full max-w-3xl border-l-2 border-emerald-500 bg-surface-secondary/35 px-4 py-3">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="text-sm font-medium text-text-primary">小红书发布确认</div>
-          <div className="mt-1 break-words text-xs text-text-secondary">《{liveConsent.title}》· 第 {liveConsent.revision} 版</div>
-          <div className="mt-1 text-[11px] text-text-tertiary">标题 {liveConsent.title.trim().length}/{XHS_TITLE_MAX_LENGTH} 字符（含标点、数字及空格）</div>
-          <div className="mt-1 text-[11px] text-text-tertiary">
-            {liveConsent.noteType === 'video' ? '视频笔记' : '图片笔记'} · {liveConsent.mediaCount} 个媒体 · {liveConsent.browserLabel}
-          </div>
-        </div>
-        <span className={clsx(
-          'shrink-0 rounded-full border px-2 py-0.5 text-[11px]',
-          liveConsent.status === 'completed'
-            ? 'border-emerald-500/40 text-emerald-600'
-            : liveConsent.status === 'blocked' || liveConsent.status === 'published_reset_failed' || liveConsent.status === 'submit_result_unknown'
-              ? 'border-amber-500/40 text-amber-600'
-              : 'border-border text-text-tertiary',
-        )}>{statusText}</span>
-      </div>
-      {liveConsent.errorMessage && <div className="mt-2 text-xs text-amber-700">{liveConsent.errorMessage}</div>}
-      {titleError && <div className="mt-2 text-xs text-amber-700">{titleError}</div>}
-      {(liveConsent.videoPreviewUrl || liveConsent.body) && (
-        <div className="mt-3 flex flex-col gap-3 sm:flex-row">
-          {liveConsent.videoPreviewUrl && (
-            <video src={liveConsent.videoPreviewUrl} controls preload="metadata" className="max-h-64 w-full rounded-md bg-black sm:w-36" aria-label="待发布的实际视频" />
-          )}
-          <div className="min-w-0 flex-1 text-xs text-text-secondary">
-            <div className="whitespace-pre-wrap break-words">{liveConsent.body}</div>
-            {liveConsent.hashtags?.length ? <div className="mt-2 text-text-tertiary">{liveConsent.hashtags.map((tag) => `#${tag}`).join(' ')}</div> : null}
-            {liveConsent.projectPath && <button type="button" className="mt-2 text-accent-primary underline" onClick={() => dispatchAppIntent({ type: 'manuscript.open', manuscriptPath: liveConsent.projectPath! })}>打开稿件修改文案</button>}
-            <div className="mt-2 text-[11px] text-text-tertiary">可继续在对话修改文案；明确要求发布当前版本或点击确认按钮后才提交。</div>
-          </div>
-        </div>
-      )}
-      {error && <div className="mt-2 text-xs text-red-600">{error}</div>}
-      {liveConsent.status === 'submit_result_unknown' && liveConsent.publishStatus === 'unknown' && (
-        <div className="mt-3 text-xs text-text-secondary">
-          <div>先检查小红书笔记管理；若已发布或仍无法确定，请勿重发。核实未发布后，可在对话中说明；恢复会原地更新文案并保留视频，不会发帖。</div>
-          <label className="mt-2 flex items-center gap-2">
-            <input type="checkbox" checked={acknowledgedNotPublished} onChange={(event) => setAcknowledgedNotPublished(event.target.checked)} disabled={Boolean(busyAction)} />
-            我已在小红书笔记管理核实这次没有发布成功
-          </label>
-          <button type="button" onClick={() => void act('recoverUnpublished')} disabled={!acknowledgedNotPublished || Boolean(busyAction)} className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs text-text-primary disabled:opacity-50">
-            {busyAction === 'recoverUnpublished' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-            已核实未发布，恢复发布页
-          </button>
-        </div>
-      )}
-      {!terminal && !running && (
-        <div className="mt-3 flex items-center gap-2">
-          {liveConsent.status === 'awaiting_confirmation' && (
-            <button
-              type="button"
-              onClick={() => void act('confirm')}
-              disabled={Boolean(busyAction) || Boolean(titleError)}
-              className="inline-flex items-center gap-1.5 rounded-md bg-accent-primary px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
-            >
-              {busyAction === 'confirm' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-              确认发布
-            </button>
-          )}
-          {(liveConsent.status === 'blocked' || liveConsent.status === 'published_reset_failed') && (
-            <button
-              type="button"
-              onClick={() => void act('retry')}
-              disabled={Boolean(busyAction)}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs text-text-primary disabled:opacity-50"
-            >
-              {busyAction === 'retry' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-              {liveConsent.status === 'published_reset_failed' ? '恢复发布页' : '安全重试'}
-            </button>
-          )}
-          {liveConsent.publishStatus === 'not_submitted' && (
-            <button
-              type="button"
-              onClick={() => void act('cancel')}
-              disabled={Boolean(busyAction)}
-              className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs text-text-secondary hover:bg-surface-secondary disabled:opacity-50"
-            >
-              <XCircle className="h-3.5 w-3.5" />
-              取消
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  );
+  return <div className="mt-3 rounded-xl border border-border p-3 text-sm">
+    <p>小红书 · 《{consent.title}》</p>
+    <p className="mt-1 text-xs text-text-tertiary">上传与最终提交需要分别点击按钮确认。</p>
+    <button type="button" className="mt-3 rounded-lg border border-border px-3 py-2 text-xs" onClick={async () => {
+      const result = await window.ipcRenderer.publication.getJob({ platform: 'xiaohongshu', jobId: consent.jobId });
+      if (!result.success || !result.job) setError(result.error || '读取发布任务失败');
+      else { setJob(result.job); setOpen(true); }
+    }}>打开发布确认卡</button>
+    {error && <p className="text-xs text-red-600">{error}</p>}
+    {open && job && <PublicationPanel source={job.source} initialJob={job} onClose={() => setOpen(false)} />}
+  </div>;
 }
 
 export type ChatMessageLinkKind =
@@ -1140,7 +990,7 @@ function MessageLinkPreviewCard({
       </span>
       <span className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-border/70 bg-surface-primary/90 px-3 py-2 text-sm font-semibold text-text-secondary">
         <ExternalLink className="h-4 w-4" />
-        <span>打开</span>
+        <span>{target.kind === 'video-project' || target.xhsNote?.productImageSet || target.extension === 'redpost' ? '继续编辑此作品' : '打开'}</span>
         <ChevronDown className="h-4 w-4 text-text-tertiary" />
       </span>
     </span>
@@ -2044,6 +1894,7 @@ export const MessageItem = memo(({
         </div>
       )}
 
+      {!isUser && msg.publicationOffer && <PublicationOfferCard offer={msg.publicationOffer} />}
       {!isUser && msg.xhsPublishConsent && (
         <XhsPublishConsentCard consent={msg.xhsPublishConsent} />
       )}

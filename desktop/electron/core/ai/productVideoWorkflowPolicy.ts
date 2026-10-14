@@ -45,8 +45,7 @@ export const resolveProductVideoVisualPreparation = (input: {
 };
 
 export const isStructuredProductVideoCreation = (metadata?: Record<string, unknown>): boolean => Boolean(
-  metadata?.platform === 'xiaohongshu'
-  && metadata.xhsNoteType === 'video'
+  (metadata?.creationTarget && (metadata.creationTarget as { contentKind?: string }).contentKind === 'video' || metadata?.platform === 'xiaohongshu' && metadata.xhsNoteType === 'video')
   && !metadata.activeXhsNotePath
   && !metadata.activeXhsNoteUri
   && metadata.editorBindingKind !== 'xiaohongshu-note'

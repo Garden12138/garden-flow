@@ -1,3 +1,5 @@
+import type { ProductCreationTarget, ProductPublicationCopy, ProductWorkVersion } from './productCreationTarget';
+
 export type VideoEditorV2ProjectStatus =
   | 'draft'
   | 'generating'
@@ -57,6 +59,7 @@ export interface MediaAssetRecord {
     productId?: string;
     sourceAssetId?: string;
     generationJobId?: string;
+    narrationTextHash?: string;
     prompt?: string;
   };
 }
@@ -79,6 +82,8 @@ export interface ProductVideoProposalScene {
 }
 
 export interface ProductVideoProposal {
+  creationTarget?: ProductCreationTarget;
+  publicationCopy?: ProductPublicationCopy;
   version: 1;
   proposalId: string;
   productId: string;
@@ -97,6 +102,7 @@ export interface ProductVideoProposal {
 export interface ProductVideoSceneState extends ProductVideoProposalScene {
   generationStatus: ProductVideoGenerationStatus;
   generationJobId?: string;
+  generationInputKey?: string;
   generatedAssetId?: string;
   error?: string;
   narrationText?: string;
@@ -276,11 +282,14 @@ export interface RenderOutputRecord {
   path: string;
   mediaAssetId?: string;
   renderFingerprint?: string;
+  outputSha256?: string;
   createdAt: string;
   durationMs?: number;
 }
 
 export interface VideoEditorV2Project {
+  creationTarget?: ProductCreationTarget;
+  workVersion?: ProductWorkVersion;
   version: 2;
   id: string;
   title: string;

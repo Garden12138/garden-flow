@@ -142,6 +142,10 @@ test('editor probe retains the underlying video and text while the cover modal h
   });
   const probe = () => vm.runInContext(`(${probeDouyinPage.toString()})()`, context);
   assert.equal(probe().mediaSignature, 'blob:confirmed-video');
+  assert.equal(probe().videoSourceReady, true);
+  videos[0].src = ''; videos[0].poster = 'blob:poster-only';
+  assert.equal(probe().videoSourceReady, false, 'a poster is not a loaded video identity');
+  videos[0].src = 'blob:confirmed-video';
   assert.equal(probe().videoCount, 1);
   assert.equal(probe().description, '视频描述#猫粮');
   assert.equal(probe().title, '内部标题');
@@ -192,6 +196,9 @@ test('video preview switch requires the unique observed editor tab and rejects d
   tabs.push(new Element('预览视频'));
   assert.equal(switchPreview().code, 'VIDEO_PREVIEW_NOT_UNIQUE');
   tabs.pop();
+  tabs[1].hidden = true;
+  assert.equal(switchPreview().code, 'VIDEO_PREVIEW_NOT_READY');
+  tabs[1].hidden = false;
   dialogs.push(new Element('封面编辑器'));
   assert.equal(switchPreview().code, 'COVER_EDITOR_STILL_OPEN');
   dialogs.pop();
@@ -314,11 +321,11 @@ test('one prepared Douyin draft submits once, keeps unknown results protected an
     jobId: 'douyin_publish_cancelled', contentDigest: 'b'.repeat(64),
     accountId: 'account-1', accountLabel: '测试账号', status: 'prepared', tabId: 11,
   } };
-  const state = { uploaded: false, title: '', description: '', clicked: 0, pressed: 0, throwAfterPress: false, accountId: 'account-1' };
+  const state = { uploaded: false, preview: false, previewAttempts: 0, title: '', description: '', clicked: 0, pressed: 0, throwAfterPress: false, accountId: 'account-1' };
   globalThis.chrome = {
     tabs: {
       query: async () => [{ id: 11, url: `https://creator.douyin.com/creator-micro/content/${state.uploaded ? 'post/video' : 'upload'}` }],
-      update: async () => { state.uploaded = false; state.title = ''; state.description = ''; state.clicked = 0; },
+      update: async () => { state.uploaded = false; state.preview = false; state.title = ''; state.description = ''; state.clicked = 0; },
     },
     scripting: { executeScript: async ({ func, args }) => {
       if (func.name === 'probeDouyinPage') return [{ result: {
@@ -326,11 +333,17 @@ test('one prepared Douyin draft submits once, keeps unknown results protected an
         uploadPage: !state.uploaded, editorPage: state.uploaded,
         accountId: state.accountId, accountLabel: '测试账号', videoInputCount: 1,
         titleEditorCount: 1, title: state.title, descriptionEditorCount: 1, description: state.description,
-        mediaSignature: state.uploaded ? 'blob:video-1' : '',
+        mediaSignature: state.uploaded ? state.preview ? 'blob:video-1' : 'filename:video.mp4' : '',
+        videoSourceReady: state.uploaded && state.preview,
         hasDraft: state.uploaded || Boolean(state.description), uploadBusy: false,
         validationErrors: [], publishButtonCount: 1, publishButtonEnabled: true,
         successText: state.clicked > 0, pendingReviewText: state.clicked > 0,
       } }];
+      if (func.name === 'showDouyinVideoPreview') {
+        state.previewAttempts += 1;
+        if (state.previewAttempts === 1) return [{ result: { ok: false, code: 'VIDEO_PREVIEW_NOT_READY' } }];
+        state.preview = true; return [{ result: { ok: true } }];
+      }
       if (func.name === 'fillDouyinTitle') { state.title = args[0]; return [{ result: { ok: true } }]; }
       if (func.name === 'fillDouyinDescription') { state.description = args[0]; return [{ result: { ok: true } }]; }
       if (func.name === 'publishButtonRect') return [{ result: { x: 100, y: 100 } }];
@@ -358,6 +371,9 @@ test('one prepared Douyin draft submits once, keeps unknown results protected an
   try {
     const prepared = await douyinPublish({ platform: 'douyin', phase: 'prepare', request });
     assert.equal(prepared.prepared, true);
+    assert.equal(state.preview, true);
+    assert.equal(state.previewAttempts, 2, 'wait for the preview control to mount before revealing the owned video');
+    assert.equal(stored.gardenflowDouyinPublisherPreparedJob.mediaSignature, 'blob:video-1', 'filename-only arrival must not become the confirmed media');
     assert.equal(stored.gardenflowDouyinPublisherPreparedJob.jobId, request.jobId);
     assert.equal(state.clicked, 0);
     const repeated = await douyinPublish({ platform: 'douyin', phase: 'prepare', request });
@@ -422,7 +438,7 @@ test('owned upload resumes on Douyin editor page without assigning the video aga
       href: 'https://creator.douyin.com/creator-micro/content/post/video?enter_from=publish_page',
       editorPage: true, uploadPage: false, accountId: request.accountId, accountLabel: request.accountLabel,
       title, titleEditorCount: 1, description, descriptionEditorCount: 1,
-      mediaSignature, hasDraft: true, uploadBusy: false, validationErrors: [],
+      mediaSignature, videoSourceReady: true, hasDraft: true, uploadBusy: false, validationErrors: [],
       publishButtonCount: 1, publishButtonEnabled: true,
     } : func.name === 'fillDouyinTitle' ? (title = args[0], { ok: true })
       : func.name === 'fillDouyinDescription' ? (description = args[0], { ok: true })

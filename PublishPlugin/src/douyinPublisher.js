@@ -1,3 +1,4 @@
+import { publicationUploadReview } from './publicationReview.js';
 import {
   DOUYIN_HOME_URL, DOUYIN_TAB_PATTERN, DOUYIN_UPLOAD_URL, douyinEditorMatches, douyinCoverSnapshotsMatch, douyinImageCoversMatch,
   canonicalDouyinText, fillDouyinDescription, fillDouyinTitle, isDouyinPublishUrl, probeDouyinHomeAccount,
@@ -98,11 +99,11 @@ async function waitForProbe(tabId, predicate, timeoutMs, revealVideo = false) {
   while (Date.now() < deadline) {
     const state = await probe(tabId).catch(() => null);
     if (state && await predicate(state)) return state;
-    if (revealVideo && !previewRevealed && state?.editorPage && !state.mediaSignature && !state.coverEditing) {
+    if (revealVideo && !previewRevealed && state?.editorPage && !state.videoSourceReady && !state.coverEditing) {
       const revealed = await execute(tabId, showDouyinVideoPreview);
-      if (!revealed?.ok) throw Object.assign(new Error('无法打开原任务的视频预览，未提交；请在抖音页面核对'),
+      if (!revealed?.ok && revealed?.code !== 'VIDEO_PREVIEW_NOT_READY') throw Object.assign(new Error('无法打开原任务的视频预览，未提交；请在抖音页面核对'),
         { code: revealed?.code || 'VIDEO_PREVIEW_UNAVAILABLE' });
-      previewRevealed = true;
+      previewRevealed = revealed?.ok === true;
     }
     await sleep(750);
   }
@@ -110,11 +111,8 @@ async function waitForProbe(tabId, predicate, timeoutMs, revealVideo = false) {
 }
 
 async function revealOwnedVideo(tabId, state) {
-  if (!state?.editorPage || state.mediaSignature || state.coverEditing) return state;
-  const revealed = await execute(tabId, showDouyinVideoPreview);
-  if (!revealed?.ok) throw Object.assign(new Error('无法打开原任务的视频预览，未提交；请在抖音页面核对'),
-    { code: revealed?.code || 'VIDEO_PREVIEW_UNAVAILABLE' });
-  return await waitForProbe(tabId, (value) => value.editorPage && Boolean(value.mediaSignature), 15_000) || state;
+  if (!state?.editorPage || state.videoSourceReady || state.coverEditing) return state;
+  return await waitForProbe(tabId, (value) => value.editorPage && value.videoSourceReady && Boolean(value.mediaSignature), 15_000, true) || state;
 }
 
 async function setMediaFile(tabId, filePath, coverToken) {
@@ -311,10 +309,10 @@ async function prepare(request) {
       && stored.accountId === request.accountId && stored.accountLabel === request.accountLabel
       && (!stored.mediaPath || stored.mediaPath === request.mediaPath)
       && ['preparing', 'prepared'].includes(stored.status)) before = await revealOwnedVideo(tabId, before);
-    if (stored?.status === 'prepared' && stored.tabId === tabId
+    if (stored?.status === 'prepared' && stored.tabId === tabId && before.videoSourceReady
       && douyinImageCoversMatch(stored.imageCover, request.imageCover)
       && douyinEditorMatches(before, request, stored)) {
-      return { ...outcome(request, true, 'not_submitted'), prepared: true };
+      return { ...outcome(request, true, 'not_submitted'), prepared: true, contentDigest: request.contentDigest, uploadReview: publicationUploadReview(request, before) };
     }
     if (stored?.status === 'preparing' && stored.tabId === tabId && stored.jobId === request.jobId
       && stored.contentDigest === request.contentDigest && before.coverEditing) {
@@ -340,8 +338,11 @@ async function prepare(request) {
         return outcome(request, false, 'not_submitted', 'not_started', 'VIDEO_INPUT_NOT_FOUND', '未找到唯一的视频上传控件');
       }
     }
-    const uploaded = await waitForProbe(tabId, (state) => state.editorPage && Boolean(state.mediaSignature)
-      && state.descriptionEditorCount === 1 && state.titleEditorCount === 1, 8 * 60_000);
+    // A filename can appear before the actual preview is mounted. Binding it
+    // as the uploaded video produces an immediately stale confirmation when
+    // the preview and its default covers finish loading.
+    const uploaded = await waitForProbe(tabId, (state) => state.editorPage && state.videoSourceReady && Boolean(state.mediaSignature)
+      && state.descriptionEditorCount === 1 && state.titleEditorCount === 1, 8 * 60_000, true);
     if (!uploaded) return outcome(request, false, 'not_submitted', 'not_started', 'UPLOAD_TIMEOUT', '未能核验视频上传和描述输入框');
     const titled = await execute(tabId, fillDouyinTitle, [request.title]);
     if (!titled?.ok) return outcome(request, false, 'not_submitted', 'not_started', 'TITLE_FILL_FAILED', '作品标题未能回读');
@@ -365,7 +366,7 @@ async function prepare(request) {
     if (verifiedCover) await retainVerifiedCover();
     const ready = await waitForProbe(tabId, async (state) => {
       if (state.title !== request.title || canonicalDouyinText(state.description) !== canonicalDouyinText(description)
-        || !state.mediaSignature || state.mediaSignature !== uploaded.mediaSignature || state.uploadBusy || state.publishButtonCount !== 1
+        || !state.videoSourceReady || !state.mediaSignature || state.mediaSignature !== uploaded.mediaSignature || state.uploadBusy || state.publishButtonCount !== 1
         || !state.publishButtonEnabled || state.validationErrors?.length || state.coverEditing) return false;
       if (verifiedCover && !douyinCoverSnapshotsMatch(state.coverSnapshot, verifiedCover)) {
         // The page can replace a saved cover after its first readback. Re-read
@@ -382,7 +383,7 @@ async function prepare(request) {
       accountLabel: request.accountLabel, tabId, status: 'prepared', title: request.title, description,
       mediaSignature: ready.mediaSignature, mediaPath: request.mediaPath,
       coverSnapshot: ready.coverSnapshot, imageCover: request.imageCover });
-    return { ...outcome(request, true, 'not_submitted'), prepared: true };
+    return { ...outcome(request, true, 'not_submitted'), prepared: true, contentDigest: request.contentDigest, uploadReview: publicationUploadReview(request, ready) };
   } catch (error) {
     const stored = await owner();
     if (error?.coverReadbackDiagnostic && stored?.jobId === request.jobId && stored.contentDigest === request.contentDigest) {
@@ -458,7 +459,7 @@ async function submit(request) {
     if (before?.accountId === request.accountId && before.accountLabel === request.accountLabel) {
       before = await revealOwnedVideo(tabId, before);
     }
-    if (!douyinEditorMatches(before, request, stored) || before.publishButtonCount !== 1 || !before.publishButtonEnabled
+    if (!before.videoSourceReady || !douyinEditorMatches(before, request, stored) || before.publishButtonCount !== 1 || !before.publishButtonEnabled
       || before.successText || before.pendingReviewText || before.publishedText) {
       return outcome(request, false, 'not_submitted', 'not_started', 'EDITOR_CHANGED', '发布页内容、账号或媒体已改变');
     }

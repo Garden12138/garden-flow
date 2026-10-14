@@ -1,9 +1,10 @@
+import { requirePublicationAction, recordPublicationUpload, validatePublicationContext } from './publicationExecutionPolicy';
 import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { BrowserWindow } from 'electron';
 import {
-    getActiveSpaceId, getTikTokPublishJob, getTikTokPublisherBinding, getTikTokVideoVersion,
+    assertProductEditsSettled, getProductEditorPublicationRevision, getActiveSpaceId, getTikTokPublishJob, getTikTokPublisherBinding, getTikTokVideoVersion,
     getWorkspacePaths, listTikTokPublishJobs, setTikTokPublisherBinding, upsertTikTokPublishJob,
 } from '../db';
 import { TIKTOK_PUBLISHER_CAPABILITY } from '../../shared/xhsPublisher';
@@ -58,23 +59,28 @@ export function validateTikTokPostReceipt(value: unknown, job: TikTokPublishJob)
 
 function requestForJob(job: TikTokPublishJob): TikTokPublishRequestV1 {
     return {
-        platform: 'tiktok', protocolVersion: 1, jobId: job.id, sessionId: job.sessionId,
+        platform: 'tiktok', protocolVersion: 1, confirmationVersion: 2, jobId: job.id, sessionId: job.sessionId,
         versionId: job.versionId, revision: job.versionRevision, projectId: job.projectId,
         renderId: job.renderId, mediaAssetId: job.mediaAssetId, mediaPath: job.mediaPath,
         contentDigest: job.contentDigest, accountId: job.accountId, accountLabel: job.accountLabel,
         title: job.title, description: job.description, hashtags: job.hashtags,
         language: job.language, market: job.market, publishSettings: job.publishSettings,
-        mediaSha256: job.mediaSha256, mediaSize: job.mediaSize,
+        mediaSha256: job.mediaSha256, mediaSize: job.mediaSize, mediaDurationMs: job.mediaDurationMs,
     };
 }
+
+import { assertProductPublicationTarget } from './productWorkVersionService';
+import { productTargetKey, TIKTOK_MAX_MEDIA_BYTES } from '../../shared/productCreationTarget';
 
 async function candidateForVersion(versionId: string): Promise<Candidate> {
     const spaceId = getActiveSpaceId();
     const workspace = getWorkspacePaths().media;
     const version = getTikTokVideoVersion(versionId);
     if (!version) throw new Error('TikTok版本不存在或不属于当前空间');
+    assertProductEditsSettled('video:' + version.projectId);
     const project = await getVideoEditorV2Project(version.projectId);
     if (!project?.productVideo || project.projectKind !== 'product-video') throw new Error('TikTok视频工程不存在');
+    const variant = await assertProductPublicationTarget(project, 'tiktok');
     if (project.canvas.aspectRatio !== '9:16') throw new Error('TikTok版本须使用竖屏 9:16 视频');
     const publishSettings = validateTikTokPublishSettings(version.publishSettings);
     if (project.productVideo.scenes.some(scene => scene.voiceoverAssetId && ['stale', 'failed', 'duration-conflict'].includes(scene.voiceoverStatus || ''))) {
@@ -90,7 +96,7 @@ async function candidateForVersion(versionId: string): Promise<Candidate> {
         throw new Error('当前成片路径不合法或文件已丢失');
     }
     const mediaSize = (await fs.stat(mediaPath)).size;
-    if (path.extname(mediaPath).toLowerCase() !== '.mp4' || mediaSize <= 0 || mediaSize > 30 * 1024 ** 3) throw new Error('TikTok 成片须为有效的 MP4 文件');
+    if (path.extname(mediaPath).toLowerCase() !== '.mp4' || mediaSize <= 0 || mediaSize >= TIKTOK_MAX_MEDIA_BYTES) throw new Error('TikTok 成片须为有效的 MP4 文件');
     const mediaHash = createHash('sha256');
     for await (const chunk of createReadStream(mediaPath)) mediaHash.update(chunk);
     const mediaSha256 = mediaHash.digest('hex');
@@ -100,6 +106,8 @@ async function candidateForVersion(versionId: string): Promise<Candidate> {
         || getTikTokVideoVersion(versionId)?.revision !== version.revision) throw new Error('复核期间工作空间或稿件已变化');
     const digest = createHash('sha256').update(JSON.stringify({
         platform: 'tiktok', versionId: version.id, revision: version.revision,
+        ...(getProductEditorPublicationRevision(project.id) ? { editorRevision: getProductEditorPublicationRevision(project.id) } : {}),
+        ...(project.creationTarget?.profileVersion ? { creationTargetKey: productTargetKey(variant.target) } : {}),
         projectId: project.id, renderId: output.id, mediaAssetId: asset.id,
         title: version.title, description: version.description, hashtags: version.hashtags,
         language: version.language, market: version.market, publishSettings,
@@ -148,7 +156,7 @@ export class TikTokPublisherService {
     private save(job: TikTokPublishJob): TikTokPublishJob {
         upsertTikTokPublishJob(job);
         for (const window of BrowserWindow.getAllWindows()) {
-            if (!window.isDestroyed()) window.webContents.send('tiktok-publisher:job-changed', job);
+            if (!window.isDestroyed()) { window.webContents.send('tiktok-publisher:job-changed', job); window.webContents.send('publication:changed'); }
         }
         return job;
     }
@@ -322,6 +330,7 @@ export class TikTokPublisherService {
     }
 
     private async stageDraftUnlocked(jobId: string): Promise<TikTokPublishJob> {
+        const context = await requirePublicationAction('tiktok', jobId, 'upload');
         const job = await this.validateConfirmation(jobId);
         // Recheck after async validation so a concurrent confirmation wins only once.
         if (!['awaiting_confirmation', 'blocked'].includes(getTikTokPublishJob(jobId)?.status || '')) throw new Error('任务状态已变化');
@@ -345,14 +354,22 @@ export class TikTokPublisherService {
             if (getActiveSpaceId() !== job.spaceId || fresh.digest !== job.contentDigest) {
                 return this.save({ ...job, status: 'superseded', errorCode: 'VERSION_CHANGED', errorMessage: '上传期间稿件或发布设置已变化，未提交', updatedAt: Date.now() });
             }
+            await assertUploadSnapshot(job);
+            const live = this.getJob(job.id);
+            if (!live || ['cancelled', 'superseded'].includes(live.status)) return live || job;
+            await validatePublicationContext('tiktok', jobId, 'upload');
+            recordPublicationUpload(context, response);
             return this.save({ ...job, status: 'awaiting_confirmation', errorCode: '', errorMessage: '', updatedAt: Date.now() });
         } catch (error) {
+            const live = this.getJob(job.id);
+            if (live && ['cancelled', 'superseded'].includes(live.status)) return live;
             return this.save({ ...job, status: 'blocked', errorCode: 'DRAFT_PREPARATION_FAILED',
                 errorMessage: error instanceof Error ? error.message : String(error), updatedAt: Date.now() });
         }
     }
 
     async confirm(jobId: string): Promise<TikTokPublishJob> {
+        await requirePublicationAction('tiktok', jobId, 'submit');
         const job = await this.validateConfirmation(jobId);
         if (!['awaiting_confirmation', 'blocked'].includes(getTikTokPublishJob(jobId)?.status || '')) throw new Error('任务状态已变化');
         const queued = this.save({ ...job, status: 'queued', confirmedAt: Date.now(), updatedAt: Date.now(), errorCode: '', errorMessage: '' });
@@ -363,7 +380,7 @@ export class TikTokPublisherService {
     cancel(jobId: string): TikTokPublishJob {
         this.ensureReconciled();
         const job = getTikTokPublishJob(jobId);
-        if (!job || !['awaiting_confirmation', 'queued', 'blocked'].includes(job.status)) throw new Error('此任务已提交或无法取消');
+        if (!job || !['awaiting_confirmation', 'queued', 'uploading', 'blocked'].includes(job.status)) throw new Error('此任务已提交或无法取消');
         return this.save({ ...job, status: 'cancelled', updatedAt: Date.now() });
     }
 
@@ -472,20 +489,16 @@ export class TikTokPublisherService {
             }
             await assertUploadSnapshot(job);
             job = this.save({ ...job, status: 'preflighting', updatedAt: Date.now() });
-            const prepared = record(await invoke('prepare', 10 * 60_000));
-            job = getTikTokPublishJob(jobId) || job;
-            if (job.status === 'cancelled') return;
-            if (prepared.jobId !== job.id || prepared.contentDigest !== job.contentDigest
-                || prepared.ok !== true || prepared.prepared !== true || prepared.publishStatus !== 'not_submitted') {
-                this.save({ ...job, status: 'blocked', errorCode: String(prepared.code || 'PREPARE_FAILED'), errorMessage: String(prepared.message || 'TikTok页面准备失败'), updatedAt: Date.now() });
-                return;
-            }
             const fresh = await candidateForVersion(job.versionId);
             if (getActiveSpaceId() !== job.spaceId || fresh.digest !== job.contentDigest || fresh.renderId !== job.renderId) {
                 this.save({ ...job, status: 'superseded', errorCode: 'VERSION_CHANGED', errorMessage: '准备期间工程已更新，未提交', updatedAt: Date.now() });
                 return;
             }
             await assertUploadSnapshot(job);
+            const currentBeforeSubmit = getTikTokPublishJob(job.id);
+            if (!currentBeforeSubmit || currentBeforeSubmit.status === 'superseded' || currentBeforeSubmit.status === 'cancelled') return;
+            await validatePublicationContext('tiktok', job.id, 'submit');
+            assertProductEditsSettled('video:' + job.projectId, job.spaceId);
             job = this.save({ ...job, status: 'submitting', publishStatus: 'submitted', submittedAt: Date.now(), updatedAt: Date.now() });
             const response = record(await invoke('submit', 3 * 60_000));
             job = getTikTokPublishJob(jobId) || job;

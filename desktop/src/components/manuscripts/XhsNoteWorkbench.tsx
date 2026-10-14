@@ -2,6 +2,7 @@ import { lazy, Suspense, useMemo } from 'react';
 import { Loader2 } from 'lucide-react';
 import type { ChatMessageLinkTarget } from '../MessageItem';
 import { XhsNotePreviewPane } from '../../pages/gardenflow/XhsNotePreviewPane';
+import { ProductEditorContext, useProductEditor } from '../product-video/ProductEditorContext';
 
 const ChatWorkspace = lazy(async () => ({
   default: (await import('../../pages/Chat')).Chat,
@@ -40,6 +41,8 @@ export function XhsNoteWorkbench({
   isActive = false,
 }: XhsNoteWorkbenchProps) {
   const projectPath = target.projectPath || target.localPathCandidate || target.relativePath || target.href;
+  const isProduct = Boolean(target.xhsNote?.productImageSet);
+  const productEditor = useProductEditor(isProduct ? { kind: 'image-set', path: projectPath } : null);
   const taskHints = useMemo(() => ({
     ...(editorSessionMetadata || {}),
     mode: 'xiaohongshu-note-editing',
@@ -56,21 +59,24 @@ export function XhsNoteWorkbench({
   }), [editorSessionMetadata, projectPath, target]);
 
   return (
+    <ProductEditorContext.Provider value={isProduct ? productEditor : null}>
     <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_420px] bg-surface-primary text-text-primary">
       <section className="min-h-0 border-r border-border bg-surface-primary">
         <XhsNotePreviewPane target={target} />
       </section>
-      <aside className="min-h-0 bg-surface-secondary/55">
+      <aside data-product-project-editor-chat={isProduct ? '' : undefined} className="min-h-0 bg-surface-secondary/55">
         <div className="flex h-full min-h-0 flex-col">
           <div className="border-b border-border bg-surface-primary/70 px-3 py-2 text-[11px] leading-5 text-text-tertiary">
             这是当前稿件的独立对话；原创作对话仍保留在“对话”列表中，关闭稿件编辑器即可返回。
           </div>
           <div className="min-h-0 flex-1 overflow-hidden">
-            {editorChatSessionId && editorChatReady ? (
+            {(isProduct ? productEditor.sessionId : editorChatSessionId && editorChatReady) ? (
               <Suspense fallback={<div className="flex h-full items-center justify-center text-text-tertiary">AI 会话加载中...</div>}>
                 <ChatWorkspace
                   isActive={isActive}
-                  fixedSessionId={editorChatSessionId}
+                  fixedSessionId={(isProduct ? productEditor.sessionId : editorChatSessionId)!}
+                  beforeSend={isProduct ? productEditor.beforeSend : undefined}
+                  keepComposerInputActive={isProduct}
                   showClearButton={false}
                   showWelcomeShortcuts={false}
                   showComposerShortcuts={target.noteType === 'video'}
@@ -90,7 +96,7 @@ export function XhsNoteWorkbench({
                   messageWorkflowPlacement="bottom"
                   messageWorkflowVariant="compact"
                   messageWorkflowEmphasis="default"
-                  fixedSessionTaskHints={taskHints}
+                  fixedSessionTaskHints={isProduct ? { workflowKind: 'product-project-edit' } : taskHints}
                   focusSignal={chatFocusSignal}
                 />
               </Suspense>
@@ -108,5 +114,6 @@ export function XhsNoteWorkbench({
         </div>
       </aside>
     </div>
+    </ProductEditorContext.Provider>
   );
 }

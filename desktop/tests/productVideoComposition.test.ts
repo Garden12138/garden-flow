@@ -6,6 +6,18 @@ import { buildVideoEditorV2RemotionComposition } from '../shared/videoAutoEditRe
 import { migrateProductVideoVoiceoverProject, productVideoNarrationHash, resolveProductVoiceoverPlacement } from '../shared/productVideoVoiceoverTimeline.ts';
 import { productSceneFrameRanges } from '../shared/productVideoTiming.ts';
 import type { VideoEditorV2Project } from '../shared/videoAutoEdit.ts';
+import { sceneOpacityRange } from '../shared/videoMotionLayerPolicy.ts';
+
+test('short controlled edits have visible frames and non-overlapping opacity transitions', () => {
+  assert.equal(sceneOpacityRange(1, 30), null);
+  assert.equal(sceneOpacityRange(2, 30), null);
+  for (const fps of [30, 60]) for (const duration of [3, 15, 16, 17, 90]) {
+    const range = sceneOpacityRange(duration, fps)!;
+    assert.equal(range[0], 0); assert.equal(range.at(-1), duration);
+    assert.ok(range.every((frame, index) => index === 0 || frame > range[index - 1]));
+  }
+  assert.deepEqual(sceneOpacityRange(90, 30), [0, 8, 82, 90], 'Existing normal-length fades remain compatible');
+});
 
 test('Remotion packages stay pinned to one exact version', () => {
   const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8')) as {

@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import path from 'node:path';
-import { getChatSession, getWorkspacePaths, listAgentTasks, parseAgentTaskRecord } from '../db';
+import { assertProductEditsSettled, getChatSession, getWorkspacePaths, listAgentTasks, parseAgentTaskRecord } from '../db';
 import { getAbsoluteMediaPath, listMediaAssets } from './mediaLibraryStore';
 import { isPathWithinRoots } from './localAssetManager';
 import { getXhsNoteProject } from './xhsNoteProjectStore';
@@ -20,8 +20,11 @@ function record(value: unknown): Record<string, unknown> {
 
 async function currentProjectExport(projectId: string) {
     if (!/^[a-zA-Z0-9_-]+$/.test(projectId)) throw new Error('视频工程 ID 不合法');
+    assertProductEditsSettled('video:' + projectId);
     const project = await getVideoEditorV2Project(projectId);
     if (!project) throw new Error('视频工程不存在');
+    if (project.creationTarget && (project.creationTarget.platform !== 'xiaohongshu' || project.workVersion?.publicationBinding?.platform !== 'xiaohongshu')) throw new Error('当前工程目标不是已绑定的小红书视频，请创建独立小红书版本');
+    if (project.workVersion?.copyReviewRequired) throw new Error('平台副本文案尚未核对，请在工作台核对后再准备发布');
     let legacyFingerprint: string | undefined;
     const output = project.renderOutputs[0];
     const snapshot = project.remotionSnapshot;

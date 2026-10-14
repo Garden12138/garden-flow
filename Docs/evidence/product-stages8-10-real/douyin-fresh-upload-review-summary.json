@@ -1,0 +1,15 @@
+{
+  "sameTaskId": "douyin_publish_9edc0d22-216a-40e0-9b9c-54ff335668b5",
+  "contentDigest": "93050d338cd831d4a9b31efa0fa676e4d1ec5cea4fed955d04757f3f79737927",
+  "accountId": "27605448237",
+  "publishStatusAfterRecheck": "not_submitted",
+  "actualVideoSourceReady": true,
+  "portraitCoverRecorded": true,
+  "landscapeCoverRecorded": true,
+  "recovery": "原任务草稿经具体授权放弃；重新上传同一MP4，预览挂载早期阻断后用可见控件恢复原文案，同一任务续核验；没有额外上传或新建工程",
+  "paidMediaRequests": {
+    "image": 0,
+    "video": 0,
+    "voice": 0
+  }
+}

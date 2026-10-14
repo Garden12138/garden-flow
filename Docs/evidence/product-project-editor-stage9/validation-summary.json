@@ -1,0 +1,49 @@
+{
+  "baseline": "e734280",
+  "date": "2026-10-13",
+  "node": "22.23.2",
+  "pnpm": "10.28.2",
+  "commands": [
+    {
+      "command": "pnpm test",
+      "result": "passed",
+      "tests": 464,
+      "fail": 0,
+      "skipped": 0
+    },
+    {
+      "command": "pnpm check",
+      "result": "passed",
+      "pluginSuites": [
+        28,
+        24,
+        6,
+        29,
+        83
+      ],
+      "publisherTests": 120
+    },
+    {
+      "command": "pnpm build --config.compression=normal",
+      "result": "passed",
+      "architecture": "macOS arm64",
+      "signed": false
+    }
+  ],
+  "dmgIntegrity": "passed",
+  "packageZipIntegrity": "passed",
+  "isolatedRoot": "/private/tmp/gardenflow-stage9-qa-final",
+  "productId": "product_1791849959120_fe12e3c0",
+  "editorMessageRounds": 60,
+  "localTextRequests": 180,
+  "paidMediaRequests": {
+    "image": 0,
+    "video": 0,
+    "voice": 0
+  },
+  "realModelRequests": 0,
+  "unsentComposerRetentionChecks": 20,
+  "videoExports": 16,
+  "imageSetZipExports": 4,
+  "crossEnvironmentReopen": "passed"
+}

@@ -1,0 +1,53 @@
+{
+  "videoExports": [
+    {
+      "number": 0,
+      "fingerprint": "26a21a8e446367b43648fa27043a2e072a67d14cb1dda730596d85736fbd4d93",
+      "outputSha256": "dbe5d78bdc6067ecde88d3c02cda5e41dbb4ef1238ab8a6c01929a8467091bf9",
+      "semanticDigest": "9f485e68604d16eaea12d8ac3c369402271be585fe2e246dd30bb68beb62c99e",
+      "mediaSha256": "dbe5d78bdc6067ecde88d3c02cda5e41dbb4ef1238ab8a6c01929a8467091bf9",
+      "assetId": "media_1791878119558_6e38c4a9",
+      "revisionBefore": "7ff0840a8d5626dee624057159fb2c73021d397f38ea339f4d3fd93e28c2b299",
+      "revisionAfter": "96200ec3a49eb80cf8a9261cafbb1937accb033b06fca463e7a2b8d5154b5eab",
+      "offerCountBefore": 4,
+      "offerCountAfter": 5
+    },
+    {
+      "number": 1,
+      "fingerprint": "26a21a8e446367b43648fa27043a2e072a67d14cb1dda730596d85736fbd4d93",
+      "outputSha256": "dbe5d78bdc6067ecde88d3c02cda5e41dbb4ef1238ab8a6c01929a8467091bf9",
+      "semanticDigest": "9f485e68604d16eaea12d8ac3c369402271be585fe2e246dd30bb68beb62c99e",
+      "mediaSha256": "dbe5d78bdc6067ecde88d3c02cda5e41dbb4ef1238ab8a6c01929a8467091bf9",
+      "assetId": "media_1791878119558_6e38c4a9",
+      "revisionBefore": "96200ec3a49eb80cf8a9261cafbb1937accb033b06fca463e7a2b8d5154b5eab",
+      "revisionAfter": "96200ec3a49eb80cf8a9261cafbb1937accb033b06fca463e7a2b8d5154b5eab",
+      "offerCountBefore": 5,
+      "offerCountAfter": 5
+    },
+    {
+      "number": 2,
+      "fingerprint": "26a21a8e446367b43648fa27043a2e072a67d14cb1dda730596d85736fbd4d93",
+      "outputSha256": "dbe5d78bdc6067ecde88d3c02cda5e41dbb4ef1238ab8a6c01929a8467091bf9",
+      "semanticDigest": "9f485e68604d16eaea12d8ac3c369402271be585fe2e246dd30bb68beb62c99e",
+      "mediaSha256": "dbe5d78bdc6067ecde88d3c02cda5e41dbb4ef1238ab8a6c01929a8467091bf9",
+      "assetId": "media_1791878119558_6e38c4a9",
+      "revisionBefore": "96200ec3a49eb80cf8a9261cafbb1937accb033b06fca463e7a2b8d5154b5eab",
+      "revisionAfter": "96200ec3a49eb80cf8a9261cafbb1937accb033b06fca463e7a2b8d5154b5eab",
+      "offerCountBefore": 5,
+      "offerCountAfter": 5
+    }
+  ],
+  "imageExport": {
+    "semanticDigest": "fab93df86efd4f95f9944a4421a7fba1f98d482fdf2c8c607fb411ff259a9a8a",
+    "mediaUnchanged": true,
+    "offerCountBefore": 3,
+    "offerCountAfter": 3
+  },
+  "duplicateAsk": false,
+  "noNewModelRequest": true,
+  "paidMediaRequests": {
+    "image": 0,
+    "video": 0,
+    "voice": 0
+  }
+}

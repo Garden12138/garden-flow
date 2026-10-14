@@ -296,7 +296,7 @@ export function BuiltinAutomationSection({ isActive = true, onOpenSession }: Bui
                                                 <span>下次运行 {formatRunTime(task.nextRunAt)}</span>
                                             </>
                                         ) : (
-                                            <span>触发方式：小红书作品制作完成</span>
+                                            <span>触发方式：对应平台完整作品导出完成</span>
                                         )}
                                         <span>{lastResultLabel(task)}</span>
                                     </div>

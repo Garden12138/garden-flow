@@ -1,3 +1,4 @@
+import { ProductCreationTargetSchema } from '../../shared/productCreationTarget';
 import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -40,6 +41,7 @@ interface SaveXhsNoteInput {
     document: unknown;
     expectedRevision?: number;
     trustedProductImageSetState?: boolean;
+    trustedProductVideoState?: boolean;
 }
 
 interface BindXhsNoteMediaInput {
@@ -319,7 +321,19 @@ export async function getXhsNoteProject(inputPath: string): Promise<XhsNoteProje
     return toSnapshot(project, document);
 }
 
-async function saveXhsNoteProjectUnlocked(input: SaveXhsNoteInput): Promise<XhsNoteProjectSnapshot> {
+/** Repair derived HTML/manifest after a journaled file commit; the authoritative revision stays unchanged. */
+export async function refreshXhsNoteProjectProjection(inputPath: string): Promise<void> {
+    const project = resolveProjectPath(inputPath);
+    await writeDocumentProjection(project, await readStoredDocument(project));
+}
+
+/** Roll back a prepared local transaction without introducing a saved revision. */
+export async function restoreXhsNoteProjectSnapshot(snapshot: XhsNoteProjectSnapshot): Promise<void> {
+    const project = resolveProjectPath(snapshot.relativePath);
+    await writeDocumentProjection(project, snapshot.document);
+}
+
+export async function saveXhsNoteProjectUnlocked(input: SaveXhsNoteInput): Promise<XhsNoteProjectSnapshot> {
     const requestedType: XhsNoteType = input.noteType === 'video' ? 'video' : 'image';
     const project = input.path ? resolveProjectPath(input.path) : createDefaultProjectPath(requestedType, input.document);
     if (input.noteType && project.noteType !== input.noteType) {
@@ -337,10 +351,15 @@ async function saveXhsNoteProjectUnlocked(input: SaveXhsNoteInput): Promise<XhsN
     const mergedInput: Record<string, unknown> = current
         ? { ...current, ...asDocumentRecord(input.document), noteType: project.noteType }
         : { ...asDocumentRecord(input.document), noteType: project.noteType };
+    if (current?.creationTarget && JSON.stringify(mergedInput.creationTarget) !== JSON.stringify(current.creationTarget)) throw new Error('工程平台和规格不可原地更改，请创建独立平台版本');
+    if (current?.workVersion && JSON.stringify(mergedInput.workVersion) !== JSON.stringify(current.workVersion)) {
+        const proposed = mergedInput.workVersion as XhsNoteDocument['workVersion'];
+        if (!input.trustedProductVideoState || JSON.stringify({ ...proposed, copyReviewRequired: undefined }) !== JSON.stringify({ ...current.workVersion, copyReviewRequired: undefined })) throw new Error('工程版本关系不可改写');
+    }
     if (!input.trustedProductImageSetState && (current?.productImageSet || mergedInput.productImageSet)) {
         const requested = asDocumentRecord(mergedInput.productImageSet);
         const existing = current?.productImageSet;
-        if (!existing || ['version', 'proposalId', 'spaceId', 'productSnapshot', 'assets', 'generationHistory'].some((key) =>
+        if (!existing || ['version', 'proposalId', 'spaceId', 'productSnapshot', 'assets', 'generationHistory', 'creationTarget'].some((key) =>
             JSON.stringify(requested[key]) !== JSON.stringify((existing as unknown as Record<string, unknown>)[key]))) {
             throw new Error('商品快照和工程素材只能通过套图工具修改');
         }
@@ -352,7 +371,11 @@ async function saveXhsNoteProjectUnlocked(input: SaveXhsNoteInput): Promise<XhsN
             }
         }
     }
-    const normalized = normalizeXhsNoteDocument(mergedInput, project.noteType);
+    let normalized = normalizeXhsNoteDocument(mergedInput, project.noteType);
+    if (current?.productImageSet && !normalized.creationTarget) {
+        const creationTarget = ProductCreationTargetSchema.parse({ platform: 'xiaohongshu', contentKind: 'image-set', language: 'zh-CN', market: '中国', profileId: 'legacy-xiaohongshu-image-set', profileVersion: 0, allowPaidMedia: false, spec: { width: 1440, height: 1920, aspectRatio: '3:4', format: 'png' } });
+        normalized = { ...normalized, creationTarget, productImageSet: { ...normalized.productImageSet!, creationTarget }, workVersion: { workId: current.productImageSet.proposalId, versionId: current.productImageSet.proposalId, publicationBinding: { platform: 'xiaohongshu', notePath: project.relativePath } } };
+    }
     const now = new Date().toISOString();
     const nextDocument: XhsNoteDocument = {
         ...normalized,
@@ -533,7 +556,7 @@ export function isStructuredXhsNoteProject(projectPath: string): boolean {
 }
 
 const xhsMutationQueues = new Map<string, Promise<unknown>>();
-function enqueueXhsMutation<T>(projectPath: string, operation: () => Promise<T>): Promise<T> {
+export function enqueueXhsMutation<T>(projectPath: string, operation: () => Promise<T>): Promise<T> {
     if (fsSync.existsSync(projectPath)) projectPath = fsSync.realpathSync(projectPath);
     const previous = xhsMutationQueues.get(projectPath) || Promise.resolve();
     const pending = previous.catch(() => undefined).then(operation);
@@ -542,8 +565,20 @@ function enqueueXhsMutation<T>(projectPath: string, operation: () => Promise<T>)
     return pending;
 }
 
-export function saveXhsNoteProject(input: SaveXhsNoteInput): Promise<XhsNoteProjectSnapshot> {
+export async function saveXhsNoteProject(input: SaveXhsNoteInput): Promise<XhsNoteProjectSnapshot> {
     const project = input.path ? resolveProjectPath(input.path) : createDefaultProjectPath(input.noteType === 'video' ? 'video' : 'image', input.document);
+    if (!input.trustedProductImageSetState && !input.trustedProductVideoState && fsSync.existsSync(path.join(project.absolutePath, XHS_NOTE_FILE))) {
+        const current = await getXhsNoteProject(project.absolutePath);
+        if (current.document.productImageSet) {
+            const { saveManualProductImageSet } = await import('./productProjectEditorService');
+            return saveManualProductImageSet({ ...input, path: project.relativePath });
+        }
+        if (current.document.workVersion || current.document.sourceVideoExport) {
+            const { resolveProductNoteEditor, saveManualProductVideoNote } = await import('./productProjectEditorService');
+            const ref = await resolveProductNoteEditor(project.relativePath);
+            if (ref?.kind === 'video') return saveManualProductVideoNote({ ...input, path: project.relativePath }, ref);
+        }
+    }
     return enqueueXhsMutation(project.absolutePath, () => saveXhsNoteProjectUnlocked({ ...input, path: project.absolutePath }));
 }
 

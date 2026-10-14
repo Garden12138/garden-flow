@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { PublicationButton } from '../components/publication/PublicationPanel';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Player } from '@remotion/player';
 import {
     CheckCircle2,
@@ -19,6 +20,10 @@ import { buildVideoEditorV2RemotionComposition } from '../../shared/videoAutoEdi
 import { formatProductSceneSeconds, productSceneDurationFrames, snapProductSceneDurationMs } from '../../shared/productVideoTiming';
 import { subscribeDataChanged } from '../bridge/appEvents';
 import { ProductVideoTimeline } from '../components/product-video/ProductVideoTimeline';
+import { ProductEditorContext, useProductEditor } from '../components/product-video/ProductEditorContext';
+import type { ProductProjectEditOperation } from '../../shared/productProjectEditor';
+const EditorChat = lazy(async () => ({ default: (await import('./Chat')).Chat }));
+import { ProductPlatformVersions } from '../components/product-video/ProductPlatformVersions';
 import { TikTokVideoPanel } from '../components/product-video/TikTokVideoPanel';
 import { VideoMotionComposition } from '../components/manuscripts/remotion/VideoMotionComposition';
 import type { RemotionCompositionConfig } from '../components/manuscripts/remotion/types';
@@ -67,9 +72,23 @@ function voiceoverStatusLabel(status?: string): string {
     return '无旁白';
 }
 
-export function ProductVideoWorkbench({ projectId, onClose }: ProductVideoWorkbenchProps) {
+export function ProductVideoWorkbench(props: ProductVideoWorkbenchProps) {
+    return <ProductVideoWorkbenchContent key={props.projectId} {...props} />;
+}
+
+function ProductVideoWorkbenchContent({ projectId, onClose }: ProductVideoWorkbenchProps) {
     const [project, setProject] = useState<VideoEditorV2Project | null>(null);
     const [selectedSceneId, setSelectedSceneId] = useState('');
+    const editor = useProductEditor({ kind: 'video', projectId });
+    const pendingCommands = useRef(new Map<string, ProductProjectEditOperation>());
+    const manualBase = useRef('');
+    const projectRef = useRef<VideoEditorV2Project | null>(null);
+    const savingDraft = useRef<Promise<void> | null>(null);
+    const nativeDirty = useRef(false);
+    const draftEpoch = useRef(0);
+    const [draftDirty, setDraftDirty] = useState(false);
+    useEffect(() => { projectRef.current = project; }, [project]);
+    useEffect(() => { editor.select(selectedSceneId || undefined); }, [selectedSceneId]);
     const [loading, setLoading] = useState(true);
     const [busy, setBusy] = useState('');
     const [error, setError] = useState('');
@@ -98,7 +117,8 @@ export function ProductVideoWorkbench({ projectId, onClose }: ProductVideoWorkbe
             const result = await window.ipcRenderer.videoEditorV2.getProject({ projectId }) as ProjectResponse;
             if (!result.success || !result.project) throw new Error(result.error || '商品视频工程不存在');
             if (result.project.projectKind !== 'product-video' || !result.project.productVideo) throw new Error('该工程不是商品视频工程');
-            setProject(result.project);
+            if (pendingCommands.current.size || nativeDirty.current) { setError('工程有新修改；已保留当前输入，请保存或按最新工程重试'); return; }
+            projectRef.current = result.project; setProject(result.project);
             setSelectedSceneId((current) => current && result.project?.productVideo?.scenes.some((scene) => scene.id === current)
                 ? current
                 : result.project?.productVideo?.scenes[0]?.id || '');
@@ -113,7 +133,7 @@ export function ProductVideoWorkbench({ projectId, onClose }: ProductVideoWorkbe
     useEffect(() => {
         setLoading(true);
         void loadProject();
-        return subscribeDataChanged((payload) => {
+        return subscribeDataChanged((_event, payload) => {
             if (payload?.scope === 'video-editor-v2' && payload?.entityId === projectId) void loadProject();
         });
     }, [loadProject, projectId]);
@@ -124,6 +144,7 @@ export function ProductVideoWorkbench({ projectId, onClose }: ProductVideoWorkbe
         };
         if (!result.success) return;
         const own = result.version?.projectId === projectId ? result.version : null;
+        if (nativeDirty.current) return;
         setDouyinVersion(own);
         setDouyinVersions(result.versions || []);
         setProductChanged(Boolean(result.productChanged));
@@ -134,6 +155,9 @@ export function ProductVideoWorkbench({ projectId, onClose }: ProductVideoWorkbe
     }, [projectId]);
 
     useEffect(() => { void loadDouyinVersion(); }, [loadDouyinVersion]);
+    useEffect(() => subscribeDataChanged((_event, payload) => {
+        if (payload?.scope === 'video-editor-v2' && payload.entityId === projectId) void loadDouyinVersion();
+    }), [loadDouyinVersion, projectId]);
 
     const createDouyinVersion = useCallback(async (duplicate = false) => {
         setBusy('douyin.create');
@@ -155,28 +179,34 @@ export function ProductVideoWorkbench({ projectId, onClose }: ProductVideoWorkbe
         }
     }, [loadDouyinVersion, projectId]);
 
-    const saveDouyinCopy = useCallback(async () => {
-        if (!douyinVersion) return;
+    const saveDouyinCopy = useCallback(async (rebaseVersion?: DouyinVideoVersion) => {
+        const versionToSave = rebaseVersion || douyinVersion;
+        if (!versionToSave) return;
+        await editor.settleDraft();
         setBusy('douyin.save');
         try {
             const result = await window.ipcRenderer.douyinVideo.saveVersion({
-                versionId: douyinVersion.id,
-                expectedRevision: douyinVersion.revision,
+                versionId: versionToSave.id,
+                expectedRevision: versionToSave.revision,
                 title: douyinTitle,
                 description: douyinDescription,
                 hashtags: douyinTags.split(/[\s,，#]+/u).filter(Boolean),
                 coverAssetId: douyinCoverId || undefined,
             }) as { success?: boolean; error?: string; version?: DouyinVideoVersion };
             if (!result.success || !result.version) throw new Error(result.error || '保存抖音稿件失败');
+            nativeDirty.current = false;
             setDouyinVersion(result.version);
             setDouyinEditorOpen(false);
         } catch (saveError) {
-            void appAlert(saveError instanceof Error ? saveError.message : String(saveError));
-            await loadDouyinVersion();
+            setError(saveError instanceof Error ? saveError.message : String(saveError));
+            throw saveError;
         } finally {
             setBusy('');
         }
     }, [douyinVersion, douyinTitle, douyinDescription, douyinTags, douyinCoverId, loadDouyinVersion]);
+
+    useEffect(() => editor.registerFlush('douyin-copy', async () => { if (nativeDirty.current) await saveDouyinCopy(); }), [editor.registerFlush, saveDouyinCopy]);
+    const changeNativeDraft = (update: () => void) => { nativeDirty.current = true; editor.markDirty(); update(); };
 
     const loadPublisher = useCallback(async () => {
         if (!douyinVersion) return;
@@ -286,22 +316,58 @@ export function ProductVideoWorkbench({ projectId, onClose }: ProductVideoWorkbe
     const selectedVoiceAsset = project?.assets.find((asset) => asset.id === selectedScene?.voiceoverAssetId);
     const composition = useMemo(() => project ? buildVideoEditorV2RemotionComposition(project) : null, [project]);
 
+    const recordDraft = (key: string, operation: ProductProjectEditOperation) => {
+        if (!pendingCommands.current.size) manualBase.current = projectRef.current?.updatedAt || '';
+        draftEpoch.current++;
+        pendingCommands.current.set(key, operation); setDraftDirty(true); editor.markDirty();
+    };
+    const flushVideoDraft = useCallback(async (): Promise<void> => {
+        if (savingDraft.current) return savingDraft.current;
+        if (!pendingCommands.current.size) return;
+        const editing = draftEpoch.current;
+        const commands = [...pendingCommands.current.values()];
+        const operation = (async () => {
+            await editor.settleDraft();
+            const response = await window.ipcRenderer.videoEditorV2.readProductEditor({ project: { kind: 'video', projectId } });
+            if (!response.success || !response.snapshot) throw new Error(response.error || '读取工程失败');
+            const value = response.snapshot;
+            if (value.video?.updatedAt !== manualBase.current) throw new Error('工程已变化，已保留输入，请按最新工程重试');
+            setBusy('save');
+            const result = await window.ipcRenderer.videoEditorV2.saveProductEditorManual({ binding: value.binding, requestId: crypto.randomUUID(),
+                expectedRevision: value.revision, expectedDraftEpoch: value.draftEpoch, operations: commands });
+            if (!result.success || !result.result?.video) throw new Error(result.error || '保存失败，已保留输入');
+            if (editing !== draftEpoch.current) { manualBase.current = result.result.video.updatedAt; throw new Error('保存期间出现新输入，已保留草稿，请重新保存'); }
+            pendingCommands.current.clear(); setDraftDirty(false); manualBase.current = '';
+            projectRef.current = result.result.video; setProject(result.result.video); setError('');
+            if (!result.result.video.productVideo?.scenes.some(scene => scene.id === selectedSceneId)) {
+                const nextId = result.result.video.productVideo?.scenes[0]?.id || '';
+                setSelectedSceneId(nextId); editor.select(nextId || undefined);
+            }
+        })();
+        savingDraft.current = operation;
+        try { await operation; } finally { savingDraft.current = null; setBusy(''); }
+    }, [projectId, editor.settleDraft, selectedSceneId]);
+    useEffect(() => editor.registerFlush('video-scenes', flushVideoDraft), [editor.registerFlush, flushVideoDraft]);
+    const saveOnBlur = () => { void flushVideoDraft().catch(reason => setError(String(reason))); };
+
     const applyCommand = useCallback(async (command: ProductVideoEditCommand) => {
         setBusy(command.type);
         try {
-            const result = await window.ipcRenderer.videoEditorV2.applyProductCommand({ projectId, command }) as ProjectResponse;
-            if (!result.success || !result.project) throw new Error(result.error || '保存编辑失败');
-            setProject(result.project);
+            const key = command.type === 'scene.duration' ? 'duration' : command.type === 'scene.text' ? 'text' : command.type === 'scene.narration-text' ? 'voice'
+                : command.type === 'scene.source-volume' ? 'volume' : command.type === 'scene.trim' ? 'trim' : command.type;
+            recordDraft(`${key}-${'sceneId' in command ? command.sceneId : 'track'}`, command);
+            await flushVideoDraft();
         } catch (commandError) {
-            void appAlert(commandError instanceof Error ? commandError.message : String(commandError));
+            setError(commandError instanceof Error ? commandError.message : String(commandError));
         } finally {
             setBusy('');
         }
-    }, [projectId]);
+    }, [projectId, flushVideoDraft]);
 
     const undoTimeline = useCallback(async () => {
         setBusy('undo');
         try {
+            await flushVideoDraft();
             const result = await window.ipcRenderer.videoEditorV2.undoTimeline({ projectId }) as ProjectResponse;
             if (!result.success || !result.project) throw new Error(result.error || '撤销失败');
             setProject(result.project);
@@ -316,6 +382,7 @@ export function ProductVideoWorkbench({ projectId, onClose }: ProductVideoWorkbe
         if (!selectedScene) return;
         setBusy('retry');
         try {
+            await flushVideoDraft();
             const result = await window.ipcRenderer.videoEditorV2.retryProductScene({ projectId, sceneId: selectedScene.id }) as ProjectResponse;
             if (!result.success || !result.project) throw new Error(result.error || '重试失败');
             setProject(result.project);
@@ -331,6 +398,7 @@ export function ProductVideoWorkbench({ projectId, onClose }: ProductVideoWorkbe
         setMusicPickerOpen(false);
         setBusy('music');
         try {
+            await flushVideoDraft();
             const result = await window.ipcRenderer.videoEditorV2.setProductMusic({ projectId, sourcePath }) as ProjectResponse;
             if (result.canceled) return;
             if (!result.success || !result.project) throw new Error(result.error || '添加背景音乐失败');
@@ -346,6 +414,7 @@ export function ProductVideoWorkbench({ projectId, onClose }: ProductVideoWorkbe
         if (!selectedScene) return;
         setBusy('voiceover.generate');
         try {
+            await flushVideoDraft();
             const result = await window.ipcRenderer.videoEditorV2.generateProductVoiceover({ projectId, sceneId: selectedScene.id }) as ProjectResponse;
             if (!result.success || !result.project) throw new Error(result.error || '旁白生成提交失败');
             setProject(result.project);
@@ -361,6 +430,7 @@ export function ProductVideoWorkbench({ projectId, onClose }: ProductVideoWorkbe
         setVoicePickerOpen(false);
         setBusy('voiceover.replace');
         try {
+            await flushVideoDraft();
             const result = await window.ipcRenderer.videoEditorV2.setProductVoiceover({ projectId, sceneId: selectedScene.id, sourceAssetId }) as ProjectResponse;
             if (result.canceled) return;
             if (!result.success || !result.project) throw new Error(result.error || '替换旁白失败');
@@ -375,6 +445,7 @@ export function ProductVideoWorkbench({ projectId, onClose }: ProductVideoWorkbe
     const renderVideo = useCallback(async () => {
         setBusy('render');
         try {
+            await flushVideoDraft();
             const result = await window.ipcRenderer.videoEditorV2.render({ projectId }) as ProjectResponse;
             if (!result.success || !result.project) throw new Error(result.error || '导出失败');
             setProject(result.project);
@@ -390,20 +461,23 @@ export function ProductVideoWorkbench({ projectId, onClose }: ProductVideoWorkbe
     if (!project || !project.productVideo) return <div className="flex h-full flex-col items-center justify-center gap-3 text-text-secondary"><Film className="h-8 w-8" /><p>{error || '商品视频工程不存在'}</p>{onClose && <button type="button" className="rounded-lg border border-border px-3 py-2" onClick={onClose}>返回创作页</button>}</div>;
 
     return (
+        <ProductEditorContext.Provider value={editor}>
+        <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_400px]">
         <div className="relative flex h-full min-h-0 flex-col bg-[#F7F8FA] text-text-primary">
             <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-white px-4">
                 <div className="flex min-w-0 items-center gap-3">
                     <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#0D1117] text-white"><Film className="h-4 w-4" /></div>
-                    <div className="min-w-0"><h1 className="truncate text-sm font-bold">{project.title}</h1><p className="text-[11px] text-text-tertiary">{project.productVideo.productSnapshot.name} · {project.canvas.width}×{project.canvas.height} · {statusLabel(project.status)}</p></div>
+                    <div className="min-w-0"><h1 className="truncate text-sm font-bold">{project.title}</h1><p className="text-[11px] text-text-tertiary">{draftDirty ? '有未保存输入 · ' : ''}{project.productVideo.productSnapshot.name} · {project.canvas.width}×{project.canvas.height} · {statusLabel(project.status)}</p></div>
                 </div>
                 <div className="flex items-center gap-2">
-                    <TikTokVideoPanel project={project} disabled={Boolean(busy)} />
-                    {douyinVersion ? <>
+                    <PublicationButton source={{ kind: 'video', projectId: project.id }} />
+                    {(!project.creationTarget || project.creationTarget.platform === 'tiktok') && <TikTokVideoPanel project={project} disabled={Boolean(busy)} />}
+                    {(!project.creationTarget || project.creationTarget.platform === 'douyin') && (douyinVersion ? <>
                         <button type="button" onClick={() => setDouyinEditorOpen(true)} className="rounded-lg border border-border px-3 py-2 text-xs font-semibold">抖音稿件 · 第 {douyinVersion.revision} 版</button>
-                        <button type="button" onClick={() => setPublisherOpen(true)} className="rounded-lg border border-border px-3 py-2 text-xs font-semibold">准备抖音发布</button>
+
                         <button type="button" onClick={() => dispatchAppIntent({ type: 'video-project.open', projectId: douyinVersion.sourceProjectId })} className="rounded-lg border border-border px-3 py-2 text-xs">查看来源</button>
                         <button type="button" onClick={() => void createDouyinVersion(true)} disabled={Boolean(busy)} className="rounded-lg border border-border px-3 py-2 text-xs disabled:opacity-50">再复制一版</button>
-                    </> : <button type="button" onClick={() => void createDouyinVersion()} disabled={Boolean(busy)} className="rounded-lg border border-border px-3 py-2 text-xs font-semibold disabled:opacity-50">{douyinVersions.length ? '打开抖音版本' : '创建抖音版本'}</button>}
+                    </> : <button type="button" onClick={() => void createDouyinVersion()} disabled={Boolean(busy)} className="rounded-lg border border-border px-3 py-2 text-xs font-semibold disabled:opacity-50">{douyinVersions.length ? '打开抖音版本' : '创建抖音版本'}</button>)}
                     <button type="button" onClick={() => void applyCommand({ type: 'music.remove' })} disabled={!musicTrack?.clips.length || Boolean(busy)} className="rounded-lg border border-border px-3 py-2 text-xs font-medium text-text-secondary disabled:opacity-40">移除 BGM</button>
                     <div className="relative">
                         <button type="button" onClick={() => setMusicPickerOpen((open) => !open)} disabled={Boolean(busy)} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold"><Music2 className="h-3.5 w-3.5" />添加 BGM</button>
@@ -420,23 +494,38 @@ export function ProductVideoWorkbench({ projectId, onClose }: ProductVideoWorkbe
                     {onClose && <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-lg text-text-tertiary hover:bg-surface-secondary"><X className="h-4 w-4" /></button>}
                 </div>
             </header>
+            {error && <div role="status" className="flex items-center gap-3 border-b border-border bg-amber-50 px-4 py-2 text-xs text-amber-900">
+                <span className="min-w-0 flex-1 break-words">{error}</span>
+                {(draftDirty || nativeDirty.current) && <button type="button" disabled={Boolean(busy)} className="shrink-0 rounded border px-2 py-1" onClick={() => {
+                    void (async () => { const latest = await window.ipcRenderer.videoEditorV2.readProductEditor({ project: { kind: 'video', projectId } });
+                        if (!latest.success || !latest.snapshot?.video) throw new Error(latest.error || '读取工程失败');
+                        manualBase.current = latest.snapshot.video.updatedAt; await flushVideoDraft();
+                        if (nativeDirty.current) {
+                            const native = await window.ipcRenderer.douyinVideo.getVersion({ projectId }) as { success?: boolean; version?: DouyinVideoVersion; error?: string };
+                            if (!native.success || !native.version) throw new Error(native.error || '读取平台稿件失败');
+                            await saveDouyinCopy(native.version);
+                        }
+                    })().catch(reason => setError(String(reason)));
+                }}>按最新工程重试</button>}
+            </div>}
+            <ProductPlatformVersions project={project} disabled={Boolean(busy)} />
 
             {douyinVersion && productChanged && <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800">商品资料已变化，请复核抖音稿件中的商品事实；当前工程与文案不会自动改写。</div>}
             {douyinEditorOpen && douyinVersion && <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/40 p-6">
                 <section className="w-full max-w-xl space-y-4 rounded-2xl bg-white p-6 shadow-2xl">
                     <div className="flex items-center justify-between"><h2 className="text-base font-bold">抖音短视频稿件 · 第 {douyinVersion.revision} 版</h2><button type="button" onClick={() => setDouyinEditorOpen(false)} aria-label="关闭抖音稿件"><X className="h-4 w-4" /></button></div>
                     <p className="text-xs text-text-secondary">首句尽快说明看点；检查字幕不要落在抖音按钮和文案区域。视频镜头、旁白与 BGM 可在工作台单独修改，修改后需重新导出此版本。</p>
-                    <label className="block text-xs font-semibold">内部标题<input value={douyinTitle} onChange={(event) => setDouyinTitle(event.target.value)} className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm" /></label>
-                    <label className="block text-xs font-semibold">发布描述<textarea value={douyinDescription} onChange={(event) => setDouyinDescription(event.target.value)} rows={5} className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm" /></label>
-                    <label className="block text-xs font-semibold">话题（空格分隔）<input value={douyinTags} onChange={(event) => setDouyinTags(event.target.value)} className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm" /></label>
+                    <label className="block text-xs font-semibold">内部标题<input value={douyinTitle} onChange={(event) => changeNativeDraft(() => setDouyinTitle(event.target.value))} className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm" /></label>
+                    <label className="block text-xs font-semibold">发布描述<textarea value={douyinDescription} onChange={(event) => changeNativeDraft(() => setDouyinDescription(event.target.value))} rows={5} className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm" /></label>
+                    <label className="block text-xs font-semibold">话题（空格分隔）<input value={douyinTags} onChange={(event) => changeNativeDraft(() => setDouyinTags(event.target.value))} className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm" /></label>
                     <label className="block text-xs font-semibold">封面素材
-                        <select value={douyinCoverId} onChange={(event) => setDouyinCoverId(event.target.value)} className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm">
+                        <select value={douyinCoverId} onChange={(event) => changeNativeDraft(() => setDouyinCoverId(event.target.value))} className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm">
                             <option value="">使用视频默认封面</option>
                             {project.assets.filter((asset) => asset.kind === 'image').map((asset) => <option key={asset.id} value={asset.id}>{asset.title}</option>)}
                         </select>
                     </label>
                     {douyinCoverId && <div className="space-y-2"><p className="text-xs text-text-secondary">所选图片将居中裁切为竖封面 3:4 和横封面 4:3。请核对主体和文字是否完整；发布确认卡会展示实际上传的两张封面。</p><div className="flex items-end gap-4">{(['portrait', 'landscape'] as const).map((orientation) => <figure key={orientation} className="w-32"><img src={resolveAssetUrl(project.assets.find((asset) => asset.id === douyinCoverId)?.projectPath)} alt={orientation === 'portrait' ? '竖封面裁切预览' : '横封面裁切预览'} className={`w-full rounded-lg bg-black object-cover ${orientation === 'portrait' ? 'aspect-[3/4]' : 'aspect-[4/3]'}`} /><figcaption className="mt-1 text-center text-xs text-text-secondary">{orientation === 'portrait' ? '竖封面 3:4' : '横封面 4:3'}</figcaption></figure>)}</div></div>}
-                    <div className="flex justify-end gap-2"><button type="button" onClick={() => setDouyinEditorOpen(false)} className="rounded-lg border border-border px-3 py-2 text-xs">取消</button><button type="button" onClick={() => void saveDouyinCopy()} disabled={Boolean(busy)} className="rounded-lg bg-[#0F766E] px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">保存独立稿件</button></div>
+                    <div className="flex justify-end gap-2"><button type="button" onClick={() => setDouyinEditorOpen(false)} className="rounded-lg border border-border px-3 py-2 text-xs">取消</button><button type="button" onClick={() => void saveDouyinCopy().catch(() => undefined)} disabled={Boolean(busy)} className="rounded-lg bg-[#0F766E] px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">保存独立稿件</button></div>
                 </section>
             </div>}
 
@@ -496,48 +585,22 @@ export function ProductVideoWorkbench({ projectId, onClose }: ProductVideoWorkbe
                         {selectedScene.source === 'media-clip' && <section className="space-y-3 rounded-xl border border-border p-3" aria-label="来源视频截取">
                             <p className="text-xs font-semibold">已有视频 · {selectedVideoAsset?.title}</p>
                             <p className="text-[11px] text-text-tertiary">来源 {(Number(selectedVideoAsset?.durationMs || 0) / 1000).toFixed(2)} 秒 · {selectedVideoAsset?.probe?.hasAudio ? '含原音' : '无音轨'}</p>
-                            <div className="grid grid-cols-2 gap-2">{(['start', 'end'] as const).map((key) => <label key={key} className="text-xs">{key === 'start' ? '开始（秒）' : '结束（秒）'}<input aria-label={key === 'start' ? '截取开始秒' : '截取结束秒'} type="number" min="0" step="0.001" disabled={Boolean(busy)} value={sourceCut[key]} onChange={(event) => setSourceCut({ ...sourceCut, [key]: event.target.value })} className="mt-1 w-full rounded-lg border border-border px-2 py-1.5" /></label>)}</div>
-                            <button className="rounded-lg border border-border px-3 py-1.5 text-xs disabled:opacity-40" disabled={Boolean(busy) || !sourceCut.start || !sourceCut.end} onClick={() => {
-                                const start = Number(sourceCut.start), end = Number(sourceCut.end);
-                                if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start) { void appAlert('请填写有效的来源截取区间。'); return; }
-                                void applyCommand({ type: 'scene.trim', sceneId: selectedScene.id, sourceStartMs: Math.round(start * 1000), sourceEndMs: Math.round(end * 1000) });
-                            }}>保存截取区间</button>
-                            <label className="block text-xs">原声音量（0–100%）<input aria-label="来源视频音量" type="number" min="0" max="100" step="5" disabled={Boolean(busy)} defaultValue={Math.round((selectedVideoClip?.volume ?? 1) * 100)} key={`${selectedScene.id}-${selectedVideoClip?.volume}`} className="mt-1 w-full rounded-lg border border-border px-2 py-1.5" onBlur={(event) => {
-                                const volume = Number(event.target.value) / 100;
-                                if (!event.target.value || !Number.isFinite(volume) || volume < 0 || volume > 1) { event.target.value = String(Math.round((selectedVideoClip?.volume ?? 1) * 100)); return; }
-                                if (volume !== selectedVideoClip?.volume) void applyCommand({ type: 'scene.source-volume', sceneId: selectedScene.id, volume });
-                            }} /></label>
+                            <div className="grid grid-cols-2 gap-2">{(['start', 'end'] as const).map((key) => <label key={key} className="text-xs">{key === 'start' ? '开始（秒）' : '结束（秒）'}<input aria-label={key === 'start' ? '截取开始秒' : '截取结束秒'} type="number" min="0" step="0.001" disabled={Boolean(busy)} value={sourceCut[key]} onChange={(event) => { const next = { ...sourceCut, [key]: event.target.value }; setSourceCut(next); recordDraft('trim-' + selectedScene.id, { type: 'scene.trim', sceneId: selectedScene.id, sourceStartMs: next.start ? Math.round(Number(next.start) * 1000) : NaN, sourceEndMs: next.end ? Math.round(Number(next.end) * 1000) : NaN }); }} className="mt-1 w-full rounded-lg border border-border px-2 py-1.5" /></label>)}</div>
+                            <button className="rounded-lg border border-border px-3 py-1.5 text-xs disabled:opacity-40" disabled={Boolean(busy) || !sourceCut.start || !sourceCut.end} onClick={saveOnBlur}>保存截取区间</button>
+                            <label className="block text-xs">原声音量（0–100%）<input aria-label="来源视频音量" type="number" min="0" max="100" step="5" disabled={Boolean(busy)} defaultValue={Math.round((selectedVideoClip?.volume ?? 1) * 100)} key={`${selectedScene.id}-${selectedVideoClip?.volume}`} className="mt-1 w-full rounded-lg border border-border px-2 py-1.5" onChange={(event) => recordDraft('volume-' + selectedScene.id, { type: 'scene.source-volume', sceneId: selectedScene.id, volume: event.target.value ? Number(event.target.value) / 100 : NaN })} onBlur={saveOnBlur}  /></label>
                         </section>}
                         <div><div className="flex items-center justify-between"><h2 className="text-sm font-bold">{selectedScene.title}</h2><span className="rounded-full bg-surface-secondary px-2 py-1 text-[10px] text-text-tertiary">{selectedScene.source === 'ai-motion' ? 'AI 动效' : '原始素材'}</span></div>{selectedScene.generationStatus === 'failed' && <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800"><p>{selectedScene.error || '生成失败，当前使用原图回退。'}</p><button type="button" onClick={() => void retryScene()} disabled={busy === 'retry'} className="mt-2 inline-flex items-center gap-1 font-bold"><RefreshCw className={busy === 'retry' ? 'h-3 w-3 animate-spin' : 'h-3 w-3'} />重试此镜头</button></div>}{selectedScene.generationStatus === 'ready' && <p className="mt-2 inline-flex items-center gap-1 text-xs text-[#0F766E]"><CheckCircle2 className="h-3.5 w-3.5" />AI 镜头已生成</p>}</div>
                         <div>
-                            <label className="block text-xs font-semibold">镜头时长（秒）<input type="number" min={Math.round(1000 / project.canvas.fps) / 1000} max="30" step="0.001" disabled={Boolean(busy)} defaultValue={formatProductSceneSeconds(selectedScene.durationMs)} key={`${selectedScene.id}-${selectedScene.durationMs}`} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); }} onBlur={(event) => {
-                                const requestedMs = Math.round(Number(event.target.value) * 1000);
-                                if (!event.target.value.trim() || !Number.isFinite(requestedMs) || requestedMs <= 0 || requestedMs > 30_000) {
-                                    event.target.value = formatProductSceneSeconds(selectedScene.durationMs);
-                                    void appAlert('请输入大于 0 且不超过 30 秒的时长。');
-                                    return;
-                                }
-                                const durationMs = snapProductSceneDurationMs(requestedMs, project.canvas.fps);
-                                event.target.value = formatProductSceneSeconds(durationMs);
-                                if (productSceneDurationFrames(durationMs, project.canvas.fps) !== productSceneDurationFrames(selectedScene.durationMs, project.canvas.fps)) void applyCommand({ type: 'scene.duration', sceneId: selectedScene.id, durationMs });
-                            }} className="mt-2 w-full rounded-lg border border-border bg-[#F7F8FA] px-3 py-2 text-sm tabular-nums disabled:opacity-50" /></label>
-                            <label className="mt-2 flex items-center justify-between gap-2 text-[11px] text-text-tertiary">镜头帧数<input aria-label="镜头帧数" type="number" min="1" max={30 * project.canvas.fps} step="1" disabled={Boolean(busy)} defaultValue={productSceneDurationFrames(selectedScene.durationMs, project.canvas.fps)} key={`frames-${selectedScene.id}-${selectedScene.durationMs}`} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); }} onBlur={(event) => {
-                                const frames = Number(event.target.value);
-                                if (!event.target.value.trim() || !Number.isInteger(frames) || frames < 1 || frames > 30 * project.canvas.fps) {
-                                    event.target.value = String(productSceneDurationFrames(selectedScene.durationMs, project.canvas.fps));
-                                    void appAlert(`请输入 1～${30 * project.canvas.fps} 的整数帧数。`);
-                                    return;
-                                }
-                                if (frames !== productSceneDurationFrames(selectedScene.durationMs, project.canvas.fps)) void applyCommand({ type: 'scene.duration', sceneId: selectedScene.id, durationMs: Math.round(frames * 1000 / project.canvas.fps) });
-                            }} className="w-24 rounded border border-border bg-[#F7F8FA] px-2 py-1 text-xs tabular-nums disabled:opacity-50" /></label>
+                            <label className="block text-xs font-semibold">镜头时长（秒）<input type="number" min={Math.round(1000 / project.canvas.fps) / 1000} max="30" step="0.001" disabled={Boolean(busy)} defaultValue={formatProductSceneSeconds(selectedScene.durationMs)} key={`${selectedScene.id}-${selectedScene.durationMs}`} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); }} onChange={(event) => recordDraft('duration-' + selectedScene.id, { type: 'scene.duration', sceneId: selectedScene.id, durationMs: event.target.value ? Math.round(Number(event.target.value) * 1000) : NaN })} onBlur={saveOnBlur}  className="mt-2 w-full rounded-lg border border-border bg-[#F7F8FA] px-3 py-2 text-sm tabular-nums disabled:opacity-50" /></label>
+                            <label className="mt-2 flex items-center justify-between gap-2 text-[11px] text-text-tertiary">镜头帧数<input aria-label="镜头帧数" type="number" min="1" max={30 * project.canvas.fps} step="1" disabled={Boolean(busy)} defaultValue={productSceneDurationFrames(selectedScene.durationMs, project.canvas.fps)} key={`frames-${selectedScene.id}-${selectedScene.durationMs}`} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); }} onChange={(event) => recordDraft('duration-' + selectedScene.id, { type: 'scene.duration', sceneId: selectedScene.id, durationMs: event.target.value && Number.isInteger(Number(event.target.value)) ? Math.round(Number(event.target.value) * 1000 / project.canvas.fps) : NaN })} onBlur={saveOnBlur}  className="w-24 rounded border border-border bg-[#F7F8FA] px-2 py-1 text-xs tabular-nums disabled:opacity-50" /></label>
                             <p className="mt-1.5 text-[10px] text-text-tertiary">按 {project.canvas.fps}fps 对齐到最近一帧，也可拖动时间线两侧调整。</p>
                         </div>
                         <label className="block text-xs font-semibold">画面适配<select value={selectedScene.fitMode} onChange={(event) => void applyCommand({ type: 'scene.fit', sceneId: selectedScene.id, fitMode: event.target.value as ProductVideoFitMode })} className="mt-2 w-full rounded-lg border border-border bg-[#F7F8FA] px-3 py-2 text-sm">{FIT_OPTIONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
                         {selectedScene.source !== 'media-clip' && <label className="block text-xs font-semibold">静态动效<select value={selectedScene.motionPreset} onChange={(event) => void applyCommand({ type: 'scene.motion', sceneId: selectedScene.id, motionPreset: event.target.value as ProductVideoMotionPreset })} className="mt-2 w-full rounded-lg border border-border bg-[#F7F8FA] px-3 py-2 text-sm">{MOTION_OPTIONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>}
-                        <label className="block text-xs font-semibold">屏幕文字<textarea defaultValue={selectedScene.overlayText || ''} key={`${selectedScene.id}-${selectedScene.overlayText}`} onBlur={(event) => void applyCommand({ type: 'scene.text', sceneId: selectedScene.id, text: event.target.value.trim() })} rows={4} className="mt-2 w-full resize-none rounded-lg border border-border bg-[#F7F8FA] px-3 py-2 text-sm" /></label>
+                        <label className="block text-xs font-semibold">屏幕文字<textarea defaultValue={selectedScene.overlayText || ''} key={`${selectedScene.id}-${selectedScene.overlayText}`} onChange={(event) => recordDraft('text-' + selectedScene.id, { type: 'scene.text', sceneId: selectedScene.id, text: event.target.value })} onBlur={saveOnBlur} rows={4} className="mt-2 w-full resize-none rounded-lg border border-border bg-[#F7F8FA] px-3 py-2 text-sm" /></label>
                         <div className="border-t border-border pt-4">
                             <div className="flex items-center justify-between"><h3 className="inline-flex items-center gap-1.5 text-xs font-bold"><Mic2 className="h-3.5 w-3.5 text-[#C05640]" />镜头旁白</h3><span className="text-[10px] text-text-tertiary">独立于屏幕文字 · 音量 100%</span></div>
-                            <label className="mt-3 block text-xs font-semibold">朗读文案<textarea defaultValue={selectedScene.narrationText || ''} key={`${selectedScene.id}-${selectedScene.narrationText}`} onBlur={(event) => { const value = event.target.value.trim(); if (value !== (selectedScene.narrationText || '')) void applyCommand({ type: 'scene.narration-text', sceneId: selectedScene.id, text: value }); }} rows={3} className="mt-2 w-full resize-none rounded-lg border border-border bg-[#F7F8FA] px-3 py-2 text-sm" /></label>
+                            <label className="mt-3 block text-xs font-semibold">朗读文案<textarea defaultValue={selectedScene.narrationText || ''} key={`${selectedScene.id}-${selectedScene.narrationText}`} onChange={(event) => recordDraft('voice-' + selectedScene.id, { type: 'scene.narration-text', sceneId: selectedScene.id, text: event.target.value })} onBlur={saveOnBlur} rows={3} className="mt-2 w-full resize-none rounded-lg border border-border bg-[#F7F8FA] px-3 py-2 text-sm" /></label>
                             <div className="mt-2 rounded-lg border border-border bg-[#F7F8FA] p-2.5 text-[11px]">
                                 <p className={selectedScene.voiceoverStatus === 'failed' || selectedScene.voiceoverStatus === 'duration-conflict' ? 'font-semibold text-amber-700' : 'font-semibold text-text-secondary'}>{voiceoverStatusLabel(selectedScene.voiceoverStatus)}{selectedScene.voiceoverSource === 'imported' ? ' · 导入录音' : selectedScene.voiceoverSource === 'tts' ? ' · AI 合成' : ''}</p>
                                 {selectedScene.voiceoverError && <p className="mt-1 break-words text-amber-700">{selectedScene.voiceoverError}</p>}
@@ -557,8 +620,17 @@ export function ProductVideoWorkbench({ projectId, onClose }: ProductVideoWorkbe
                     </div> : <p className="text-xs text-text-tertiary">选择时间线中的镜头后编辑属性。</p>}
                 </aside>
 
-                <ProductVideoTimeline project={project} selectedSceneId={selectedSceneId} busy={Boolean(busy)} onSelect={setSelectedSceneId} onResize={(sceneId, durationMs) => applyCommand({ type: 'scene.duration', sceneId, durationMs })} onReorder={(sceneId, targetSceneId) => void applyCommand({ type: 'scene.reorder', sceneId, targetSceneId, position: 'before' })} onUndo={undoTimeline} onAddMusic={() => setMusicPickerOpen(true)} />
+                <ProductVideoTimeline project={project} undoCount={editor.snapshot?.undoCount} selectedSceneId={selectedSceneId} busy={Boolean(busy)} onSelect={setSelectedSceneId} onResize={(sceneId, durationMs) => applyCommand({ type: 'scene.duration', sceneId, durationMs })} onReorder={(sceneId, targetSceneId) => void applyCommand({ type: 'scene.reorder', sceneId, targetSceneId, position: 'before' })} onUndo={undoTimeline} onAddMusic={() => setMusicPickerOpen(true)} />
             </div>
         </div>
+        <aside data-product-project-editor-chat className="flex min-h-0 flex-col border-l border-border bg-surface-secondary">
+            <div className="border-b border-border px-3 py-2 text-xs text-text-tertiary">当前版本的编辑对话 · 发送前保存手动输入</div>
+            {editor.error && <p className="px-3 py-2 text-xs text-red-700">{editor.error}</p>}
+            <div className="min-h-0 flex-1">{editor.sessionId ? <Suspense fallback={<p>加载编辑对话…</p>}><EditorChat fixedSessionId={editor.sessionId} beforeSend={editor.beforeSend}
+                fixedSessionTaskHints={{ workflowKind: 'product-project-edit' }} isActive showClearButton={false} showWelcomeShortcuts={false} showComposerShortcuts={false}
+                fixedSessionContextIndicatorMode="none" keepComposerInputActive contentLayout="wide" messageWorkflowPlacement="bottom" messageWorkflowVariant="compact" placeholder="修改当前作品，或撤销上一次修改…" /></Suspense> : <p className="p-4 text-xs">正在初始化编辑会话…</p>}</div>
+        </aside>
+        </div>
+        </ProductEditorContext.Provider>
     );
 }

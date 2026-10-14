@@ -1,0 +1,52 @@
+{
+  "localHtmlFixture": true,
+  "externalPlatformRequests": 0,
+  "prepared": {
+    "ok": true,
+    "jobId": "chromium-local-job",
+    "publishStatus": "not_submitted",
+    "resetStatus": "not_started",
+    "prepared": true,
+    "contentDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "uploadReview": {
+      "jobId": "chromium-local-job",
+      "contentDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "accountId": "local_fixture",
+      "checkedAt": 1791862535408,
+      "mediaCount": 3,
+      "pageFingerprint": "{\"accountId\":\"local_fixture\",\"accountLabel\":\"小红书账号 local_fixture\",\"mediaSources\":[\"blob:https://creator.xiaohongshu.com/a6d5fbae-7b36-41bf-a151-aa8a60885ece\",\"blob:https://creator.xiaohongshu.com/c26fdd19-d24a-42bd-97ca-88424c7acaec\",\"blob:https://creator.xiaohongshu.com/2b6f5274-ebd1-4fc3-9fd8-7828f4c6bd49\"],\"mediaFileNames\":[],\"title\":\"本地商品图\",\"body\":\"三张相同内容仍按顺序保留 #原图\"}"
+    }
+  },
+  "changedAccountResult": {
+    "ok": false,
+    "jobId": "chromium-local-job",
+    "publishStatus": "not_submitted",
+    "resetStatus": "not_started",
+    "code": "ACCOUNT_CHANGED",
+    "message": "小红书账号已变化，未提交"
+  },
+  "submitted": {
+    "ok": true,
+    "jobId": "chromium-local-job",
+    "publishStatus": "published",
+    "resetStatus": "ready",
+    "publishedAt": 1791862543536
+  },
+  "uploads": [
+    [
+      "1.png"
+    ],
+    [
+      "2.png"
+    ],
+    [
+      "3.png"
+    ]
+  ],
+  "mediaAnchors": [
+    "blob:https://creator.xiaohongshu.com/a6d5fbae-7b36-41bf-a151-aa8a60885ece",
+    "blob:https://creator.xiaohongshu.com/c26fdd19-d24a-42bd-97ca-88424c7acaec",
+    "blob:https://creator.xiaohongshu.com/2b6f5274-ebd1-4fc3-9fd8-7828f4c6bd49"
+  ],
+  "realAccountUsed": false
+}

@@ -1,0 +1,62 @@
+{
+  "allFiveJobsAndSnapshotsUnchanged": true,
+  "threePublishedHistoriesPreserved": true,
+  "trustedReceiptPreserved": true,
+  "twoUnfinishedTasksNotSubmitted": true,
+  "offersUnchanged": true,
+  "jobs": [
+    {
+      "id": "douyin_publish_9edc0d22-216a-40e0-9b9c-54ff335668b5",
+      "platform": "douyin",
+      "status": "blocked",
+      "phase": "awaiting-submit",
+      "publishStatus": "not_submitted",
+      "receiptUrl": null,
+      "receiptSource": null
+    },
+    {
+      "id": "tiktok_publish_1774b80a-aece-4118-9939-4309196e6c1a",
+      "platform": "tiktok",
+      "status": "awaiting_confirmation",
+      "phase": "awaiting-submit",
+      "publishStatus": "not_submitted",
+      "receiptUrl": null,
+      "receiptSource": null
+    },
+    {
+      "id": "tiktok_publish_0e72c158-eec4-4ca3-96f8-e78367658e2e",
+      "platform": "tiktok",
+      "status": "completed",
+      "phase": "awaiting-submit",
+      "publishStatus": "published",
+      "receiptUrl": "https://www.tiktok.com/@gardendaemon/video/7696179513922833670",
+      "receiptSource": "tiktok-studio-posts"
+    },
+    {
+      "id": "xhs_publish_1f323230-4eb8-40e1-a542-ebe4206ecaf4",
+      "platform": "xiaohongshu",
+      "status": "completed",
+      "phase": "awaiting-submit",
+      "publishStatus": "published",
+      "receiptUrl": null,
+      "receiptSource": null
+    },
+    {
+      "id": "xhs_publish_d764065c-13b1-412b-80c7-8adf91400bc0",
+      "platform": "xiaohongshu",
+      "status": "completed",
+      "phase": "awaiting-submit",
+      "publishStatus": "published",
+      "receiptUrl": null,
+      "receiptSource": null
+    }
+  ],
+  "audit": {
+    "network": [],
+    "paidMediaRequests": {
+      "image": 0,
+      "video": 0,
+      "voice": 0
+    }
+  }
+}

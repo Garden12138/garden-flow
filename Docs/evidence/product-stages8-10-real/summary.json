@@ -1,0 +1,453 @@
+{
+  "date": "2026-10-13",
+  "status": "three-published-tiktok-remix-awaiting-final-douyin-readback-fix",
+  "node": "22.23.2",
+  "pnpm": "10.28.2",
+  "codeBaseline": "e734280",
+  "records": [
+    {
+      "ref": {
+        "kind": "video",
+        "projectId": "video_edit_v2_1791878233439_2a00d775"
+      },
+      "sessionId": "product_editor_c5fccda6403975a48a150adc7fb1",
+      "revision": "c9bf2b69b9582e6f1d90c9c7a204155bfbf04e9fe9dee9dcc6dfb53867004fdb",
+      "target": {
+        "platform": "douyin",
+        "contentKind": "video",
+        "compositionMode": "product-images",
+        "language": "zh-CN",
+        "market": "中国",
+        "profileId": "douyin-video-9:16",
+        "profileVersion": 1,
+        "allowPaidMedia": false,
+        "spec": {
+          "width": 1080,
+          "height": 1920,
+          "aspectRatio": "9:16",
+          "fps": 30,
+          "format": "mp4",
+          "safeInsets": {
+            "top": 120,
+            "right": 144,
+            "bottom": 320,
+            "left": 72
+          }
+        }
+      },
+      "workVersion": {
+        "workId": "video_edit_v2_1791872672063_253e0625",
+        "versionId": "video_edit_v2_1791878233439_2a00d775",
+        "sourceVersionId": "video_edit_v2_1791872672063_253e0625",
+        "copyReviewRequired": true,
+        "publicationBinding": {
+          "platform": "douyin",
+          "versionId": "dyver_470659c6-caaf-47a3-b163-5acd9b8d5550"
+        }
+      },
+      "undoCount": 0,
+      "publicationCopy": {
+        "title": "伟嘉海洋鱼3.6kg验收",
+        "description": "商品工作流验收：伟嘉成猫粮，海洋鱼口味，300g×12，共3.6kg。使用原有商品图及本地文字，原图上的商家表述未重新核实。本稿用于功能验收。",
+        "hashtags": [
+          "GardenFlowTest",
+          "猫粮"
+        ]
+      },
+      "realEditRounds": 0
+    },
+    {
+      "ref": {
+        "kind": "video",
+        "projectId": "video_edit_v2_1791872672063_253e0625"
+      },
+      "sessionId": "product_editor_05b7f3acc3a44baaf1071372fd4c",
+      "revision": "96200ec3a49eb80cf8a9261cafbb1937accb033b06fca463e7a2b8d5154b5eab",
+      "target": {
+        "platform": "xiaohongshu",
+        "contentKind": "video",
+        "compositionMode": "product-images",
+        "language": "zh-CN",
+        "market": "中国",
+        "profileId": "xiaohongshu-video-9:16",
+        "profileVersion": 1,
+        "allowPaidMedia": false,
+        "spec": {
+          "width": 1080,
+          "height": 1920,
+          "aspectRatio": "9:16",
+          "fps": 30,
+          "format": "mp4",
+          "safeInsets": {
+            "top": 120,
+            "right": 144,
+            "bottom": 320,
+            "left": 72
+          }
+        }
+      },
+      "workVersion": {
+        "workId": "video_edit_v2_1791872672063_253e0625",
+        "versionId": "video_edit_v2_1791872672063_253e0625",
+        "publicationBinding": {
+          "platform": "xiaohongshu",
+          "notePath": "xiaohongshu/video-video_edit_v2_1791872672063_253e0625.redvideo"
+        }
+      },
+      "undoCount": 4,
+      "publicationCopy": {
+        "title": "伟嘉海洋鱼3.6kg验收",
+        "description": "商品工作流验收：伟嘉成猫粮，海洋鱼口味，300g×12，共3.6kg。使用原有商品图及本地文字，原图上的商家表述未重新核实。本稿用于功能验收。",
+        "hashtags": [
+          "GardenFlowTest",
+          "猫粮"
+        ]
+      },
+      "realEditRounds": 6
+    },
+    {
+      "ref": {
+        "kind": "video",
+        "projectId": "video_edit_v2_1791873082859_33de6922"
+      },
+      "sessionId": "product_editor_ced3484011c1217f8c2c1fb02378",
+      "revision": "24461322facca3bcd9da454b927430a8e56e257b8f6df368fbd7b589b2c409f8",
+      "target": {
+        "platform": "tiktok",
+        "contentKind": "video",
+        "compositionMode": "product-images",
+        "language": "en",
+        "market": "International",
+        "profileId": "tiktok-video-9:16",
+        "profileVersion": 1,
+        "allowPaidMedia": false,
+        "spec": {
+          "width": 1080,
+          "height": 1920,
+          "aspectRatio": "9:16",
+          "fps": 30,
+          "format": "mp4",
+          "safeInsets": {
+            "top": 120,
+            "right": 144,
+            "bottom": 320,
+            "left": 72
+          }
+        }
+      },
+      "workVersion": {
+        "workId": "video_edit_v2_1791873082859_33de6922",
+        "versionId": "video_edit_v2_1791873082859_33de6922",
+        "publicationBinding": {
+          "platform": "tiktok",
+          "versionId": "tkver_3021ae32-e3f4-4be4-b640-8ce3ac0bd049"
+        }
+      },
+      "undoCount": 5,
+      "publicationCopy": {
+        "title": "Whiskas Ocean Fish 3.6kg Test",
+        "description": "GardenFlow workflow acceptance. Selected SKU: Whiskas adult cat food, ocean fish flavor, 12 x 300g, 3.6kg total. Original Chinese-market images and source text are retained; on-image claims have not been independently verified. This is a workflow test.",
+        "hashtags": [
+          "GardenFlowTest",
+          "CatFood"
+        ]
+      },
+      "realEditRounds": 7
+    },
+    {
+      "ref": {
+        "kind": "video",
+        "projectId": "video_edit_v2_1791873199549_1dfc6cda"
+      },
+      "sessionId": "product_editor_44101bc7fe9e79d609b8f8c1fd5b",
+      "revision": "43a0ac72edcb3956567afcd1133566fdecc0dbf5d5f930be997da7a3d4251574",
+      "target": {
+        "platform": "douyin",
+        "contentKind": "video",
+        "compositionMode": "product-images",
+        "language": "zh-CN",
+        "market": "中国",
+        "profileId": "douyin-video-9:16",
+        "profileVersion": 1,
+        "allowPaidMedia": false,
+        "spec": {
+          "width": 1080,
+          "height": 1920,
+          "aspectRatio": "9:16",
+          "fps": 30,
+          "format": "mp4",
+          "safeInsets": {
+            "top": 120,
+            "right": 144,
+            "bottom": 320,
+            "left": 72
+          }
+        }
+      },
+      "workVersion": {
+        "workId": "video_edit_v2_1791873199549_1dfc6cda",
+        "versionId": "video_edit_v2_1791873199549_1dfc6cda",
+        "publicationBinding": {
+          "platform": "douyin",
+          "versionId": "dyver_defedc4e-775a-40f7-92d7-ac87ec036c63"
+        }
+      },
+      "undoCount": 5,
+      "publicationCopy": {
+        "title": "伟嘉海洋鱼3.6kg验收",
+        "description": "商品工作流验收：伟嘉成猫粮，海洋鱼口味，300g×12，共3.6kg。使用原有商品图及本地文字，原图上的商家表述未重新核实。本稿用于功能验收。",
+        "hashtags": [
+          "GardenFlowTest",
+          "猫粮"
+        ]
+      },
+      "realEditRounds": 7
+    },
+    {
+      "ref": {
+        "kind": "video",
+        "projectId": "video_edit_v2_1791873336346_4849812b"
+      },
+      "sessionId": "product_editor_515bcee8cc681f695324936d2525",
+      "revision": "c66ce8cb926b7bee2cd8079e07a62671152a0996b8938762ebb506dfa3bb9a8d",
+      "target": {
+        "platform": "tiktok",
+        "contentKind": "video",
+        "compositionMode": "existing-clips",
+        "language": "en",
+        "market": "International",
+        "profileId": "tiktok-video-9:16",
+        "profileVersion": 1,
+        "allowPaidMedia": false,
+        "spec": {
+          "width": 1080,
+          "height": 1920,
+          "aspectRatio": "9:16",
+          "fps": 30,
+          "format": "mp4",
+          "safeInsets": {
+            "top": 120,
+            "right": 144,
+            "bottom": 320,
+            "left": 72
+          }
+        }
+      },
+      "workVersion": {
+        "workId": "video_edit_v2_1791873336346_4849812b",
+        "versionId": "video_edit_v2_1791873336346_4849812b",
+        "publicationBinding": {
+          "platform": "tiktok",
+          "versionId": "tkver_8961e138-d0e2-4c6d-ad6b-16b0b2980d71"
+        }
+      },
+      "undoCount": 4,
+      "publicationCopy": {
+        "title": "Whiskas Ocean Fish 3.6kg Test",
+        "description": "GardenFlow workflow acceptance. Selected SKU: Whiskas adult cat food, ocean fish flavor, 12 x 300g, 3.6kg total. Original Chinese-market images and source text are retained; on-image claims have not been independently verified. This is a workflow test.",
+        "hashtags": [
+          "GardenFlowTest",
+          "CatFood"
+        ]
+      },
+      "realEditRounds": 6
+    },
+    {
+      "ref": {
+        "kind": "image-set",
+        "path": "xiaohongshu/商品套图-98218b28-e4ea-41bb-b1ad-bcb35879115b.redpost"
+      },
+      "sessionId": "product_editor_a14d7233f55f6325034d71c235a5",
+      "revision": "55871e4b941a896dabc55bfb63d185865614a0bff5ba858b0d1ad5ffd276aeba",
+      "target": {
+        "platform": "xiaohongshu",
+        "contentKind": "image-set",
+        "language": "zh-CN",
+        "market": "中国",
+        "profileId": "xiaohongshu-image-set-3:4",
+        "profileVersion": 1,
+        "allowPaidMedia": false,
+        "spec": {
+          "width": 1440,
+          "height": 1920,
+          "aspectRatio": "3:4",
+          "format": "png"
+        }
+      },
+      "workVersion": {
+        "workId": "proposal-whiskas-oceanfish-36kg-20261013",
+        "versionId": "proposal-whiskas-oceanfish-36kg-20261013",
+        "publicationBinding": {
+          "platform": "xiaohongshu",
+          "notePath": "xiaohongshu/商品套图-98218b28-e4ea-41bb-b1ad-bcb35879115b.redpost"
+        }
+      },
+      "undoCount": 5,
+      "publicationCopy": {
+        "title": "伟嘉海洋鱼3.6kg套图",
+        "description": "商品套图工作流验收：伟嘉成猫粮，海洋鱼口味，300g×12，共3.6kg。使用商家原图和本地可编辑文字，原图表述未重新核实，仅用于功能验收。",
+        "hashtags": [
+          "GardenFlowTest",
+          "猫粮"
+        ]
+      },
+      "realEditRounds": 7
+    }
+  ],
+  "model": {
+    "textRequests": 124,
+    "failedRequests": 2,
+    "paidMediaRequests": {
+      "image": 0,
+      "video": 0,
+      "voice": 0
+    },
+    "providers": [
+      "DashScope"
+    ],
+    "model": "qwen3.8-max"
+  },
+  "coldStartupModelCalls": 0,
+  "approvalIdempotenceCount": 5,
+  "localJobs": [
+    {
+      "id": "douyin_publish_9edc0d22-216a-40e0-9b9c-54ff335668b5",
+      "platform": "douyin",
+      "source": {
+        "kind": "video",
+        "projectId": "video_edit_v2_1791873199549_1dfc6cda"
+      },
+      "accountLabel": "抖音号 27605448237",
+      "phase": "awaiting-submit",
+      "contentDigest": "93050d338cd831d4a9b31efa0fa676e4d1ec5cea4fed955d04757f3f79737927",
+      "publishStatus": "published",
+      "status": "completed",
+      "errorMessage": "",
+      "resetStatus": "ready",
+      "receiptUrl": null,
+      "receiptSource": "user-verified",
+      "mediaCount": 1,
+      "hasUploadReview": true,
+      "manualReviewSource": "user-verified"
+    },
+    {
+      "id": "tiktok_publish_1774b80a-aece-4118-9939-4309196e6c1a",
+      "platform": "tiktok",
+      "source": {
+        "kind": "video",
+        "projectId": "video_edit_v2_1791873336346_4849812b"
+      },
+      "accountLabel": "@gardendaemon",
+      "phase": "awaiting-submit",
+      "contentDigest": "ee9ed86fa2e1f5bd0d20994b4c8e1fc83a7b96e1605136dd508a10ea8ea12074",
+      "publishStatus": "published",
+      "status": "completed",
+      "errorMessage": "",
+      "resetStatus": "ready",
+      "receiptUrl": "https://www.tiktok.com/@gardendaemon/video/7696302869577780498",
+      "receiptSource": "tiktok-studio-posts",
+      "mediaCount": 1,
+      "hasUploadReview": true,
+      "manualReviewSource": "user-verified"
+    },
+    {
+      "id": "tiktok_publish_0e72c158-eec4-4ca3-96f8-e78367658e2e",
+      "platform": "tiktok",
+      "source": {
+        "kind": "video",
+        "projectId": "video_edit_v2_1791873082859_33de6922"
+      },
+      "accountLabel": "@gardendaemon",
+      "phase": "awaiting-submit",
+      "contentDigest": "a1c4046b25d16f5e56f0d0e31ebc042a83e517c0866ede7af586dc8a5bd7875f",
+      "publishStatus": "published",
+      "status": "completed",
+      "errorMessage": "",
+      "resetStatus": "ready",
+      "receiptUrl": "https://www.tiktok.com/@gardendaemon/video/7696179513922833670",
+      "receiptSource": "tiktok-studio-posts",
+      "mediaCount": 1,
+      "hasUploadReview": true,
+      "manualReviewSource": "user-verified"
+    },
+    {
+      "id": "xhs_publish_1f323230-4eb8-40e1-a542-ebe4206ecaf4",
+      "platform": "xiaohongshu",
+      "source": {
+        "kind": "image-set",
+        "path": "xiaohongshu/商品套图-98218b28-e4ea-41bb-b1ad-bcb35879115b.redpost"
+      },
+      "accountLabel": "猫猫的猫",
+      "phase": "awaiting-submit",
+      "contentDigest": "7f218978840200ad4849524b7bb6483779e76aabff8a506fe7b9a71d2352ddc4",
+      "publishStatus": "published",
+      "status": "completed",
+      "errorMessage": "",
+      "resetStatus": "ready",
+      "receiptUrl": null,
+      "receiptSource": null,
+      "mediaCount": 5,
+      "hasUploadReview": true,
+      "manualReviewSource": null
+    },
+    {
+      "id": "xhs_publish_d764065c-13b1-412b-80c7-8adf91400bc0",
+      "platform": "xiaohongshu",
+      "source": {
+        "kind": "video",
+        "projectId": "video_edit_v2_1791872672063_253e0625"
+      },
+      "accountLabel": "猫猫的猫",
+      "phase": "awaiting-submit",
+      "contentDigest": "de8147e6127a92fc5e48c47c59c052b529e9605f014af61058304e6ece46bbd7",
+      "publishStatus": "published",
+      "status": "completed",
+      "errorMessage": "",
+      "resetStatus": "ready",
+      "receiptUrl": null,
+      "receiptSource": null,
+      "mediaCount": 1,
+      "hasUploadReview": true,
+      "manualReviewSource": null
+    }
+  ],
+  "prepareInvokedNoModels": true,
+  "uploaded": true,
+  "submitted": true,
+  "tests": {
+    "desktop": 487,
+    "publisherPlugin": 139,
+    "check": "passed",
+    "build": "passed",
+    "package": "macOS arm64 unsigned",
+    "chromiumUploadFixFixture": "passed",
+    "latestPreviewMountBuild": "passed"
+  },
+  "sourceAudioWasSilent": true,
+  "planningRequiredSkuImageCorrection": true,
+  "uploadAuthorizationCount": 5,
+  "partialImageUploadObserved": 1,
+  "uploadedWorkCount": 5,
+  "paidGenerationCallsDuringUpload": 0,
+  "finalSubmissionCount": 5,
+  "platformConfirmedPublishedCount": 5,
+  "taskResultUnknownCount": 0,
+  "updatedDate": "2026-10-14",
+  "latestColdRecovery": "all-five-published-snapshots-and-two-distinct-receipts-preserved-six-projects-unchanged-no-automatic-actions",
+  "taskPendingReviewCount": 0,
+  "browserObservedPublishedWorkCount": 5,
+  "paidGenerationCallsDuringPublication": 0,
+  "awaitingHumanResultVerification": [],
+  "realBranchesNotRun": [
+    "真实付费媒体生成",
+    "真实非静音来源混剪"
+  ],
+  "trustedReceiptCount": 2,
+  "realMainFlowStatus": "completed",
+  "followupIndependentProjectCount": 1,
+  "followupUploadedWorkCount": 1,
+  "followupFinalSubmissionCount": 0,
+  "followupConfirmationChecks": "passed-real-upload-edit-undo-and-cold-recovery",
+  "followupBrowserDraftCleanup": "completed-after-specific-human-authorization",
+  "realBranchScope": "付费生成按具体对象确认后另验；非静音混剪沿用阶段7既有余项；均非本轮默认主流程收尾门槛"
+}

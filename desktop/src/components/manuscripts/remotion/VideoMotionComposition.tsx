@@ -15,7 +15,7 @@ import {
     extractLocalAssetPathCandidate,
     isLocalAssetSource,
 } from '../../../../shared/localAsset';
-import { shouldRenderVisualPlaceholder } from '../../../../shared/videoMotionLayerPolicy';
+import { sceneOpacityRange, shouldRenderVisualPlaceholder } from '../../../../shared/videoMotionLayerPolicy';
 import { resolveAssetUrl } from '../../../utils/pathManager';
 import type {
     RemotionCompositionConfig,
@@ -127,7 +127,16 @@ function getMotionValues(frame: number, durationInFrames: number, preset: Motion
     }
 }
 
-function overlayPositionStyles(position: OverlayPosition | undefined): React.CSSProperties {
+function overlayPositionStyles(position: OverlayPosition | undefined, safeInsets?: RemotionScene['safeInsets']): React.CSSProperties {
+    if (safeInsets) {
+        // AbsoluteFill supplies 100% width/height; clear them so both inset edges constrain the box.
+        return {
+            ...safeInsets,
+            width: 'auto',
+            height: 'auto',
+            justifyContent: position === 'top' ? 'flex-start' : position === 'center' ? 'center' : 'flex-end',
+        };
+    }
     switch (position) {
         case 'top':
             return {
@@ -819,9 +828,11 @@ function SceneEntity({
 }
 
 function SceneOverlay({
+    safeInsets,
     overlay,
     sceneFrame,
 }: {
+    safeInsets?: RemotionScene['safeInsets'];
     overlay: RemotionOverlay;
     sceneFrame: number;
 }) {
@@ -842,7 +853,7 @@ function SceneOverlay({
             style={{
                 pointerEvents: 'none',
                 display: 'flex',
-                ...overlayPositionStyles(overlay.position),
+                ...overlayPositionStyles(overlay.position, safeInsets),
             }}
         >
             <div
@@ -899,15 +910,16 @@ function SceneLayerContent({
         scene.durationInFrames,
         scene.motionPreset || 'static',
     );
-    const baseOpacity = interpolate(
+    const opacityRange = sceneOpacityRange(scene.durationInFrames, fps);
+    const baseOpacity = opacityRange ? interpolate(
         localFrame,
-        [0, Math.max(6, Math.round(fps * 0.25)), Math.max(0, scene.durationInFrames - Math.round(fps * 0.25)), scene.durationInFrames],
+        opacityRange,
         [0, 1, 1, 0],
         {
             extrapolateLeft: 'clamp',
             extrapolateRight: 'clamp',
         },
-    );
+    ) : 1;
     const overlayItems = buildSceneOverlays(scene, fps, compositionTitle);
     const entities = Array.isArray(scene.entities) ? scene.entities : [];
 
@@ -1004,7 +1016,7 @@ function SceneLayerContent({
                 />
             ))}
             {overlayItems.map((overlay) => (
-                <SceneOverlay key={overlay.id} overlay={overlay} sceneFrame={localFrame} />
+                <SceneOverlay safeInsets={scene.safeInsets} key={overlay.id} overlay={overlay} sceneFrame={localFrame} />
             ))}
         </AbsoluteFill>
     );

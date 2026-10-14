@@ -1,0 +1,73 @@
+{
+  "localHtmlFixture": true,
+  "externalPlatformRequests": 0,
+  "interrupted": {
+    "ok": false,
+    "jobId": "chromium-local-job",
+    "publishStatus": "not_submitted",
+    "resetStatus": "not_started",
+    "code": "PUBLISHER_FAILED",
+    "message": "Simulated interruption before second image"
+  },
+  "legacyPartialPrefixRecovered": true,
+  "prepared": {
+    "ok": true,
+    "jobId": "chromium-local-job",
+    "publishStatus": "not_submitted",
+    "resetStatus": "not_started",
+    "prepared": true,
+    "contentDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "uploadReview": {
+      "jobId": "chromium-local-job",
+      "contentDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "accountId": "local_fixture",
+      "checkedAt": 1791905805477,
+      "mediaCount": 3,
+      "pageSettings": {
+        "visibilityLabel": "公开可见",
+        "scheduled": false
+      },
+      "pageFingerprint": "{\"accountId\":\"local_fixture\",\"accountLabel\":\"小红书账号 local_fixture\",\"mediaSources\":[\"blob:https://creator.xiaohongshu.com/d43f96c3-5a8e-4ac8-83d7-44cbba079dca\",\"blob:https://creator.xiaohongshu.com/1e6d5b35-2c76-4ab8-8589-1fe5618f30cd\",\"blob:https://creator.xiaohongshu.com/ee9f38ab-f87c-4f68-afca-96fd93532f2a\"],\"mediaFileNames\":[],\"title\":\"本地商品图\",\"body\":\"三张相同内容仍按顺序保留 #原图\",\"settings\":{\"visibilityLabel\":\"公开可见\",\"scheduled\":false}}"
+    }
+  },
+  "changedSettingsResult": {
+    "ok": false,
+    "jobId": "chromium-local-job",
+    "publishStatus": "not_submitted",
+    "resetStatus": "not_started",
+    "code": "UPLOAD_PAGE_CHANGED",
+    "message": "上传核对后页面文案、图片或发布设置已变化，请重新核对"
+  },
+  "changedAccountResult": {
+    "ok": false,
+    "jobId": "chromium-local-job",
+    "publishStatus": "not_submitted",
+    "resetStatus": "not_started",
+    "code": "ACCOUNT_CHANGED",
+    "message": "小红书账号已变化，未提交"
+  },
+  "submitted": {
+    "ok": true,
+    "jobId": "chromium-local-job",
+    "publishStatus": "published",
+    "resetStatus": "ready",
+    "publishedAt": 1791905813585
+  },
+  "uploads": [
+    [
+      "1.png"
+    ],
+    [
+      "2.png"
+    ],
+    [
+      "3.png"
+    ]
+  ],
+  "mediaAnchors": [
+    "blob:https://creator.xiaohongshu.com/d43f96c3-5a8e-4ac8-83d7-44cbba079dca",
+    "blob:https://creator.xiaohongshu.com/1e6d5b35-2c76-4ab8-8589-1fe5618f30cd",
+    "blob:https://creator.xiaohongshu.com/ee9f38ab-f87c-4f68-afca-96fd93532f2a"
+  ],
+  "realAccountUsed": false
+}

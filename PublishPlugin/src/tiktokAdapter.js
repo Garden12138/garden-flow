@@ -24,7 +24,8 @@ export function validateTikTokRequest(request) {
     || !/^tiktok_publish_[a-zA-Z0-9_-]+$/.test(request.jobId || '')
     || !hex(request.contentDigest) || !hex(request.mediaSha256)
     || !Number.isSafeInteger(request.revision) || request.revision < 1
-    || !Number.isSafeInteger(request.mediaSize) || request.mediaSize < 1 || request.mediaSize > 30 * 1024 ** 3
+    || !Number.isSafeInteger(request.mediaSize) || request.mediaSize < 1 || request.mediaSize >= 10_000_000_000
+    || (request.mediaDurationMs !== undefined && (!Number.isFinite(request.mediaDurationMs) || request.mediaDurationMs <= 0))
     || !/^(\/|[A-Za-z]:[\\/]).+\.mp4$/i.test(request.mediaPath || '')
     || !request.versionId || !request.projectId || !request.renderId || !request.mediaAssetId || !request.sessionId
     || !/^[A-Za-z0-9_.]{1,100}$/.test(request.accountId || '') || request.accountLabel !== '@' + request.accountId
@@ -149,6 +150,8 @@ export function matchTikTokPostReceipt(page, request, expectedUrl = '') {
     && caption(post.caption) === caption(tikTokCaption(request))
     && post.visibility === request.publishSettings.visibility
     && /^\d{2,3}:[0-5]\d$/.test(post.durationText)
+    && (request.mediaDurationMs === undefined || Number.isFinite(request.mediaDurationMs) && request.mediaDurationMs > 0
+      && Math.abs(post.durationText.split(':').reduce((seconds, part) => seconds * 60 + Number(part), 0) * 1000 - request.mediaDurationMs) <= 1000)
     // Only the actual dated, published row is supported. Pending/rejected labels
     // remain unverified until their real DOM is available.
     && /^(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{1,2}, \d{1,2}:\d{2}\s?[AP]M$/.test(post.publishedLabel)

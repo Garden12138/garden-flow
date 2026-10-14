@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ProductCreationTargetSchema, ProductPublicationCopySchema, validateProductPublicationCopy } from './productCreationTarget.ts';
 
 const ProductVideoProposalSceneSchema = z.object({
   id: z.string().min(1),
@@ -19,6 +20,8 @@ const ProductVideoProposalSceneSchema = z.object({
 
 export const ProductVideoComposeParamsSchema = z.object({
   version: z.literal(1).default(1),
+  creationTarget: ProductCreationTargetSchema.optional(),
+  publicationCopy: ProductPublicationCopySchema.optional(),
   proposalId: z.string().min(6).max(160),
   productId: z.string().min(1),
   referencedProductIds: z.array(z.string().min(1)).min(1).max(8),
@@ -36,6 +39,15 @@ export const ProductVideoComposeParamsSchema = z.object({
   compositionMode: z.enum(['product-images', 'existing-clips']).optional(),
   scenes: z.array(ProductVideoProposalSceneSchema).min(1).max(8),
 }).strict().superRefine((value, context) => {
+  if (value.creationTarget) {
+    const target = value.creationTarget;
+    if (target.profileVersion === 0 || target.contentKind !== 'video' || target.compositionMode !== (value.compositionMode || 'product-images')
+      || value.canvas.width !== target.spec.width || value.canvas.height !== target.spec.height || value.canvas.fps !== target.spec.fps || value.canvas.aspectRatio !== target.spec.aspectRatio
+      || value.durationMs > 240000 || !value.publicationCopy || (!target.allowPaidMedia && (value.voiceoverEnabled !== false || value.scenes.some(scene => scene.source === 'ai-motion')))) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: '视频方案须符合已选目标规格、编排模式、发布文案及媒体确认范围' });
+    }
+    if (value.publicationCopy) try { validateProductPublicationCopy(target, value.publicationCopy); } catch (error) { context.addIssue({ code: z.ZodIssueCode.custom, message: String((error as Error).message) }); }
+  }
   const uniqueProductIds = Array.from(new Set(value.referencedProductIds));
   if (uniqueProductIds.length !== 1 || uniqueProductIds[0] !== value.productId) {
     context.addIssue({ code: z.ZodIssueCode.custom, message: 'Choose exactly one primary product before composing.', path: ['referencedProductIds'] });
