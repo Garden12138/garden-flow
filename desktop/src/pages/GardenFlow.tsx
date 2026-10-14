@@ -1217,6 +1217,18 @@ export function GardenFlow({
                     && String(metadata.status || '').trim() !== 'archived';
             }));
             const rememberedSessionId = readGardenFlowLastSessionId(nextActiveSpaceId);
+            const linkedSessionId = options?.preferredSessionId || activeSessionIdRef.current || rememberedSessionId;
+            if (linkedSessionId && !items.some((item) => item.id === linkedSessionId)) {
+                const sessions = await window.ipcRenderer.chat.getSessions() as ChatSession[];
+                if (requestId !== sessionRequestIdRef.current) return;
+                const report = sessions.find((session) => session.id === linkedSessionId
+                    && session.metadata?.contextType === 'gardenflow-capture'
+                    && session.metadata.spaceId === nextActiveSpaceId
+                    && String(session.metadata.contextId || '').startsWith(`gardenflow-capture:${nextActiveSpaceId}:`)
+                    && !session.archived && session.metadata.archived !== true
+                    && session.metadata.status !== 'archived');
+                if (report) items = sortContextSessionItems([...items, createContextSessionListItem(report)]);
+            }
 
             const preserveManualDraft = manualDraftActiveRef.current
                 && !options?.preferredSessionId

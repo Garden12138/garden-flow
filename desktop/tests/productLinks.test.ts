@@ -43,6 +43,23 @@ test('configured OpenAI, Anthropic and Gemini text connections return validated 
     await assert.rejects(suggestProductLinks({ product: doc('self'), candidates: [doc('1')], llm, fetchImpl: (async () => new Response('', { status: 429 })) as typeof fetch }), /HTTP 429/);
 });
 
+test('product link suggestions disable only documented DashScope hybrid thinking', async () => {
+    for (const [baseURL, modelName, expected] of [
+        ['https://dashscope.aliyuncs.com/compatible-mode/v1', 'qwen3.8-max', false],
+        ['https://dashscope-intl.aliyuncs.com/compatible-mode/v1', 'qwen3.8-max-0902', false],
+        ['https://gateway.example/v1', 'qwen3.8-max', undefined],
+        ['https://dashscope.aliyuncs.com/compatible-mode/v1', 'qwen3.8-unknown', undefined],
+    ] as const) {
+        const result = await suggestProductLinks({ product: doc('self'), candidates: [doc('1')], llm: { ...llm, baseURL, modelName },
+            fetchImpl: (async (_url, init) => {
+                const body = JSON.parse(String(init?.body));
+                assert.equal(body.enable_thinking, expected);
+                return Response.json({ choices: [{ message: { content: '{"candidates":[{"productId":"1","reason":"明确 A1 型号"}]}' } }] });
+            }) as typeof fetch });
+        assert.equal(result[0].productVersion, 'version-1');
+    }
+});
+
 test('cross-platform captures stay independent, relations preserve content versions and recapture keeps user materials', async (t) => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'gardenflow-product-links-')); t.after(() => fs.rm(root, { recursive: true, force: true }));
     const store = createBrandWorkspaceStore(() => root);

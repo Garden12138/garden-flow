@@ -1296,6 +1296,9 @@ function buildDashscopeWanPayloadVariants(
     const refs = pickReferenceImages(request, qwenImageModel ? 3 : 4);
     const refSets: string[][] = (() => {
         if (refs.length === 0) return [[]];
+        // Qwen's Base64 contract requires the MIME data URL; do not probe a
+        // stripped Base64 variant before making the same generation request.
+        if (qwenImageModel) return [refs];
         const hasDataUrl = refs.some((item) => Boolean(decodeDataUrl(item)));
         if (!hasDataUrl) return [refs];
         // DashScope wan2.6 docs explicitly state `image` accepts URL or Base64 string.

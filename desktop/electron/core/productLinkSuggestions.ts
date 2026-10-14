@@ -2,6 +2,7 @@ import type { ProductLinkCandidate } from '../../shared/productLinks.ts';
 import type { LlmConnection } from './aiModelRouteResolver.ts';
 import { fetchLlmWithRetry } from './llmFetchRetry.ts';
 import { safeUrlJoin } from './urlUtils.ts';
+import { structuredTextProviderOptions } from './structuredTextProviderOptions.ts';
 
 export type ProductMatchDocument = {
     productId: string;
@@ -60,7 +61,8 @@ export async function suggestProductLinks(input: {
         const userContent = JSON.stringify({ product: summarize(input.product), candidates: candidates.map(summarize) });
         let endpoint = safeUrlJoin(input.llm.baseURL, '/chat/completions');
         let headers: Record<string, string> = { 'Content-Type': 'application/json', Authorization: `Bearer ${input.llm.apiKey}` };
-        let body: object = { model: input.llm.modelName, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userContent }], max_tokens: 2_000 };
+        let body: object = { model: input.llm.modelName, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userContent }], max_tokens: 2_000,
+            ...structuredTextProviderOptions(input.llm) };
         if (protocol === 'anthropic') {
             endpoint = safeUrlJoin(input.llm.baseURL, '/messages');
             headers = { 'Content-Type': 'application/json', 'x-api-key': input.llm.apiKey, 'anthropic-version': '2023-06-01' };

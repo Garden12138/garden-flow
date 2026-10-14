@@ -8,7 +8,7 @@ import { runProductStructuredCaptureRound, uniqueProductSearchCards, normalizePr
 
 const input = { keyword: '成猫猫粮', maxProducts: 2, reviewFilterLabels: [], reviewsPerFilter: 5, pacing: 'normal' as const };
 const card = (id: string, platform = 'taobao') => ({ title: `猫粮 ${id}`, sourceUrl: `https://${platform === 'taobao' ? 'item.taobao.com' : 'detail.tmall.com'}/item.htm?id=${id}&spm=tracking` });
-function harness(options: { cards?: any[]; search?: any; saves?: any[]; refill?: any[]; throwSave?: Error } = {}) {
+function harness(options: { cards?: any[]; search?: any; saves?: any[]; refill?: any[]; throwSave?: Error; closeResult?: any; throwClose?: Error } = {}) {
     const calls: Array<{ name: string; args: any }> = [];
     let tabId = 100;
     let saves = 0;
@@ -18,6 +18,10 @@ function harness(options: { cards?: any[]; search?: any; saves?: any[]; refill?:
             const name = String(params.name); const args: any = params.arguments; calls.push({ name, args });
             if (name === 'research.run') return options.search || { success: true, tab: { id: 10 }, cleanupTabIds: [10, 11], items: args.executionMode ? options.refill || [] : options.cards || [card('1'), card('2')] };
             if (name === 'tab.create') return { tab: { id: ++tabId } };
+            if (name === 'tab.close') {
+                if (options.throwClose) throw options.throwClose;
+                return options.closeResult || { success: true };
+            }
             if (name === 'capture.save') {
                 if (options.throwSave) throw options.throwSave;
                 return { success: true, productId: `p${saves}`, snapshotId: `s${saves}`, capturedReviews: 5, tabClosed: true, ...options.saves?.[saves++] };
@@ -241,4 +245,55 @@ test('search timeout detail survives into the report while all owned search tabs
     const round = await runProductStructuredCaptureRound({ ...input, platform: 'taobao' }, h.io);
     assert.equal(round.status, 'failed'); assert.match(round.reason!, /content script timeout/);
     assert.deepEqual(h.calls.filter((c) => c.name === 'tab.close').map((c) => c.args.tabId), [10, 11]);
+});
+
+test('failed task tab cleanup preserves saved products but cannot report a fully successful round', async () => {
+    for (const options of [{ closeResult: { success: false, message: 'fixture lease lost' } }, { throwClose: new Error('fixture close failed') }]) {
+        const h = harness(options);
+        const round = await runProductStructuredCaptureRound({ ...input, platform: 'taobao' }, h.io);
+        assert.equal(round.saved, 2);
+        assert.equal(round.failed, 0);
+        assert.equal(round.status, 'partial');
+        assert.equal(round.cleanupWarnings?.length, 2);
+        assert.match(round.summary, /标签清理失败/);
+        assert.match(round.reason || '', /标签清理失败/);
+        assert.deepEqual(h.calls.filter((c) => c.name === 'tab.close').map((c) => c.args.tabId), [10, 11]);
+    }
+});
+
+test('desktop and real search runtime together clean delayed task children without closing user tabs', async () => {
+    const { runSiteResearch } = await import(new URL('../../Plugin/src/background/siteResearchRuntime.js', import.meta.url).href);
+    const tabs = new Map<number, any>([
+        [90, { id: 90, url: 'https://www.taobao.com/search?q=user' }],
+        [91, { id: 91, openerTabId: 10, url: 'https://list.tmall.com/search_product.htm?q=existing' }],
+    ]);
+    const closed: number[] = [];
+    let nextId = 100;
+    let productCount = 0;
+    const io: ProductStructuredCaptureIo = {
+        checkPluginInstance: () => ({ ok: true, detail: 'local fixture' }), sleep: async () => {},
+        invokeBrowserControl: async (_method, params) => {
+            const args: any = params.arguments;
+            if (params.name === 'research.run') return { response: { result: await runSiteResearch(args, {
+                createControlledTab: async () => { const tab = { id: 10, url: 'https://www.taobao.com/' }; tabs.set(tab.id, tab); return { tab }; },
+                getTab: async (id: number) => ({ ...tabs.get(id), url: 'https://www.taobao.com/search?q=成猫猫粮' }),
+                listTabs: async () => [...tabs.values()], claimTab: async () => {}, waitForTabComplete: async () => {},
+                submitSearch: async () => ({ success: true }), readSnapshot: async () => assert.fail('snapshot is disabled'),
+                readSiteEvidence: async () => {
+                    tabs.set(11, { id: 11, openerTabId: 10, url: 'https://list.tmall.com/search_product.htm?q=成猫猫粮' });
+                    return { success: true, items: [card('1'), card('2')], pageState: { results: { status: 'ready' } } };
+                },
+                scrollPage: async () => ({ success: true }), delay: async () => {},
+            }) } };
+            if (params.name === 'tab.create') { const tab = { id: ++nextId, url: args.url }; tabs.set(tab.id, tab); return { tab }; }
+            if (params.name === 'capture.save') { tabs.delete(args.tabId); return { success: true, productId: `fixture-product-${++productCount}`, snapshotId: `fixture-snapshot-${productCount}`, tabClosed: true }; }
+            if (params.name === 'tab.close') { closed.push(args.tabId); assert.ok(tabs.delete(args.tabId)); return { success: true, closed: true }; }
+            assert.fail('unexpected local fixture command');
+        },
+    };
+    const round = await runProductStructuredCaptureRound({ ...input, platform: 'taobao' }, io);
+    assert.equal(round.saved, 2);
+    assert.equal(round.status, 'captured');
+    assert.deepEqual(closed, [10, 11]);
+    assert.deepEqual([...tabs.keys()], [90, 91]);
 });

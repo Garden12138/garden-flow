@@ -36,6 +36,7 @@ export type ProductStructuredCaptureRound = {
     failed: number;
     capturedReviews: number;
     products: ProductCaptureOutcome[];
+    cleanupWarnings?: string[];
     reason?: string;
     summary: string;
 };
@@ -357,6 +358,7 @@ export async function runProductStructuredCaptureRound(
     const reviewFilterLabels = Array.from(new Set((input.reviewFilterLabels || []).map((label) => String(label || '').trim()).filter(Boolean))).slice(0, 50);
     const reviewsPerFilter = Math.max(1, Math.min(50, Math.round(Number(input.reviewsPerFilter) || 5)));
     const products: ProductCaptureOutcome[] = [];
+    const cleanupWarnings: string[] = [];
     const sleep = io.sleep || defaultSleep;
     const log = io.log || (() => undefined);
     const pacing = resolveProductCapturePacingProfile(input.pacing);
@@ -368,9 +370,23 @@ export async function runProductStructuredCaptureRound(
     let consecutiveFailures = 0;
     let failureCooldownApplied = false;
 
+    const closeTaskTab = async (tabId: number, reason: string): Promise<void> => {
+        try {
+            const result = unwrapResult(await callTool(io, 'tab.close', { tabId, reason }, CLOSE_TIMEOUT_MS));
+            if (result?.success === false || result?.closed === false) {
+                throw new Error(String(result.message || result.reason || result.error || '插件未确认标签关闭'));
+            }
+        } catch (error) {
+            const warning = `任务标签 ${tabId}：${error instanceof Error ? error.message : String(error)}`;
+            cleanupWarnings.push(warning);
+            log('warn', `${label} capture could not close ${warning}`);
+        }
+    };
+
     const finalize = (status: ProductStructuredCaptureRound['status'], reason?: string): ProductStructuredCaptureRound => {
+        const cleanupReason = cleanupWarnings.length ? `标签清理失败：${cleanupWarnings.join('；')}` : '';
         const base = {
-            status,
+            status: cleanupWarnings.length && status === 'captured' ? 'partial' as const : status,
             keyword,
             attempted: products.length,
             saved,
@@ -378,7 +394,8 @@ export async function runProductStructuredCaptureRound(
             failed: products.filter((product) => product.outcome === 'failed').length,
             capturedReviews,
             products,
-            reason: reason || undefined,
+            reason: [reason, cleanupReason].filter(Boolean).join('；') || undefined,
+            ...(cleanupWarnings.length ? { cleanupWarnings: [...cleanupWarnings] } : {}),
         };
         return { ...base, summary: summarize(base, label) };
     };
@@ -413,9 +430,7 @@ export async function runProductStructuredCaptureRound(
         if (searchTabClosed) return;
         searchTabClosed = true;
         for (const tabId of new Set([search.tabId, ...search.cleanupTabIds].filter(Boolean))) {
-            await callTool(io, 'tab.close', { tabId, reason: `${platform}_auto_capture_search_complete` }, CLOSE_TIMEOUT_MS).catch((error) => {
-                log('warn', `${label} capture could not close search tab ${tabId}: ${error instanceof Error ? error.message : String(error)}`);
-            });
+            await closeTaskTab(tabId, `${platform}_auto_capture_search_complete`);
         }
     };
     const finish = async (
@@ -571,10 +586,7 @@ export async function runProductStructuredCaptureRound(
             log('warn', `${label} capture failed for ${sourceUrl}: ${message}`);
         } finally {
             if (tabId && !tabClosed) {
-                await callTool(io, 'tab.close', { tabId, reason: `${platform}_auto_capture_complete` }, CLOSE_TIMEOUT_MS)
-                    .catch((error) => {
-                        log('warn', `${label} capture could not close product tab ${tabId}: ${error instanceof Error ? error.message : String(error)}`);
-                    });
+                await closeTaskTab(tabId, `${platform}_auto_capture_complete`);
             }
         }
         if (!productSucceeded && !blockedReason) {

@@ -9,6 +9,50 @@ const ONE_PIXEL_PNG_BASE64 =
 
 (globalThis as typeof globalThis & { require: NodeRequire }).require = createRequire(import.meta.url);
 
+test('Qwen reference generation sends one MIME data URL request with the selected count and dimensions', async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: any[] = [];
+    const image = `data:image/png;base64,${ONE_PIXEL_PNG_BASE64}`;
+    globalThis.fetch = async (input, init) => {
+        const body = JSON.parse(String(init?.body || '{}'));
+        requests.push({ url: String(input), body });
+        if (body.input.messages[0].content[0].image !== image) return new Response('invalid image format', { status: 400 });
+        return new Response(JSON.stringify({ output: { choices: [{ message: { content: [{ image }] } }] } }), { status: 200 });
+    };
+    try {
+        const outputs = await getImageProviderAdapter('dashscope-wan-native', 'dashscope').generate({
+            prompt: '保持参考商品外观，不添加文字', model: 'qwen-image-2.0-pro-2026-06-22',
+            endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1', apiKey: 'fixture-key',
+            provider: 'dashscope', providerTemplate: 'dashscope-wan-native',
+            generationMode: 'reference-guided', referenceImages: [image], count: 1, aspectRatio: '3:4', size: '1440x1920',
+        });
+        assert.equal(requests.length, 1);
+        assert.equal(requests[0].url, 'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation');
+        assert.deepEqual(requests[0].body.parameters, { n: 1, size: '1440*1920' });
+        assert.equal(outputs.length, 1);
+        assert.equal(outputs[0].mimeType, 'image/png');
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
+});
+
+test('failed Qwen reference generation does not resubmit a different Base64 format', async () => {
+    const originalFetch = globalThis.fetch;
+    let submissions = 0;
+    globalThis.fetch = async () => { submissions++; return new Response('provider unavailable', { status: 503 }); };
+    try {
+        await assert.rejects(() => getImageProviderAdapter('dashscope-wan-native', 'dashscope').generate({
+            prompt: '保持参考商品外观', model: 'qwen-image-2.0-pro-2026-06-22',
+            endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1', apiKey: 'fixture-key',
+            provider: 'dashscope', providerTemplate: 'dashscope-wan-native', generationMode: 'reference-guided',
+            referenceImages: [`data:image/png;base64,${ONE_PIXEL_PNG_BASE64}`], count: 1,
+        }), /provider unavailable/);
+        assert.equal(submissions, 1);
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
+});
+
 test('openai images retries /v1 when a root endpoint returns no image payload', async () => {
     const originalFetch = globalThis.fetch;
     const requestedUrls: string[] = [];

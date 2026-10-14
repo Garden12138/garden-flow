@@ -22,6 +22,7 @@ function mount(html, url) {
 }
 function macroDeps(options = {}) {
   let submitted = false;
+  let extracted = false;
   const reads = []; const claimed = []; const scrolls = [];
   const entry = { id: 10, url: options.entry || 'https://www.taobao.com/' };
   const current = { id: 10, url: 'https://www.taobao.com/search?q=猫粮' };
@@ -31,10 +32,15 @@ function macroDeps(options = {}) {
   return { reads, claimed, scrolls, deps: {
     createControlledTab: async () => ({ tab: entry }),
     getTab: async (id) => id === 11 ? child : options.child ? entry : current,
-    listTabs: async () => [entry, userTab, ...(submitted && options.child ? [child, { id: 91, openerTabId: 90, url: child.url }] : [])],
+    listTabs: async () => [entry, userTab,
+      ...(options.existingChild ? [{ ...child, id: 80 }] : []),
+      ...(submitted && options.child ? [child, { id: 91, openerTabId: 90, url: child.url }] : []),
+      ...(extracted && options.lateChild ? [child, { id: 91, openerTabId: 90, url: child.url },
+        { id: 92, openerTabId: 10, url: 'https://example.invalid/search' },
+        { id: 93, openerTabId: 10, url: 'https://item.taobao.com/item.htm?id=2' }] : [])],
     claimTab: async (id) => { claimed.push(id); }, waitForTabComplete: async () => {},
     submitSearch: async () => { submitted = true; return options.submission || { success: true }; },
-    readSiteEvidence: async (id) => { reads.push(id); if (options.throwRead) throw new Error('content timeout'); return options.read ? options.read(reads.length) : evidence; },
+    readSiteEvidence: async (id) => { extracted = true; reads.push(id); if (options.throwRead) throw new Error('content timeout'); return options.read ? options.read(reads.length) : evidence; },
     readSnapshot: async () => assert.fail('snapshot disabled'), delay: async () => {},
     scrollPage: async (id) => { scrolls.push(id); return { success: true }; },
   } };
@@ -138,6 +144,17 @@ test('macro follows only the search page new child tab and reports both owned ta
   assert.deepEqual(result.cleanupTabIds, [10, 11]); assert.deepEqual(h.claimed, [10, 11]); assert.deepEqual(h.reads, [11]);
   assert.equal(result.items.length, 2);
 });
+
+for (const throwRead of [false, true]) {
+  test(`late task search children are returned for cleanup after ${throwRead ? 'extraction failure' : 'successful extraction'}, while user and pre-existing tabs remain untouched`, async () => {
+    const h = macroDeps({ lateChild: true, existingChild: true, throwRead });
+    const result = await runSiteResearch(macroInput, h.deps);
+    assert.equal(result.success, !throwRead);
+    assert.deepEqual(result.cleanupTabIds, [10, 11]);
+    assert.deepEqual(h.claimed, [10, 11]);
+    assert.deepEqual(h.reads, [10]);
+  });
+}
 
 test('search runtime errors return owned tabs and bounded scroll gates stop before snapshots', async () => {
   const timeout = macroDeps({ throwRead: true });

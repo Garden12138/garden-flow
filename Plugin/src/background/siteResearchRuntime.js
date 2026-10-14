@@ -127,6 +127,8 @@ export async function runSiteResearch(requestInput, deps = {}) {
   // Return owned tabs even after a content-script timeout, so the desktop can
   // close its search tabs without touching tabs that were already open.
   const owned = new Set();
+  const searchParents = new Set();
+  let searchBaseline = null;
   const wrapped = {
     ...deps,
     createControlledTab: typeof deps.createControlledTab === 'function' ? async (options) => {
@@ -134,16 +136,48 @@ export async function runSiteResearch(requestInput, deps = {}) {
       if (created?.tab?.id) owned.add(created.tab.id);
       return created;
     } : undefined,
-    trackSearchTab: (id) => owned.add(id),
+    trackSearchOrigin: (id, baseline) => {
+      searchParents.add(id);
+      searchBaseline = baseline;
+    },
+    trackSearchTab: (id) => { owned.add(id); searchParents.add(id); },
   };
+  // Search can finish navigating in the current tab before a delayed child is
+  // opened. Reconcile once after extraction, including failed extraction, using
+  // the pre-submit inventory and task opener rather than the user's other tabs.
+  const collectLateSearchTabs = async () => {
+    if (!searchBaseline || typeof deps.listTabs !== 'function') return;
+    for (const tab of await deps.listTabs()) {
+      if (!tab?.id || searchBaseline.has(tab.id) || owned.has(tab.id) || !searchParents.has(tab.openerTabId)) continue;
+      const url = tab.url || tab.pendingUrl || '';
+      if (!urlMatchesSite(url, request.site)) continue;
+      let pathname;
+      try { pathname = new URL(url).pathname; } catch { continue; }
+      if (!/^\/search(?:\/|$|\.htm$)|^\/search_product\.htm$/.test(pathname)) continue;
+      await deps.claimTab(tab.id, 'research_search');
+      owned.add(tab.id);
+      searchParents.add(tab.id);
+    }
+  };
+  let result;
+  let failure;
   try {
-    const result = await runSiteResearchMacro(requestInput, wrapped);
-    return owned.size ? { ...result, cleanupTabIds: [...owned] } : result;
+    result = await runSiteResearchMacro(requestInput, wrapped);
   } catch (error) {
+    failure = error;
+  }
+  try {
+    await collectLateSearchTabs();
+  } catch (error) {
+    failure ||= error;
+  }
+  if (failure) {
+    const error = failure;
     if (!owned.size) throw error;
     const reason = { BROWSER_LOGIN_REQUIRED: 'login_required', BROWSER_SECURITY_CHALLENGE: 'security_verification_required', BROWSER_RATE_LIMITED: 'rate_limited' }[error?.code] || 'research_runtime_failed';
     return { success: false, reason, message: String(error?.message || error), site: siteMetadata(request.site), cleanupTabIds: [...owned], tab: { id: [...owned][0] }, items: [] };
   }
+  return owned.size ? { ...result, cleanupTabIds: [...owned] } : result;
 }
 
 async function runSiteResearchMacro(requestInput, deps = {}) {
@@ -194,6 +228,7 @@ async function runSiteResearchMacro(requestInput, deps = {}) {
       if (request.interactionDelayMs > 0) await delayWithDeps(request.interactionDelayMs, deps);
       const beforeTabs = ['taobao', 'tmall'].includes(request.site.id) && typeof deps.listTabs === 'function'
         ? new Set((await deps.listTabs()).map((item) => item.id)) : null;
+      if (beforeTabs) deps.trackSearchOrigin?.(tab.id, beforeTabs);
       const submitted = unwrapContentDelivery(await deps.submitSearch(tab.id, extractorRequest(request)));
       if (submitted?.success !== true) {
         return researchSearchFailure(request, tab, targetUrl, submitted);
