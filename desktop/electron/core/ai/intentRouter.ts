@@ -1,4 +1,5 @@
 import { applyProductProjectEditWorkflowPolicy } from './productProjectEditWorkflowPolicy';
+import { applyDreamStoryWorkflowPolicy, isDreamWorkflow } from './dreamStoryWorkflowPolicy';
 import { applyProductImageSetWorkflowPolicy } from './productImageSetWorkflowPolicy';
 import { loadAndRenderPrompt } from '../../prompts/runtime';
 import { normalizeApiBaseUrl, safeUrlJoin } from '../urlUtils';
@@ -357,8 +358,8 @@ export const routeIntent = async (params: {
   llm?: RuntimeLlmConfig;
   signal?: AbortSignal;
 }): Promise<IntentRoute> => {
-  const fallback = applyProductProjectEditWorkflowPolicy(applyProductImageSetWorkflowPolicy(applyXhsPublishWorkflowPolicy(applyProductVideoWorkflowPolicy(buildFallbackRoute(params.context), params.context), params.context), params.context), params.context);
-  if (fallback.workflowKind === 'product-project-edit') return fallback;
+  const fallback = applyDreamStoryWorkflowPolicy(applyProductProjectEditWorkflowPolicy(applyProductImageSetWorkflowPolicy(applyXhsPublishWorkflowPolicy(applyProductVideoWorkflowPolicy(buildFallbackRoute(params.context), params.context), params.context), params.context), params.context), params.context);
+  if (fallback.workflowKind === 'product-project-edit' || isDreamWorkflow(fallback.workflowKind)) return fallback;
   if (!params.llm?.apiKey || !params.llm.baseURL || !params.llm.model) {
     return { ...fallback, routingFailure: 'unavailable' };
   }

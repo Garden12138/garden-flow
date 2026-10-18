@@ -3378,10 +3378,12 @@ export class AppCliTool extends DeclarativeTool<typeof AppCliParamsSchema> {
 
     private async handleVideoEdit(parsed: ParsedCommand, payload: Record<string, unknown>) {
         const action = parsed.action;
+        const boundId = readFlag(parsed.flags, 'project-id', 'projectid', 'id') || payload.projectId || payload.id;
+        if (boundId && (await getVideoEditorV2Project(String(boundId)))?.projectKind === 'dream-story') throw new Error('梦境工程仅能在绑定的梦境工作台中读取和修改');
 
         if (action === 'list') {
             const limit = parseNumber(readFlag(parsed.flags, 'limit') || payload.limit) || 20;
-            const projects = await listVideoEditorV2Projects();
+            const projects = (await listVideoEditorV2Projects()).filter(project => project.projectKind !== 'dream-story');
             return {
                 count: projects.length,
                 projects: projects.slice(0, Math.max(1, limit)),
@@ -3597,12 +3599,12 @@ export class AppCliTool extends DeclarativeTool<typeof AppCliParamsSchema> {
         const action = parsed.action;
         if (action === 'list') {
             const limit = parseNumber(readFlag(parsed.flags, 'limit') || payload.limit) || 200;
-            const assets = await listMediaAssets(limit);
+            const assets = (await listMediaAssets(limit)).filter(asset => asset.privacyScope !== 'project');
             return { count: assets.length, assets };
         }
         if (action === 'get') {
             const assetId = requireString(readFlag(parsed.flags, 'asset-id', 'assetid', 'id') || payload.assetId || payload.id, 'assetId');
-            const assets = await listMediaAssets(5000);
+            const assets = (await listMediaAssets(5000)).filter(asset => asset.privacyScope !== 'project');
             const asset = assets.find((item) => item.id === assetId);
             if (!asset) throw new Error(`Media asset not found: ${assetId}`);
             return {
@@ -3631,7 +3633,7 @@ export class AppCliTool extends DeclarativeTool<typeof AppCliParamsSchema> {
         }
         if (action === 'path') {
             const assetId = requireString(readFlag(parsed.flags, 'asset-id', 'assetid') || payload.assetId, 'assetId');
-            const assets = await listMediaAssets(5000);
+            const assets = (await listMediaAssets(5000)).filter(asset => asset.privacyScope !== 'project');
             const asset = assets.find((item) => item.id === assetId);
             if (!asset) throw new Error('Media asset not found');
             return {
@@ -3641,7 +3643,7 @@ export class AppCliTool extends DeclarativeTool<typeof AppCliParamsSchema> {
             };
         }
         if (action === 'stats') {
-            const assets = await listMediaAssets(5000);
+            const assets = (await listMediaAssets(5000)).filter(asset => asset.privacyScope !== 'project');
             return {
                 total: assets.length,
                 generated: assets.filter((a) => a.source === 'generated').length,

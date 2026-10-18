@@ -133,10 +133,11 @@ async function prepareOnce(snapshot: PublicationSnapshot, origin: 'manual' | 'co
             const binding = variant.workVersion!.publicationBinding!;
             if (binding.platform !== 'xiaohongshu') throw new Error('缺少小红书正式稿件绑定');
             notePath = binding.notePath;
-        } else notePath = snapshot.source.path;
+        } else if (snapshot.source.kind === 'dream-story') throw new Error('梦境首版仅支持 TikTok');
+        else notePath = snapshot.source.path;
         job = await getXhsPublisherService().requestPublication(snapshot.sessionId, (await getXhsNoteProject(notePath)).projectPath, origin === 'manual' ? 'explicit-request' : 'artifact-ready');
     } else {
-        if (snapshot.source.kind !== 'video') throw new Error('此平台不支持套图发布');
+        if (snapshot.source.kind !== 'video' && !(snapshot.platform === 'tiktok' && snapshot.source.kind === 'dream-story')) throw new Error('此平台不支持此作品来源');
         const version = snapshot.platform === 'douyin' ? getDouyinVideoVersionByProject(snapshot.source.projectId) : getTikTokVideoVersionByProject(snapshot.source.projectId);
         if (!version) throw new Error('缺少对应平台的正式稿件');
         job = await (snapshot.platform === 'douyin' ? getDouyinPublisherService() : getTikTokPublisherService()).prepare(version.id, snapshot.sessionId);
@@ -164,10 +165,16 @@ async function prepareOnce(snapshot: PublicationSnapshot, origin: 'manual' | 'co
 
 export async function actOnPublication(input: unknown, action: 'upload' | 'submit' | 'cancel' | 'recover' | 'review' | 'receipt'): Promise<PublicationJobView> {
     const request = PublicationActionSchema.parse(input);
+    if (request.coverOnly && (action !== 'upload' || request.platform !== 'tiktok' || request.acknowledged !== true)) throw new Error('封面复核需要明确确认仅修改了 TikTok 封面');
     const view = readPublicationJob(request.platform, request.jobId);
     if (view.contentDigest !== request.expectedDigest) throw new Error('发布确认摘要已变化，请重新核对');
     const service = serviceFor(request.platform);
-    if (action === 'upload') { assertPublicationButton('upload', view.id); await service.stageDraft(view.id); }
+    if (action === 'upload') {
+        assertPublicationButton('upload', view.id);
+        if (request.coverOnly === true) {
+            await getTikTokPublisherService().stageDraft(view.id, true);
+        } else await service.stageDraft(view.id);
+    }
     else if (action === 'submit') { assertPublicationButton('submit', view.id); await service.confirm(view.id); }
     else if (action === 'cancel') {
         service.cancel(view.id);

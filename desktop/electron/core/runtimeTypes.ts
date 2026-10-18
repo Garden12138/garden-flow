@@ -78,6 +78,7 @@ export interface RuntimeConfig {
   generationToolConstraints?: unknown;
   productImageSetEditing?: boolean;
   productProjectEditorTurn?: import('../../shared/productProjectEditor').ProductProjectEditorTurn;
+  dreamStoryTurn?: import('../../shared/dreamStory').DreamRequest;
   maxCompletionRecoveryAttempts?: number;
   completionContract?: {
     builtinTaskId?: string;

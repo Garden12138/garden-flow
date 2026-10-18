@@ -858,10 +858,11 @@ function SceneOverlay({
         >
             <div
                 style={{
-                    maxWidth: '82%',
-                    alignSelf: overlay.position === 'center' ? 'center' : undefined,
-                    padding: '18px 24px',
-                    borderRadius: 28,
+                    maxWidth: overlay.captionLayout === 'compact' ? '100%' : '82%',
+                    boxSizing: overlay.captionLayout === 'compact' ? 'border-box' : undefined,
+                    alignSelf: overlay.captionLayout === 'compact' || overlay.position === 'center' ? 'center' : undefined,
+                    padding: overlay.captionLayout === 'compact' ? '0.25em 0.4em' : '18px 24px',
+                    borderRadius: overlay.captionLayout === 'compact' ? '0.3em' : 28,
                     background: overlay.backgroundColor || 'rgba(6, 8, 12, 0.58)',
                     boxShadow: '0 18px 56px rgba(0,0,0,0.28)',
                     color: overlay.color || '#ffffff',

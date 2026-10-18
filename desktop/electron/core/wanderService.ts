@@ -77,7 +77,7 @@ async function resolveWanderSubjectRefs(subjectIds: string[] = []): Promise<Wand
         listMediaAssets(5000),
     ]);
     const categoryNames = new Map(categories.map((category) => [category.id, category.name]));
-    const mediaById = new Map(mediaAssets.map((asset) => [asset.id, asset]));
+    const mediaById = new Map(mediaAssets.filter(asset => asset.privacyScope !== 'project').map((asset) => [asset.id, asset]));
     return Promise.all(normalizedIds.map(async (id) => {
         let subject: Awaited<ReturnType<typeof getSubject>> | null = null;
         try {

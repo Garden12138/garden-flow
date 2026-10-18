@@ -42,6 +42,7 @@ async function mediaFile(slotId: string, assetId: string, role: PublicationMedia
 /** Read only authoritative engineering data. Paths, render times and cache IDs are excluded from completion identity. */
 export async function readPublicationSource(input: PublicationSource, includeSession = true, requireSettings = true): Promise<PublicationSnapshot> {
     const source = PublicationSourceSchema.parse(input);
+    if (source.kind === 'dream-story') return (await import('./dreamStoryPublicationSource')).readDreamPublicationSource(source.projectId, includeSession, requireSettings);
     const spaceId = getWorkspacePaths().activeSpaceId;
     let snapshot: PublicationSnapshot;
     let extra: unknown;

@@ -38,6 +38,7 @@ import {
 export interface GenerateVideosInput {
     prompt: string;
     projectId?: string;
+    privacyScope?: 'project';
     title?: string;
     model?: string;
     endpoint?: string;
@@ -356,6 +357,7 @@ async function generateViaOpenAiCompatibleVideoRoute(input: {
     durationSeconds: number;
     title?: string;
     projectId?: string;
+    privacyScope?: 'project';
     referenceImages?: string[];
     generationMode?: VideoGenerationMode;
     drivingAudio?: string;
@@ -394,7 +396,7 @@ async function generateViaOpenAiCompatibleVideoRoute(input: {
     let payload: any = {};
     let lastError = '';
     let lastNetworkError = '';
-    for (const requestUrl of createUrls) {
+    for (const requestUrl of (input.privacyScope === 'project' ? createUrls.slice(0, 1) : createUrls)) {
         try {
             response = await fetch(requestUrl, {
                 method: 'POST',
@@ -408,7 +410,7 @@ async function generateViaOpenAiCompatibleVideoRoute(input: {
             const message = error instanceof Error ? error.message : String(error || 'fetch failed');
             lastNetworkError = `[${requestUrl}] ${message}`;
             lastError = `生视频网络请求失败：${lastNetworkError}`;
-            console.warn('[VideoGeneration] async create failed, trying fallback route', {
+            if (input.privacyScope !== 'project') console.warn('[VideoGeneration] async create failed, trying fallback route', {
                 requestUrl,
                 error: message,
             });
@@ -435,7 +437,7 @@ async function generateViaOpenAiCompatibleVideoRoute(input: {
     if (!taskId) {
         throw new Error('生视频异步创建成功，但接口未返回 task_id。');
     }
-    console.log('[VideoGeneration] async task created', {
+    if (input.privacyScope !== 'project') console.log('[VideoGeneration] async task created', {
         model: input.model,
         taskId,
         requestId: String(payload?.request_id || '').trim(),
@@ -476,7 +478,7 @@ async function generateViaOpenAiCompatibleVideoRoute(input: {
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error || 'fetch failed');
                 queryLastNetworkError = `[${queryUrl}] ${message}`;
-                console.warn('[VideoGeneration] async query failed, trying fallback route', {
+                if (input.privacyScope !== 'project') console.warn('[VideoGeneration] async query failed, trying fallback route', {
                     queryUrl,
                     error: message,
                     taskId,
@@ -487,7 +489,7 @@ async function generateViaOpenAiCompatibleVideoRoute(input: {
             if (response.ok) {
                 finalPayload = await response.json().catch(() => ({}));
                 finalStatus = extractTaskStatus(finalPayload);
-                console.log('[VideoGeneration] async task polled', {
+                if (input.privacyScope !== 'project') console.log('[VideoGeneration] async task polled', {
                     taskId,
                     status: finalStatus || 'UNKNOWN',
                     requestId: String(finalPayload?.request_id || payload?.request_id || '').trim(),
@@ -524,6 +526,7 @@ async function generateViaOpenAiCompatibleVideoRoute(input: {
         const downloaded = await fetchGeneratedVideoBuffer(videoUrl, input.apiKey);
         const asset = await createGeneratedMediaAsset({
             prompt: input.prompt,
+            privacyScope: input.privacyScope,
             dataBuffer: downloaded.buffer,
             mimeType: downloaded.mimeType,
             projectId: input.projectId?.trim() || undefined,
@@ -620,6 +623,7 @@ async function generateViaNewApiVideoRoute(input: {
     durationSeconds: number;
     title?: string;
     projectId?: string;
+    privacyScope?: 'project';
     referenceImages?: string[];
     generationMode: VideoGenerationMode;
     maxReferenceImages: number;
@@ -639,7 +643,7 @@ async function generateViaNewApiVideoRoute(input: {
         .slice(0, input.generationMode === 'first-last-frame' ? 2 : input.maxReferenceImages);
     const normalizedRefs = (await Promise.all(refs.map((item) => normalizeMediaValueForRemote(item)))).filter(Boolean);
     if (normalizedRefs.length) {
-        console.log('[VideoGeneration] reference images hosted', {
+        if (input.privacyScope !== 'project') console.log('[VideoGeneration] reference images hosted', {
             count: normalizedRefs.length,
             urls: normalizedRefs,
         });
@@ -661,7 +665,7 @@ async function generateViaNewApiVideoRoute(input: {
             maxReferenceImages: input.maxReferenceImages,
             aspectRatio: input.aspectRatio,
         });
-        console.log('[VideoGeneration] new-api create request', {
+        if (input.privacyScope !== 'project') console.log('[VideoGeneration] new-api create request', {
             model: input.model,
             durationSeconds: input.durationSeconds,
             resolution: input.resolution,
@@ -671,7 +675,7 @@ async function generateViaNewApiVideoRoute(input: {
         });
         let response: Response | undefined;
         let createPayload: any;
-        const maxCreateAttempts = 3;
+        const maxCreateAttempts = input.privacyScope === 'project' ? 1 : 3;
         for (let attempt = 1; attempt <= maxCreateAttempts; attempt += 1) {
             try {
                 response = await fetch(createUrl, {
@@ -690,7 +694,7 @@ async function generateViaNewApiVideoRoute(input: {
             if (response.ok) break;
             const failureMessage = extractNewApiFailureMessage(createPayload) || response.statusText || 'request failed';
             if (attempt < maxCreateAttempts && shouldRetryNewApiVideoCreate(response.status, failureMessage)) {
-                console.log('[VideoGeneration] new-api create retry', {
+                if (input.privacyScope !== 'project') console.log('[VideoGeneration] new-api create retry', {
                     attempt,
                     status: response.status,
                     failureMessage,
@@ -717,7 +721,7 @@ async function generateViaNewApiVideoRoute(input: {
         if (!queryUrl) {
             throw new Error('New API 生视频查询地址无效。');
         }
-        console.log('[VideoGeneration] new-api task created', {
+        if (input.privacyScope !== 'project') console.log('[VideoGeneration] new-api task created', {
             model: input.model,
             upstream: input.upstream,
             taskId,
@@ -754,7 +758,7 @@ async function generateViaNewApiVideoRoute(input: {
                 );
             }
             finalStatus = extractTaskStatus(finalPayload);
-            console.log('[VideoGeneration] new-api task polled', {
+            if (input.privacyScope !== 'project') console.log('[VideoGeneration] new-api task polled', {
                 taskId,
                 status: finalStatus || 'UNKNOWN',
                 progress: String(asRecord(asRecord(finalPayload).data).progress || '').trim(),
@@ -770,6 +774,7 @@ async function generateViaNewApiVideoRoute(input: {
         const downloaded = await fetchGeneratedVideoBuffer(videoUrl, input.apiKey);
         assets.push(await createGeneratedMediaAsset({
             prompt: input.prompt,
+            privacyScope: input.privacyScope,
             dataBuffer: downloaded.buffer,
             mimeType: downloaded.mimeType,
             projectId: input.projectId?.trim() || undefined,
@@ -805,6 +810,7 @@ async function generateViaMiniMaxVideoRoute(input: {
     durationSeconds: number;
     title?: string;
     projectId?: string;
+    privacyScope?: 'project';
     referenceImages?: string[];
     referenceAudios?: string[];
     generationMode: VideoGenerationMode;
@@ -871,7 +877,7 @@ async function generateViaMiniMaxVideoRoute(input: {
         if (!queryUrl) {
             throw new Error('MiniMax 生视频查询地址无效。');
         }
-        console.log('[VideoGeneration] MiniMax task created', {
+        if (input.privacyScope !== 'project') console.log('[VideoGeneration] MiniMax task created', {
             model: input.model,
             taskId,
             requestId: String(createPayload?.request_id || '').trim(),
@@ -907,7 +913,7 @@ async function generateViaMiniMaxVideoRoute(input: {
                 );
             }
             finalStatus = extractTaskStatus(finalPayload);
-            console.log('[VideoGeneration] MiniMax task polled', {
+            if (input.privacyScope !== 'project') console.log('[VideoGeneration] MiniMax task polled', {
                 taskId,
                 status: finalStatus || 'UNKNOWN',
                 requestId: String(finalPayload?.request_id || createPayload?.request_id || '').trim(),
@@ -923,6 +929,7 @@ async function generateViaMiniMaxVideoRoute(input: {
         const downloaded = await fetchGeneratedVideoBuffer(videoUrl, input.apiKey);
         assets.push(await createGeneratedMediaAsset({
             prompt: input.prompt,
+            privacyScope: input.privacyScope,
             dataBuffer: downloaded.buffer,
             mimeType: downloaded.mimeType,
             projectId: input.projectId?.trim() || undefined,
@@ -958,6 +965,7 @@ async function generateViaAliyunBailianVideoRoute(input: {
     durationSeconds: number;
     title?: string;
     projectId?: string;
+    privacyScope?: 'project';
     referenceImages?: string[];
     generateAudio?: boolean;
 }): Promise<GenerateVideosResult> {
@@ -987,7 +995,7 @@ async function generateViaAliyunBailianVideoRoute(input: {
         },
     });
     const assets: MediaAsset[] = [];
-    let effectiveEndpoint = aliyunEndpointFallbacks.get(configuredCreateUrl) || configuredCreateUrl;
+    let effectiveEndpoint = input.privacyScope === 'project' ? configuredCreateUrl : aliyunEndpointFallbacks.get(configuredCreateUrl) || configuredCreateUrl;
 
     for (let index = 0; index < input.count; index += 1) {
         const body = buildAliyunBailianVideoRequest({
@@ -1004,7 +1012,7 @@ async function generateViaAliyunBailianVideoRoute(input: {
         let response: Response | null = null;
         let createPayload: any = null;
         let createUrl = effectiveEndpoint;
-        for (const [candidateIndex, candidateUrl] of createUrlCandidates.entries()) {
+        for (const [candidateIndex, candidateUrl] of (input.privacyScope === 'project' ? createUrlCandidates.slice(0, 1) : createUrlCandidates).entries()) {
             createUrl = candidateUrl;
             try {
                 response = await fetch(createUrl, {
@@ -1033,7 +1041,7 @@ async function generateViaAliyunBailianVideoRoute(input: {
                 && /workspace endpoint access denied/i.test(failureMessage)
                 && candidateIndex < createUrlCandidates.length - 1;
             if (canUsePublicFallback) {
-                console.warn('[VideoGeneration] workspace endpoint denied, retrying public Beijing endpoint', {
+                if (input.privacyScope !== 'project') console.warn('[VideoGeneration] workspace endpoint denied, retrying public Beijing endpoint', {
                     configuredEndpoint: createUrl,
                     fallbackEndpoint: createUrlCandidates[candidateIndex + 1],
                 });
@@ -1050,7 +1058,7 @@ async function generateViaAliyunBailianVideoRoute(input: {
             throw new Error('阿里云百炼生视频创建成功，但接口未返回 output.task_id。');
         }
         const queryUrl = buildAliyunBailianVideoTaskUrl(effectiveEndpoint, taskId);
-        console.log('[VideoGeneration] Aliyun Bailian task created', {
+        if (input.privacyScope !== 'project') console.log('[VideoGeneration] Aliyun Bailian task created', {
             model: input.model,
             taskId,
             requestId: String(createPayload?.request_id || '').trim(),
@@ -1088,7 +1096,7 @@ async function generateViaAliyunBailianVideoRoute(input: {
                 throw new Error(`阿里云百炼生视频任务查询失败 (${queryResponse.status})：${extractTaskFailureMessage(finalPayload) || queryResponse.statusText || 'request failed'}`);
             }
             finalStatus = extractTaskStatus(finalPayload);
-            console.log('[VideoGeneration] Aliyun Bailian task polled', {
+            if (input.privacyScope !== 'project') console.log('[VideoGeneration] Aliyun Bailian task polled', {
                 taskId,
                 status: finalStatus || 'UNKNOWN',
                 requestId: String(finalPayload?.request_id || createPayload?.request_id || '').trim(),
@@ -1105,6 +1113,7 @@ async function generateViaAliyunBailianVideoRoute(input: {
         const downloaded = await fetchGeneratedVideoBuffer(videoUrl, input.apiKey);
         assets.push(await createGeneratedMediaAsset({
             prompt: input.prompt,
+            privacyScope: input.privacyScope,
             dataBuffer: downloaded.buffer,
             mimeType: downloaded.mimeType,
             projectId: input.projectId?.trim() || undefined,
@@ -1159,7 +1168,7 @@ export async function generateVideosToMediaLibrary(input: GenerateVideosInput): 
     const isNewApi = provider === 'new-api-aliyun' || provider === 'new-api-minimax';
     const durationSeconds = normalizeVideoDuration(
         input.durationSeconds,
-        provider === 'aliyun-bailian'
+        input.privacyScope === 'project' ? { min: Math.min(...modelCapabilities.durationSeconds), max: Math.max(...modelCapabilities.durationSeconds) } : provider === 'aliyun-bailian'
             ? { min: 3, max: 15 }
             : provider === 'minimax'
                 ? { min: 4, max: 15 }
@@ -1215,7 +1224,7 @@ export async function generateVideosToMediaLibrary(input: GenerateVideosInput): 
     if (generateAudio && !modelCapabilities.supportsGeneratedAudio) {
         throw new Error(`${model} 当前不支持同步生成音频，请关闭音频选项后重试。`);
     }
-    console.log('[VideoGeneration] auth prepared', {
+    if (input.privacyScope !== 'project') console.log('[VideoGeneration] auth prepared', {
         endpoint,
         keySource: selectedKeySource,
         keySuffix: maskKeySuffix(apiKey),
@@ -1273,6 +1282,7 @@ export async function generateVideosToMediaLibrary(input: GenerateVideosInput): 
             durationSeconds,
             title: input.title,
             projectId: input.projectId,
+            privacyScope: input.privacyScope,
             referenceImages,
             generateAudio,
         });
@@ -1290,6 +1300,7 @@ export async function generateVideosToMediaLibrary(input: GenerateVideosInput): 
             durationSeconds,
             title: input.title,
             projectId: input.projectId,
+            privacyScope: input.privacyScope,
             referenceImages,
             generationMode,
             maxReferenceImages,
@@ -1309,6 +1320,7 @@ export async function generateVideosToMediaLibrary(input: GenerateVideosInput): 
             durationSeconds,
             title: input.title,
             projectId: input.projectId,
+            privacyScope: input.privacyScope,
             referenceImages,
             referenceAudios,
             generationMode,
@@ -1327,6 +1339,7 @@ export async function generateVideosToMediaLibrary(input: GenerateVideosInput): 
         durationSeconds,
         title: input.title,
         projectId: input.projectId,
+        privacyScope: input.privacyScope,
         referenceImages,
         generationMode,
         drivingAudio,

@@ -1,5 +1,6 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
+import { DreamStoryEntry } from '../components/dream-story/DreamStoryEntry';
 import { Bot, Image as ImageIcon, Loader2, PanelRight, Plus, Sparkles, SlidersHorizontal, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { APP_BRAND } from '../config/brand';
@@ -2538,6 +2539,7 @@ export function GardenFlow({
                     </div>
                 ) : (
                     <div className="h-full min-h-0 flex flex-col">
+                        <DreamStoryEntry compact />
                         <div className="relative min-h-0 flex-1 overflow-hidden">
                             <div className="h-full min-h-0 w-full overflow-hidden">
                                 {activeAiSurface === 'room' ? (

@@ -30,6 +30,8 @@ import { snapProductVideoClipRange } from '../../../shared/productVideoRemix';
 import { productVideoFileHash } from '../productVideoRemixSources';
 import { videoRenderFingerprint } from './videoPublicationPolicy';
 import { assertProductTargetMatch, productTargetKey, ProductCreationTargetSchema, ProductWorkVersionSchema } from '../../../shared/productCreationTarget';
+import { DreamStoryTargetSchema } from '../../../shared/contentCreationTarget';
+import { dreamStoryTimeline } from '../../../shared/dreamStoryTimeline';
 
 const PROJECTS_DIR_NAME = 'video-editor-v2';
 const PROJECT_FILE_NAME = 'project.json';
@@ -93,10 +95,11 @@ function defaultProject(input: {
   projectDir: string;
   projectKind?: VideoEditorV2Project['projectKind'];
   canvas?: VideoCanvasSpec;
+  dreamStory?: VideoEditorV2Project['dreamStory'];
 }): VideoEditorV2Project {
   const createdAt = nowIso();
   return {
-    version: 2,
+    version: input.projectKind === 'dream-story' ? (input.dreamStory?.schemaVersion === 2 ? 4 : 3) : 2,
     id: input.id,
     title: input.title || '未命名剪辑项目',
     projectKind: input.projectKind || 'subtitle-edit',
@@ -122,6 +125,7 @@ function defaultProject(input: {
     renderOutputs: [],
     lastError: null,
     productVideo: null,
+    dreamStory: input.dreamStory,
   };
 }
 
@@ -156,7 +160,7 @@ async function writeJsonAtomic(filePath: string, value: unknown): Promise<void> 
 function enrichProject(project: VideoEditorV2Project, projectDir = getProjectDir(project.id)): VideoEditorV2Project {
   return migrateProductVideoVoiceoverProject({
     ...project,
-    version: 2,
+    version: project.projectKind === 'dream-story' ? (project.dreamStory?.schemaVersion === 2 ? 4 : 3) : 2,
     projectKind: project.projectKind || 'subtitle-edit',
     projectDir,
     autoEditRuns: project.autoEditRuns || [],
@@ -813,11 +817,12 @@ async function audioContentHash(filePath: string): Promise<string> {
 }
 
 export async function saveVideoEditorV2Project(project: VideoEditorV2Project, editorTimestamp?: string): Promise<VideoEditorV2Project> {
+  if (project.projectKind === 'dream-story' && project.dreamStory) project = { ...project, timeline: dreamStoryTimeline(project) };
   const projectFile = getProjectFilePath(project.id);
-  if (project.creationTarget) ProductCreationTargetSchema.parse(project.creationTarget);
+  if (project.creationTarget) (project.projectKind === 'dream-story' ? DreamStoryTargetSchema : ProductCreationTargetSchema).parse(project.creationTarget);
   if (project.workVersion) ProductWorkVersionSchema.parse(project.workVersion);
   const stored = await readJsonIfExists<VideoEditorV2Project>(projectFile);
-  if (stored?.creationTarget) assertProductTargetMatch(stored.creationTarget, project.creationTarget);
+  if (stored?.creationTarget && project.projectKind !== 'dream-story') assertProductTargetMatch(stored.creationTarget, project.creationTarget);
   if (stored && !project.creationTarget && project.productVideo) {
     const { resolveProductWorkVariant } = await import('../productWorkVersionService');
     const variant = await resolveProductWorkVariant(project);
@@ -825,7 +830,7 @@ export async function saveVideoEditorV2Project(project: VideoEditorV2Project, ed
   }
   const next: VideoEditorV2Project = {
     ...project,
-    version: 2,
+    version: project.projectKind === 'dream-story' ? (project.dreamStory?.schemaVersion === 2 ? 4 : 3) : 2,
     projectKind: project.projectKind || 'subtitle-edit',
     productVideo: project.productVideo || null,
     projectDir: getProjectDir(project.id),
@@ -842,7 +847,9 @@ export async function saveVideoEditorV2Project(project: VideoEditorV2Project, ed
 export async function getVideoEditorV2Project(projectId: string): Promise<VideoEditorV2Project | null> {
   const projectDir = getProjectDir(projectId);
   const raw = await readJsonIfExists<Record<string, unknown>>(path.join(projectDir, PROJECT_FILE_NAME));
-  if (!raw || (raw.version !== 1 && raw.version !== 2)) return null;
+  if (!raw) return null;
+  if (![1, 2, 3, 4].includes(Number(raw.version))) throw new Error('不支持此视频工程格式，请更新应用');
+  if ([3, 4].includes(Number(raw.version)) && raw.projectKind !== 'dream-story') throw new Error('工程格式与类型不匹配');
   const project = raw as unknown as VideoEditorV2Project;
   return enrichProject(project, projectDir);
 }
@@ -873,7 +880,9 @@ export async function createVideoEditorV2Project(input: {
   sourceManuscriptPath?: string | null;
   projectKind?: VideoEditorV2Project['projectKind'];
   canvas?: VideoCanvasSpec;
+  dreamStory?: VideoEditorV2Project['dreamStory'];
 }): Promise<VideoEditorV2Project> {
+  if (input.projectKind === 'dream-story' && !input.dreamStory) throw new Error('梦境工程需要初始记录文档');
   const id = `video_edit_v2_${Date.now()}_${randomUUID().slice(0, 8)}`;
   await ensureProjectDirs(id);
   const project = defaultProject({
@@ -883,6 +892,7 @@ export async function createVideoEditorV2Project(input: {
     projectDir: getProjectDir(id),
     projectKind: input.projectKind,
     canvas: input.canvas,
+    dreamStory: input.dreamStory,
   });
   return saveVideoEditorV2Project(project);
 }

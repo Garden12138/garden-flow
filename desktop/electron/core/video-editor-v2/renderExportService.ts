@@ -147,7 +147,7 @@ function findRemotionCompositorDirectory(): string {
   return found;
 }
 
-async function renderRemotionComposition(input: {
+export async function renderRemotionComposition(input: {
   project: VideoEditorV2Project;
   composition: VideoEditorV2RemotionComposition;
   outputPath: string;

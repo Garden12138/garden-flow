@@ -25,6 +25,7 @@ type MediaJobStatus =
   | 'queued'
   | 'submitting'
   | 'submitted'
+  | 'submission_unknown'
   | 'polling'
   | 'downloading'
   | 'persisting'
@@ -440,6 +441,7 @@ async function synthesizeSpeechAsset(request: Record<string, unknown>): Promise<
     : await parseAudioResponse(response, responseFormat);
   const asset = await createGeneratedMediaAsset({
     prompt: input,
+    privacyScope: request.privacyScope === 'project' ? 'project' : undefined,
     dataBuffer: audio.bytes,
     mimeType: audio.mimeType,
     projectId: optionalText(request.projectId),
@@ -523,7 +525,7 @@ function artifactForAsset(jobId: string, kind: string, asset: MediaAsset): Media
 }
 
 export class MediaGenerationJobRegistry extends EventEmitter {
-  constructor(private readonly pinnedSpaceId?: string, private readonly stateFile = 'media-jobs.json') { super(); }
+  constructor(private readonly pinnedSpaceId?: string, private readonly stateFile = 'media-jobs.json', private readonly privateProjectId?: string) { super(); }
   private readonly jobs = new Map<string, StoredMediaJob>();
   private readonly executionRequests = new Map<string, Record<string, unknown>>();
   private readonly activeRuns = new Set<string>();
@@ -533,6 +535,10 @@ export class MediaGenerationJobRegistry extends EventEmitter {
   private writeQueue: Promise<void> = Promise.resolve();
 
   private statePath(): string {
+    if (this.privateProjectId) {
+      if (!/^[a-zA-Z0-9_-]{1,160}$/.test(this.privateProjectId)) throw new Error('Invalid private media project');
+      return path.join(getWorkspacePathsForSpace(this.pinnedSpaceId!).media, 'video-editor-v2', this.privateProjectId, 'private', 'media-jobs.json');
+    }
     return path.join((this.pinnedSpaceId ? getWorkspacePathsForSpace(this.pinnedSpaceId) : getWorkspacePaths()).base, '.gardenflow', 'media-runtime', this.stateFile);
   }
 
@@ -642,6 +648,7 @@ export class MediaGenerationJobRegistry extends EventEmitter {
         const imageResult = await generateImagesToMediaLibrary({
           ...request,
           prompt: text(request.prompt),
+          privacyScope: this.privateProjectId ? 'project' : undefined,
           projectId: optionalText(request.projectId),
           title: optionalText(request.title),
           generationMode: optionalText(request.generationMode),
@@ -668,6 +675,7 @@ export class MediaGenerationJobRegistry extends EventEmitter {
         await this.setStatus(job, 'polling', 'polling', '等待视频服务返回结果');
         const videoResult = await generateVideosToMediaLibrary({
           prompt: text(request.prompt),
+          privacyScope: this.privateProjectId ? 'project' : undefined,
           projectId: optionalText(request.projectId),
           title: optionalText(request.title),
           model: optionalText(request.model),
@@ -728,14 +736,17 @@ export class MediaGenerationJobRegistry extends EventEmitter {
       }
       await this.setStatus(job, 'completed', 'completed', '媒体生成完成', { artifactCount: assets.length });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = this.privateProjectId
+        ? '私密媒体请求未成功完成，请核对供应商状态后决定是否重试'
+        : error instanceof Error ? error.message : String(error);
       if (job.status === 'cancel_requested' || controller.signal.aborted) {
         job.cancelReason = job.cancelReason || 'user-requested';
         await this.setStatus(job, 'cancelled', 'cancelled', '媒体任务已取消');
       } else {
         if (job.attempt) job.attempt.lastError = message;
         job.result = { success: false, error: message };
-        await this.setStatus(job, 'failed', 'failed', message, { error: message });
+        const unknown = Boolean(this.privateProjectId && ['submitting', 'polling'].includes(job.status) && !(error instanceof AudioProviderRequestError && error.terminal));
+        await this.setStatus(job, unknown ? 'submission_unknown' : 'failed', unknown ? 'submission_unknown' : 'failed', message, { error: message });
       }
     } finally {
       this.abortControllers.delete(jobId);
@@ -746,6 +757,7 @@ export class MediaGenerationJobRegistry extends EventEmitter {
   async submit(kind: string, rawRequest: Record<string, unknown>): Promise<SubmitResult> {
     await this.ensureLoaded();
     const request = { ...rawRequest };
+    if (this.privateProjectId) request.privacyScope = 'project';
     const jobId = id('media-job');
     const timestamp = nowIso();
     const source = optionalText(request.source) || 'generation_studio';
@@ -846,7 +858,7 @@ export class MediaGenerationJobRegistry extends EventEmitter {
         providerKey: job.providerKey,
         providerModel: job.providerModel,
         title: text(job.request?.title) || (job.kind === 'image' ? '图片生成' : job.kind === 'video' ? '视频生成' : '音频生成'),
-        summary: text(job.request?.prompt) || text(job.request?.input) || '媒体生成任务',
+        summary: this.privateProjectId ? '私密作品媒体任务' : text(job.request?.prompt) || text(job.request?.input) || '媒体生成任务',
         latestText: job.attempt?.lastError || job.recentEvents.at(-1)?.message || '',
         ownerSessionId: job.ownerSessionId,
         projectId: job.projectId,

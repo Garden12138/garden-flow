@@ -1,4 +1,5 @@
 import { toGardenFlowAssetUrl } from './localAsset.ts';
+import { DREAM_STORY_SPEC } from './contentCreationTarget.ts';
 import type { VideoEditorV2Project, VideoTimelineClip } from './videoAutoEdit.ts';
 
 export const VIDEO_EDITOR_V2_REMOTION_COMPOSITION_ID = 'GardenFlowVideoMotion';
@@ -11,6 +12,7 @@ export interface VideoEditorV2RemotionOverlay {
   position?: 'top' | 'center' | 'bottom';
   animation?: 'fade-up' | 'fade-in' | 'slide-left' | 'pop';
   fontSize?: number;
+  captionLayout?: 'compact';
   color?: string;
   backgroundColor?: string;
   align?: 'left' | 'center' | 'right';
@@ -129,7 +131,8 @@ export function buildVideoEditorV2RemotionComposition(project: VideoEditorV2Proj
         durationInFrames: Math.max(1, msToFrames(subtitle.timelineEndMs - subtitle.timelineStartMs, fps)),
         position: 'bottom',
         animation: 'fade-in',
-        fontSize: Math.round(height * 0.044),
+        fontSize: project.projectKind === 'dream-story' ? Math.round(height * 0.025) : Math.round(height * 0.044),
+        ...(project.projectKind === 'dream-story' ? { captionLayout: 'compact' as const } : {}),
         color: '#ffffff',
         backgroundColor: 'rgba(0, 0, 0, 0.58)',
         align: 'center',
@@ -148,6 +151,7 @@ export function buildVideoEditorV2RemotionComposition(project: VideoEditorV2Proj
       fitMode: clip.fitMode || 'cover',
       muted: (project.projectKind === 'product-video' && clip.volume === undefined) || (clip.volume !== undefined && asset?.probe?.hasAudio === false),
       volume: clip.volume,
+      ...(project.projectKind === 'dream-story' ? { safeInsets: DREAM_STORY_SPEC.safeInsets } : {}),
       overlays,
     };
   });

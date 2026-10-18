@@ -9,13 +9,13 @@ import type { ProductVideoProposal, VideoEditorV2Project } from '../../shared/vi
 
 // Real approval SQL, project/catalog/media stores and job registry; only host, router,
 // image/video providers and the TTS HTTP boundary are isolated from user data.
-export async function productVideoHarness(options: { platformVersions?: boolean; productImageSets?: boolean; publication?: boolean } = {}) {
+export async function productVideoHarness(options: { platformVersions?: boolean; productImageSets?: boolean; publication?: boolean; dreamStory?: boolean } = {}) {
     const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'gardenflow-video-closeout-')));
     const source = await fs.readFile(new URL('../../electron/db.ts', import.meta.url), 'utf8');
     let sql = new DatabaseSync(path.join(root, 'approvals.db'));
     sql.exec('PRAGMA foreign_keys=OFF');
     sql.exec(source.match(/CREATE TABLE IF NOT EXISTS pending_tool_approvals \([\s\S]*?\n    \);/)![0]);
-    for (const table of ['publication_job_contexts', 'publication_completions', 'product_project_edits', 'product_project_drafts', 'xhs_publish_jobs', 'douyin_video_versions', 'douyin_publish_jobs', 'douyin_publisher_config', 'tiktok_video_versions', 'tiktok_publish_jobs', 'tiktok_publisher_config']) {
+    for (const table of ['story_project_operations', 'publication_job_contexts', 'publication_completions', 'product_project_edits', 'product_project_drafts', 'xhs_publish_jobs', 'douyin_video_versions', 'douyin_publish_jobs', 'douyin_publisher_config', 'tiktok_video_versions', 'tiktok_publish_jobs', 'tiktok_publisher_config']) {
         const schema = source.match(new RegExp(`CREATE TABLE IF NOT EXISTS ${table} \\([\\s\\S]*?\\);`))?.[0];
         if (!schema) throw new Error(`Missing platform version schema: ${table}`);
         sql.exec(schema);
@@ -23,8 +23,8 @@ export async function productVideoHarness(options: { platformVersions?: boolean;
     sql.exec("INSERT OR IGNORE INTO douyin_publisher_config VALUES (1, 'fixture-browser', 0); INSERT OR IGNORE INTO tiktok_publisher_config VALUES (1, 'fixture-browser', 0);");
     const state = {
         root, spaceId: 'default', xhsBinding: 'fixture-browser', publisherCalls: [] as any[], connected: true, accountId: 'fixture_account', publisherState: 'ready', submitStatus: 'published', publisherHook: null as null | ((method: string, params: any) => Promise<any>), settings: {} as Record<string, unknown>,
-        messages: [] as Array<Record<string, any>>, tasks: new Map<string, any>(), sessions: new Map<string, any>(), videoCalls: 0, ttsCalls: 0,
-        imageCalls: 0, renderCalls: 0, renderBytes: Buffer.alloc(0), imageHook: null as null | ((input: any) => Promise<any>), renderHook: null as null | ((html: string) => Promise<void>),
+        messages: [] as Array<Record<string, any>>, tasks: new Map<string, any>(), sessions: new Map<string, any>(), videoHook: null as null | ((input: any) => Promise<any>), videoCalls: 0, ttsCalls: 0,
+        referenceCropRects: [] as Array<{ x: number; y: number; width: number; height: number }>, imageCalls: 0, renderCalls: 0, renderBytes: Buffer.alloc(0), imageHook: null as null | ((input: any) => Promise<any>), renderHook: null as null | ((html: string) => Promise<void>),
         transactionHook: null as null | (() => void), audio: Buffer.alloc(0), failSpeech: false, localizationCalls: 0, localizationResponse: {} as any,
     };
     const db = {
@@ -74,7 +74,7 @@ export async function productVideoHarness(options: { platformVersions?: boolean;
         imageRenderer: `export const getProductImageFontCss = async () => '';
             export const productImageDataUrl = async () => 'data:image/png;base64,' + globalThis.__fixture.renderBytes.toString('base64');
             export const renderProductImagePng = async (html) => { const state = globalThis.__fixture; state.renderCalls++; if(state.renderHook) await state.renderHook(html); return state.renderBytes; };`,
-        videoProvider: `export const generateVideosToMediaLibrary = async () => { throw new Error('unexpected video generation'); };`,
+        videoProvider: `export const generateVideosToMediaLibrary = async (input) => { const state = globalThis.__fixture; state.videoCalls++; if (state.videoHook) return state.videoHook(input); throw new Error('unexpected video generation'); };`,
         completion: `export const recordCompletedPublication = async () => {};`,
         runner: `export const getGardenFlowBackgroundRunner = () => ({ listBuiltinTasks: async () => [] });`,
         browser: `const state = globalThis.__fixture; export const getBrowserCaptureBridgeService = () => ({
@@ -84,14 +84,22 @@ export async function productVideoHarness(options: { platformVersions?: boolean;
                 if (state.publisherHook) { const result = await state.publisherHook(method, params); if (result !== undefined) return result; }
                 if (method === 'publisher.status') return {accountId:state.accountId,accountLabel:'@'+state.accountId,pageState:state.publisherState};
                 const request = params.request;
-                if (params.phase === 'prepare') return {ok:true,prepared:true,jobId:request.jobId,contentDigest:request.contentDigest,publishStatus:'not_submitted',uploadReview:{jobId:request.jobId,contentDigest:request.contentDigest,accountId:state.accountId,pageFingerprint:'fixture page',pageSettings:{visibilityLabel:'公开可见',original:false,allowCopy:true,scheduled:false},mediaCount: request.media?.length || 1}};
+                if (params.phase === 'prepare' || params.phase === 'review-cover') return {ok:true,prepared:true,jobId:request.jobId,contentDigest:request.contentDigest,publishStatus:'not_submitted',uploadReview:{jobId:request.jobId,contentDigest:request.contentDigest,accountId:state.accountId,pageFingerprint:params.phase === 'review-cover' ? 'reviewed cover page' : 'fixture page',pageSettings:{visibilityLabel:'公开可见',original:false,allowCopy:true,scheduled:false},mediaCount: request.media?.length || 1}};
                 if (params.phase === 'submit') return {ok:true,jobId:request.jobId,contentDigest:request.contentDigest,publishStatus:state.submitStatus,resetStatus:'ready'};
                 return {ok:true,jobId:params.jobId,contentDigest:params.contentDigest,publishStatus:'not_submitted',resetStatus:'ready'};
             }
         });`,
-        electron: `export const BrowserWindow = {getAllWindows: () => []}; export const nativeImage = {createFromBuffer: bytes => ({ isEmpty: () => bytes.length < 40 })}; export const app = { isPackaged: false, getAppPath: () => ${JSON.stringify(path.resolve(import.meta.dirname, '../..'))} };`,
+        electron: `export const BrowserWindow = {getAllWindows: () => []}; export const nativeImage = {createFromBuffer: bytes => ({ isEmpty: () => bytes.length < 40,
+            getSize: () => ({ width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) }),
+            // The host boundary records the rectangle and returns deterministic cache bytes.
+            // Actual PNG pixel cropping is checked separately in the Electron offline smoke.
+            crop: rectangle => { globalThis.__fixture.referenceCropRects.push(rectangle); return { toPNG: () => Buffer.concat([bytes, Buffer.from(JSON.stringify(rectangle))]) }; }
+        })}; export const app = { isPackaged: false, getAppPath: () => ${JSON.stringify(path.resolve(import.meta.dirname, '../..'))} };`,
     };
     const exports = `export * from './electron/core/productProjectEditorService';
+        ${options.dreamStory ? `export * from './electron/core/dreamStoryStore'; export * from './electron/core/dreamStoryMediaService';
+        export * from './electron/core/dreamStoryRenderService'; export * from './electron/core/dreamStoryTransferService';
+        export * from './electron/core/dreamStoryPublicationSource'; export * from './electron/core/mediaLibraryStore';` : ''}
         export * from './electron/core/tools/productProjectEditorTools';
         export * from './electron/core/productWorkVersionService';
         export * from './electron/core/productVideoApprovalService';

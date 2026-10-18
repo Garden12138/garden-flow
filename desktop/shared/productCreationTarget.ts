@@ -80,7 +80,7 @@ export function assertProductTargetMatch(expected: unknown, actual: unknown): vo
     }
 }
 
-export function productTargetLabel(target: ProductCreationTarget): string {
+export function productTargetLabel(target: import('./contentCreationTarget').ContentCreationTarget): string {
     return `${PRODUCT_PLATFORM_LABELS[target.platform]} · ${target.contentKind === 'video' ? '视频' : '套图'} · ${target.spec.aspectRatio} · ${target.language}`;
 }
 

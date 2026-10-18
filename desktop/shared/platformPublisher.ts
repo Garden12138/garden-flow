@@ -84,6 +84,11 @@ export type PlatformPublishCommandV1 = {
     phase: 'prepare' | 'submit' | 'read-receipt';
     request: TikTokPublishRequestV1;
 } | {
+    platform: 'tiktok';
+    phase: 'review-cover';
+    request: TikTokPublishRequestV1;
+    acknowledgedCoverOnly: true;
+} | {
     platform: 'douyin' | 'tiktok';
     phase: 'review-published';
     jobId: string;

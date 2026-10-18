@@ -80,3 +80,46 @@ node scripts/product-target-electron-qa.cjs /private/tmp/gardenflow-target-nativ
 Agent 开发计划、任务清单、逐轮验收记录、原始日志和截图放在 Git 忽略的 `.local-development/`，按日期或任务归档。公开仓库保留可复现脚本、脱敏测试夹具、使用方法和已知限制。公开 Markdown 不得链接本地辅助资料，`pnpm check:docs` 会阻断这类引用。
 
 用于公开教程的精选截图需获授权并检查密钥、账号、私人内容和路径，另放 `images/`，注明演示背景。自动采集标签清理和 TikTok 审核／异常分支的当前限制见[路线图](../ROADMAP.md)。
+
+## 梦境故事
+
+专项测试通过真实工程文件和 SQLite 操作日志，隔离供应商接口，使用合成记录和本地媒体；覆盖长句字幕切分、实测音频时间覆盖、手工字幕保留、商品字幕兼容，以及手动封面复核的按钮授权和版本变化保护：
+
+连续性及三模式专项另覆盖参考哈希、前序确认、下游过期、旧格式副本、真实本地视频绑定、单次调用、超时长阻止，以及生产视频服务的私密注册与禁自动创建重试：
+
+```bash
+pnpm --dir desktop exec node --test tests/dreamStoryContinuity.test.ts tests/dreamStoryReferences.test.ts tests/dreamVideoPrivacy.test.ts
+pnpm --dir desktop exec node --test tests/dreamImagePromptBudget.test.ts tests/imageProviderAdapters.test.ts
+node desktop/scripts/dream-story-modes-qa.cjs /private/tmp/gardenflow-dream-modes
+node desktop/scripts/dream-story-modes-qa.cjs /private/tmp/gardenflow-dream-modes desktop reopen
+# macOS：真实 Electron 裁切像素、实际参考数量、分享解包及重开；仅用合成素材
+node desktop/scripts/dream-story-reference-qa.cjs /private/tmp/gardenflow-dream-reference
+node desktop/scripts/dream-story-reference-qa.cjs /private/tmp/gardenflow-dream-reference desktop reopen
+# 合成超长指令：可预览全文，确认被拦截、无生成任务
+node desktop/scripts/dream-story-reference-qa.cjs /private/tmp/gardenflow-dream-reference desktop reopen budget
+```
+
+三模式脚本使用新的临时目录、合成图片/声音/视频与隔离数据库，验证本地预览、正式成片、分享包和重开。第二个参数可替换为解包应用的 `GardenFlow.app/Contents/Resources/app.asar`，验证安装包的渲染资源；它不调用真实供应商、不上传或发布。图像人物一致性仍需要另行授权的真实生成与人工检查。
+
+```bash
+pnpm --dir desktop exec node --test tests/dreamStory*.test.ts
+```
+
+隔离应用验证使用临时用户目录，模拟文本供应商，覆盖创作、保存重开、本地媒体、预览和正式渲染、导出及发布来源核验：
+
+```bash
+node desktop/scripts/dream-story-electron-qa.cjs /private/tmp/gardenflow-dream-qa desktop create
+node desktop/scripts/dream-story-electron-qa.cjs /private/tmp/gardenflow-dream-qa desktop reopen
+```
+
+安装包验证将第二个参数替换为解包应用的 `GardenFlow.app/Contents/Resources/app.asar`，并在命令最后加 `native`。使用新的临时目录；不连接真实模型或账号。真实供应商调用、上传和最终发布须另外逐次确认，不以离线结果替代。
+
+
+单张前序参考与精简单幕的安装包验证（合成色块、仅预览，无供应商调用）：
+
+```sh
+node desktop/scripts/dream-story-reference-qa.cjs /private/tmp/gardenflow-previous-frame-qa desktop/release/mac-arm64/GardenFlow.app/Contents/Resources/app.asar new previous
+node desktop/scripts/dream-story-reference-qa.cjs /private/tmp/gardenflow-previous-frame-qa desktop/release/mac-arm64/GardenFlow.app/Contents/Resources/app.asar reopen previous
+```
+
+验证前序整图字节与哈希一致、只引用一份、固定基准未变、完整指令在预算内且无生成任务。`dreamStoryReferences.test.ts` 与 `dreamImagePromptBudget.test.ts` 覆盖选择变化使旧调用卡失效、锁定／旧格式保护和分享提示词排除。

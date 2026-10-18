@@ -33,7 +33,7 @@ const GenerationStudioPage = lazy(async () => ({ default: (await import('./pages
 const SubjectsPage = lazy(async () => ({ default: (await import('./pages/Subjects')).Subjects }));
 const AutomationPage = lazy(async () => ({ default: (await import('./pages/Automation')).Automation }));
 const ApprovalPage = lazy(async () => ({ default: (await import('./pages/Approval')).Approval }));
-const ProductVideoWorkbench = lazy(async () => ({ default: (await import('./pages/ProductVideoWorkbench')).ProductVideoWorkbench }));
+const ProductVideoWorkbench = lazy(async () => ({ default: (await import('./pages/VideoProjectWorkbench')).VideoProjectWorkbench }));
 
 function ViewLoadingFallback() {
   const { t } = useI18n();
@@ -164,7 +164,7 @@ function AuthenticatedApp() {
             return (
               <div className="inline-flex min-w-0 items-center gap-2 text-[12px] font-semibold text-text-secondary">
                 <FileText className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
-                <span className="truncate">商品视频工程</span>
+                <span className="truncate">视频工程</span>
               </div>
             );
           }

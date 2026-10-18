@@ -229,6 +229,8 @@ import { renderVideoEditorV2Project } from './core/video-editor-v2/renderExportS
 import { listXhsPublishJobs } from './db';
 import { assertProductPublicationTarget } from './core/productWorkVersionService';
 import { getProductProjectEditorSession, resolveProductNoteEditor, readProductProjectEditor, validateProductEditorBinding, applyProductProjectEdit, undoProductProjectEdit, syncProductEditorDraft, recoverProductProjectEdits } from './core/productProjectEditorService';
+import { registerDreamStoryIpc } from './core/dreamStoryIpc';
+import { readDreamStory, assertDreamRequest } from './core/dreamStoryStore';
 import { ProductProjectEditorRefSchema, ProductProjectEditRequestSchema, type ProductProjectEditorBinding, type ProductProjectEditorTurn } from '../shared/productProjectEditor';
 import { PRODUCT_CREATION_CAPABILITIES, PRODUCT_CREATION_PROFILES, PRODUCT_TARGET_RULES, ProductCreationTargetSchema, productTargetLabel } from '../shared/productCreationTarget';
 import { createProductTargetVariant, listProductWorkVariants, bindLegacyProductWorkTarget, reviewProductVariantCopy } from './core/productWorkVersionService';
@@ -615,6 +617,7 @@ function recoverActiveXhsSessionBinding(
 ): Record<string, unknown> {
   const session = getChatSession(sessionId);
   const metadata = parseChatSessionMetadata(session?.metadata);
+  if (metadata.editorBindingKind === 'dream-story') return metadata;
   if (metadata.editorBindingKind === 'product-project' && metadata.productProjectEditorBinding) return metadata;
   const directCandidates = [explicitPath, metadata.activeXhsNotePath, metadata.activeXhsNoteUri];
   let activePath = directCandidates
@@ -6018,6 +6021,7 @@ ipcMain.handle('publication:receipt', (_, payload) => publicationReply(async () 
 ipcMain.handle('publication:bind', (_, payload) => publicationReply(() => { bindPublicationBrowser(PublicationPlatformSchema.parse(payload?.platform), String(payload?.extensionInstanceId || '')); return {}; }));
 ipcMain.handle('publication:dismiss-offer', (_, payload) => publicationReply(() => { dismissPublicationOffer(String(payload?.id || '')); return {}; }));
 
+registerDreamStoryIpc();
 ipcMain.handle('product-project-editor:session', async (_, payload: { project: unknown; selectedId?: string }) => {
   try { return { success: true, ...await getProductProjectEditorSession(ProductProjectEditorRefSchema.parse(payload?.project), payload?.selectedId) }; }
   catch (error) { return { success: false, error: String(error) }; }
@@ -6884,8 +6888,8 @@ ipcMain.handle('douyin:video-version-get', async (_, payload?: { versionId?: str
       : payload?.projectId ? getDouyinVideoVersionByProject(payload.projectId) : null;
     const versions = payload?.sourceProjectId ? listDouyinVideoVersions(payload.sourceProjectId) : [];
     const current = version || versions[0] || null;
-    const product = current ? await brandWorkspaceStore.getProductCreativeReference(current.sourceProductId).catch(() => null) : null;
-    return { success: true, version: current, versions, productChanged: Boolean(current && (!product || product.updatedAt !== current.sourceProductUpdatedAt)) };
+    const product = current?.sourceProductId ? await brandWorkspaceStore.getProductCreativeReference(current.sourceProductId).catch(() => null) : null;
+    return { success: true, version: current, versions, productChanged: Boolean(current?.sourceProductId && (!product || product.updatedAt !== current.sourceProductUpdatedAt)) };
   } catch (error) {
     return { success: false, error: String(error) };
   }
@@ -7005,8 +7009,8 @@ ipcMain.handle('tiktok:video-version-get', async (_, payload?: { versionId?: str
       : payload?.projectId ? getTikTokVideoVersionByProject(payload.projectId) : null;
     const versions = payload?.sourceProjectId ? listTikTokVideoVersions(payload.sourceProjectId) : [];
     const current = version || versions[0] || null;
-    const product = current ? await brandWorkspaceStore.getProductCreativeReference(current.sourceProductId).catch(() => null) : null;
-    return { success: true, version: current, versions, productChanged: Boolean(current && (!product || product.updatedAt !== current.sourceProductUpdatedAt)) };
+    const product = current?.sourceProductId ? await brandWorkspaceStore.getProductCreativeReference(current.sourceProductId).catch(() => null) : null;
+    return { success: true, version: current, versions, productChanged: Boolean(current?.sourceProductId && (!product || product.updatedAt !== current.sourceProductUpdatedAt)) };
   } catch (error) {
     return { success: false, error: String(error) };
   }
@@ -9303,6 +9307,21 @@ async function executeChatMessage(
     }
     const productEditorBinding = sessionMeta.productProjectEditorBinding as ProductProjectEditorBinding | undefined;
     const isProductProjectEditor = sessionMeta.editorBindingKind === 'product-project' && Boolean(productEditorBinding);
+    const isDreamEditor = sessionMeta.editorBindingKind === 'dream-story';
+    if (isDreamEditor) {
+      const project = await readDreamStory(String(sessionMeta.dreamStoryProjectId || ''), String(sessionMeta.spaceId || ''));
+      const sent = rawTaskHints.dreamStoryTurn as import('../shared/dreamStory').DreamRequest | undefined;
+      if (!sent || !sent.requestId) throw new Error('请从梦境工作台保存输入后发送');
+      assertDreamRequest(project, sent);
+      if (project.dreamStory.dirty || !project.dreamStory.target) throw new Error('请先保存输入并确认 TikTok 目标');
+      if (!project.dreamStory.director && !project.dreamStory.fragments.some(fragment => fragment.text.trim())) throw new Error('请先记下至少一个梦境片段');
+      if (JSON.stringify({ fragments: project.dreamStory.fragments, director: project.dreamStory.director, captions: project.dreamStory.captions }).length > 48000) throw new Error('梦境上下文过长，请精简记录、故事或字幕后再请求模型');
+      const turn = { spaceId: project.dreamStory.spaceId, projectId: project.id, requestId: sent.requestId,
+        expectedRevision: project.dreamStory.revision, expectedDraftEpoch: project.dreamStory.draftEpoch, targetDigest: project.dreamStory.targetDigest };
+      Object.assign(effectiveTaskHints, { workflowKind: project.dreamStory.director ? 'dream-story-edit' : 'dream-story-create', dreamStoryTurn: turn,
+        privacyScope: 'project', creationTarget: undefined, explicitProductRefs: [], explicitVideoClipRefs: [], skipSubagentOrchestration: true });
+      outgoingMessage += '\n\n仅使用梦境领域工具读取并编辑当前工程。采用、媒体生成和发布通过工作台按钮单独确认。';
+    }
     if (isProductProjectEditor) {
       const sent = rawTaskHints.productProjectEditorTurn as ProductProjectEditorTurn | undefined;
       if (!sent?.requestId || !sent.expectedRevision || !Number.isInteger(sent.expectedDraftEpoch)) throw new Error('请在工程编辑器保存当前输入后重试');
@@ -9314,7 +9333,7 @@ async function executeChatMessage(
         explicitProductRefs: [], explicitVideoClipRefs: [], skipSubagentOrchestration: true });
       outgoingMessage += `\n\n<current_product_project>\n${JSON.stringify(snapshot)}\n</current_product_project>\n仅编辑此工程，每轮重新读取最新快照；工程绑定和本轮版本凭据由主进程固定。`;
     }
-    if (!isProductProjectEditor && rawTaskHints.creationTarget) {
+    if (!isProductProjectEditor && !isDreamEditor && rawTaskHints.creationTarget) {
       const target = ProductCreationTargetSchema.parse(rawTaskHints.creationTarget);
       if (target.profileVersion === 0 || productAssetContext.explicitProductRefs.length !== 1) throw new Error('请选择一个商品和有效的当前目标规格');
       Object.assign(effectiveTaskHints, { creationTarget: target, platform: target.platform, xhsNoteType: target.platform === 'xiaohongshu' ? target.contentKind === 'video' ? 'video' : 'image' : undefined, workflowKind: target.contentKind === 'video' ? 'product-video-compose' : 'product-image-set-compose', productVideoCompositionMode: target.compositionMode, activeXhsNotePath: '', activeXhsNoteUri: '', editorBindingKind: '', productImageSetEditing: false });
@@ -9363,7 +9382,7 @@ async function executeChatMessage(
       outgoingMessage = buildGardenFlowAuthoringPrompt(outgoingMessage, gardenFlowAuthoringHints);
     }
 
-    const runtimeMode = isProductProjectEditor || String(sessionMeta.editorBindingKind || '').trim() === 'xiaohongshu-note'
+    const runtimeMode = isProductProjectEditor || isDreamEditor || String(sessionMeta.editorBindingKind || '').trim() === 'xiaohongshu-note'
       ? 'gardenflow'
       : resolveRuntimeModeForSession(String(sessionMeta.contextType || ''));
     const routeAnalysis = getAgentRuntime().analyzeRuntimeContext({

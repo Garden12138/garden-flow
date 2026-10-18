@@ -1,4 +1,5 @@
 import { applyProductProjectEditWorkflowPolicy } from './productProjectEditWorkflowPolicy';
+import { applyDreamStoryWorkflowPolicy } from './dreamStoryWorkflowPolicy';
 import { assembleRuntimeSystemPrompt } from './contextAssembler';
 import { routeIntent } from './intentRouter';
 import { applyProductVideoWorkflowPolicy } from './productVideoWorkflowPolicy';
@@ -198,7 +199,7 @@ const buildDirectRoute = (context: RuntimeContext): IntentRoute => {
     hints,
   });
 
-  return applyProductProjectEditWorkflowPolicy(applyXhsPublishWorkflowPolicy(applyProductVideoWorkflowPolicy({
+  return applyDreamStoryWorkflowPolicy(applyProductProjectEditWorkflowPolicy(applyXhsPublishWorkflowPolicy(applyProductVideoWorkflowPolicy({
     intent,
     secondaryIntents: [],
     goal: String(context.userInput || '').trim() || '处理当前用户请求',
@@ -213,7 +214,7 @@ const buildDirectRoute = (context: RuntimeContext): IntentRoute => {
     confidence: 1,
     reasoning: `runtime-mode-default:${runtimeMode}; intent=${intent}; role=${recommendedRole}`,
     source: 'rule',
-  }, context), context), context);
+  }, context), context), context), context);
 };
 
 const resolveThinkingBudget = (runtimeMode: RuntimeMode, route: IntentRoute): ThinkingBudget => {

@@ -79,15 +79,25 @@ async function candidateForVersion(versionId: string): Promise<Candidate> {
     if (!version) throw new Error('TikTok版本不存在或不属于当前空间');
     assertProductEditsSettled('video:' + version.projectId);
     const project = await getVideoEditorV2Project(version.projectId);
-    if (!project?.productVideo || project.projectKind !== 'product-video') throw new Error('TikTok视频工程不存在');
-    const variant = await assertProductPublicationTarget(project, 'tiktok');
+    if (!project) throw new Error('TikTok视频工程不存在');
+    let creationTargetKey: string | undefined;
+    let output = project.renderOutputs[0];
+    if (project.projectKind === 'dream-story') {
+        const { currentDreamExport } = await import('./dreamStoryRenderService');
+        const checked = await currentDreamExport(project.id);
+        if (version.source?.kind !== 'dream-story' || version.source.revision !== checked.project.dreamStory.revision || version.source.targetDigest !== checked.project.dreamStory.targetDigest) throw new Error('梦境来源或目标版本已变化');
+        output = checked.output; creationTargetKey = checked.project.dreamStory.targetDigest;
+    } else {
+        if (!project.productVideo || project.projectKind !== 'product-video') throw new Error('TikTok视频工程不存在');
+        const variant = await assertProductPublicationTarget(project, 'tiktok');
+        creationTargetKey = project.creationTarget?.profileVersion ? productTargetKey(variant.target) : undefined;
+        assertCurrentVideoExport(project);
+    }
     if (project.canvas.aspectRatio !== '9:16') throw new Error('TikTok版本须使用竖屏 9:16 视频');
     const publishSettings = validateTikTokPublishSettings(version.publishSettings);
-    if (project.productVideo.scenes.some(scene => scene.voiceoverAssetId && ['stale', 'failed', 'duration-conflict'].includes(scene.voiceoverStatus || ''))) {
+    if (project.productVideo?.scenes.some(scene => scene.voiceoverAssetId && ['stale', 'failed', 'duration-conflict'].includes(scene.voiceoverStatus || ''))) {
         throw new Error('旁白与当前文字或时长不一致，请重新生成或移除后再导出');
     }
-    assertCurrentVideoExport(project);
-    const output = project.renderOutputs[0];
     const asset = (await listMediaAssets(10000)).find((item) => item.id === output.mediaAssetId);
     if (!asset?.relativePath || !String(asset.mimeType || '').startsWith('video/')) throw new Error('当前导出未在资产库找到视频文件');
     const mediaRoot = await fs.realpath(getWorkspacePaths().media);
@@ -107,7 +117,7 @@ async function candidateForVersion(versionId: string): Promise<Candidate> {
     const digest = createHash('sha256').update(JSON.stringify({
         platform: 'tiktok', versionId: version.id, revision: version.revision,
         ...(getProductEditorPublicationRevision(project.id) ? { editorRevision: getProductEditorPublicationRevision(project.id) } : {}),
-        ...(project.creationTarget?.profileVersion ? { creationTargetKey: productTargetKey(variant.target) } : {}),
+        ...(creationTargetKey ? { creationTargetKey } : {}),
         projectId: project.id, renderId: output.id, mediaAssetId: asset.id,
         title: version.title, description: version.description, hashtags: version.hashtags,
         language: version.language, market: version.market, publishSettings,
@@ -319,18 +329,19 @@ export class TikTokPublisherService {
         return current;
     }
 
-    async stageDraft(jobId: string): Promise<TikTokPublishJob> {
+    async stageDraft(jobId: string, reviewCoverOnly = false): Promise<TikTokPublishJob> {
         const key = `${getActiveSpaceId()}:${jobId}`;
         const pending = this.staging.get(key);
         if (pending) return pending;
-        const operation = this.stageDraftUnlocked(jobId);
+        const operation = this.stageDraftUnlocked(jobId, reviewCoverOnly);
         this.staging.set(key, operation);
         try { return await operation; }
         finally { if (this.staging.get(key) === operation) this.staging.delete(key); }
     }
 
-    private async stageDraftUnlocked(jobId: string): Promise<TikTokPublishJob> {
+    private async stageDraftUnlocked(jobId: string, reviewCoverOnly: boolean): Promise<TikTokPublishJob> {
         const context = await requirePublicationAction('tiktok', jobId, 'upload');
+        if (reviewCoverOnly && (context.phase !== 'awaiting-submit' || !context.uploadReview)) throw new Error('请先完成原视频上传核对，再复核手动封面');
         const job = await this.validateConfirmation(jobId);
         // Recheck after async validation so a concurrent confirmation wins only once.
         if (!['awaiting_confirmation', 'blocked'].includes(getTikTokPublishJob(jobId)?.status || '')) throw new Error('任务状态已变化');
@@ -338,9 +349,10 @@ export class TikTokPublisherService {
         try {
             const bridge = getBrowserCaptureBridgeService();
             if (!bridge) throw new Error('发布浏览器未连接');
-            const response = record(await bridge.invokeBrowserControl('publisher.publish', {
-                platform: 'tiktok', phase: 'prepare', request: requestForJob(job),
-            } satisfies PlatformPublishCommandV1, {
+            const command: PlatformPublishCommandV1 = reviewCoverOnly
+                ? { platform: 'tiktok', phase: 'review-cover', request: requestForJob(job), acknowledgedCoverOnly: true }
+                : { platform: 'tiktok', phase: 'prepare', request: requestForJob(job) };
+            const response = record(await bridge.invokeBrowserControl('publisher.publish', command, {
                 extensionInstanceId: job.extensionInstanceId, extensionKind: 'xhs-publisher',
                 requiredCapability: TIKTOK_PUBLISHER_CAPABILITY,
                 timeoutMs: 10 * 60_000,

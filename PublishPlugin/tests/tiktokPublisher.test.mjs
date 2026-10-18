@@ -106,6 +106,63 @@ async function withFixture(fn) {
   try { await fn(value); } finally { globalThis.chrome = previous; }
 }
 
+test('explicit cover-only review refreshes one owned draft without uploading, typing or submitting', async () => {
+  await withFixture(async ({ state, storage }) => {
+    const signature = cover => JSON.stringify([state.mediaFilename, 'Uploaded（0.00MB）', 'blob:https://www.tiktok.com/' + cover]);
+    state.mediaSignature = signature('original');
+    await tiktokPublish(command('prepare'));
+    const inputs = state.inputCommands.length; const uploads = state.assignments.length;
+    state.mediaSignature = signature('chosen-cover');
+    assert.equal((await tiktokPublish(command('submit'))).code, 'EDITOR_CHANGED');
+    assert.equal(state.presses, 0);
+    assert.equal((await tiktokPublish(command('review-cover'))).code, 'COVER_REVIEW_REQUIRES_ACK');
+    const result = await tiktokPublish({ ...command('review-cover'), acknowledgedCoverOnly: true });
+    assert.equal(result.prepared, true); assert.equal(result.publishStatus, 'not_submitted');
+    assert.ok(result.uploadReview.pageFingerprint.includes('chosen-cover'));
+    assert.equal(state.assignments.length, uploads); assert.equal(state.inputCommands.length, inputs); assert.equal(state.presses, 0);
+    assert.equal((await tiktokPublish(command('submit'))).publishStatus, 'unknown'); assert.equal(state.presses, 1);
+    const before = JSON.stringify(storage);
+    assert.equal((await tiktokPublish({ ...command('review-cover'), acknowledgedCoverOnly: true })).publishStatus, 'unknown');
+    assert.equal(JSON.stringify(storage), before); assert.equal(state.presses, 1);
+  });
+});
+
+test('cover review cannot adopt changed media identity, account, copy, settings or access gates', async () => {
+  const changes = [
+    s => { s.mediaFilename = 'other.mp4'; },
+    s => { s.mediaSignature = JSON.stringify([s.mediaFilename, 'Uploaded（9.00MB）', 'blob:https://www.tiktok.com/new']); },
+    s => { s.mediaSignature = JSON.stringify([s.mediaFilename, 'Uploaded（0.00MB）', 'https://other.invalid/cover']); },
+    s => { s.mediaSignature = 'invalid'; },
+    s => { s.caption = 'Changed caption'; }, s => { s.accountId = 'other_account'; },
+    s => { s.settings.visibility = 'only_me'; }, s => { s.settings.aiGenerated = true; },
+    s => { s.locationSelected = true; }, s => { s.postNow = false; },
+    s => { s.securityChallenge = true; }, s => { s.blockingDialog = true; },
+    s => { s.resumeDraft = true; }, s => { s.publishButtonEnabled = false; },
+    s => { s.publishButtonCount = 2; }, s => { s.validationErrors = ['rejected']; },
+  ];
+  for (const change of changes) await withFixture(async ({ state, storage }) => {
+    state.mediaSignature = JSON.stringify([state.mediaFilename, 'Uploaded（0.00MB）', 'blob:https://www.tiktok.com/original']);
+    await tiktokPublish(command('prepare'));
+    const baseline = JSON.stringify(storage.gardenflowTikTokPublisherPreparedJob.baseline);
+    state.mediaSignature = JSON.stringify([state.mediaFilename, 'Uploaded（0.00MB）', 'blob:https://www.tiktok.com/chosen-cover']);
+    change(state);
+    const result = await tiktokPublish({ ...command('review-cover'), acknowledgedCoverOnly: true });
+    assert.equal(result.prepared, undefined); assert.equal(state.presses, 0); assert.equal(state.assignments.length, 1);
+    assert.equal(JSON.stringify(storage.gardenflowTikTokPublisherPreparedJob.baseline), baseline);
+  });
+});
+
+test('another cover change after explicit review invalidates submission again', async () => {
+  await withFixture(async ({ state }) => {
+    const signature = cover => JSON.stringify([state.mediaFilename, 'Uploaded（0.00MB）', 'blob:https://www.tiktok.com/' + cover]);
+    state.mediaSignature = signature('original'); await tiktokPublish(command('prepare'));
+    state.mediaSignature = signature('selected');
+    assert.equal((await tiktokPublish({ ...command('review-cover'), acknowledgedCoverOnly: true })).prepared, true);
+    state.mediaSignature = signature('changed-again');
+    assert.equal((await tiktokPublish(command('submit'))).code, 'EDITOR_CHANGED'); assert.equal(state.presses, 0);
+  });
+});
+
 test('receipt enrichment reads only an already verified publication and never uploads or presses Post', async () => {
   await withFixture(async ({ state, storage }) => {
     state.postsPage = true;

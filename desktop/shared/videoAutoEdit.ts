@@ -288,12 +288,12 @@ export interface RenderOutputRecord {
 }
 
 export interface VideoEditorV2Project {
-  creationTarget?: ProductCreationTarget;
+  creationTarget?: import('./contentCreationTarget').ContentCreationTarget;
   workVersion?: ProductWorkVersion;
-  version: 2;
+  version: 2 | 3 | 4;
   id: string;
   title: string;
-  projectKind: 'subtitle-edit' | 'product-video';
+  projectKind: 'subtitle-edit' | 'product-video' | 'dream-story';
   sourceManuscriptPath?: string | null;
   projectDir: string;
   createdAt: string;
@@ -309,6 +309,7 @@ export interface VideoEditorV2Project {
   renderOutputs: RenderOutputRecord[];
   lastError?: string | null;
   productVideo?: ProductVideoProjectMetadata | null;
+  dreamStory?: import('./dreamStory').DreamStoryDocument;
 }
 
 export type ProductVideoEditCommand =

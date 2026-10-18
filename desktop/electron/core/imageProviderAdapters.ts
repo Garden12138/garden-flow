@@ -22,6 +22,7 @@ export type ImageGenerationMode = 'text-to-image' | 'image-to-image' | 'referenc
 
 export interface ImageGenerationRequest {
     prompt: string;
+    promptExtend?: boolean;
     model: string;
     endpoint: string;
     apiKey: string;
@@ -1326,6 +1327,7 @@ function buildDashscopeWanPayloadVariants(
             parameters: {
                 n: count,
                 size: mapSizeToDashScope(request.size, request.aspectRatio),
+                ...(typeof request.promptExtend === 'boolean' ? { prompt_extend: request.promptExtend } : {}),
             },
         }));
     }
@@ -2407,9 +2409,10 @@ export function normalizeImageSize(size?: string): string {
     return `${width}x${height}`;
 }
 
-export function getImageProviderCapabilities(providerTemplate?: string, provider?: string): ImageProviderCapabilities {
+export function getImageProviderCapabilities(providerTemplate?: string, provider?: string, model?: string): ImageProviderCapabilities {
     const template = normalizeImageProviderTemplate(providerTemplate, provider);
-    return IMAGE_PROVIDER_CAPABILITIES[template] || IMAGE_PROVIDER_CAPABILITIES['openai-images'];
+    const capabilities = IMAGE_PROVIDER_CAPABILITIES[template] || IMAGE_PROVIDER_CAPABILITIES['openai-images'];
+    return template === 'dashscope-wan-native' && isQwenImageModel(model || '') ? { ...capabilities, maxReferenceImages: Math.min(3, capabilities.maxReferenceImages) } : capabilities;
 }
 
 export function getImageProviderAdapter(providerTemplate?: string, provider?: string): ImageProviderAdapter {

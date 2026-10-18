@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { getChatMessages, getChatSessions, getSettings, getWorkspacePaths, type ChatMessage, type ChatSession } from '../db';
+import { memoryEligibleSessions } from '../../shared/sessionPrivacy';
 import { resolveScopedModelName } from './modelScopeSettings';
 import { loadAndRenderPrompt } from '../prompts/runtime';
 import { normalizeApiBaseUrl, safeUrlJoin } from './urlUtils';
@@ -131,7 +132,7 @@ function isUserOrAssistantMessage(message: ChatMessage): message is ChatMessage 
 }
 
 function buildRecentConversationSummaries(prioritizedSessionIds: string[] = []): RecentConversationSummary[] {
-  const sessions = getChatSessions();
+  const sessions = memoryEligibleSessions(getChatSessions());
   const preferred = sessions.filter((session) => {
     const metadata = parseSessionMetadata(session);
     return String(metadata.contextType || '').trim().toLowerCase() === 'gardenflow';

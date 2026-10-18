@@ -68,6 +68,21 @@ export function tikTokEditorIssues(state, request, baseline) {
   return Object.keys(checks).filter(key => !checks[key]);
 }
 
+// A user may explicitly review a cover-only edit on our already uploaded draft.
+// Keep filename/upload status and every other editor guard fixed; the next submit
+// is pinned to the newly reviewed cover URL again, never to a wildcard signature.
+export function tikTokCoverReviewIssues(state, request, baseline) {
+  let before; let after;
+  try { before = JSON.parse(baseline?.mediaSignature); after = JSON.parse(state?.mediaSignature); } catch { return ['media']; }
+  const valid = signature => Array.isArray(signature) && signature.length === 3
+    && signature.every(value => typeof value === 'string' && value.length > 0)
+    && signature[2].startsWith('blob:https://www.tiktok.com/');
+  if (!valid(before) || !valid(after) || before[0] !== after[0] || before[1] !== after[1]) return ['media'];
+  const issues = tikTokEditorIssues(state, request, { mediaSignature: state.mediaSignature });
+  if (!state.publishButtonEnabled || state.publishButtonCount !== 1) issues.push('publishButton');
+  return issues;
+}
+
 // Each exported page function is serialized by Chrome executeScript. No module closures.
 export async function readTikTokAccount() {
   if (location.origin !== 'https://www.tiktok.com' || !['/tiktokstudio/upload', '/tiktokstudio/content'].includes(location.pathname)) return null;

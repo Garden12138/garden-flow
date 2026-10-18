@@ -32,6 +32,7 @@ test('main process keeps TikTok confirmation, account, review and unknown states
     };
     state.versions.set(version.id, version);
     const mocks: Record<string, string> = {
+        dreamRender: `export const currentDreamExport = async () => { throw new Error('unexpected dream source'); };`,
         execution: `export const requirePublicationAction = async () => ({}); export const validatePublicationContext = async () => ({}); export const recordPublicationUpload = () => {};`,
         completion: `export const recordCompletedPublication = async () => {};`,
         source: `export const readPublicationSource = async () => ({media:[]});`,
@@ -99,7 +100,7 @@ test('main process keeps TikTok confirmation, account, review and unknown states
                             : args.path.endsWith('/mediaLibraryStore') ? 'media'
                                 : args.path.endsWith('/localAssetManager') ? 'local'
                                     : args.path.endsWith('/videoEditorV2ProjectStore') ? 'project'
-                                        : args.path.endsWith('/videoPublicationPolicy') ? 'policy' : args.path.endsWith('/tiktokImageCover') ? 'cover' : '';
+                                        : args.path.endsWith('/dreamStoryRenderService') ? 'dreamRender' : args.path.endsWith('/videoPublicationPolicy') ? 'policy' : args.path.endsWith('/tiktokImageCover') ? 'cover' : '';
                 return key ? { path: key, namespace: 'fixture' } : undefined;
             });
             builder.onLoad({ filter: /.*/, namespace: 'fixture' }, (args) => ({ contents: mocks[args.path], loader: 'ts' }));

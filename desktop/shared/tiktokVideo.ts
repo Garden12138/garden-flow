@@ -10,10 +10,25 @@ export interface TikTokPublishSettings {
     aiGenerated: boolean;
 }
 
-export interface TikTokVideoVersion extends Omit<DouyinVideoVersion, 'coverAssetId'> {
+interface TikTokVideoVersionBase extends Omit<DouyinVideoVersion, 'coverAssetId' | 'sourceProductId' | 'sourceProductUpdatedAt'> {
     language: string;
     market: string;
     publishSettings?: TikTokPublishSettings;
+    coverFrame?: { timeMs: number; renderId: string };
+}
+
+export type TikTokVideoSource = { kind: 'product'; productId: string; productUpdatedAt: string }
+    | { kind: 'dream-story'; projectId: string; revision: string; targetDigest: string };
+export type TikTokVideoVersion = TikTokVideoVersionBase & (
+    { source?: Extract<TikTokVideoSource, { kind: 'product' }>; sourceProductId: string; sourceProductUpdatedAt: string }
+    | { source: Extract<TikTokVideoSource, { kind: 'dream-story' }>; sourceProductId?: never; sourceProductUpdatedAt?: never }
+);
+
+export function normalizeTikTokVideoVersion(value: TikTokVideoVersion): TikTokVideoVersion {
+    if (value.source) return value;
+    if (!value.sourceProductId || !value.sourceProductUpdatedAt) throw new Error('旧 TikTok 版本缺少商品来源');
+    return { ...value, sourceProductId: value.sourceProductId, sourceProductUpdatedAt: value.sourceProductUpdatedAt,
+        source: { kind: 'product', productId: value.sourceProductId, productUpdatedAt: value.sourceProductUpdatedAt } };
 }
 
 export interface TikTokPublishJob extends Omit<DouyinPublishJob, 'platform' | 'imageCover'> {

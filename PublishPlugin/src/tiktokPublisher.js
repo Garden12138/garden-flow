@@ -1,6 +1,6 @@
 import { publicationUploadReview } from './publicationReview.js';
 import { TIKTOK_TAB_PATTERN, isTikTokUploadUrl, validateTikTokRequest, tikTokCaption,
-  tikTokEditorMatches, tikTokEditorIssues, readTikTokAccount, probeTikTokPage, tikTokCaptionPoint,
+  tikTokEditorMatches, tikTokEditorIssues, tikTokCoverReviewIssues, readTikTokAccount, probeTikTokPage, tikTokCaptionPoint,
   tikTokSettingsPage, tikTokSubmitPoint, readTikTokPosts, matchTikTokPostReceipt } from './tiktokAdapter.js';
 
 const OWNER_KEY = 'gardenflowTikTokPublisherPreparedJob';
@@ -238,6 +238,23 @@ async function prepare(request) {
   return outcome(request, true, 'not_submitted', '', '', { prepared: true, uploadReview: publicationUploadReview(request, state) });
 }
 
+async function reviewCover(request, acknowledgedCoverOnly) {
+  if (acknowledgedCoverOnly !== true) return outcome(request, false, 'not_submitted', 'COVER_REVIEW_REQUIRES_ACK', '请明确核对只修改了封面，未替换视频');
+  const previous = await cached(request.jobId);
+  if (previous && previous.publishStatus !== 'not_submitted') return previous;
+  const ownership = await owner();
+  if (!ownership || ownership.status !== 'prepared' || !sameRequest(ownership.request, request)) return outcome(request, false, 'not_submitted', 'NO_PREPARED_OWNER', '未找到原任务的已上传草稿');
+  const pages = await tabs();
+  if (pages.length !== 1 || pages[0].id !== ownership.tabId) return outcome(request, false, 'not_submitted', 'OWNED_TAB_CHANGED', '原标签页已变化');
+  const state = await probe(ownership.tabId);
+  const issues = tikTokCoverReviewIssues(state, request, ownership.baseline);
+  if (issues.length) return outcome(request, false, 'not_submitted', 'COVER_REVIEW_MISMATCH', '封面复核失败：视频、账号、文案、设置或页面状态不一致，未提交', { mismatches: issues });
+  const current = await probe(ownership.tabId);
+  if (current?.mediaSignature !== state.mediaSignature || tikTokCoverReviewIssues(current, request, ownership.baseline).length) return outcome(request, false, 'not_submitted', 'COVER_CHANGED_DURING_REVIEW', '封面核对期间页面已变化');
+  await setOwner({ ...ownership, baseline: { ...ownership.baseline, mediaSignature: current.mediaSignature }, coverReviewedAt: Date.now() });
+  return outcome(request, true, 'not_submitted', '', '', { prepared: true, uploadReview: publicationUploadReview(request, current) });
+}
+
 async function submit(request) {
   const previous = await cached(request.jobId);
   if (previous) {
@@ -327,9 +344,9 @@ export async function tiktokPublish(payload) {
   }
   const request = payload.request;
   const validation = validateTikTokRequest(request);
-  if (payload.platform !== 'tiktok' || !['prepare', 'submit', 'read-receipt'].includes(payload.phase) || !validation.ok) return outcome(request, false, 'not_submitted', validation.code || 'INVALID_PHASE', validation.message || 'TikTok 操作无效');
+  if (payload.platform !== 'tiktok' || !['prepare', 'review-cover', 'submit', 'read-receipt'].includes(payload.phase) || !validation.ok) return outcome(request, false, 'not_submitted', validation.code || 'INVALID_PHASE', validation.message || 'TikTok 操作无效');
   running = true;
-  try { return payload.phase === 'read-receipt' ? await readReceipt(request) : payload.phase === 'prepare' ? await prepare(request) : await submit(request); }
+  try { return payload.phase === 'read-receipt' ? await readReceipt(request) : payload.phase === 'review-cover' ? await reviewCover(request, payload.acknowledgedCoverOnly) : payload.phase === 'prepare' ? await prepare(request) : await submit(request); }
   catch (error) { return outcome(request, false, 'not_submitted', error.code || 'TIKTOK_PREPARATION_FAILED', error.message); }
   finally { running = false; }
 }

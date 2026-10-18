@@ -36,6 +36,18 @@ test('Qwen reference generation sends one MIME data URL request with the selecte
     }
 });
 
+test('explicit Qwen rewriting control is forwarded while an unspecified policy keeps existing behavior', async () => {
+    const originalFetch = globalThis.fetch; const parameters: any[] = [];
+    globalThis.fetch = async (_url, init) => {
+        const body = JSON.parse(String(init?.body)); parameters.push(body.parameters);
+        return new Response(JSON.stringify({ output: { choices: [{ message: { content: [{ image: 'data:image/png;base64,' + ONE_PIXEL_PNG_BASE64 }] } }] } }));
+    };
+    try {
+        for (const promptExtend of [false, true]) await getImageProviderAdapter('dashscope-wan-native', 'dashscope').generate({ prompt: 'One student in the original chair.', model: 'qwen-image-2.0-pro-2026-06-22', endpoint: 'https://dashscope.aliyuncs.com', apiKey: 'fixture', provider: 'dashscope', providerTemplate: 'dashscope-wan-native', promptExtend, count: 1 });
+        assert.deepEqual(parameters.map(p => p.prompt_extend), [false, true]);
+    } finally { globalThis.fetch = originalFetch; }
+});
+
 test('failed Qwen reference generation does not resubmit a different Base64 format', async () => {
     const originalFetch = globalThis.fetch;
     let submissions = 0;

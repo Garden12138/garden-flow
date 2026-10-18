@@ -71,7 +71,7 @@ async function readSnapshot(ref: ProductProjectEditorRef, selectedId?: string): 
         if (!video?.productVideo) throw new Error('当前空间的商品视频工程不存在');
         const variant = await resolveProductWorkVariant(video);
         binding = { version: 1, spaceId, project: ref, productId: video.productVideo.productSnapshot.id,
-            target: variant.resolution === 'bound' ? variant.target : video.creationTarget,
+            target: variant.resolution === 'bound' ? variant.target : video.creationTarget ? ProductCreationTargetSchema.parse(video.creationTarget) : undefined,
             workVersion: variant.resolution === 'bound' ? variant.workVersion : video.workVersion, selectedId };
         if (selectedId && !video.productVideo.scenes.some(scene => scene.id === selectedId)) throw new Error('选中分镜不存在');
         const native = getDouyinVideoVersionByProject(video.id, spaceId) || getTikTokVideoVersionByProject(video.id, spaceId);

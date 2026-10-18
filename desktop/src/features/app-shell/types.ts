@@ -18,6 +18,7 @@ export type GardenFlowNavigationAction = {
 };
 
 export type AppIntent =
+  | { type: 'dream-story.new' }
   | {
       type: 'flow.open';
       stage: FlowStage;

@@ -7,6 +7,7 @@ import { supportsAttachmentKindDirectInput } from '../../shared/modelCapabilitie
 import { attachmentParticipatesInChatRuntime } from '../../shared/chatAttachmentDelivery';
 import { parseChatRunMessageMetadata, type ChatSendReceipt } from '../../shared/chatRunState';
 import { shouldPreserveFixedSessionWarmMessages } from '../../shared/chatWarmSnapshotPolicy';
+import { scheduleChatSend } from '../../shared/chatSendScheduler';
 import { resolveSubmittedAssetMentions } from '../../shared/chatAssetReferences';
 import {
   isXhsPublishJobStatus,
@@ -2536,11 +2537,7 @@ export function Chat({
       targetAdvisorId: payload.memberMention?.advisorId || null,
       knowledgeReferenceCount: payload.knowledgeReferences?.length || 0,
     });
-    const schedule = typeof window.requestAnimationFrame === 'function'
-      ? window.requestAnimationFrame.bind(window)
-      : (callback: FrameRequestCallback) => window.setTimeout(() => callback(performance.now()), 0);
-
-    schedule(() => {
+    scheduleChatSend(() => {
       debugUi('dispatch_send:flushed', {
         sessionId: payload.sessionId || null,
         chars: payload.message.length,
@@ -2593,7 +2590,7 @@ export function Chat({
         }
         callbacks?.onRejected?.(rejectionMessage);
       });
-    });
+    }, window);
   }, [debugUi]);
 
   const notifySessionActivity = useCallback((sessionId: string | null | undefined, updatedAt = new Date().toISOString()) => {

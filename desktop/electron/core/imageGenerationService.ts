@@ -1,3 +1,4 @@
+import { assertImagePromptBudget } from '../../shared/imagePromptBudget';
 import { getSettings } from '../db';
 import { createGeneratedMediaAsset, type MediaAsset } from './mediaLibraryStore';
 import {
@@ -13,6 +14,8 @@ import { normalizeApiBaseUrl } from './urlUtils';
 
 export interface GenerateImagesInput {
     prompt: string;
+    promptExtend?: boolean;
+    privacyScope?: 'project';
     projectId?: string;
     title?: string;
     generationMode?: ImageGenerationMode | string;
@@ -116,7 +119,7 @@ export async function generateImagesToMediaLibrary(input: GenerateImagesInput): 
     const size = normalizeImageSize(String(input.size || settings.image_size || '').trim());
     const quality = String(input.quality || settings.image_quality || 'standard').trim();
     const rawReferenceImages = Array.isArray(input.referenceImages)
-        ? input.referenceImages.map((item) => String(item || '').trim()).filter(Boolean).slice(0, 4)
+        ? input.referenceImages.map((item) => String(item || '').trim()).filter(Boolean).slice(0, input.privacyScope === 'project' ? undefined : 4)
         : [];
     const requestedGenerationMode = (
         input.generationMode === 'image-to-image' ||
@@ -138,7 +141,9 @@ export async function generateImagesToMediaLibrary(input: GenerateImagesInput): 
     }
 
     const adapter = getImageProviderAdapter(providerTemplate, provider);
-    const capabilities = getImageProviderCapabilities(providerTemplate, provider);
+    const capabilities = getImageProviderCapabilities(providerTemplate, provider, model);
+    if (input.privacyScope === 'project') assertImagePromptBudget(providerTemplate, model, normalizedPrompt);
+    if (input.privacyScope === 'project' && rawReferenceImages.length && (!capabilities.supportsReferenceImages || rawReferenceImages.length > capabilities.maxReferenceImages || !capabilities.supportedModes.includes(requestedGenerationMode))) throw new Error('当前模型无法完整使用已确认参考图；请减少参考或更换模型，不会退回纯文字生成');
     let generationMode: ImageGenerationMode = capabilities.supportedModes.includes(requestedGenerationMode)
         ? requestedGenerationMode
         : 'text-to-image';
@@ -154,6 +159,7 @@ export async function generateImagesToMediaLibrary(input: GenerateImagesInput): 
     const images = adapter.supportsMultiCount
         ? await adapter.generate({
             prompt: normalizedPrompt,
+            promptExtend: input.promptExtend,
             model,
             endpoint,
             apiKey,
@@ -169,6 +175,7 @@ export async function generateImagesToMediaLibrary(input: GenerateImagesInput): 
         : (await Promise.all(
             Array.from({ length: count }, async () => adapter.generate({
                 prompt: normalizedPrompt,
+                promptExtend: input.promptExtend,
                 model,
                 endpoint,
                 apiKey,
@@ -191,6 +198,7 @@ export async function generateImagesToMediaLibrary(input: GenerateImagesInput): 
     for (const output of images.slice(0, count)) {
         const asset = await createGeneratedMediaAsset({
             prompt: normalizedPrompt,
+            privacyScope: input.privacyScope,
             dataBuffer: output.imageBuffer,
             mimeType: output.mimeType,
             projectId: input.projectId?.trim() || undefined,

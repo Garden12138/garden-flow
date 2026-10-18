@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { DreamStoryEntry } from '../components/dream-story/DreamStoryEntry';
 import { Archive, ArrowRight, Bell, Clapperboard, FileText, Folder, Image, ImagePlus, Lightbulb, Loader2, MessageSquareText, Mic2, PenLine, RefreshCw, Send, Sparkles, X } from 'lucide-react';
 import { ApprovalPanel } from './Approval';
 import { subscribeDataChanged } from '../bridge/appEvents';
@@ -673,6 +674,7 @@ export function Home({ isActive = true, onNavigateToCoverStudio, onNavigateToGen
                         </section>
                     )}
 
+                    <DreamStoryEntry />
                     <section className="flex min-h-[310px] flex-col gap-3">
                         <div className="flex items-center justify-between gap-3">
                             <div className="workbench-home__section-title">

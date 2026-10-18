@@ -36,6 +36,7 @@ export interface RemotionOverlay {
     position?: OverlayPosition;
     animation?: OverlayAnimation;
     fontSize?: number;
+    captionLayout?: 'compact';
     color?: string;
     backgroundColor?: string;
     align?: 'left' | 'center' | 'right';

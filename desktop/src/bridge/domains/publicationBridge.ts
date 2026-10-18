@@ -2,7 +2,7 @@ import type { BridgeCore, Listener } from '../types';
 import type { PublicationSource, PublicationSnapshot, PublicationJobView, PublicationBrowserState, PublicationCompletion } from '../../../shared/publication';
 import type { PublicationPlatform } from '../../../shared/platformPublisher';
 type Result<T> = T & { success: boolean; error?: string };
-type Action = { platform: PublicationPlatform; jobId: string; expectedDigest: string; acknowledged?: boolean };
+type Action = { platform: PublicationPlatform; jobId: string; expectedDigest: string; acknowledged?: boolean; coverOnly?: true };
 export function createPublicationBridge(core: BridgeCore) {
     return { publication: {
         readSource: (payload: { source: PublicationSource }) => core.invokeChannel('publication:source', payload) as Promise<Result<{ snapshot?: PublicationSnapshot }>>,

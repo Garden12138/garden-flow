@@ -16,6 +16,14 @@ export async function createTikTokVideoVersion(input: { sourceProjectId: string;
     const mediaRoot = getWorkspacePaths().media;
     const sourceProjectId = String(input.sourceProjectId || '').trim();
     const sourceTarget = await getVideoEditorV2Project(sourceProjectId);
+    if (sourceTarget?.projectKind === 'dream-story') {
+        const { readDreamStory, syncDreamTikTokVersion } = await import('./dreamStoryStore');
+        if (input.duplicate) throw new Error('请从梦境目标面板创建独立版本');
+        await syncDreamTikTokVersion(await readDreamStory(sourceProjectId));
+        const version = getTikTokVideoVersionByProject(sourceProjectId);
+        if (!version) throw new Error('请先确认目标并采用导演包');
+        return version;
+    }
     if (sourceTarget?.creationTarget) {
         const target = resolveProductCreationTarget({ platform: 'tiktok', compositionMode: sourceTarget.productVideo?.proposal.compositionMode || 'product-images' });
         const project = await createProductTargetVariant({ sourceProjectId, expectedUpdatedAt: sourceTarget.updatedAt, target, duplicate: input.duplicate });

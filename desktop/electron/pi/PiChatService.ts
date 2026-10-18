@@ -24,6 +24,7 @@ import {
   getChatMessages,
   createOrReusePendingToolApproval,
   updateChatSessionMetadata,
+  runInWorkspaceSpace,
 } from '../db';
 import { SkillManager } from '../core/skillManager';
 import { Instance } from '../core/instance';
@@ -1281,6 +1282,7 @@ export class PiChatService {
           generationToolConstraints: preparedTaskMetadata.generationToolConstraints,
           productImageSetEditing: preparedTaskMetadata.productImageSetEditing === true,
           productProjectEditorTurn: preparedTaskMetadata.productProjectEditorTurn as import('../../shared/productProjectEditor').ProductProjectEditorTurn | undefined,
+          dreamStoryTurn: preparedTaskMetadata.dreamStoryTurn as import('../../shared/dreamStory').DreamRequest | undefined,
           maxCompletionRecoveryAttempts: captureTask ? 8 : undefined,
           completionContract: {
             builtinTaskId: String(preparedTaskMetadata.builtinTaskId || metadata.builtinTaskId || '').trim() || undefined,
@@ -1288,7 +1290,9 @@ export class PiChatService {
           },
         },
       );
-      const runResult = await runtime.run(content);
+      const dreamTurn = preparedTaskMetadata.dreamStoryTurn as import('../../shared/dreamStory').DreamRequest | undefined;
+      const dreamWorkflow = preparedExecution.route.workflowKind === 'dream-story-create' || preparedExecution.route.workflowKind === 'dream-story-edit';
+      const runResult = dreamWorkflow && dreamTurn ? await runInWorkspaceSpace(dreamTurn.spaceId, () => runtime.run(content)) : await runtime.run(content);
       const finalResultError = runResult.error || '';
       if (finalResultError) {
         if (signal.aborted || finalResultError === 'Query runtime cancelled') {
@@ -1649,6 +1653,14 @@ export class PiChatService {
         '若用户修改标题/正文/话题，只改所要求的字段并保留其他文案和已有视频。工具会尝试原地更新已核验归属的发布页，不清空或重新上传媒体；本轮只修改，不同时提交。提交结果未知时先提示用户检查笔记管理，用户明确核实未发布后可在对话恢复并重发。',
         '</xhs_publish_workflow>',
       ].join('\n\n');
+    }
+    if (preparedExecution.route.workflowKind === 'dream-story-create' || preparedExecution.route.workflowKind === 'dream-story-edit') {
+      const skill = this.skillManager.getSkill('dream-story-director');
+      if (!skill || skill.disabled) throw new Error('梦境导演技能不可用');
+      const content = await this.skillManager.activateSkill('dream-story-director');
+      if (!content) throw new Error('梦境导演技能加载失败');
+      preparedSystemPrompt += `\n<forced_skill name="dream-story-director">\n${content}\n</forced_skill>`;
+      if (emitSkillActivation) this.sendToUI('chat:skill-activated', { name: skill.name, description: skill.description });
     }
     if (preparedExecution.route.workflowKind === 'product-project-edit') {
       const skill = this.skillManager.getSkill('product-project-editor');
@@ -2293,7 +2305,7 @@ ${skillContent}
     if (String(metadata.runtimeMode || '').trim() === 'background-maintenance') {
       return 'background-maintenance';
     }
-    if (['xiaohongshu-note', 'product-project'].includes(String(metadata.editorBindingKind || '').trim())) return 'gardenflow';
+    if (['xiaohongshu-note', 'product-project', 'dream-story'].includes(String(metadata.editorBindingKind || '').trim())) return 'gardenflow';
     if (String(metadata.mode || '').trim() === 'xiaohongshu-note-editing') return 'gardenflow';
     const contextType = String(metadata.contextType || '').trim().toLowerCase();
     if (contextType === 'gardenflow') return 'gardenflow';

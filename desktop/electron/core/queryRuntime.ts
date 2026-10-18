@@ -1,5 +1,7 @@
 import { CompactManager } from './compactManager';
 import { getMemoryMaintenanceService } from './memoryMaintenanceService';
+import { DREAM_STORY_TOOLS, isDreamWorkflow } from './ai/dreamStoryWorkflowPolicy';
+import { DREAM_STORY_TEXT_MAX_REQUESTS } from '../../shared/dreamStory';
 import { executeRuntimeHooks } from './runtimeHooks';
 import { evaluateRuntimeToolPermission } from './runtimePermissions';
 import { getSessionRuntimeStore } from './sessionRuntimeStore';
@@ -165,6 +167,7 @@ const terminalToolFailureMessage = (response: ToolCallResponse): string => {
 export class QueryRuntime {
   private readonly store = getSessionRuntimeStore();
   private readonly toolResults = getToolResultStore();
+  private dreamProposalAttempts = 0;
   private readonly compactManager: CompactManager;
 
   constructor(
@@ -186,7 +189,10 @@ export class QueryRuntime {
     awaitingApproval?: AwaitingToolApproval;
   }> {
     const startedAt = now();
-    const maxTurns = this.config.maxTurns || 24;
+    this.dreamProposalAttempts = 0;
+    const maxTurns = isDreamWorkflow(this.config.workflowKind)
+      ? Math.min(this.config.maxTurns || DREAM_STORY_TEXT_MAX_REQUESTS, DREAM_STORY_TEXT_MAX_REQUESTS)
+      : this.config.maxTurns || 24;
     const maxTimeMs = (this.config.maxTimeMinutes || 12) * 60 * 1000;
 
     let productVideoVisualSummary: ReturnType<typeof summarizeProductVideoRuntimeVisualInput> | null = null;
@@ -453,6 +459,20 @@ export class QueryRuntime {
           this.adapter.onEvent({ type: 'thinking', phase: 'tooling', content: thoughtText });
         }
         const toolResponses = await this.executeToolCalls(llmResponse.toolCalls);
+        if (isDreamWorkflow(this.config.workflowKind)) {
+          const saved = toolResponses.find(item => ['dream_story_propose', 'dream_story_edit'].includes(item.name) && item.result.success);
+          const invalid = this.dreamProposalAttempts >= 2 && toolResponses.some(item => item.name === 'dream_story_propose' && !item.result.success);
+          const stopped = toolResponses.find(item => item.name === 'dream_story_propose' && !item.result.success && item.result.error?.type !== ToolErrorType.INVALID_PARAMS);
+          if (saved || invalid || stopped) {
+            responseText = saved?.result.display || stopped?.result.error?.message || '导演包结构校验失败，已停止；输入已保留，请修改要求后重新创作。最多已尝试一次结构修复，调用可能计费。';
+            this.adapter.onEvent({ type: 'response_chunk', content: responseText });
+            this.adapter.onEvent({ type: 'response_end', content: responseText });
+            this.adapter.onEvent({ type: 'done', response: responseText });
+            this.store.appendTranscript({ sessionId: this.config.sessionId, recordType: 'assistant.dream_receipt', role: 'assistant', content: responseText });
+            return { response: responseText };
+          }
+          if (toolResponses.some(item => item.name === 'dream_story_propose' && !item.result.success)) this.adapter.onEvent({ type: 'thinking', phase: 'tooling', content: '导演包格式未通过；正在进行一次结构修复，可能产生额外费用。' });
+        }
         if (this.config.workflowKind === 'xhs-publish') {
           const publicationReceipt = toolResponses.find((item) => {
             const data = item.result.data as Record<string, unknown> | undefined;
@@ -844,7 +864,9 @@ export class QueryRuntime {
       return { response: responseText };
     }
 
-    const message = 'Query runtime exceeded max turns';
+    const message = isDreamWorkflow(this.config.workflowKind)
+      ? `已达到本次 ${maxTurns} 次文本请求上限，输入与已保存候选保留。继续创作前请重新确认本轮调用。`
+      : 'Query runtime exceeded max turns';
     this.adapter.onEvent({ type: 'error', message });
     return { response: responseText, error: message };
   }
@@ -861,12 +883,12 @@ export class QueryRuntime {
         model: this.config.model,
         temperature: this.config.temperature ?? 0.5,
         messages,
-        tools: this.registry.getToolSchemas().filter((tool) => this.config.workflowKind === 'product-project-edit'
+        tools: this.registry.getToolSchemas().filter((tool) => isDreamWorkflow(this.config.workflowKind) ? DREAM_STORY_TOOLS.includes(tool.function.name) : this.config.workflowKind === 'product-project-edit'
           ? ['product_project_read', 'product_project_edit', 'product_project_undo'].includes(tool.function.name)
           : this.config.workflowKind !== 'xhs-publish' || isXhsPublishWorkflowTool(tool.function.name)),
       }),
     }, {
-      maxAttempts: 2,
+      maxAttempts: isDreamWorkflow(this.config.workflowKind) ? 1 : 2,
       baseDelayMs: 600,
       maxDelayMs: 3000,
       onRetry: ({ attempt, maxAttempts, reason }) => {
@@ -958,6 +980,7 @@ export class QueryRuntime {
   }
 
   private async executeSingleToolCall(toolCall: LlmToolCall): Promise<ToolCallResponse> {
+    if (isDreamWorkflow(this.config.workflowKind) && toolCall.name === 'dream_story_propose') this.dreamProposalAttempts++;
     const effectiveArgs = applyGenerationToolConstraints(
       toolCall.name,
       toolCall.args,
@@ -967,6 +990,8 @@ export class QueryRuntime {
       effectiveArgs._editorTurn = this.config.workflowKind === 'product-project-edit' ? this.config.productProjectEditorTurn : undefined;
     }
     const tool = this.registry.getTool(toolCall.name);
+    if (DREAM_STORY_TOOLS.includes(toolCall.name)) effectiveArgs._dreamTurn = isDreamWorkflow(this.config.workflowKind) ? this.config.dreamStoryTurn : undefined;
+    if (isDreamWorkflow(this.config.workflowKind) && toolCall.name === 'dream_story_propose') effectiveArgs._proposalAttempt = this.dreamProposalAttempts;
     const description = tool?.getDescription(effectiveArgs) || `Executing ${toolCall.name}`;
     const startedAt = now();
 
@@ -1211,7 +1236,7 @@ export class QueryRuntime {
     responseLength: number;
     compacted: boolean;
   }): void {
-    if (this.config.workflowKind === 'product-project-edit') return;
+    if (this.config.workflowKind === 'product-project-edit' || isDreamWorkflow(this.config.workflowKind)) return;
     if (this.config.runtimeMode === 'background-maintenance') {
       return;
     }

@@ -288,7 +288,16 @@ const initDb = () => {
       project_id TEXT NOT NULL UNIQUE, revision INTEGER NOT NULL,
       document_json TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS story_project_operations (
+      space_id TEXT NOT NULL, project_id TEXT NOT NULL, request_id TEXT NOT NULL,
+      request_digest TEXT NOT NULL, expected_revision TEXT NOT NULL, next_revision TEXT NOT NULL,
+      state TEXT NOT NULL, result_json TEXT, created_at INTEGER NOT NULL,
+      PRIMARY KEY (space_id, project_id, request_id)
+    );
     CREATE INDEX IF NOT EXISTS idx_tiktok_versions_source ON tiktok_video_versions(space_id, source_project_id, created_at);
+    UPDATE tiktok_video_versions SET document_json = json_set(document_json, '$.source',
+      json_object('kind', 'product', 'productId', json_extract(document_json, '$.sourceProductId'), 'productUpdatedAt', json_extract(document_json, '$.sourceProductUpdatedAt')))
+      WHERE json_valid(document_json) AND json_type(document_json, '$.source') IS NULL AND json_extract(document_json, '$.sourceProductId') IS NOT NULL;
     CREATE TABLE IF NOT EXISTS tiktok_publish_jobs (
       id TEXT PRIMARY KEY, space_id TEXT NOT NULL, version_id TEXT NOT NULL,
       version_revision INTEGER NOT NULL, content_digest TEXT NOT NULL,
@@ -3900,8 +3909,25 @@ export const listTikTokVideoVersions = (sourceProjectId: string, spaceId = getAc
 );
 export const insertTikTokVideoVersion = (version: TikTokVideoVersion): void => {
   db.prepare('INSERT INTO tiktok_video_versions (id, space_id, source_project_id, project_id, revision, document_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-    .run(version.id, version.spaceId, version.sourceProjectId, version.projectId, version.revision, JSON.stringify(version), version.createdAt, version.updatedAt);
+    .run(version.id, version.spaceId, version.sourceProjectId, version.projectId, version.revision, JSON.stringify({ ...version, source: version.source || { kind: 'product', productId: version.sourceProductId, productUpdatedAt: version.sourceProductUpdatedAt } }), version.createdAt, version.updatedAt);
 };
+
+export interface StoryProjectOperation {
+    space_id: string; project_id: string; request_id: string; request_digest: string;
+    expected_revision: string; next_revision: string; state: 'prepared' | 'committed' | 'interrupted';
+    result_json: string | null; created_at: number;
+}
+export const getStoryProjectOperation = (spaceId: string, projectId: string, requestId: string): StoryProjectOperation | undefined =>
+    db.prepare('SELECT * FROM story_project_operations WHERE space_id = ? AND project_id = ? AND request_id = ?').get(spaceId, projectId, requestId) as StoryProjectOperation | undefined;
+export const prepareStoryProjectOperation = (row: StoryProjectOperation): void => {
+    db.prepare(`INSERT INTO story_project_operations (space_id, project_id, request_id, request_digest, expected_revision, next_revision, state, result_json, created_at)
+        VALUES (@space_id, @project_id, @request_id, @request_digest, @expected_revision, @next_revision, @state, @result_json, @created_at)`).run(row);
+};
+export const finishStoryProjectOperation = (spaceId: string, projectId: string, requestId: string, state: StoryProjectOperation['state'], result: unknown): void => {
+    db.prepare('UPDATE story_project_operations SET state = ?, result_json = ? WHERE space_id = ? AND project_id = ? AND request_id = ?')
+        .run(state, JSON.stringify(result), spaceId, projectId, requestId);
+};
+export const listUnfinishedStoryOperations = (): StoryProjectOperation[] => db.prepare("SELECT * FROM story_project_operations WHERE state = 'prepared'").all() as StoryProjectOperation[];
 export const updateTikTokVideoVersion = (version: TikTokVideoVersion, expectedRevision: number): boolean => (
   db.prepare('UPDATE tiktok_video_versions SET revision = ?, document_json = ?, updated_at = ? WHERE id = ? AND space_id = ? AND revision = ? AND project_id = ? AND source_project_id = ?')
     .run(version.revision, JSON.stringify(version), version.updatedAt, version.id, version.spaceId, expectedRevision, version.projectId, version.sourceProjectId).changes === 1

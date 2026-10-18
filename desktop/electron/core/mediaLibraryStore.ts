@@ -14,6 +14,7 @@ export interface MediaAsset {
   renderId?: string;
   title?: string;
   prompt?: string;
+  privacyScope?: 'project';
   provider?: string;
   providerTemplate?: string;
   model?: string;
@@ -483,6 +484,7 @@ export async function registerRenderedVideoAsset(input: {
   renderId: string;
   sourcePath: string;
   title: string;
+  privacyScope?: 'project';
 }): Promise<MediaAsset> {
   if (!/^[a-zA-Z0-9_-]+$/.test(input.projectId) || !/^[a-zA-Z0-9_-]+$/.test(input.renderId)) {
     throw new Error('Invalid video render identity');
@@ -505,6 +507,7 @@ export async function registerRenderedVideoAsset(input: {
     source: 'generated',
     projectId: input.projectId,
     renderId: input.renderId,
+    privacyScope: input.privacyScope,
     title: input.title.trim() || '商品视频',
     mimeType: 'video/mp4',
     relativePath,
@@ -523,6 +526,7 @@ export async function registerRenderedVideoAsset(input: {
 
 export async function createGeneratedMediaAsset(input: {
   prompt: string;
+  privacyScope?: 'project';
   dataBuffer: Buffer;
   mimeType?: string;
   projectId?: string;
@@ -549,7 +553,8 @@ export async function createGeneratedMediaAsset(input: {
     source: 'generated',
     projectId: input.projectId,
     title: input.title?.trim() || undefined,
-    prompt: normalizePrompt(input.prompt),
+    prompt: input.privacyScope === 'project' ? undefined : normalizePrompt(input.prompt),
+    privacyScope: input.privacyScope,
     provider: input.provider?.trim() || undefined,
     providerTemplate: input.providerTemplate?.trim() || undefined,
     model: input.model?.trim() || undefined,

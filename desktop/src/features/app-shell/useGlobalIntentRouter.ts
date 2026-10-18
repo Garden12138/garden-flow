@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { GARDENFLOW_NAVIGATE_EVENT } from '../../notifications/types';
 import type { AppNavigateEventDetail, GenerationIntent, GardenFlowNavigationAction, PendingChatMessage, SettingsNavigationTarget, ViewType } from './types';
 import { resolveFlowOpen } from '../workbench/navigation';
+import { appAlert } from '../../utils/appDialogs';
 
 function recordFromUnknown(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -56,6 +57,13 @@ export function useGlobalIntentRouter({
     const handleNavigate = (event: Event) => {
       const intent = normalizeNavigateIntent((event as CustomEvent<AppNavigateEventDetail>).detail);
       if (!intent) return;
+      if (intent.type === 'dream-story.new') {
+        void window.ipcRenderer.dreamStory.create().then(result => {
+          if (!result.success || !result.project) throw new Error(result.error || '创建梦境失败');
+          setActiveManuscriptEditorFile(null); setActiveVideoProjectId(result.project.id); setCurrentView('gardenflow');
+        }).catch(reason => { void appAlert(String(reason)); });
+        return;
+      }
 
       if (intent.type === 'flow.open') {
         const resolved = resolveFlowOpen(intent.stage, intent.handoff);

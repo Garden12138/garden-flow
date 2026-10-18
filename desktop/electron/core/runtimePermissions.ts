@@ -9,6 +9,7 @@ import {
     type ToolResult,
 } from './toolRegistry';
 import type { WorkflowKind } from './ai/types';
+import { DREAM_STORY_TOOLS, isDreamWorkflow } from './ai/dreamStoryWorkflowPolicy';
 import {
     collectProductVideoReviewWarnings,
     evaluateProductVideoToolPolicy,
@@ -80,6 +81,10 @@ export const evaluateRuntimeToolPermission = (params: {
     const interactive = context.interactive !== false;
     const runtimeMode = String(context.runtimeMode || '').trim();
     const editorTools = ['product_project_read', 'product_project_edit', 'product_project_undo'];
+    if (isDreamWorkflow(context.workflowKind)) return DREAM_STORY_TOOLS.includes(toolName) || toolName === 'skill'
+        ? { outcome: 'allow', reason: '仅允许当前梦境工程受控工具', source: 'runtime-policy' }
+        : { outcome: 'deny', reason: '梦境生成和发布须使用工作台按钮', source: 'runtime-policy' };
+    if (DREAM_STORY_TOOLS.includes(toolName)) return { outcome: 'deny', reason: '梦境工具需要已验证的工程会话', source: 'runtime-policy' };
     if (context.workflowKind === 'product-project-edit') {
         return editorTools.includes(toolName) || toolName === 'skill'
             ? { outcome: 'allow', reason: '当前工程的受控读取、可撤销修改和技能', source: 'runtime-policy' }
