@@ -1,3 +1,4 @@
+import { readCreationSource } from './creationSources';
 import { ProductCreationTargetSchema } from '../../shared/productCreationTarget';
 import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
@@ -42,6 +43,7 @@ interface SaveXhsNoteInput {
     expectedRevision?: number;
     trustedProductImageSetState?: boolean;
     trustedProductVideoState?: boolean;
+    trustedNoteCardState?: boolean;
 }
 
 interface BindXhsNoteMediaInput {
@@ -371,11 +373,13 @@ export async function saveXhsNoteProjectUnlocked(input: SaveXhsNoteInput): Promi
             }
         }
     }
+    if (!input.trustedNoteCardState && JSON.stringify(mergedInput.cardRuntime) !== JSON.stringify(current?.cardRuntime)) throw new Error('卡片编辑历史只能由受限编辑服务修改');
     let normalized = normalizeXhsNoteDocument(mergedInput, project.noteType);
     if (current?.productImageSet && !normalized.creationTarget) {
         const creationTarget = ProductCreationTargetSchema.parse({ platform: 'xiaohongshu', contentKind: 'image-set', language: 'zh-CN', market: '中国', profileId: 'legacy-xiaohongshu-image-set', profileVersion: 0, allowPaidMedia: false, spec: { width: 1440, height: 1920, aspectRatio: '3:4', format: 'png' } });
         normalized = { ...normalized, creationTarget, productImageSet: { ...normalized.productImageSet!, creationTarget }, workVersion: { workId: current.productImageSet.proposalId, versionId: current.productImageSet.proposalId, publicationBinding: { platform: 'xiaohongshu', notePath: project.relativePath } } };
     }
+    for (const ref of normalized.creationConfig?.sourceRefs || []) if (!current?.creationConfig?.sourceRefs.some(old => old.id === ref.id && old.version === ref.version)) await readCreationSource(ref, { limit: 1 });
     const now = new Date().toISOString();
     const nextDocument: XhsNoteDocument = {
         ...normalized,

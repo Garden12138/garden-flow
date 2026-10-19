@@ -19,6 +19,12 @@ Use this skill only for multi-image work.
 
 If the user needs just one image, do not use this workflow.
 
+## Bound creation workbench
+
+When the runtime binds a note-card or product workbench, use its structured read/edit tools and current page IDs. Ordinary copy, card plans, layouts and source citations save directly to the editable document and remain undoable; do not require adopting a text plan first. Article sources and expression settings are independent. Read all bound source segments and retain their locations; never infer a platform or product from button labels.
+
+Local template preview and PNG export do not call image generation. AI artwork remains a separate explicitly confirmed workbench action, with the current version, model and request count shown. Loading this skill never grants extra tools or permission to generate, create another project, write arbitrary files or publish. The standalone workflow below applies only when there is no bound editor.
+
 ## When To Use
 
 Use this skill when the request implies a coordinated image set, for example:

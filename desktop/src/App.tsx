@@ -1,8 +1,9 @@
+import { CreationEntryDialog } from './features/creation/CreationEntryDialog';
 import { flushCreationBeforeNavigate } from './features/workbench/creationNavigation';
 import { CreationWorkspaceHost } from './features/creation/CreationWorkspaceHost';
 import { GARDENFLOW_NAVIGATE_EVENT } from './notifications/types';
 import type { AppIntent } from './features/app-shell/types';
-import { useState, useEffect, useCallback, lazy, Suspense, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useRef, lazy, Suspense, type ReactNode } from 'react';
 import { FileText, Loader2, MessageSquareWarning } from 'lucide-react';
 import { AppDialogsHost } from './components/AppDialogsHost';
 import { Layout } from './components/Layout';
@@ -72,17 +73,23 @@ function AuthenticatedApp() {
   const [wanderTitleBarContent, setWanderTitleBarContent] = useState<ReactNode>(null);
   const [knowledgeTitleBarContent, setKnowledgeTitleBarContent] = useState<ReactNode>(null);
   const [approvalTargetDocketId, setApprovalTargetDocketId] = useState('');
+  const [creationEntry, setCreationEntry] = useState<Extract<AppIntent, { type: 'creation.prepare' }> | null>(null);
+  const startingCreations = useRef(new Map<string, Promise<unknown>>());
   const [generationAssetPicker, setGenerationAssetPicker] = useState<GenerationAssetPickerRequest | null>(null);
   useEffect(() => {
     let active = true;
     const handle = (event: Event) => {
       const intent = (event as CustomEvent<AppIntent>).detail;
-      if (intent?.type === 'creation.start') {
-        void window.ipcRenderer.creationWorkspace.start({ platform: intent.platform, capability: intent.capability }).then(result => {
+      if (intent?.type === 'creation.prepare') {
+        setCreationEntry(intent);
+      } else if (intent?.type === 'creation.start') {
+        const key = JSON.stringify(intent); if (startingCreations.current.has(key)) return;
+        const operation = window.ipcRenderer.creationWorkspace.start({ ...(({ type, ...selection }) => selection)(intent), requestId: intent.requestId || crypto.randomUUID() }).then(result => {
           if (!active) return;
           if (!result.success || !result.workspace) throw new Error(result.error || '创建作品失败');
           setActiveManuscriptEditorFile(null); setActiveVideoProjectId(null); setActiveCreationWorkspaceId(result.workspace.id); setCurrentView('gardenflow');
-        }).catch(reason => { void import('./utils/appDialogs').then(({ appAlert }) => appAlert(String(reason))); });
+        }).catch(reason => { void import('./utils/appDialogs').then(({ appAlert }) => appAlert(String(reason))); }).finally(() => startingCreations.current.delete(key));
+        startingCreations.current.set(key, operation);
       } else if (intent?.type === 'creation.open') {
         setActiveManuscriptEditorFile(null); setActiveVideoProjectId(null); setActiveCreationWorkspaceId(intent.workspaceId); setCurrentView('gardenflow');
       } else if (intent?.type === 'manuscript.open' || intent?.type === 'video-project.open' || intent?.type === 'dream-story.new' || (intent?.type === 'gardenflow.open' && intent.action)) setActiveCreationWorkspaceId(null);
@@ -402,6 +409,7 @@ function AuthenticatedApp() {
         )}
       </Layout>
       <ClipboardCapturePrompt />
+      {creationEntry && <CreationEntryDialog key={JSON.stringify(creationEntry)} intent={creationEntry} onClose={() => setCreationEntry(null)} />}
       {subjectsModalOpen && (
         <AppSubjectsModal close={closeAssetsModal}>
           <Suspense fallback={<ViewLoadingFallback />}>

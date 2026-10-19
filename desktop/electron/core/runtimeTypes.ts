@@ -78,6 +78,7 @@ export interface RuntimeConfig {
   generationToolConstraints?: unknown;
   productImageSetEditing?: boolean;
   productProjectEditorTurn?: import('../../shared/productProjectEditor').ProductProjectEditorTurn;
+  noteCardTurn?: import('../../shared/noteCards').NoteCardTurn;
   creationWorkspaceTurn?: import('../../shared/creationWorkspace').CreationTurn;
   dreamStoryTurn?: import('../../shared/dreamStory').DreamRequest;
   maxCompletionRecoveryAttempts?: number;

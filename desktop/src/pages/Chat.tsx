@@ -426,7 +426,8 @@ export interface ChatShortcut {
   label: string;
   text: string;
   displayContent?: string;
-  action?: 'send' | 'inject';
+  action?: 'send' | 'inject' | 'creation';
+  creation?: { capability: import('../../shared/creationWorkspace').CreationCapability; presetId?: import('../../shared/noteCards').CreationPreset };
   attachments?: UploadedFileAttachment[];
   taskHints?: Record<string, unknown>;
 }
@@ -4948,6 +4949,8 @@ export function Chat({
       : shortcut
   ));
 
+  if (!beforeSend && messages.length > 0 && currentSessionId && composerModeGroup) shortcuts.unshift({ label: '转为作品', text: '转为作品', action: 'creation', creation: { capability: 'note-image' } });
+
   const welcomeShortcuts = resolveChatShortcutProvider(welcomeShortcutsProp, [
     { label: '📄 阅读稿件', text: '请帮我阅读并理解当前的稿件内容。' },
     { label: '✏️ 编辑稿件', text: '我想对当前稿件进行编辑优化，请提供建议。' },
@@ -4955,7 +4958,15 @@ export function Chat({
     { label: '💡 创作建议', text: '请基于当前内容提供一些创作方向的建议。' }
   ], shortcutContext);
 
+  const openShortcutCreation = useCallback((shortcut: ChatShortcut, attachments: UploadedFileAttachment[] = []) => {
+    if (!shortcut.creation) return;
+    dispatchAppIntent({ type: 'creation.prepare', ...shortcut.creation, platform: ProductPlatformSchema.safeParse(selectedComposerPlatformId).success ? selectedComposerPlatformId as import('../../shared/productCreationTarget').ProductPlatform : undefined, sourceSessionId: currentSessionId || undefined, brief: input,
+      productId: selectedAssetMentions.find(item => item.referenceType === 'product')?.id,
+      sourceInputs: attachments.filter(item => item.absolutePath).map(item => ({ kind: 'attachment' as const, path: item.absolutePath!, name: item.name })),
+    });
+  }, [currentSessionId, input, selectedAssetMentions, selectedComposerPlatformId]);
   const applyShortcut = useCallback((shortcut: ChatShortcut) => {
+    if (shortcut.action === 'creation') { openShortcutCreation(shortcut, pendingAttachments); return; }
     const action = shortcut.action || 'send';
     if (action === 'inject') {
       setErrorNotice(null);
@@ -5002,7 +5013,7 @@ export function Chat({
     selectedKnowledgeMentions,
     selectedMemberMention,
     selectedSkillMentions,
-    sendMessage,
+    sendMessage, openShortcutCreation, pendingAttachments,
   ]);
 
   const currentAttachmentActionKey = attachmentActionKey(pendingAttachments);
@@ -5024,6 +5035,7 @@ export function Chat({
     setDismissedAttachmentActionKey(currentAttachmentActionKey);
   }, [currentAttachmentActionKey]);
   const applyAttachmentAction = useCallback((shortcut: ChatShortcut) => {
+    if (shortcut.action === 'creation') { openShortcutCreation(shortcut, pendingAttachments); return; }
     if (currentAttachmentActionKey) {
       setDismissedAttachmentActionKey(currentAttachmentActionKey);
     }
@@ -5045,7 +5057,7 @@ export function Chat({
     selectedKnowledgeMentions,
     selectedMemberMention,
     selectedSkillMentions,
-    sendMessage,
+    sendMessage, openShortcutCreation,
   ]);
   const showInlineShortcutChips = Boolean(
     showComposerShortcuts &&

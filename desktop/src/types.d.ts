@@ -1148,6 +1148,7 @@ declare global {
 
   interface Window {
     ipcRenderer: {
+      noteCard: ReturnType<typeof import('./bridge/domains/noteCardBridge').createNoteCardBridge>['noteCard'];
       publication: ReturnType<typeof import('./bridge/domains/publicationBridge').createPublicationBridge>['publication'];
       windowControls: {
         startDragging: () => Promise<void>;

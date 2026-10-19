@@ -1,3 +1,4 @@
+import { NoteCardReadTool, NoteCardEditTool, NoteCardUndoTool, NoteCardSourceReadTool } from './noteCardTools';
 import { CreationReadTool, CreationEditTool, CreationUndoTool } from './creationWorkspaceTools';
 import { ProductImageSetComposeTool } from './productImageSetComposeTool';
 /**
@@ -69,7 +70,7 @@ const ensureBuiltinToolDescriptorsRegistered = (): void => {
     const register = (descriptor: Parameters<typeof registerBuiltinToolDescriptor>[0]) => {
         registerBuiltinToolDescriptor(descriptor);
     };
-    for (const Tool of [CreationReadTool, CreationEditTool, CreationUndoTool, ProductProjectReadTool, ProductProjectEditTool, ProductProjectUndoTool, DreamStoryReadTool, DreamStoryEditTool, DreamStoryProposeTool]) {
+    for (const Tool of [NoteCardReadTool, NoteCardEditTool, NoteCardUndoTool, NoteCardSourceReadTool, CreationReadTool, CreationEditTool, CreationUndoTool, ProductProjectReadTool, ProductProjectEditTool, ProductProjectUndoTool, DreamStoryReadTool, DreamStoryEditTool, DreamStoryProposeTool]) {
         const tool = new Tool();
         register({ name: tool.name, displayName: tool.displayName, description: tool.description, kind: tool.kind,
             contexts: ['gardenflow'], visibility: 'public', requiresContext: null, create: () => new Tool() });

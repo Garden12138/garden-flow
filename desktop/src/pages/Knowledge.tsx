@@ -1,3 +1,4 @@
+import { dispatchAppIntent } from '../features/app-shell/appIntent';
 import { useEffect, useMemo, useState, useCallback, useRef, type ReactNode } from 'react';
 import { JdProductNoteDetail } from '../components/products/JdProductNoteDetail';
 import { jdProductNoteSource } from '../features/knowledge/jdProductNote';
@@ -1814,6 +1815,7 @@ export function Knowledge({ onNavigateToGardenFlow, isEmbedded = false, isActive
                                     <div className="truncate text-[16px] font-semibold text-text-primary">{note.author || '小红书用户'}</div>
                                 </div>
                             </button>
+                            <button type="button" className="rounded-lg border border-border px-2 py-1 text-xs" onClick={() => { dispatchAppIntent({ type: 'creation.prepare', capability: 'note-image', presetId: 'article', sourceInputs: [{ kind: 'knowledge', itemId: note.id, path: 'meta.json', name: note.title }] }); setSelectedNote(null); }}>文章转卡片</button>
                             {note.folderPath && (
                                 <div className="flex shrink-0 items-center gap-1.5">
                                     <button type="button" title="在文件夹中打开" onClick={() => void handleShowInFolder(note.folderPath)} className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-black/[0.05] hover:text-text-primary">
@@ -2826,6 +2828,7 @@ export function Knowledge({ onNavigateToGardenFlow, isEmbedded = false, isActive
                                                                 >
                                                                     <FileIcon className="w-3 h-3 shrink-0 mt-0.5 opacity-60" />
                                                                     <span className="min-w-0 break-all leading-relaxed line-clamp-1">{file}</span>
+                                                    <button type="button" className="shrink-0 rounded border border-border px-1.5 py-0.5 text-xs" onClick={() => { dispatchAppIntent({ type: 'creation.prepare', capability: 'note-image', presetId: 'article', sourceInputs: [{ kind: 'knowledge', path: file, sourceId: selectedDocumentSource.id, name: file }] }); setSelectedDocumentSource(null); }}>文章转卡片</button>
                                                                 </span>
                                                             );
                                                         })}
@@ -3180,6 +3183,7 @@ export function Knowledge({ onNavigateToGardenFlow, isEmbedded = false, isActive
                                 </div>
                             </div>
                             <div className="flex items-center gap-2 ml-4">
+                                <button className="rounded-lg border border-border px-2 py-1.5 text-xs" onClick={() => { dispatchAppIntent({ type: 'creation.prepare', capability: 'note-image', presetId: 'article', sourceInputs: [{ kind: 'knowledge', itemId: selectedNote.id, path: 'meta.json', name: selectedNote.title }] }); setSelectedNote(null); }}>文章转卡片</button>
                                 <button
                                     onClick={() => openNoteInGardenFlow(selectedNote)}
                                     className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-accent-primary text-white shadow-lg shadow-accent-primary/20 hover:bg-accent-hover transition-all active:scale-95"

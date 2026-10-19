@@ -83,6 +83,7 @@ test('real preparation and conversation recovery requires scoped authorization a
             export const assertProductEditsSettled = () => {}; export const getProductEditorPublicationRevision = () => '';
             const s = globalThis.__publicationState;
             export const getWorkspacePaths = () => s.paths;
+            export const runInWorkspaceSpace = (_spaceId, operation) => operation();
             export const getChatSession = () => ({ metadata: s.metadata });
             export const listAgentTasks = () => s.tasks;
             export const parseAgentTaskRecord = x => x;

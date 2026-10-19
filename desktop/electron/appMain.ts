@@ -1,3 +1,6 @@
+import { registerNoteCardIpc } from './core/noteCardIpc';
+import { noteCardTurn, readNoteCard } from './core/noteCardEditor';
+import { NoteCardTurnSchema } from '../shared/noteCards';
 import { readCreationWorkspace, assertCreationTurn } from './core/creationWorkspaceStore';
 import { CreationTurnSchema } from '../shared/creationWorkspace';
 import { registerCreationWorkspaceIpc } from './core/creationWorkspaceIpc';
@@ -6026,6 +6029,7 @@ ipcMain.handle('publication:dismiss-offer', (_, payload) => publicationReply(() 
 
 registerDreamStoryIpc();
   registerCreationWorkspaceIpc();
+  registerNoteCardIpc();
 ipcMain.handle('product-project-editor:session', async (_, payload: { project: unknown; selectedId?: string }) => {
   try { return { success: true, ...await getProductProjectEditorSession(ProductProjectEditorRefSchema.parse(payload?.project), payload?.selectedId) }; }
   catch (error) { return { success: false, error: String(error) }; }
@@ -9309,6 +9313,15 @@ async function executeChatMessage(
         throw new Error(`请从 [继续编辑此作品](${uri}) 进入当前版本的工程编辑对话，发送前会保存手动输入。`);
       }
     }
+    if (sessionMeta.editorBindingKind === 'xiaohongshu-note' && sessionMeta.activeXhsNotePath) {
+      const native = await getXhsNoteProject(String(sessionMeta.activeXhsNotePath));
+      if (native.document.noteType === 'image' && !native.document.productImageSet) {
+        const sent = NoteCardTurnSchema.parse(rawTaskHints.noteCardTurn);
+        const verified = await noteCardTurn(native.relativePath, sent.selectedId, sent.policy);
+        if (sent.spaceId !== verified.spaceId || sent.expectedRevision !== verified.expectedRevision || sent.expectedDraftEpoch !== verified.expectedDraftEpoch || (await readNoteCard(sent.path)).projectPath !== native.projectPath) throw new Error('作品或手动输入已变化，请保存后重试');
+        Object.assign(effectiveTaskHints, { workflowKind: 'note-card-edit', noteCardTurn: verified, creationTarget: undefined, explicitProductRefs: [], explicitVideoClipRefs: [], skipSubagentOrchestration: true });
+      }
+    }
     if (sessionMeta.editorBindingKind === 'creation-workspace') {
       const workspace = await readCreationWorkspace(String(sessionMeta.creationWorkspaceId || ''));
       if (workspace.sessionId !== sessionId || workspace.spaceId !== sessionMeta.spaceId) throw new Error('创作会话绑定不一致');
@@ -9361,7 +9374,7 @@ async function executeChatMessage(
       outgoingMessage = [outgoingMessage, `<selected_video_clips>${JSON.stringify(clips.map(({ previewUrl, thumbnailUrl, ...ref }) => ref))}</selected_video_clips>`, '这是明确的已有视频混剪模式。仅使用已选视频的真实时长和摘要规划截取区间；文件名和元数据不等于画面理解，不得编造画面内容。使用 product_video_compose，compositionMode=existing-clips、voiceoverEnabled=false，全部镜头 source=media-clip、productAssetIds=[]、motionPreset=static，并填写 mediaAssetId、mediaContentHash、sourceStartMs、sourceEndMs、sourceVolume。'].join('\n\n');
     }
     const forcedSkillNames = resolveForcedSkillNames(taskHints);
-    const isStructuredXhsEditor = !isProductProjectEditor && !rawTaskHints.creationTarget && String(sessionMeta.editorBindingKind || '').trim() === 'xiaohongshu-note';
+    const isStructuredXhsEditor = (effectiveTaskHints as Record<string, unknown>).workflowKind !== 'note-card-edit' && !isProductProjectEditor && !rawTaskHints.creationTarget && String(sessionMeta.editorBindingKind || '').trim() === 'xiaohongshu-note';
     if (
       isStructuredXhsEditor
       && gardenFlowAuthoringHints?.editorAction === 'generate-video'
@@ -9391,7 +9404,7 @@ async function executeChatMessage(
         }
       }
     }
-    if (!isProductProjectEditor && gardenFlowAuthoringHints && !isStructuredProductVideoCreation(effectiveTaskHints) && !isStructuredProductImageSetCreation(effectiveTaskHints)) {
+    if ((effectiveTaskHints as Record<string, unknown>).workflowKind !== 'note-card-edit' && !isProductProjectEditor && gardenFlowAuthoringHints && !isStructuredProductVideoCreation(effectiveTaskHints) && !isStructuredProductImageSetCreation(effectiveTaskHints)) {
       outgoingMessage = buildGardenFlowAuthoringPrompt(outgoingMessage, gardenFlowAuthoringHints);
     }
 

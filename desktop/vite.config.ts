@@ -148,6 +148,8 @@ export default defineConfig({
                 || id === 'undici'
                 || id === 'jsdom'
                 || id.startsWith('jsdom/')
+                || id === 'pdfjs-dist'
+                || id.startsWith('pdfjs-dist/')
                 || id === 'canvas'
                 || id.startsWith('canvas/')
                 || id === '@weixin-claw/core'

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { CompactManager } from './compactManager';
 import { getMemoryMaintenanceService } from './memoryMaintenanceService';
 import { DREAM_STORY_TOOLS, isDreamWorkflow } from './ai/dreamStoryWorkflowPolicy';
@@ -883,7 +884,7 @@ export class QueryRuntime {
         model: this.config.model,
         temperature: this.config.temperature ?? 0.5,
         messages,
-        tools: this.registry.getToolSchemas().filter((tool) => this.config.workflowKind === 'creation-workspace' ? ['creation_read', 'creation_edit', 'creation_undo'].includes(tool.function.name) : isDreamWorkflow(this.config.workflowKind) ? DREAM_STORY_TOOLS.includes(tool.function.name) : this.config.workflowKind === 'product-project-edit'
+        tools: this.registry.getToolSchemas().filter((tool) => this.config.workflowKind === 'note-card-edit' ? ['note_card_read', 'note_card_edit', 'note_card_undo', 'note_card_source_read'].includes(tool.function.name) : this.config.workflowKind === 'creation-workspace' ? ['creation_read', 'creation_edit', 'creation_undo'].includes(tool.function.name) : isDreamWorkflow(this.config.workflowKind) ? DREAM_STORY_TOOLS.includes(tool.function.name) : this.config.workflowKind === 'product-project-edit'
           ? ['product_project_read', 'product_project_edit', 'product_project_undo'].includes(tool.function.name)
           : this.config.workflowKind !== 'xhs-publish' || isXhsPublishWorkflowTool(tool.function.name)),
       }),
@@ -990,6 +991,7 @@ export class QueryRuntime {
       effectiveArgs._editorTurn = this.config.workflowKind === 'product-project-edit' ? this.config.productProjectEditorTurn : undefined;
     }
     if (['creation_read', 'creation_edit', 'creation_undo'].includes(toolCall.name)) effectiveArgs._creationTurn = this.config.workflowKind === 'creation-workspace' && this.config.creationWorkspaceTurn ? { ...this.config.creationWorkspaceTurn, requestId: toolCall.id } : undefined;
+    if (['note_card_read', 'note_card_edit', 'note_card_undo', 'note_card_source_read'].includes(toolCall.name)) effectiveArgs._noteCardTurn = this.config.workflowKind === 'note-card-edit' && this.config.noteCardTurn ? { ...this.config.noteCardTurn, requestId: createHash('sha256').update(this.config.noteCardTurn.requestId + ':' + toolCall.id).digest('hex') } : undefined;
     const tool = this.registry.getTool(toolCall.name);
     if (DREAM_STORY_TOOLS.includes(toolCall.name)) effectiveArgs._dreamTurn = isDreamWorkflow(this.config.workflowKind) ? this.config.dreamStoryTurn : undefined;
     if (isDreamWorkflow(this.config.workflowKind) && toolCall.name === 'dream_story_propose') effectiveArgs._proposalAttempt = this.dreamProposalAttempts;

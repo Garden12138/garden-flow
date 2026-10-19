@@ -1,7 +1,8 @@
+import { CreationConfigSchema, CardPageFieldsSchema, blockCopy, type CreationConfig, type CardBlock, type SourceRef } from './noteCards.ts';
 import { ProductImageSetSchema, productImageInputKey, productImageSlotId, type ProductImageSet } from './productImageSet.ts';
 import { ProductCreationTargetSchema, ProductWorkVersionSchema, assertProductTargetMatch, type ProductCreationTarget, type ProductWorkVersion } from './productCreationTarget.ts';
 
-export const XHS_NOTE_SCHEMA_VERSION = 1 as const;
+export const XHS_NOTE_SCHEMA_VERSION = 2 as const;
 
 export type XhsNoteType = 'image' | 'video';
 export type XhsMediaSlotRole = 'cover' | 'image-page' | 'video';
@@ -43,6 +44,9 @@ export interface XhsImagePage {
     visualBrief: string;
     imagePrompt: string;
     mediaSlotId: string;
+    layout?: import('./noteCards').NoteCardContent['imagePages'][number]['layout'];
+    blocks?: CardBlock[];
+    sourceRefs?: import('zod').z.infer<typeof import('./noteCards').PageSourceSchema>[];
 }
 
 export interface XhsVideoStoryboardItem {
@@ -70,6 +74,8 @@ export interface XhsSubtitleItem {
 }
 
 export interface XhsNoteDocument {
+    creationConfig?: CreationConfig;
+    cardRuntime?: import('./noteCards').NoteCardRuntime;
     creationTarget?: ProductCreationTarget;
     workVersion?: ProductWorkVersion;
     productImageSet?: ProductImageSet;
@@ -431,8 +437,15 @@ function normalizeSlot(value: unknown, fallback: Pick<XhsMediaSlot, 'id' | 'role
     };
 }
 
-export function normalizeXhsNoteDocument(value: unknown, forcedType?: XhsNoteType): XhsNoteDocument {
+/** Pure migration: opening an old project never rewrites files or reorganizes pages. */
+export function migrateXhsNoteV1(value: unknown): unknown {
     const input = asRecord(value);
+    return input.schemaVersion === undefined || input.schemaVersion === 1 ? { ...input, schemaVersion: XHS_NOTE_SCHEMA_VERSION } : input;
+}
+
+export function normalizeXhsNoteDocument(value: unknown, forcedType?: XhsNoteType): XhsNoteDocument {
+    const input = asRecord(migrateXhsNoteV1(value));
+    if (input.schemaVersion !== undefined && input.schemaVersion !== XHS_NOTE_SCHEMA_VERSION) throw new Error('不支持的图文文档版本');
     const sourceExport = asRecord(input.sourceVideoExport);
     const sourceVideoExport = ['projectId', 'renderId', 'mediaAssetId', 'renderFingerprint'].every((key) => asString(sourceExport[key]))
         ? {
@@ -461,6 +474,7 @@ export function normalizeXhsNoteDocument(value: unknown, forcedType?: XhsNoteTyp
             visualBrief: asString(page.visualBrief || page.visual),
             imagePrompt: asString(page.imagePrompt || page.prompt),
             mediaSlotId: asString(page.mediaSlotId) || `page-${index}-image`,
+            ...(page.blocks !== undefined ? CardPageFieldsSchema.parse(page) : {}),
         };
     }).sort((a, b) => a.index - b.index);
 
@@ -527,6 +541,9 @@ export function normalizeXhsNoteDocument(value: unknown, forcedType?: XhsNoteTyp
     });
 
     const document: XhsNoteDocument = {
+        cardRuntime: input.cardRuntime as XhsNoteDocument['cardRuntime'],
+        creationConfig: noteType === 'image' && !input.productImageSet ? CreationConfigSchema.parse(input.creationConfig || {}) : undefined,
+
         creationTarget: input.creationTarget ? ProductCreationTargetSchema.parse(input.creationTarget) : undefined,
         workVersion: input.workVersion ? ProductWorkVersionSchema.parse(input.workVersion) : undefined,
         productImageSet: noteType === 'image' && input.productImageSet ? ProductImageSetSchema.parse(input.productImageSet) : undefined,
@@ -553,6 +570,8 @@ export function normalizeXhsNoteDocument(value: unknown, forcedType?: XhsNoteTyp
     };
     if (document.creationTarget && (document.creationTarget.contentKind === 'video') !== (noteType === 'video')) throw new Error('文档形式与目标规格不一致');
     if (document.productImageSet) { assertProductTargetMatch(document.creationTarget, document.productImageSet.creationTarget); }
+    if (document.imagePages.length > 20 && document.imagePages.some(page => page.blocks)) throw new Error('卡片最多支持 20 页');
+    document.imagePages = document.imagePages.map(page => page.blocks ? { ...page, copy: blockCopy(page.blocks) } : page);
     return projectProductImageSetDocument(document);
 }
 

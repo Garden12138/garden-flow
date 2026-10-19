@@ -25,6 +25,7 @@ pnpm build
 | 范围 | 测试 |
 | --- | --- |
 | 三栏空白创作、草稿恢复、同一会话、幂等与手动冲突合并 | [creationWorkspace.test.ts](../desktop/tests/creationWorkspace.test.ts) |
+| 卡片预设、来源快照、v1 迁移、重组、撤销、受限工具、导出缓存及模拟配图 | [noteCards.test.ts](../desktop/tests/noteCards.test.ts) |
 | 目标、规格、平台副本与旧工程 | [productCreationTarget.test.ts](../desktop/tests/productCreationTarget.test.ts) |
 | 套图审批、逐页过期、渲染、ZIP 与模拟生成 | [productImageSet.test.ts](../desktop/tests/productImageSet.test.ts) |
 | 工程绑定、幂等修改、撤销、冲突与事务恢复 | [productProjectEditor.test.ts](../desktop/tests/productProjectEditor.test.ts) |
@@ -52,6 +53,16 @@ pnpm --dir Plugin test:jd-product
 夹具和模拟服务用于复现边界条件，不代表对应真实平台分支已通过。
 
 ## 隔离应用验证
+
+普通图文卡片使用临时用户目录和本地模拟文本模型，验证真实 DOCX／PDF 读取、结构化保存、自动保存、重启、六类模板、溢出检查、PNG／ZIP 与多种窗口尺寸。先构建 Electron 输出，再执行：
+
+```sh
+pnpm --dir desktop exec vite build
+node desktop/scripts/note-card-electron-qa.cjs /private/tmp/gardenflow-note-card-qa create
+node desktop/scripts/note-card-electron-qa.cjs /private/tmp/gardenflow-note-card-qa reopen
+```
+
+该驱动不调用真实付费模型，也不上传或发布内容；运行环境须允许本地监听和 Electron 图形窗口。
 
 以下驱动使用临时用户目录、隔离商品和模拟服务，运行实际 Electron 主进程、renderer 及媒体渲染：
 

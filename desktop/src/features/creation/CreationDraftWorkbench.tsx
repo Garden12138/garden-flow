@@ -1,3 +1,4 @@
+import { dispatchAppIntent } from '../app-shell/appIntent';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import type { CreationWorkspace, CreationDraft, CreationTurn } from '../../../shared/creationWorkspace';
 import { CREATION_CAPABILITY_LABELS } from '../../../shared/creationWorkspace';
@@ -45,8 +46,10 @@ export function CreationDraftWorkbench({ initial, onMaterialized }: { initial: C
     const autosave = useCreationAutosave(dirty.current, epoch, save);
     useEffect(() => {
         let active = true;
-        void window.ipcRenderer.brandWorkspace.list<{ products?: Array<{ id: string; name: string }>; catalog?: { products?: Array<{ id: string; name: string }> }; brands?: Array<{ products?: Array<{ product: { id: string; name: string } }> }> }>().then(result => { if (active) setProducts(result.products || result.catalog?.products || result.brands?.flatMap(brand => (brand.products || []).map(bundle => bundle.product)) || []); }).catch(reason => { if (active) setError(String(reason)); });
-        return () => { active = false; };
+        const load = () => window.ipcRenderer.brandWorkspace.list<{ products?: Array<{ id: string; name: string }>; catalog?: { products?: Array<{ id: string; name: string }> }; brands?: Array<{ products?: Array<{ product: { id: string; name: string } }> }> }>().then(result => { if (active) setProducts(result.products || result.catalog?.products || result.brands?.flatMap(brand => (brand.products || []).map(bundle => bundle.product)) || []); }).catch(reason => { if (active) setError(String(reason)); });
+        void load();
+        const unsubscribe = subscribeDataChanged((_event, payload) => { if (payload?.scope === 'subjects') void load(); });
+        return () => { active = false; unsubscribe(); };
     }, []);
     useEffect(() => {
         let active = true; setProduct(null);
@@ -71,6 +74,7 @@ export function CreationDraftWorkbench({ initial, onMaterialized }: { initial: C
     const asset = product?.assets.find(item => item.id === sourceId); const clip = clips.find(item => item.assetId === sourceId);
     const editor = <div className={`h-full space-y-5 overflow-y-auto p-4 transition-colors ${changed ? 'bg-accent-primary/5' : ''}`}>
         <section className="space-y-3"><h2 className="text-sm font-semibold">基础信息</h2><label className="block text-xs">作品标题<input aria-label="作品标题" className={field} value={draft.title} onChange={event => change({ ...draft, title: event.target.value })} /></label>
+            {!draft.productId && <div className="rounded-lg border border-border p-3 text-xs"><p>请绑定真实商品后继续制作；上传图片仅作为待核对参考。</p>{draft.creationConfig?.sourceRefs.map(ref => <p key={ref.id}>已保存参考：{ref.name}</p>)}<button className={button} onClick={() => dispatchAppIntent({ type: 'view.open', view: 'subjects' })}>补充资料并创建商品</button></div>}
             <label className="block text-xs">主商品<select aria-label="主商品" className={field} value={draft.productId} onChange={event => change({ ...draft, productId: event.target.value })}><option value="">选择商品</option>{products.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
             <label className="block text-xs">画幅<select aria-label="画幅" className={field} value={draft.aspectRatio} onChange={event => change({ ...draft, aspectRatio: event.target.value as CreationDraft['aspectRatio'] })}>{(imageSet ? ['3:4'] : initial.platform === 'xiaohongshu' ? ['9:16', '16:9'] : ['9:16']).map(value => <option key={value} value={value}>{value}</option>)}</select></label>
             <label className="block text-xs">创作要求<textarea className={field} rows={3} value={draft.brief} onChange={event => change({ ...draft, brief: event.target.value })} /></label>

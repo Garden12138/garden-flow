@@ -18,7 +18,8 @@ export type GardenFlowNavigationAction = {
 };
 
 export type AppIntent =
-  | { type: 'creation.start'; platform: import('../../../shared/productCreationTarget').ProductPlatform; capability: import('../../../shared/creationWorkspace').CreationCapability }
+  | ({ type: 'creation.start' } & import('zod').z.input<typeof import('../../../shared/creationWorkspace').CreationStartSchema>)
+  | { type: 'creation.prepare'; platform?: import('../../../shared/productCreationTarget').ProductPlatform; capability: import('../../../shared/creationWorkspace').CreationCapability; presetId?: import('../../../shared/noteCards').CreationPreset; sourceInputs?: Array<{ kind: 'attachment' | 'knowledge' | 'manuscript'; path: string; sourceId?: string; itemId?: string; name?: string }>; productId?: string; sourceSessionId?: string; brief?: string }
   | { type: 'creation.open'; workspaceId: string }
   | { type: 'dream-story.new' }
   | {

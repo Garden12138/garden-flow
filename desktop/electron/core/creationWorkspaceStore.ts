@@ -1,3 +1,6 @@
+import { recordCreationMetric } from './creationMetrics';
+import { presetConfig } from '../../shared/noteCards';
+import { readCreationSource } from './creationSources';
 import { createProductTargetVariant } from './productWorkVersionService';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -46,10 +49,18 @@ function bindSession(sessionId: string, extra: Record<string, unknown>) {
     let old: Record<string, unknown> = {}; try { old = JSON.parse(session.metadata || '{}'); } catch { /* Restore a verified local binding. */ }
     updateChatSessionMetadata(sessionId, { ...old, ...extra }, { touchUpdatedAt: false });
 }
+function existingCreationSession(id: string) {
+    const session = getChatSession(id);
+    try { return session && JSON.parse(session.metadata || '{}').creationWorkspaceId === id ? session : null; } catch { return null; }
+}
 export async function startCreationWorkspace(input: unknown, prepared?: { native: NonNullable<CreationWorkspace['native']>; sessionId: string }): Promise<CreationWorkspace> {
     const selection = CreationStartSchema.parse(input); const spaceId = getWorkspacePaths().activeSpaceId;
-    return runInWorkspaceSpace(spaceId, async () => {
-        const id = 'creation_' + randomUUID(); const title = '未命名' + CREATION_CAPABILITY_LABELS[selection.capability];
+    return locked('start_' + (selection.requestId || randomUUID()), () => runInWorkspaceSpace(spaceId, async () => {
+        const id = 'creation_' + (selection.requestId ? createHash('sha256').update(spaceId + ':' + selection.requestId).digest('hex').slice(0, 40) : randomUUID());
+        if (selection.requestId) { try { const previous = await readCreationWorkspace(id); if (previous.startDigest && previous.startDigest !== createHash('sha256').update(JSON.stringify(selection)).digest('hex') || previous.platform !== selection.platform || previous.capability !== selection.capability) throw new Error('同一请求不能创建不同作品'); return previous; } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; } }
+        for (const ref of selection.sourceRefs || []) await readCreationSource(ref, { limit: 1 });
+        if (selection.productId) await createBrandWorkspaceStore(() => path.join(getWorkspacePaths().subjects, 'brand-workspace')).getProductCreativeReference(selection.productId);
+        if (selection.sourceSessionId) { const source = getChatSession(selection.sourceSessionId); if (!source) throw new Error('来源对话不存在'); const meta = JSON.parse(source.metadata || '{}'); if (meta.spaceId && meta.spaceId !== spaceId) throw new Error('来源对话不属于当前空间'); } const title = '未命名' + CREATION_CAPABILITY_LABELS[selection.capability];
         let sessionId: string; let native: CreationWorkspace['native'];
         if (prepared) { native = prepared.native; sessionId = prepared.sessionId; }
         else if (selection.capability === 'dream-story') {
@@ -58,17 +69,18 @@ export async function startCreationWorkspace(input: unknown, prepared?: { native
                 operations: [{ type: 'target.confirm', target: resolveDreamStoryTarget() }] });
             sessionId = (await getDreamSession(project.id)).sessionId; native = { kind: 'video', projectId: project.id };
         } else if (selection.capability === 'note-image' || selection.capability === 'note-video') {
-            const note = await saveXhsNoteProject({ path: path.join(getWorkspacePaths().manuscripts, 'xiaohongshu', id + (selection.capability === 'note-video' ? '.redvideo' : '.redpost')), noteType: selection.capability === 'note-video' ? 'video' : 'image', document: { finalTitle: '', body: '' } });
-            sessionId = createChatSession(id, title, { ...metadata(id), contextType: 'creation-workspace', contextId: id, isContextBound: true,
+            const note = await saveXhsNoteProject({ path: path.join(getWorkspacePaths().manuscripts, 'xiaohongshu', id + (selection.capability === 'note-video' ? '.redvideo' : '.redpost')), noteType: selection.capability === 'note-video' ? 'video' : 'image', document: { finalTitle: '', body: '', ...(selection.capability === 'note-image' ? { creationConfig: { ...presetConfig(selection.presetId || 'free'), brief: selection.brief || '', sourceRefs: selection.sourceRefs || [], inputMode: selection.sourceRefs?.length ? 'article' : selection.presetId === 'article' ? 'article' : 'manual' } } : {}) } });
+            sessionId = (existingCreationSession(id) || createChatSession(id, title, { ...metadata(id), contextType: 'creation-workspace', contextId: id, isContextBound: true,
                 associatedFilePath: note.projectPath, editorBindingKind: 'xiaohongshu-note', activeXhsNotePath: note.projectPath, activeXhsNoteUri: note.uri,
-                executionProfile: 'artifact-authoring', workflowKind: 'xiaohongshu-note-editing', platform: 'xiaohongshu', artifactType: 'xiaohongshu-note' }).id;
+                executionProfile: 'artifact-authoring', workflowKind: 'xiaohongshu-note-editing', platform: 'xiaohongshu', artifactType: 'xiaohongshu-note' })).id;
             native = { kind: 'note', path: note.relativePath };
-        } else sessionId = createChatSession(id, title, { ...metadata(id), contextType: 'creation-workspace', contextId: id, isContextBound: true, editorBindingKind: 'creation-workspace', workflowKind: 'creation-workspace' }).id;
+        } else sessionId = (existingCreationSession(id) || createChatSession(id, title, { ...metadata(id), contextType: 'creation-workspace', contextId: id, isContextBound: true, editorBindingKind: 'creation-workspace', workflowKind: 'creation-workspace' })).id;
         bindSession(sessionId, metadata(id));
         const now = new Date().toISOString();
-        return persist({ version: 1, id, spaceId, ...selection, sessionId, native, revision: randomUUID(), draftEpoch: 0,
-            draft: CreationDraftSchema.parse({ language: selection.platform === 'tiktok' ? 'en' : 'zh-CN', market: selection.platform === 'tiktok' ? 'International' : '中国', aspectRatio: selection.capability === 'product-image-set' ? '3:4' : '9:16' }), undo: [], createdAt: now, updatedAt: now });
-    });
+        await recordCreationMetric('entry.' + (selection.presetId || selection.capability));
+        return persist({ version: 1, id, spaceId, platform: selection.platform, capability: selection.capability, sourceSessionId: selection.sourceSessionId, entry: selection.entry, requestId: selection.requestId, startDigest: createHash('sha256').update(JSON.stringify(selection)).digest('hex'), sessionId, native, revision: randomUUID(), draftEpoch: 0,
+            draft: CreationDraftSchema.parse({ ...(!native && selection.sourceRefs?.length ? { creationConfig: { ...presetConfig('free'), sourceRefs: selection.sourceRefs } } : {}), productId: selection.productId || '', brief: native ? '' : selection.brief || '', language: selection.platform === 'tiktok' ? 'en' : 'zh-CN', market: selection.platform === 'tiktok' ? 'International' : '中国', aspectRatio: ['product-image-set', 'note-image'].includes(selection.capability) ? '3:4' : '9:16' }), undo: [], createdAt: now, updatedAt: now });
+    }));
 }
 export function assertCreationTurn(record: CreationWorkspace, input: CreationTurn): void {
     if (record.spaceId !== input.spaceId || record.id !== input.workspaceId || record.revision !== input.expectedRevision || record.draftEpoch !== input.expectedDraftEpoch) throw new Error('作品或手动输入已变化，修改未应用；请按最新内容重试');
@@ -87,6 +99,7 @@ export async function saveCreationWorkspace(input: unknown): Promise<CreationWor
         if (record.capability === 'product-image-set' ? request.draft.aspectRatio !== '3:4' : record.platform === 'xiaohongshu' ? !['9:16', '16:9'].includes(request.draft.aspectRatio) : request.draft.aspectRatio !== '9:16') throw new Error('画幅不符合当前平台与创作方式，请在作品编辑中重新选择');
         record.receipts = [...(record.receipts || []), { id: request.requestId, digest }].slice(-100);
         if (record.native) throw new Error('作品已进入完整编辑，请在当前作品中继续');
+        for (const ref of request.draft.creationConfig?.sourceRefs || []) if (!record.draft.creationConfig?.sourceRefs.some(old => old.id === ref.id && old.version === ref.version)) await readCreationSource(ref, { limit: 1 });
         record.undo = [...record.undo, record.draft].slice(-30); record.draft = request.draft;
         record.revision = randomUUID(); record.updatedAt = new Date().toISOString();
         updateChatSessionTitle(record.sessionId, record.draft.title.trim() || '未命名' + CREATION_CAPABILITY_LABELS[record.capability]);
@@ -190,7 +203,7 @@ export async function forkCreationWorkspace(id: string, input: unknown): Promise
         let content = { ...note.document, finalTitle: draft.title, body: draft.body, hashtags: draft.hashtags };
         if (source.native?.kind === 'note' && source.capability === next.capability) {
             const original = await getXhsNoteProject(source.native.path);
-            content = { ...content, coverText: original.document.coverText, titleCandidates: original.document.titleCandidates, imagePages: original.document.imagePages, voiceover: original.document.voiceover, storyboard: original.document.storyboard, subtitles: original.document.subtitles };
+            content = { ...content, coverText: original.document.coverText, titleCandidates: original.document.titleCandidates, imagePages: original.document.imagePages, mediaSlots: original.document.mediaSlots, creationConfig: original.document.creationConfig, voiceover: original.document.voiceover, storyboard: original.document.storyboard, subtitles: original.document.subtitles };
         }
         await saveXhsNoteProject({ path: next.native.path, noteType: note.document.noteType, document: content, expectedRevision: note.version });
     }

@@ -4,6 +4,9 @@ export type AuthoringSourceMode = 'manual' | 'knowledge' | 'manuscript' | 'produ
 export type AuthoringFormatTarget = 'markdown' | 'wechat_rich_text';
 
 export interface AuthoringTaskHints {
+  workflowKind?: 'note-card-edit';
+  noteCardTurn?: import('../../shared/noteCards').NoteCardTurn;
+  requestedPresetId?: import('../../shared/noteCards').CreationPreset;
     intent?: string;
     forceMultiAgent?: boolean;
     forceLongRunningTask?: boolean;

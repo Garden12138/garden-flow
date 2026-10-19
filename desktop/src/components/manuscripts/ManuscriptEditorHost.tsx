@@ -2258,6 +2258,7 @@ export function ManuscriptEditorHost({ filePath, onNavigateToGenerationStudio, i
                         </div>
                     </div>
                     <div className="flex items-center gap-1.5">
+                        {/\.(md|markdown|txt)$/i.test(editorFile) && <button type="button" className="rounded-lg border border-border px-3 py-1.5 text-xs" onClick={() => dispatchAppIntent({ type: 'creation.prepare', capability: 'note-image', presetId: 'article', sourceInputs: [{ kind: 'manuscript', path: editorFile, name: currentDescriptor.title }] })}>文章转卡片</button>}
                         {isArticlePackage && (
                             <div className="flex items-center gap-1">
                                 <button

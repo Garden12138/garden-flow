@@ -80,6 +80,9 @@ export const evaluateRuntimeToolPermission = (params: {
     const descriptor = getBuiltinToolDescriptor(toolName);
     const interactive = context.interactive !== false;
     const runtimeMode = String(context.runtimeMode || '').trim();
+    const noteTools = ['note_card_read', 'note_card_edit', 'note_card_undo', 'note_card_source_read'];
+    if (context.workflowKind === 'note-card-edit') return { outcome: noteTools.includes(toolName) ? 'allow' : 'deny', reason: '卡片编辑仅允许绑定作品和来源的受限工具；媒体与发布由工作台确认', source: 'runtime-policy' };
+    if (noteTools.includes(toolName)) return { outcome: 'deny', reason: '缺少已验证的卡片作品绑定', source: 'runtime-policy' };
     const creationTools = ['creation_read', 'creation_edit', 'creation_undo'];
     if (context.workflowKind === 'creation-workspace') return creationTools.includes(toolName) ? { outcome: 'allow', reason: '当前作品的受控草稿编辑', source: 'runtime-policy' } : { outcome: 'deny', reason: '创作编辑中的媒体生成和发布由工作台单独确认', source: 'runtime-policy' };
     if (creationTools.includes(toolName)) return { outcome: 'deny', reason: '缺少已验证的创作绑定', source: 'runtime-policy' };

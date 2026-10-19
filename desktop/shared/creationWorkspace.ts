@@ -1,3 +1,4 @@
+import { CreationConfigSchema, CreationPresetSchema, SourceRefSchema } from './noteCards.ts';
 import { z } from 'zod';
 import { ProductPlatformSchema } from './productCreationTarget.ts';
 
@@ -12,8 +13,9 @@ export function supportsCreation(platform: string, capability: CreationCapabilit
             : ProductPlatformSchema.safeParse(platform).success;
 }
 const Id = z.string().regex(/^[a-zA-Z0-9_-]{1,160}$/);
-export const CreationStartSchema = z.object({ platform: ProductPlatformSchema, capability: CreationCapabilitySchema }).strict().refine(value => supportsCreation(value.platform, value.capability), '当前平台不支持此创作方式');
+export const CreationStartSchema = z.object({ platform: ProductPlatformSchema, capability: CreationCapabilitySchema, presetId: CreationPresetSchema.optional(), sourceRefs: z.array(SourceRefSchema).max(20).optional(), productId: Id.optional(), entry: z.enum(['platform', 'attachment', 'document', 'product', 'conversation']).optional(), sourceSessionId: z.string().max(160).optional(), requestId: Id.optional(), brief: z.string().max(12000).optional() }).strict().refine(value => !value.presetId || value.capability === 'note-image', '预设只适用于图文笔记').refine(value => supportsCreation(value.platform, value.capability), '当前平台不支持此创作方式');
 export const CreationDraftSchema = z.object({
+    creationConfig: CreationConfigSchema.optional(),
     title: z.string().max(200).default(''), brief: z.string().max(12000).default(''), body: z.string().max(12000).default(''),
     hashtags: z.array(z.string().max(80)).max(30).default([]), productId: z.string().max(160).default(''),
     language: z.string().max(35).default('zh-CN'), market: z.string().max(100).default('中国'),
@@ -31,6 +33,7 @@ export interface CreationWorkspace {
     version: 1; id: string; spaceId: string; platform: z.infer<typeof ProductPlatformSchema>; capability: CreationCapability;
     sessionId: string; revision: string; draftEpoch: number; draft: CreationDraft; native?: CreationNativeRef;
     receipts?: Array<{ id: string; digest: string }>; unapplied?: Array<{ id: string; draft: CreationDraft; basedOnRevision: string }>;
+    sourceSessionId?: string; entry?: string; requestId?: string; startDigest?: string;
     sourceId?: string; createdAt: string; updatedAt: string; undo: CreationDraft[];
 }
 export const CreationTurnSchema = z.object({ workspaceId: Id, spaceId: Id, requestId: Id, expectedRevision: Id, expectedDraftEpoch: z.number().int().nonnegative(), selectedId: Id.optional() }).strict();

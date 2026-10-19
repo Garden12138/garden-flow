@@ -9,7 +9,7 @@ import type { ProductVideoProposal, VideoEditorV2Project } from '../../shared/vi
 
 // Real approval SQL, project/catalog/media stores and job registry; only host, router,
 // image/video providers and the TTS HTTP boundary are isolated from user data.
-export async function productVideoHarness(options: { platformVersions?: boolean; productImageSets?: boolean; publication?: boolean; dreamStory?: boolean; creationWorkspaces?: boolean } = {}) {
+export async function productVideoHarness(options: { platformVersions?: boolean; productImageSets?: boolean; publication?: boolean; dreamStory?: boolean; creationWorkspaces?: boolean; noteCards?: boolean } = {}) {
     const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'gardenflow-video-closeout-')));
     const source = await fs.readFile(new URL('../../electron/db.ts', import.meta.url), 'utf8');
     let sql = new DatabaseSync(path.join(root, 'approvals.db'));
@@ -53,7 +53,7 @@ export async function productVideoHarness(options: { platformVersions?: boolean;
             export const getChatSessionByContext = (contextId, contextType) => [...state.sessions.values()].find(value => { const meta = JSON.parse(value.metadata || '{}'); return meta.contextId === contextId && meta.contextType === contextType; }) || null;
 
             export const getSettings = () => state.settings;
-            export const getWorkspacePathsForSpace = (spaceId) => { const base = state.root + '/' + spaceId; return { base, gardenflow: base + '/gardenflow', media: base + '/media', subjects: base + '/subjects', manuscripts: base + '/manuscripts', activeSpaceId: spaceId }; };
+            export const getWorkspacePathsForSpace = (spaceId) => { const base = state.root + '/' + spaceId; return { base, gardenflow: base + '/gardenflow', media: base + '/media', subjects: base + '/subjects', manuscripts: base + '/manuscripts', knowledge: base + '/knowledge', knowledgeRedbook: base + '/knowledge/redbook', activeSpaceId: spaceId }; };
             export const getWorkspacePaths = () => getWorkspacePathsForSpace(workspaceContext.getStore() || state.spaceId);
             export const getActiveSpaceId = () => workspaceContext.getStore() || state.spaceId;
             export const getXhsPublisherBinding = () => state.xhsBinding; export const setXhsPublisherBinding = id => {state.xhsBinding=id;};
@@ -97,7 +97,9 @@ export async function productVideoHarness(options: { platformVersions?: boolean;
             crop: rectangle => { globalThis.__fixture.referenceCropRects.push(rectangle); return { toPNG: () => Buffer.concat([bytes, Buffer.from(JSON.stringify(rectangle))]) }; }
         })}; export const app = { isPackaged: false, getAppPath: () => ${JSON.stringify(path.resolve(import.meta.dirname, '../..'))} };`,
     };
+    mocks.pageRenderer = mocks.imageRenderer.replaceAll('getProductImageFontCss', 'getPageImageFontCss').replaceAll('productImageDataUrl', 'pageImageDataUrl').replaceAll('renderProductImagePng', 'renderPageImagePng');
     const exports = `export * from './electron/core/productProjectEditorService';
+        ${options.noteCards ? `export * from './electron/core/noteCardEditor'; export * from './electron/core/noteCardRenderService'; export * from './electron/core/creationSources'; export * from './electron/core/tools/noteCardTools'; export * from './electron/core/noteCardGeneration'; export * from './electron/core/documentKnowledgeStore';` : ''}
         ${options.creationWorkspaces ? `export * from './electron/core/creationWorkspaceStore'; export * from './electron/core/tools/creationWorkspaceTools'; export * from './electron/core/tools/dreamStoryTools';` : ''}
         ${options.dreamStory ? `export * from './electron/core/dreamStoryStore'; export * from './electron/core/dreamStoryMediaService';
         export * from './electron/core/dreamStoryRenderService'; export * from './electron/core/dreamStoryTransferService';
@@ -131,9 +133,9 @@ export async function productVideoHarness(options: { platformVersions?: boolean;
         export * from './electron/core/xhsNoteProjectStore';` : ''}`;
     const bundled = await build({ stdin: { contents: exports, resolveDir: path.resolve(import.meta.dirname, '../..') }, bundle: true, write: false, platform: 'node', format: 'cjs', packages: 'external', define: { 'import.meta.url': JSON.stringify(new URL('../../package.json', import.meta.url).href) },
         plugins: [{ name: 'isolated-video-host', setup(builder) {
-            builder.onResolve({ filter: /(?:^electron$|(?:^|\/)db(?:\.ts)?$|(?:^|\/)ai$|mediaGenerationTools$|imageGenerationService$|videoGenerationService$|productImageRenderer$|publicationCompletionService$|gardenflowBackgroundRunner$|browserCaptureBridgeService$)/ }, (args) => {
+            builder.onResolve({ filter: /(?:^electron$|(?:^|\/)db(?:\.ts)?$|(?:^|\/)ai$|mediaGenerationTools$|imageGenerationService$|videoGenerationService$|productImageRenderer$|pageImageRenderer$|publicationCompletionService$|gardenflowBackgroundRunner$|browserCaptureBridgeService$)/ }, (args) => {
                 if (args.path.endsWith('publicationCompletionService') && options.publication) return undefined;
-                const key = args.path.endsWith('publicationCompletionService') ? 'completion' : args.path.endsWith('gardenflowBackgroundRunner') ? 'runner' : args.path.endsWith('browserCaptureBridgeService') ? 'browser' : args.path === 'electron' ? 'electron' : /\/db(?:\.ts)?$/.test(args.path) ? 'db' : args.path.endsWith('/ai') ? 'ai'
+                const key = args.path.endsWith('pageImageRenderer') ? 'pageRenderer' : args.path.endsWith('publicationCompletionService') ? 'completion' : args.path.endsWith('gardenflowBackgroundRunner') ? 'runner' : args.path.endsWith('browserCaptureBridgeService') ? 'browser' : args.path === 'electron' ? 'electron' : /\/db(?:\.ts)?$/.test(args.path) ? 'db' : args.path.endsWith('/ai') ? 'ai'
                     : args.path.endsWith('mediaGenerationTools') ? 'video' : args.path.endsWith('imageGenerationService') ? 'imageProvider' : args.path.endsWith('productImageRenderer') ? 'imageRenderer' : 'videoProvider';
                 return { path: key, namespace: 'fixture' };
             });

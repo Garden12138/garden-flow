@@ -1,3 +1,4 @@
+import { NoteCardWorkbench } from './NoteCardWorkbench';
 import { appAlert } from '../../utils/appDialogs';
 import { lazy, Suspense, useMemo, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
@@ -62,6 +63,8 @@ export function XhsNoteWorkbench({
     productImageSetEditing: Boolean(target.xhsNote?.productImageSet),
     initialContext: buildXhsEditorContext(target),
   }), [editorSessionMetadata, projectPath, target]);
+
+  if (target.noteType !== 'video' && !isProduct) return <NoteCardWorkbench key={projectPath} target={target} sessionId={editorChatReady ? editorChatSessionId : null} isActive={isActive} onClose={onClose} />;
 
   return (
     <ProductEditorContext.Provider value={isProduct ? productEditor : null}>

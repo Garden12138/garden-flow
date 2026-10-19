@@ -29,12 +29,7 @@ export type GardenFlowComposerShortcutScene =
     | 'member_mention'
     | 'knowledge_context';
 
-export const GARDENFLOW_DEFAULT_COMPOSER_SHORTCUT_INPUTS: GardenFlowComposerShortcutInput[] = [
-    { label: '电商套图', text: '请围绕一个商品或服务，设计一套可用于电商详情页/社媒投放的套图方案。请先明确目标用户、核心卖点、视觉风格和转化目标，再输出每张图的主题、画面构图、主标题、副文案、素材需求和生成提示词。' },
-    { label: '文章卡片', text: '请围绕一个内容主题，设计一组适合社媒发布的文章卡片。请先梳理核心观点和读者收益，再输出卡片数量、每张卡片的标题、正文要点、视觉建议、版式结构和最终发布文案。' },
-    { label: '图解卡片', text: '请把一个复杂概念、流程或观点拆解成一组图解卡片。请先提炼逻辑主线，再输出每张卡片的信息层级、图解方式、标题、关键文案、配图建议和适合直接生成视觉稿的提示词。' },
-    { label: '演示卡片', text: '请把一个产品、方法或案例做成小红书/短图文风格的演示卡片。请先设计演示路径，再输出封面、步骤页、对比页、总结页的内容结构、页面文案、视觉风格和生成提示词。' },
-];
+export const GARDENFLOW_DEFAULT_COMPOSER_SHORTCUT_INPUTS: GardenFlowComposerShortcutInput[] = [];
 
 export const GARDENFLOW_CREATION_MODE_GROUP: ChatComposerModeGroup = {
     label: '选择平台',
@@ -44,7 +39,7 @@ export const GARDENFLOW_CREATION_MODE_GROUP: ChatComposerModeGroup = {
             id: 'xiaohongshu-image-note',
             platformId: 'xiaohongshu',
             label: '图文笔记',
-            description: '5 个标题、正文、标签、封面文案和 6 页图文方案',
+            description: '自由创作、文章转卡片、知识图解和步骤教程，可编辑并导出图片',
             placeholder: '输入一个选题或想法，例如：租房卧室的低成本改造',
             icon: 'image',
             taskHints: {
@@ -180,6 +175,7 @@ export function createGardenFlowComposerShortcuts(
             text: String(item.text || '').trim(),
             displayContent: item.displayContent ? String(item.displayContent).trim() : undefined,
             action: item.action || 'inject' as const,
+            creation: item.creation,
         }))
         .filter((item) => item.label && item.text);
 }
@@ -187,13 +183,12 @@ export function createGardenFlowComposerShortcuts(
 export function createGardenFlowComposerShortcutsForContext(context: ChatShortcutContext): ChatShortcut[] {
     const scene = resolveGardenFlowComposerShortcutScene(context);
     const shortcuts = createGardenFlowComposerShortcuts(GARDENFLOW_COMPOSER_SHORTCUT_INPUTS_BY_SCENE[scene]);
-    if (context.selectedAssetMentions?.some((item) => item.referenceType === 'product')) return [{ label: '商品创作', text: '请为当前选择的商品规划作品，先提交人工确认方案。', action: 'send', taskHints: { productCreationSetup: true } }, {
-        label: '商品套图', text: '请围绕当前选择的商品制作一套 5 张小红书图文套图（包含封面），先提交可确认的逐页方案。',
-        action: 'send', taskHints: { productCreationSetup: true, workflowKind: 'product-image-set-compose', productImageSetCount: 5, platform: 'xiaohongshu', xhsNoteType: 'image' },
-    }, {
-        label: '视频混剪', text: '请使用我选择的已有视频为当前商品规划混剪，明确每个片段的来源、截取起止、顺序和屏幕文字，先提交人工确认。不要生成新的媒体。',
-        action: 'send', taskHints: { productCreationSetup: true, workflowKind: 'product-video-compose', productVideoCompositionMode: 'existing-clips' },
-    }, ...shortcuts];
+    if (context.selectedAssetMentions?.some((item) => item.referenceType === 'product')) return [
+        { label: '制作商品套图', text: '制作商品套图', action: 'creation', creation: { capability: 'product-image-set' } },
+        { label: '制作商品视频', text: '制作商品视频', action: 'creation', creation: { capability: 'product-video' } },
+        { label: '已有视频混剪', text: '已有视频混剪', action: 'creation', creation: { capability: 'product-remix' } },
+        ...shortcuts,
+    ];
     return shortcuts;
 }
 

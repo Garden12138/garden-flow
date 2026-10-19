@@ -40,7 +40,7 @@ export type RoleId =
 
 export type ThinkingBudget = 'minimal' | 'low' | 'medium' | 'high';
 
-export type WorkflowKind = 'creation-workspace' | 'product-video-compose' | 'product-image-set-compose' | 'xhs-publish' | 'product-project-edit' | 'dream-story-create' | 'dream-story-edit';
+export type WorkflowKind = 'note-card-edit' | 'creation-workspace' | 'product-video-compose' | 'product-image-set-compose' | 'xhs-publish' | 'product-project-edit' | 'dream-story-create' | 'dream-story-edit';
 
 export type IntentRoutingFailure = 'unavailable' | 'invalid-output' | 'request-failed' | 'timeout' | 'cancelled' | 'http-error' | 'network-error';
 
