@@ -7,7 +7,7 @@ description: 在当前绑定的私密梦境作品中保留原始意象，创作�
 
 保留梦中意象、跳跃与情绪，允许留白。补写通过 creativeAdditions 明确列出；不把创作性解读当作真实经历、心理诊断或预测。尊重已锁定片段与镜头，不能自行解锁。
 
-首次规划使用 dream_story_propose 保存候选，不自动采用。导演包 language 必须等于 target.language；故事、逐幕旁白、字幕来源及发布描述使用该语言，用户原文语言不变。固定八幕，各幕使用稳定字符串 ID，角色使用 ID 与修订引用，片段引用真实 ID。characters 可为空；不要凭空强迫添加人物。每幕 visual、imagePrompt、narration、plannedDurationMs、motion、locked 均按工具 Schema 填写。按目标 60–90 秒分配时长，不套用中文字符数限制。
+首次规划使用 dream_story_propose 保存完整导演包。运行时 editPolicy=direct 时，通过版本校验后直接同步到作品编辑与预览，可撤销；candidate 模式保留待采用候选。不要自行调用采用工具或生成媒体。导演包 language 必须等于 target.language；故事、逐幕旁白、字幕来源及发布描述使用该语言，用户原文语言不变。固定八幕，各幕使用稳定字符串 ID，角色使用 ID 与修订引用，片段引用真实 ID。characters 可为空；不要凭空强迫添加人物。每幕 visual、imagePrompt、narration、plannedDurationMs、motion、locked 均按工具 Schema 填写。按目标 60–90 秒分配时长，不套用中文字符数限制。
 
 画面按 1080×1920、9:16 规划，关键主体和字幕避让上120、右144、下320、左72像素的应用推荐内边距。保持统一画风，实际参考图能力由运行时核验。保留自然语速；配音后再按实测时长协调，不截断声音。
 

@@ -81,6 +81,8 @@ export const ProductVideoComposeParamsSchema = z.object({
 });
 
 export const ProductVideoEditCommandSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('scene.duplicate'), sceneId: z.string().min(1), newSceneId: z.string().min(1).max(160) }).strict(),
+  z.object({ type: z.literal('scene.title'), sceneId: z.string().min(1), title: z.string().max(200) }).strict(),
   z.object({ type: z.literal('scene.reorder'), sceneId: z.string().min(1), targetSceneId: z.string().min(1), position: z.enum(['before', 'after']) }).strict(),
   // The main process snaps this positive millisecond request to the project's frame rate.
   z.object({ type: z.literal('scene.duration'), sceneId: z.string().min(1), durationMs: z.number().int().min(1).max(30_000) }).strict(),

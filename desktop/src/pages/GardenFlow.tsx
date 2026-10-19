@@ -1,3 +1,4 @@
+import { creationWorkspaceSessionId, creationNativeSessionRef } from '../../shared/creationWorkspace';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { DreamStoryEntry } from '../components/dream-story/DreamStoryEntry';
@@ -235,6 +236,7 @@ interface GardenFlowProps {
     onOpenManuscriptEditor?: (filePath: string) => void;
     activeManuscriptPath?: string | null;
     activeVideoProjectId?: string | null;
+    activeCreationWorkspaceId?: string | null;
     titleBarActive?: boolean;
 }
 
@@ -564,6 +566,7 @@ export function GardenFlow({
     onOpenManuscriptEditor,
     activeManuscriptPath = null,
     activeVideoProjectId = null,
+    activeCreationWorkspaceId = null,
     titleBarActive = false,
 }: GardenFlowProps) {
     const debugUi = useCallback((event: string, extra?: Record<string, unknown>) => {
@@ -957,7 +960,7 @@ export function GardenFlow({
                     const isCurrentGardenFlowContext = metadata.contextId === contextId
                         && metadata.contextType === GARDENFLOW_CONTEXT_TYPE;
                     const dreamProjectId = dreamStorySessionProjectId(metadata, activeSpaceId);
-                    if (!isExternal && !isCurrentGardenFlowContext && !dreamProjectId) return [];
+                    if (!isExternal && !isCurrentGardenFlowContext && !dreamProjectId && !creationWorkspaceSessionId(metadata, activeSpaceId) && !creationNativeSessionRef(metadata, activeSpaceId)) return [];
                     return [{
                         ...createContextSessionListItem(session),
                         archived: true,
@@ -1068,7 +1071,9 @@ export function GardenFlow({
             })),
         ].sort((left, right) => sessionUpdatedAtMs(right) - sessionUpdatedAtMs(left))
     ), [activeSpaceId, externalAgentSessions, sessionList]);
-    const historyActiveSessionId = activeVideoProjectId
+    const historyActiveSessionId = activeCreationWorkspaceId
+        ? unifiedHistorySessions.find(session => creationWorkspaceSessionId(session.metadata, activeSpaceId) === activeCreationWorkspaceId)?.id || null
+        : activeVideoProjectId
         ? unifiedHistorySessions.find(session => session.dreamStoryProjectId === activeVideoProjectId)?.id || null
         : activeAiSurface === 'room' ? null : activeSessionId;
     const activeChatSessionId = activeAiSurface === 'room' ? null : activeSessionId;
@@ -1227,7 +1232,7 @@ export function GardenFlow({
             }
 
             const dreamItems = sessions
-                .filter(session => dreamStorySessionProjectId(session.metadata, nextActiveSpaceId))
+                .filter(session => dreamStorySessionProjectId(session.metadata, nextActiveSpaceId) || creationWorkspaceSessionId(session.metadata, nextActiveSpaceId) || creationNativeSessionRef(session.metadata, nextActiveSpaceId))
                 .map(createContextSessionListItem);
             const uniqueItems = new Map([...listResult, ...dreamItems].map(item => [item.id, item]));
             let items = sortContextSessionItems([...uniqueItems.values()].filter((item) => {
@@ -1253,8 +1258,15 @@ export function GardenFlow({
             // Bound editor conversations reopen through their project, never the generic composer.
             const linkedDream = items.find(item => item.id === options?.preferredSessionId
                 && dreamStorySessionProjectId(item.metadata, nextActiveSpaceId));
-            if (linkedDream) dispatchAppIntent({ type: 'video-project.open', projectId: dreamStorySessionProjectId(linkedDream.metadata, nextActiveSpaceId)! });
-            const chatItems = items.filter(item => !dreamStorySessionProjectId(item.metadata, nextActiveSpaceId));
+            const linkedCreation = items.find(item => item.id === options?.preferredSessionId && creationWorkspaceSessionId(item.metadata, nextActiveSpaceId));
+            if (linkedCreation) dispatchAppIntent({ type: 'creation.open', workspaceId: creationWorkspaceSessionId(linkedCreation.metadata, nextActiveSpaceId)! });
+            if (linkedDream && !linkedCreation) dispatchAppIntent({ type: 'video-project.open', projectId: dreamStorySessionProjectId(linkedDream.metadata, nextActiveSpaceId)! });
+            const linkedNative = items.find(item => item.id === options?.preferredSessionId && creationNativeSessionRef(item.metadata, nextActiveSpaceId));
+            if (linkedNative && !linkedCreation) {
+                const ref = creationNativeSessionRef(linkedNative.metadata, nextActiveSpaceId)!;
+                dispatchAppIntent(ref.kind === 'video' ? { type: 'video-project.open', projectId: ref.projectId } : { type: 'manuscript.open', manuscriptPath: ref.path });
+            }
+            const chatItems = items.filter(item => !dreamStorySessionProjectId(item.metadata, nextActiveSpaceId) && !creationWorkspaceSessionId(item.metadata, nextActiveSpaceId) && !creationNativeSessionRef(item.metadata, nextActiveSpaceId));
             const preserveManualDraft = manualDraftActiveRef.current
                 && !options?.preferredSessionId
                 && !activeSessionIdRef.current;
@@ -1355,7 +1367,7 @@ export function GardenFlow({
             eventTypes: ['runtime:done'],
             onChatDone: ({ sessionId }) => {
                 const session = sessionListRef.current.find(item => item.id === sessionId);
-                if (dreamStorySessionProjectId(session?.metadata, activeSpaceId)) refresh();
+                if (dreamStorySessionProjectId(session?.metadata, activeSpaceId) || creationWorkspaceSessionId(session?.metadata, activeSpaceId) || creationNativeSessionRef(session?.metadata, activeSpaceId)) refresh();
             },
         });
         return () => { unsubscribeData(); unsubscribeRuntime(); };
@@ -1729,6 +1741,10 @@ export function GardenFlow({
         if (!session?.id) return;
         clearSessionActivity(session.id);
         setHistorySessionUnread(session.id, false);
+        const workspaceId = creationWorkspaceSessionId(session.metadata, activeSpaceId);
+        if (workspaceId) { dispatchAppIntent({ type: 'creation.open', workspaceId }); return; }
+        const native = creationNativeSessionRef(session.metadata, activeSpaceId);
+        if (native) { dispatchAppIntent(native.kind === 'video' ? { type: 'video-project.open', projectId: native.projectId } : { type: 'manuscript.open', manuscriptPath: native.path }); return; }
         const dreamProjectId = dreamStorySessionProjectId(session.metadata, activeSpaceId);
         if (dreamProjectId) {
             dispatchAppIntent({ type: 'video-project.open', projectId: dreamProjectId });
@@ -2333,6 +2349,7 @@ export function GardenFlow({
     }, [onOpenGardenFlowOnboarding, onboardingCompleted, onboardingKnown]);
 
     const handlePreviewLink = useCallback((target: ChatMessageLinkTarget) => {
+        if (target.artifactType === 'xiaohongshu-note' && target.projectPath) { dispatchAppIntent({ type: 'manuscript.open', manuscriptPath: target.relativePath || target.projectPath }); return; }
         const videoProjectMatch = String(target.href || '').trim().match(/^video-project:\/\/([^/?#]+)/i);
         if (videoProjectMatch) {
             let projectId = videoProjectMatch[1];
@@ -2341,9 +2358,7 @@ export function GardenFlow({
             } catch {
                 // Keep the original id when the link contains malformed encoding.
             }
-            window.dispatchEvent(new CustomEvent(GARDENFLOW_NAVIGATE_EVENT, {
-                detail: { type: 'video-project.open', projectId },
-            }));
+            dispatchAppIntent({ type: 'video-project.open', projectId });
             return;
         }
         clearPreviewSidebarAnimationTimer();
@@ -2362,6 +2377,7 @@ export function GardenFlow({
                         : current);
                     return;
                 }
+                if (result.artifactType === 'xiaohongshu-note' && result.projectPath && result.exists !== false) { setPreviewTarget(null); dispatchAppIntent({ type: 'manuscript.open', manuscriptPath: result.relativePath || result.projectPath }); return; }
                 const localCandidate = String(result.localPathCandidate || result.absolutePath || source).trim();
                 const rawResolved = String(result.resolvedUrl || localCandidate || target.resolvedUrl || '').trim();
                 const resolvedUrl = rawResolved ? resolveAssetUrl(rawResolved) : '';

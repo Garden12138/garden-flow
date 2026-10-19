@@ -1,3 +1,4 @@
+import { flushCreationBeforeNavigate } from '../workbench/creationNavigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { appAlert, appConfirm } from '../../utils/appDialogs';
@@ -91,6 +92,7 @@ export function useLayoutSpaces(sidebarVisualCollapsed: boolean) {
     if (!nextSpaceId) return;
     setIsSwitchingSpace(true);
     try {
+      await flushCreationBeforeNavigate();
       const result = await window.ipcRenderer.spaces.switch(nextSpaceId) as { success?: boolean; activeSpaceId?: string; error?: string } | null;
       if (!result?.success) {
         void appAlert(result?.error || t('layout.switchSpaceFailed'));
@@ -98,6 +100,7 @@ export function useLayoutSpaces(sidebarVisualCollapsed: boolean) {
       }
       setActiveSpaceId(result.activeSpaceId || nextSpaceId);
       setIsSpaceMenuOpen(false);
+      window.localStorage.removeItem('gardenflow:active-creation');
       window.location.reload();
     } catch (error) {
       console.error('Failed to switch space:', error);
@@ -147,7 +150,8 @@ export function useLayoutSpaces(sidebarVisualCollapsed: boolean) {
       setIsSpaceMenuOpen(false);
       await loadSpaces();
       if (result.deletedActiveSpace) {
-        window.location.reload();
+        window.localStorage.removeItem('gardenflow:active-creation');
+      window.location.reload();
       }
     } catch (error) {
       console.error('Failed to delete space:', error);
@@ -194,7 +198,8 @@ export function useLayoutSpaces(sidebarVisualCollapsed: boolean) {
         setSpaceDialogMode('rename');
         setSpaceDialogName('');
         await loadSpaces();
-        window.location.reload();
+        window.localStorage.removeItem('gardenflow:active-creation');
+      window.location.reload();
         return;
       }
 

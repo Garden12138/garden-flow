@@ -1,3 +1,4 @@
+import { creationWorkspaceSessionId, creationNativeSessionRef } from '../shared/creationWorkspace.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import fs from 'node:fs/promises';
@@ -13,7 +14,7 @@ const report = { id: 'report', title: '采集报告', metadata: { contextType: '
 function harness(sessions: any[], remembered?: string, readSessions = async () => sessions) {
     const state: any = { items: [], selected: null, intents: [] };
     const sandbox: any = {
-        dreamStorySessionProjectId, dispatchAppIntent: (intent: any) => state.intents.push(intent),
+        creationWorkspaceSessionId, creationNativeSessionRef, dreamStorySessionProjectId, dispatchAppIntent: (intent: any) => state.intents.push(intent),
         console, useCallback: (callback: any) => callback,
         window: { ipcRenderer: { chat: { listContextSessionsGuarded: async () => [{ id: 'creative', metadata: {} }], getSessions: readSessions } } },
         sessionRequestIdRef: { current: 0 }, hasSessionSnapshotRef: { current: true },
@@ -110,7 +111,7 @@ test('clicking a dream history row opens the original project and clears unread 
     const clickSource = source.slice(source.indexOf('    const switchHistorySession = useCallback('), source.indexOf('    const ensureActiveChatSessionForSend = useCallback('));
     const clickCode = (await transform(clickSource.replace('const switchHistorySession =', 'globalThis.openHistory ='), { loader: 'ts', target: 'es2022' })).code;
     const calls: any[] = [];
-    const sandbox: any = { useCallback: (fn: any) => fn, dreamStorySessionProjectId, activeSpaceId: 'default',
+    const sandbox: any = { useCallback: (fn: any) => fn, creationWorkspaceSessionId, creationNativeSessionRef, dreamStorySessionProjectId, activeSpaceId: 'default',
         dispatchAppIntent: (intent: any) => calls.push(intent), clearSessionActivity() {},
         setHistorySessionUnread: (id: string, unread: boolean) => calls.push({ id, unread }),
         onOpenChatSurface: () => calls.push('generic-surface'), switchSession: () => calls.push('generic-session'),
@@ -121,4 +122,11 @@ test('clicking a dream history row opens the original project and clears unread 
     assert.equal(calls[1].type, 'video-project.open');
     assert.equal(calls[1].projectId, 'project-one');
     assert.equal(calls.length, 2);
+});
+
+test('new creation history restores its same workspace and leaves generic chat unselected', async () => {
+    const session = { id: 'creation-session', metadata: { spaceId: 'default', creationWorkspaceId: 'creation_fixture', editorBindingKind: 'creation-workspace' } };
+    const { load, state } = harness([session]);
+    await load('default', '默认空间', { preferredSessionId: session.id });
+    assert.equal(state.selected, null); assert.equal(state.intents[0].type, 'creation.open'); assert.equal(state.intents[0].workspaceId, 'creation_fixture');
 });

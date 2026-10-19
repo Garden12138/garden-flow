@@ -80,6 +80,9 @@ export const evaluateRuntimeToolPermission = (params: {
     const descriptor = getBuiltinToolDescriptor(toolName);
     const interactive = context.interactive !== false;
     const runtimeMode = String(context.runtimeMode || '').trim();
+    const creationTools = ['creation_read', 'creation_edit', 'creation_undo'];
+    if (context.workflowKind === 'creation-workspace') return creationTools.includes(toolName) ? { outcome: 'allow', reason: '当前作品的受控草稿编辑', source: 'runtime-policy' } : { outcome: 'deny', reason: '创作编辑中的媒体生成和发布由工作台单独确认', source: 'runtime-policy' };
+    if (creationTools.includes(toolName)) return { outcome: 'deny', reason: '缺少已验证的创作绑定', source: 'runtime-policy' };
     const editorTools = ['product_project_read', 'product_project_edit', 'product_project_undo'];
     if (isDreamWorkflow(context.workflowKind)) return DREAM_STORY_TOOLS.includes(toolName) || toolName === 'skill'
         ? { outcome: 'allow', reason: '仅允许当前梦境工程受控工具', source: 'runtime-policy' }

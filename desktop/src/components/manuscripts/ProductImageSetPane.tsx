@@ -1,5 +1,7 @@
+import { CreationWorkbench } from '../../features/workbench/CreationWorkbench';
+import { useCreationAutosave } from '../../features/workbench/useCreationAutosave';
 import { PublicationButton } from '../publication/PublicationPanel';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowDown, ArrowUp, Download, Loader2, Plus, RefreshCw, Save, Sparkles, Trash2, Upload } from 'lucide-react';
 import type { ChatMessageLinkTarget } from '../MessageItem';
 import { ConfirmDialog } from '../ConfirmDialog';
@@ -13,7 +15,7 @@ type Result = Partial<XhsNoteProjectSnapshot> & { success?: boolean; error?: str
 const control = 'w-full rounded-lg border border-border bg-surface-primary px-2.5 py-2 text-xs text-text-primary';
 const button = 'inline-flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs text-text-secondary hover:bg-surface-secondary disabled:opacity-40';
 
-export function ProductImageSetPane({ target }: { target: ChatMessageLinkTarget }) {
+export function ProductImageSetPane({ target, chat, actions }: { target: ChatMessageLinkTarget; chat?: ReactNode; actions?: ReactNode }) {
     const editor = useProductEditorContext();
     const projectPath = target.projectPath || target.localPathCandidate || target.relativePath || target.href;
     const [snapshot, setSnapshot] = useState<XhsNoteProjectSnapshot | null>(null);
@@ -24,6 +26,7 @@ export function ProductImageSetPane({ target }: { target: ChatMessageLinkTarget 
     const editSequenceRef = useRef(0);
     const refreshSequenceRef = useRef(0);
     const busyRef = useRef(false);
+    const saving = useRef<Promise<XhsNoteProjectSnapshot> | null>(null);
     const previewRef = useRef<HTMLDivElement>(null);
     const [html, setHtml] = useState('');
     const [message, setMessage] = useState('');
@@ -100,15 +103,21 @@ export function ProductImageSetPane({ target }: { target: ChatMessageLinkTarget 
     const editPage = (patch: Partial<ProductImagePage>) => { if (set && page) editSet({ ...set, pages: set.pages.map((item) => item.id === page.id ? { ...item, ...patch } : item) }); };
 
     const save = async (): Promise<XhsNoteProjectSnapshot> => {
+        if (saving.current) return saving.current;
         if (!draft || !snapshot) throw new Error('工程尚未加载');
-        if (!dirty) return snapshot;
-        await editor?.settleDraft();
-        const editing = editSequenceRef.current;
-        const result = await window.ipcRenderer.manuscripts.saveXhsNote<Result>({ path: projectPath, document: draft, expectedRevision: snapshot.version });
-        if (editing !== editSequenceRef.current) throw new Error('保存期间出现新输入，已保留草稿，请重新保存');
-        apply(result);
-        return result as XhsNoteProjectSnapshot;
+        if (!dirtyRef.current) return snapshot;
+        const operation = (async () => {
+            await editor?.settleDraft();
+            const editing = editSequenceRef.current;
+            const result = await window.ipcRenderer.manuscripts.saveXhsNote<Result>({ path: projectPath, document: draft, expectedRevision: snapshot.version });
+            if (!result.success || !result.document) throw new Error(result.error || '保存失败，输入已保留');
+            if (editing !== editSequenceRef.current) { setSnapshot(result as XhsNoteProjectSnapshot); return result as XhsNoteProjectSnapshot; }
+            apply(result); return result as XhsNoteProjectSnapshot;
+        })(); saving.current = operation;
+        try { return await operation; } finally { saving.current = null; }
     };
+    const autoSave = useCreationAutosave(dirty, editSequenceRef.current, save);
+    useEffect(() => { if (autoSave.error) setMessage(autoSave.error); }, [autoSave.error]);
     useEffect(() => editor?.registerFlush('image-set', async () => {
         if (busyRef.current) throw new Error('工程正在处理，请稍后发送');
         busyRef.current = true; setBusy('save');
@@ -179,37 +188,16 @@ export function ProductImageSetPane({ target }: { target: ChatMessageLinkTarget 
         return asset ? resolveAssetUrl(`${snapshot?.projectPath || projectPath}/${asset.relativePath}`) : '';
     };
 
-    return <div className="flex h-full min-h-0 flex-col bg-surface-primary text-text-primary">
-        <header className="flex flex-wrap items-center gap-2 border-b border-border p-3">
-            <div className="mr-auto"><h2 className="text-sm font-semibold">商品套图 · {set.pages.length} 张</h2><p className="text-[11px] text-text-tertiary">{productImageSpec(set).aspectRatio} · {productImageSpec(set).width}×{productImageSpec(set).height} PNG · 应用发布上限 18 张 · {dirty ? '有未保存修改' : `版本 ${snapshot?.version || ''}`}</p></div>
-            <button className={button} disabled={Boolean(busy)} onClick={() => dirty ? setRefreshConfirm(true) : void refresh()}><RefreshCw className="h-3.5 w-3.5" />刷新</button>
-            <button className={button} disabled={Boolean(busy) || !dirty} onClick={() => void perform('save', async () => { await save(); setMessage('已保存'); })}><Save className="h-3.5 w-3.5" />保存</button>
-            <button className={button} disabled={Boolean(busy)} onClick={() => void undo()}>撤销</button>
-            <PublicationButton source={{ kind: 'image-set', path: projectPath }} />
-            <button className={button} disabled={Boolean(busy)} onClick={() => void exportImages('zip')}><Download className="h-3.5 w-3.5" />导出 ZIP</button>
-        </header>
-        {message && <div role="status" className="border-b border-border bg-surface-secondary px-4 py-2 text-xs whitespace-pre-wrap">{message}</div>}
-        {busy && <div className="flex items-center gap-2 px-4 py-2 text-xs text-text-secondary"><Loader2 className="h-3.5 w-3.5 animate-spin" />{busy === 'generate' ? '正在生成本页画面，可在任务完成后继续编辑…' : '正在处理…'}</div>}
-        <div className="grid min-h-0 flex-1 grid-cols-[96px_minmax(0,1fr)]">
-            <nav aria-label="套图页面" className="space-y-3 overflow-y-auto border-r border-border p-2">
+    const editorPane = <div className="h-full overflow-y-auto p-3">            <nav aria-label="套图页面" className="mb-4 flex gap-2 overflow-x-auto border-b border-border pb-3">
                 {set.pages.map((item, index) => {
                     const slot = snapshot?.document.mediaSlots.find((value) => value.id === productImageSlotId(item));
-                    return <button key={item.id} onClick={() => setActiveId(item.id)} className={`w-full rounded-lg border p-1.5 text-left ${page.id === item.id ? 'border-accent-primary' : 'border-border'}`}>
+                    return <button key={item.id} onClick={() => setActiveId(item.id)} className={`w-20 shrink-0 rounded-lg border p-1.5 text-left ${page.id === item.id ? 'border-accent-primary' : 'border-border'}`}>
                         <img src={slot?.status === 'ready' && !dirty ? resolveAssetUrl(slot.previewUrl) : assetUrl(item.backgroundAssetId || item.productAssetIds[0])} alt={item.title} className="aspect-[3/4] w-full rounded object-contain bg-surface-secondary" />
                         <span className="mt-1 block truncate text-[10px]">{index + 1} · {item.role === 'cover' ? '封面' : item.title}</span>
                     </button>;
                 })}
                 <button className={`${button} w-full`} disabled={Boolean(busy) || set.pages.length >= 20} onClick={addPage}><Plus className="h-3 w-3" />加页</button>
-            </nav>
-            <div className="overflow-y-auto p-4">
-                <div className="mx-auto max-w-[500px]">
-                    <div ref={previewRef} className="relative aspect-[3/4] overflow-hidden rounded-xl border border-border bg-surface-secondary">
-                        {html ? <iframe title="商品套图页面预览" sandbox="allow-same-origin" srcDoc={html} width={productImageSpec(set).width} height={productImageSpec(set).height} className="absolute left-0 top-0 border-0 origin-top-left" style={{ transform: 'scale(var(--product-preview-scale))', width: productImageSpec(set).width, height: productImageSpec(set).height }} onLoad={(event) => {
-                            const frame = event.currentTarget; const parent = frame.parentElement;
-                            if (parent) parent.style.setProperty('--product-preview-scale', String(parent.clientWidth / (set ? productImageSpec(set).width : 1440)));
-                        }} /> : <div className="flex h-full items-center justify-center text-xs text-text-tertiary">正在生成预览…</div>}
-                    </div>
-                    <div className="my-3 flex flex-wrap gap-2">
+            </nav>                    <div className="my-3 flex flex-wrap gap-2">
                         <button className={button} disabled={Boolean(busy)} onClick={() => void exportImages('png')}>导出本页</button>
                         <button className={button} disabled={Boolean(busy)} onClick={() => void exportImages('directory')}>导出图片目录</button>
                         <button className={button} disabled={Boolean(busy) || activeIndex < 2} onClick={() => reorder(-1)} aria-label="页面上移"><ArrowUp className="h-3.5 w-3.5" /></button>
@@ -246,9 +234,25 @@ export function ProductImageSetPane({ target }: { target: ChatMessageLinkTarget 
                         <label className="text-xs">图文正文<textarea className={`${control} mt-1`} rows={5} value={draft!.body} onChange={(event) => edit({ ...draft!, body: event.target.value })} /></label>
                         <label className="text-xs">话题（每行一个）<textarea className={`${control} mt-1`} rows={2} value={draft!.hashtags.join('\n')} onChange={(event) => edit({ ...draft!, hashtags: event.target.value.split('\n') })} /></label>
                     </fieldset>
-                </div>
-            </div>
-        </div>
+</div>;
+    const previewPane = <div className="h-full space-y-3 overflow-y-auto bg-surface-secondary p-4"><p className="text-xs text-text-tertiary">本地排版预览{dirty ? ' · 正在保存' : ''}</p>                    <div ref={previewRef} className="relative aspect-[3/4] overflow-hidden rounded-xl border border-border bg-surface-secondary">
+                        {html ? <iframe title="商品套图页面预览" sandbox="allow-same-origin" srcDoc={html} width={productImageSpec(set).width} height={productImageSpec(set).height} className="absolute left-0 top-0 border-0 origin-top-left" style={{ transform: 'scale(var(--product-preview-scale))', width: productImageSpec(set).width, height: productImageSpec(set).height }} onLoad={(event) => {
+                            const frame = event.currentTarget; const parent = frame.parentElement;
+                            if (parent) parent.style.setProperty('--product-preview-scale', String(parent.clientWidth / (set ? productImageSpec(set).width : 1440)));
+                        }} /> : <div className="flex h-full items-center justify-center text-xs text-text-tertiary">正在生成预览…</div>}
+                    </div>
+<h2 className="font-semibold">{draft?.finalTitle}</h2><p className="whitespace-pre-wrap text-sm">{draft?.body}</p></div>;
+    return <div className="relative h-full min-h-0">{chat ? <CreationWorkbench adapter={{ id: projectPath, changeToken: snapshot?.version, title: draft?.finalTitle || '未命名商品套图', subtitle: '小红书 · 商品套图', status: dirty ? '正在保存…' : '已保存', flush: async () => { await save(); if (dirtyRef.current) throw new Error('当前输入尚未保存'); }, chat, editor: editorPane, preview: previewPane, actions: <>{actions}
+            <div className="mr-auto"><h2 className="text-sm font-semibold">商品套图 · {set.pages.length} 张</h2><p className="text-[11px] text-text-tertiary">{productImageSpec(set).aspectRatio} · {productImageSpec(set).width}×{productImageSpec(set).height} PNG · 应用发布上限 18 张 · {dirty ? '有未保存修改' : `版本 ${snapshot?.version || ''}`}</p></div>
+            <button className={button} disabled={Boolean(busy)} onClick={() => dirty ? setRefreshConfirm(true) : void refresh()}><RefreshCw className="h-3.5 w-3.5" />刷新</button>
+            <button className={button} disabled={Boolean(busy) || !dirty} onClick={() => void perform('save', async () => { await save(); setMessage('已保存'); })}><Save className="h-3.5 w-3.5" />保存</button>
+            <button className={button} disabled={Boolean(busy)} onClick={() => void undo()}>撤销</button>
+            <PublicationButton source={{ kind: 'image-set', path: projectPath }} />
+            <button className={button} disabled={Boolean(busy)} onClick={() => void exportImages('zip')}><Download className="h-3.5 w-3.5" />导出 ZIP</button>
+        </>, notice: <>
+        {message && <div role="status" className="border-b border-border bg-surface-secondary px-4 py-2 text-xs whitespace-pre-wrap">{message}</div>}
+        {busy && <div className="flex items-center gap-2 px-4 py-2 text-xs text-text-secondary"><Loader2 className="h-3.5 w-3.5 animate-spin" />{busy === 'generate' ? '正在生成本页画面，可在任务完成后继续编辑…' : '正在处理…'}</div>}
+</> }} /> : <div className="grid h-full grid-cols-2">{editorPane}{previewPane}</div>}
         <ConfirmDialog open={confirmAi} title="确认生成本页 AI 画面" description={`模型：${config?.model || ''}\n页面：${page.title}\n参考图：${page.productAssetIds.length} 张\n仅生成 1 张画面，会消耗模型额度；标题与文案由本地排版叠加。`} confirmLabel="确认生成 1 张" onConfirm={() => { void generate(); }} onCancel={() => setConfirmAi(false)}>
             <div className="mt-3 flex gap-2">{page.productAssetIds.map((id) => <img key={id} src={assetUrl(id)} alt="本次生成参考图" className="h-20 w-20 rounded object-contain bg-surface-secondary" />)}</div>
         </ConfirmDialog>

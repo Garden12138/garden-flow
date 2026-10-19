@@ -1,3 +1,4 @@
+import { directDreamEditOperations } from '../../../shared/dreamStoryReducer';
 import { z } from 'zod';
 import { DreamRequestSchema, DreamEditOperationSchema, DreamDirectorPackageSchema, DreamContractError } from '../../../shared/dreamStory';
 import { DeclarativeTool, ToolKind, type ToolResult, createErrorResult, ToolErrorType } from '../toolRegistry';
@@ -17,7 +18,7 @@ export class DreamStoryReadTool extends DeclarativeTool<typeof ReadSchema> {
             const project = await readDreamStory(params._dreamTurn.projectId, params._dreamTurn.spaceId);
             const doc = project.dreamStory; const publication = getTikTokVideoVersionByProject(project.id);
             const text = JSON.stringify({ projectId: project.id, revision: doc.revision, draftEpoch: doc.draftEpoch, target: doc.target,
-                targetDigest: doc.targetDigest, stage: doc.stage, fragments: doc.fragments, director: doc.director,
+                editPolicy: params._dreamTurn.editPolicy, selectedSceneId: params._dreamTurn.selectedSceneId, targetDigest: doc.targetDigest, stage: doc.stage, fragments: doc.fragments, director: doc.director,
                 style: doc.style, fidelity: doc.fidelity, emotion: doc.emotion, dreamDate: doc.dreamDate,
                 publicationCopy: publication ? { title: publication.title, description: publication.description, hashtags: publication.hashtags } : undefined,
                 assets: project.assets.slice(-80).map(asset => ({ id: asset.id, kind: asset.kind })), captions: doc.captions });
@@ -35,19 +36,24 @@ export class DreamStoryEditTool extends DeclarativeTool<typeof EditSchema> {
         try { if (!params._dreamTurn) throw new Error('缺少已验证的工程绑定');
             if (params.operations.some(op => !['story.update', 'director.update', 'publication.copy', 'scene.update', 'scene.order', 'mix.update', 'captions.update', 'undo'].includes(op.type)
                 || (op.type === 'scene.update' && op.changes.locked !== undefined))) throw new Error('采用、解锁和生成请使用工作台按钮');
-            const project = await applyDreamEdit({ ...params._dreamTurn, operations: params.operations });
+            const operations = params._dreamTurn.editPolicy === 'direct' ? directDreamEditOperations((await readDreamStory(params._dreamTurn.projectId, params._dreamTurn.spaceId)).dreamStory, params.operations) : params.operations;
+            const project = await applyDreamEdit({ ...params._dreamTurn, operations });
             return { success: true, llmContent: JSON.stringify({ revision: project.dreamStory!.revision, stage: project.dreamStory!.stage }), display: '梦境修改已保存，可在工作台撤销' };
         } catch (error) { return createErrorResult(String(error), ToolErrorType.EXECUTION_FAILED); }
     }
 }
 export class DreamStoryProposeTool extends DeclarativeTool<typeof ProposeSchema> {
     readonly name = 'dream_story_propose'; readonly displayName = '保存梦境导演包候选';
-    readonly description = 'Save a complete director package (schemaVersion 2 for target profileVersion 2, otherwise 1) candidate: title, language, story, emotionalArc, preservedFragmentIds, creativeAdditions, visualStyle, characters, exactly eight scenes and publication. Preserve locked scenes and use runtime target language. User adoption is a separate button. For v2 include settings, each scene settingId/continuity/mediaType/videoPrompt/videoReason, and character wardrobe/props. Hybrid recommends exactly two video scenes; choose action or turning points with reasons. No generation of images/audio/video.';
+    readonly description = 'Save a complete director package (schemaVersion 2 for target profileVersion 2, otherwise 1) candidate: title, language, story, emotionalArc, preservedFragmentIds, creativeAdditions, visualStyle, characters, exactly eight scenes and publication. Preserve locked scenes and use runtime target language. The verified runtime editPolicy decides whether the validated candidate is applied directly or retained for adoption. For v2 include settings, each scene settingId/continuity/mediaType/videoPrompt/videoReason, and character wardrobe/props. Hybrid recommends exactly two video scenes; choose action or turning points with reasons. No generation of images/audio/video.';
     readonly kind = ToolKind.Edit; readonly parameterSchema = ProposeSchema;
     getDescription() { return this.displayName; }
     async execute(params: z.infer<typeof ProposeSchema>): Promise<ToolResult> {
         try { if (!params._dreamTurn) throw new Error('缺少已验证的工程绑定');
             const candidate = await saveDreamCandidate(params._dreamTurn, params.director, params._proposalAttempt || 1);
+            if (params._dreamTurn.editPolicy === 'direct') {
+                const project = await applyDreamEdit({ ...params._dreamTurn, requestId: params._dreamTurn.requestId + '_apply', operations: [{ type: 'candidate.adopt', candidateId: candidate.id }, { type: 'story.adopt' }, { type: 'storyboard.adopt' }] });
+                return { success: true, llmContent: JSON.stringify({ revision: project.dreamStory!.revision, applied: true }), display: '故事与八幕分镜已同步到作品编辑和效果预览，可撤销。图片、视频与配音需单独确认生成。' };
+            }
             return { success: true, llmContent: JSON.stringify({ candidateId: candidate.id, basedOnRevision: candidate.basedOnRevision }), display: '故事与分镜候选已保存，请在工作台核对采用' };
         } catch (error) { return createErrorResult(String(error), error instanceof z.ZodError || error instanceof DreamContractError ? ToolErrorType.INVALID_PARAMS : ToolErrorType.EXECUTION_FAILED); }
     }

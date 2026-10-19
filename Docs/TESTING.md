@@ -24,6 +24,7 @@ pnpm build
 
 | 范围 | 测试 |
 | --- | --- |
+| 三栏空白创作、草稿恢复、同一会话、幂等与手动冲突合并 | [creationWorkspace.test.ts](../desktop/tests/creationWorkspace.test.ts) |
 | 目标、规格、平台副本与旧工程 | [productCreationTarget.test.ts](../desktop/tests/productCreationTarget.test.ts) |
 | 套图审批、逐页过期、渲染、ZIP 与模拟生成 | [productImageSet.test.ts](../desktop/tests/productImageSet.test.ts) |
 | 工程绑定、幂等修改、撤销、冲突与事务恢复 | [productProjectEditor.test.ts](../desktop/tests/productProjectEditor.test.ts) |
@@ -31,6 +32,12 @@ pnpm build
 | 采集报告路由、跨空间保护与恢复 | [gardenflowCaptureReportNavigation.test.ts](../desktop/tests/gardenflowCaptureReportNavigation.test.ts) |
 | 自动采集保存与任务页面清理状态 | [marketplaceAutoCaptureRuntime.test.ts](../desktop/tests/marketplaceAutoCaptureRuntime.test.ts) |
 | TikTok 真实页面夹具执行 | [tiktokPublisherDom.test.ts](../desktop/tests/tiktokPublisherDom.test.ts) |
+
+三栏创作的定向回归：
+
+```sh
+pnpm --dir desktop exec node --test tests/creationWorkspace.test.ts tests/creationEntryUi.test.ts tests/gardenflowCaptureReportNavigation.test.ts
+```
 
 扩展专项可分别运行：
 

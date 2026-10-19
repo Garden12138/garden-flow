@@ -1,7 +1,7 @@
 import { dreamCanonical, validateDreamDirector, type DreamStoryDocument, type DreamEditOperation, type DreamStoryVersion } from './dreamStory.ts';
 
 export function dreamVersion(doc: DreamStoryDocument, id: string, label: string, createdAt: string): DreamStoryVersion {
-    return structuredClone({ id, label, createdAt, director: doc.director, target: doc.target, fragments: doc.fragments,
+    return structuredClone({ id, label, createdAt, director: doc.director, manualDraft: doc.manualDraft, target: doc.target, fragments: doc.fragments,
         media: doc.media, musicAssetId: doc.musicAssetId, musicVolume: doc.musicVolume, voiceVolume: doc.voiceVolume,
         captions: doc.captions, style: doc.style, dreamDate: doc.dreamDate, emotion: doc.emotion,
         storyAdopted: doc.storyAdopted, storyboardAdopted: doc.storyboardAdopted, stage: doc.stage });
@@ -11,7 +11,13 @@ export function reduceDreamStory(source: DreamStoryDocument, operations: DreamEd
     const doc = structuredClone(source);
     const before = dreamVersion(source, versionId, '修改前', now);
     for (const op of operations) {
-        if (op.type === 'record.save') {
+        if (op.type === 'director.draft') {
+            doc.manualDraft = op.draft;
+        } else if (op.type === 'director.initialize') {
+            if (doc.director) throw new Error('作品已有分镜，请在作品编辑中修改');
+            doc.director = validateDreamDirector(op.director, doc.fragments, doc.target);
+            doc.manualDraft = undefined; doc.storyAdopted = true; doc.storyboardAdopted = true; doc.stage = 'storyboard';
+        } else if (op.type === 'record.save') {
             for (const fragment of doc.fragments.filter(item => item.locked)) {
                 const next = op.fragments.find(item => item.id === fragment.id);
                 if ((!next || next.text !== fragment.text) && next?.locked !== false) throw new Error('请先解锁原始片段再修改或删除');
@@ -81,7 +87,7 @@ export function reduceDreamStory(source: DreamStoryDocument, operations: DreamEd
         } else if (op.type === 'undo' || op.type === 'version.restore') {
             const version = op.type === 'undo' ? doc.undo.pop() : doc.versions.find(item => item.id === op.versionId);
             if (!version) throw new Error('没有可恢复的版本');
-            doc.director = structuredClone(version.director); doc.fragments = structuredClone(version.fragments);
+            doc.director = structuredClone(version.director); doc.manualDraft = structuredClone(version.manualDraft); doc.fragments = structuredClone(version.fragments);
             doc.target = structuredClone(version.target); doc.storyAdopted = false; doc.storyboardAdopted = false;
             doc.stage = doc.director ? 'story' : 'record'; doc.captions = undefined;
             if (version.media) doc.media = structuredClone(version.media);
@@ -97,4 +103,15 @@ export function reduceDreamStory(source: DreamStoryDocument, operations: DreamEd
     if (!operations.some(op => op.type === 'undo')) doc.undo = [...doc.undo, before].slice(-20);
     doc.versions = doc.versions.slice(-100);
     return doc;
+}
+
+/** Valid ordinary edits become the current editable story; media approvals remain independent. */
+export function directDreamEditOperations(source: DreamStoryDocument, operations: DreamEditOperation[]): DreamEditOperation[] {
+    const ordinary = ['story.update', 'director.update', 'scene.update', 'scene.order', 'captions.update', 'mix.update', 'publication.copy', 'music.remove', 'reference.bind'];
+    if (!operations.length || operations.some(operation => !ordinary.includes(operation.type)) || !source.director || !source.target) return operations;
+    const next = reduceDreamStory(source, operations, 'local_preview', '1970-01-01T00:00:00.000Z');
+    if (next.storyAdopted && next.storyboardAdopted) return operations;
+    try { validateDreamDirector(next.director, next.fragments, next.target); }
+    catch { return operations; }
+    return [...operations, { type: 'story.adopt' }, { type: 'storyboard.adopt' }];
 }

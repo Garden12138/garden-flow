@@ -27,7 +27,7 @@ export const resolveScopedModelName = (
 
 export const resolveModelScopeFromContextType = (contextType: string): ModelScope => {
   const normalized = String(contextType || '').trim().toLowerCase();
-  if (normalized === 'gardenflow' || normalized === 'product-project' || normalized === 'dream-story') return 'gardenflow';
+  if (normalized === 'gardenflow' || normalized === 'creation-workspace' || normalized === 'product-project' || normalized === 'dream-story') return 'gardenflow';
   if (normalized === 'note' || normalized === 'knowledge') return 'knowledge';
   return 'default';
 };

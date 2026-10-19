@@ -313,6 +313,8 @@ export interface VideoEditorV2Project {
 }
 
 export type ProductVideoEditCommand =
+  | { type: 'scene.duplicate'; sceneId: string; newSceneId: string }
+  | { type: 'scene.title'; sceneId: string; title: string }
   | { type: 'scene.reorder'; sceneId: string; targetSceneId: string; position: 'before' | 'after' }
   | { type: 'scene.duration'; sceneId: string; durationMs: number }
   | { type: 'scene.fit'; sceneId: string; fitMode: ProductVideoFitMode }

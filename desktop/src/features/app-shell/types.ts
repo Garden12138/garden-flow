@@ -18,6 +18,8 @@ export type GardenFlowNavigationAction = {
 };
 
 export type AppIntent =
+  | { type: 'creation.start'; platform: import('../../../shared/productCreationTarget').ProductPlatform; capability: import('../../../shared/creationWorkspace').CreationCapability }
+  | { type: 'creation.open'; workspaceId: string }
   | { type: 'dream-story.new' }
   | {
       type: 'flow.open';

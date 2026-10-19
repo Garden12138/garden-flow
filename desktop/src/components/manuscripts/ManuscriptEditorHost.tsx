@@ -1219,7 +1219,7 @@ export function ManuscriptEditorHost({ filePath, onNavigateToGenerationStudio, i
                 handledVideoTerminalJobIdRef.current = currentVideoJob.jobId;
                 void loadData();
                 if (editorFile) {
-                    void refreshPackageState(editorFile);
+                    if (!/\.(redpost|redvideo)$/i.test(editorFile)) void refreshPackageState(editorFile);
                 }
             }
             return;
@@ -1507,11 +1507,11 @@ export function ManuscriptEditorHost({ filePath, onNavigateToGenerationStudio, i
             setIsExportVideoModalOpen(false);
             return;
         }
-        void refreshPackageState(editorFile);
+        if (!/\.(redpost|redvideo)$/i.test(editorFile)) void refreshPackageState(editorFile);
     }, [editorFile, refreshPackageState]);
 
     const loadEditorWriteProposal = useCallback(async (filePath: string | null) => {
-        if (!filePath) {
+        if (!filePath || /\.(redpost|redvideo)$/i.test(filePath)) {
             setEditorWriteProposal(null);
             return;
         }
@@ -2075,19 +2075,10 @@ export function ManuscriptEditorHost({ filePath, onNavigateToGenerationStudio, i
     if (mode === 'editor' && editorFile && xhsEditorTarget) {
         return (
             <div className="flex h-full min-h-0 flex-col bg-background">
-                <div className="flex min-h-[52px] items-center justify-between gap-3 border-b border-border bg-surface-primary px-4">
-                    <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-text-primary">{xhsEditorTarget.xhsNote?.finalTitle || xhsEditorTarget.label}</div>
-                        <div className="text-[11px] text-text-tertiary">小红书{xhsEditorTarget.noteType === 'video' ? '视频' : '图文'}笔记 · v{xhsEditorTarget.xhsNote?.revision || xhsEditorTarget.version || 0}</div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <button type="button" onClick={() => setXhsChatFocusSignal((value) => value + 1)} className="rounded-xl border border-border px-3 py-1.5 text-xs font-medium text-text-secondary transition hover:bg-surface-secondary">在对话中继续</button>
-                        {onClose && <button type="button" onClick={onClose} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-tertiary hover:bg-surface-secondary" title="关闭"><X className="h-4 w-4" /></button>}
-                    </div>
-                </div>
                 <Suspense fallback={<div className="flex h-full items-center justify-center text-text-tertiary">小红书稿件工作台加载中...</div>}>
                     <XhsNoteWorkbench
                         target={xhsEditorTarget}
+                        onClose={onClose}
                         editorChatSessionId={editorChatSessionId}
                         editorChatReady={editorChatSessionReady}
                         editorSessionMetadata={editorChatBinding?.metadata ?? null}

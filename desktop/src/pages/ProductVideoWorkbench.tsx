@@ -1,6 +1,9 @@
+import { previewProductEdits } from '../../shared/creationPreview';
+import { CreationWorkbench } from '../features/workbench/CreationWorkbench';
+import { useCreationAutosave } from '../features/workbench/useCreationAutosave';
 import { PublicationButton } from '../components/publication/PublicationPanel';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Player } from '@remotion/player';
+import { Player, type PlayerRef } from '@remotion/player';
 import {
     CheckCircle2,
     Download,
@@ -78,6 +81,7 @@ export function ProductVideoWorkbench(props: ProductVideoWorkbenchProps) {
 
 function ProductVideoWorkbenchContent({ projectId, onClose }: ProductVideoWorkbenchProps) {
     const [project, setProject] = useState<VideoEditorV2Project | null>(null);
+    const player = useRef<PlayerRef>(null);
     const [selectedSceneId, setSelectedSceneId] = useState('');
     const editor = useProductEditor({ kind: 'video', projectId });
     const pendingCommands = useRef(new Map<string, ProductProjectEditOperation>());
@@ -87,6 +91,7 @@ function ProductVideoWorkbenchContent({ projectId, onClose }: ProductVideoWorkbe
     const nativeDirty = useRef(false);
     const draftEpoch = useRef(0);
     const [draftDirty, setDraftDirty] = useState(false);
+    const [manualEpoch, setManualEpoch] = useState(0);
     useEffect(() => { projectRef.current = project; }, [project]);
     useEffect(() => { editor.select(selectedSceneId || undefined); }, [selectedSceneId]);
     const [loading, setLoading] = useState(true);
@@ -314,11 +319,13 @@ function ProductVideoWorkbenchContent({ projectId, onClose }: ProductVideoWorkbe
     const visualAssets = project?.assets.filter((asset) => project.productVideo?.proposal.compositionMode === 'existing-clips' ? asset.kind === 'video' : asset.kind === 'image' || asset.kind === 'video') || [];
     const musicTrack = project?.timeline.tracks.find((track) => track.kind === 'music');
     const selectedVoiceAsset = project?.assets.find((asset) => asset.id === selectedScene?.voiceoverAssetId);
-    const composition = useMemo(() => project ? buildVideoEditorV2RemotionComposition(project) : null, [project]);
+    const previewProject = useMemo(() => project ? previewProductEdits(project, [...pendingCommands.current.values()]) : null, [project, manualEpoch]);
+    const composition = useMemo(() => previewProject ? buildVideoEditorV2RemotionComposition(previewProject) : null, [previewProject]);
+    useEffect(() => { const clip = project?.timeline.tracks.find(track => track.kind === 'primary-video')?.clips.find(item => item.sceneId === selectedSceneId); if (clip && project) player.current?.seekTo(Math.round(clip.timelineStartMs * project.canvas.fps / 1000)); }, [selectedSceneId]);
 
     const recordDraft = (key: string, operation: ProductProjectEditOperation) => {
         if (!pendingCommands.current.size) manualBase.current = projectRef.current?.updatedAt || '';
-        draftEpoch.current++;
+        draftEpoch.current++; setManualEpoch(draftEpoch.current);
         pendingCommands.current.set(key, operation); setDraftDirty(true); editor.markDirty();
     };
     const flushVideoDraft = useCallback(async (): Promise<void> => {
@@ -348,6 +355,8 @@ function ProductVideoWorkbenchContent({ projectId, onClose }: ProductVideoWorkbe
         try { await operation; } finally { savingDraft.current = null; setBusy(''); }
     }, [projectId, editor.settleDraft, selectedSceneId]);
     useEffect(() => editor.registerFlush('video-scenes', flushVideoDraft), [editor.registerFlush, flushVideoDraft]);
+    const autoSave = useCreationAutosave(draftDirty, manualEpoch, flushVideoDraft);
+    useEffect(() => { if (autoSave.error) setError(autoSave.error); }, [autoSave.error]);
     const saveOnBlur = () => { void flushVideoDraft().catch(reason => setError(String(reason))); };
 
     const applyCommand = useCallback(async (command: ProductVideoEditCommand) => {
@@ -380,6 +389,7 @@ function ProductVideoWorkbenchContent({ projectId, onClose }: ProductVideoWorkbe
 
     const retryScene = useCallback(async () => {
         if (!selectedScene) return;
+        if (selectedScene.source === 'ai-motion' && !await appConfirm('确认重新生成当前镜头的 AI 视频？本次调用会消耗模型额度。')) return;
         setBusy('retry');
         try {
             await flushVideoDraft();
@@ -411,7 +421,7 @@ function ProductVideoWorkbenchContent({ projectId, onClose }: ProductVideoWorkbe
     }, [projectId]);
 
     const generateVoiceover = useCallback(async () => {
-        if (!selectedScene) return;
+        if (!selectedScene || !await appConfirm('确认生成当前镜头的旁白？本次调用会消耗语音模型额度。')) return;
         setBusy('voiceover.generate');
         try {
             await flushVideoDraft();
@@ -460,16 +470,12 @@ function ProductVideoWorkbenchContent({ projectId, onClose }: ProductVideoWorkbe
     if (loading) return <div className="flex h-full items-center justify-center text-text-tertiary"><Loader2 className="mr-2 h-4 w-4 animate-spin" />商品视频工程加载中…</div>;
     if (!project || !project.productVideo) return <div className="flex h-full flex-col items-center justify-center gap-3 text-text-secondary"><Film className="h-8 w-8" /><p>{error || '商品视频工程不存在'}</p>{onClose && <button type="button" className="rounded-lg border border-border px-3 py-2" onClick={onClose}>返回创作页</button>}</div>;
 
-    return (
-        <ProductEditorContext.Provider value={editor}>
-        <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_400px]">
-        <div className="relative flex h-full min-h-0 flex-col bg-[#F7F8FA] text-text-primary">
-            <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-white px-4">
-                <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#0D1117] text-white"><Film className="h-4 w-4" /></div>
-                    <div className="min-w-0"><h1 className="truncate text-sm font-bold">{project.title}</h1><p className="text-[11px] text-text-tertiary">{draftDirty ? '有未保存输入 · ' : ''}{project.productVideo.productSnapshot.name} · {project.canvas.width}×{project.canvas.height} · {statusLabel(project.status)}</p></div>
-                </div>
-                <div className="flex items-center gap-2">
+    return <ProductEditorContext.Provider value={editor}>
+        <CreationWorkbench adapter={{ id: project.id, changeToken: project.updatedAt, title: project.title,
+            subtitle: `${project.productVideo.productSnapshot.name} · ${project.canvas.width}×${project.canvas.height}`,
+            status: draftDirty ? '正在保存…' : statusLabel(project.status),
+            flush: async () => { await editor.beforeSend(); },
+            actions: <>
                     <PublicationButton source={{ kind: 'video', projectId: project.id }} />
                     {(!project.creationTarget || project.creationTarget.platform === 'tiktok') && <TikTokVideoPanel project={project} disabled={Boolean(busy)} />}
                     {(!project.creationTarget || project.creationTarget.platform === 'douyin') && (douyinVersion ? <>
@@ -480,8 +486,8 @@ function ProductVideoWorkbenchContent({ projectId, onClose }: ProductVideoWorkbe
                     </> : <button type="button" onClick={() => void createDouyinVersion()} disabled={Boolean(busy)} className="rounded-lg border border-border px-3 py-2 text-xs font-semibold disabled:opacity-50">{douyinVersions.length ? '打开抖音版本' : '创建抖音版本'}</button>)}
                     <button type="button" onClick={() => void applyCommand({ type: 'music.remove' })} disabled={!musicTrack?.clips.length || Boolean(busy)} className="rounded-lg border border-border px-3 py-2 text-xs font-medium text-text-secondary disabled:opacity-40">移除 BGM</button>
                     <div className="relative">
-                        <button type="button" onClick={() => setMusicPickerOpen((open) => !open)} disabled={Boolean(busy)} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold"><Music2 className="h-3.5 w-3.5" />添加 BGM</button>
-                        {musicPickerOpen && <div className="absolute right-0 top-11 z-30 w-64 overflow-hidden rounded-xl border border-border bg-white p-2 shadow-xl">
+                        <button type="button" onClick={() => setMusicPickerOpen((open) => !open)} disabled={Boolean(busy)} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-primary px-3 py-2 text-xs font-semibold"><Music2 className="h-3.5 w-3.5" />添加 BGM</button>
+                        {musicPickerOpen && <div className="absolute right-0 top-11 z-30 w-64 overflow-hidden rounded-xl border border-border bg-surface-primary p-2 shadow-xl">
                             <p className="px-2 pb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-text-tertiary">素材库音乐</p>
                             <div className="max-h-48 space-y-1 overflow-y-auto">
                                 {libraryAudio.map((asset) => <button key={asset.id} type="button" onClick={() => void addMusic(asset.absolutePath)} className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs hover:bg-surface-secondary"><Music2 className="h-3.5 w-3.5 shrink-0 text-[#0F766E]" /><span className="truncate">{asset.title || '未命名音频'}</span></button>)}
@@ -492,8 +498,8 @@ function ProductVideoWorkbenchContent({ projectId, onClose }: ProductVideoWorkbe
                     </div>
                     <button type="button" onClick={() => void renderVideo()} disabled={Boolean(busy) || !composition} className="inline-flex items-center gap-1.5 rounded-lg bg-[#0F766E] px-3.5 py-2 text-xs font-semibold text-white disabled:opacity-50">{busy === 'render' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}保存 MP4 到资产库</button>
                     {onClose && <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-lg text-text-tertiary hover:bg-surface-secondary"><X className="h-4 w-4" /></button>}
-                </div>
-            </header>
+</>,
+            notice: <>
             {error && <div role="status" className="flex items-center gap-3 border-b border-border bg-amber-50 px-4 py-2 text-xs text-amber-900">
                 <span className="min-w-0 flex-1 break-words">{error}</span>
                 {(draftDirty || nativeDirty.current) && <button type="button" disabled={Boolean(busy)} className="shrink-0 rounded border px-2 py-1" onClick={() => {
@@ -512,7 +518,7 @@ function ProductVideoWorkbenchContent({ projectId, onClose }: ProductVideoWorkbe
 
             {douyinVersion && productChanged && <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800">商品资料已变化，请复核抖音稿件中的商品事实；当前工程与文案不会自动改写。</div>}
             {douyinEditorOpen && douyinVersion && <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/40 p-6">
-                <section className="w-full max-w-xl space-y-4 rounded-2xl bg-white p-6 shadow-2xl">
+                <section className="w-full max-w-xl space-y-4 rounded-2xl bg-surface-primary p-6 shadow-2xl">
                     <div className="flex items-center justify-between"><h2 className="text-base font-bold">抖音短视频稿件 · 第 {douyinVersion.revision} 版</h2><button type="button" onClick={() => setDouyinEditorOpen(false)} aria-label="关闭抖音稿件"><X className="h-4 w-4" /></button></div>
                     <p className="text-xs text-text-secondary">首句尽快说明看点；检查字幕不要落在抖音按钮和文案区域。视频镜头、旁白与 BGM 可在工作台单独修改，修改后需重新导出此版本。</p>
                     <label className="block text-xs font-semibold">内部标题<input value={douyinTitle} onChange={(event) => changeNativeDraft(() => setDouyinTitle(event.target.value))} className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm" /></label>
@@ -530,7 +536,7 @@ function ProductVideoWorkbenchContent({ projectId, onClose }: ProductVideoWorkbe
             </div>}
 
             {publisherOpen && douyinVersion && <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/40 p-6">
-                <section className="max-h-full w-full max-w-2xl space-y-4 overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+                <section className="max-h-full w-full max-w-2xl space-y-4 overflow-y-auto rounded-2xl bg-surface-primary p-6 shadow-2xl">
                     <div className="flex items-center justify-between"><h2 className="text-base font-bold">抖音发布确认</h2><button type="button" onClick={() => setPublisherOpen(false)} aria-label="关闭发布确认"><X className="h-4 w-4" /></button></div>
                     <div className="space-y-2 text-xs"><p className="font-semibold">目标浏览器与账号</p>{publisherInstances.map((instance) => <div key={instance.extensionInstanceId} className="flex items-center justify-between rounded-lg border border-border p-2"><span>{instance.browser || '浏览器'} · {instance.accountLabel || '账号未识别'} · {instance.pageState || '未知'}<br /><span className="text-text-tertiary">{instance.detail || instance.accountId || instance.extensionInstanceId}</span></span><button type="button" onClick={() => void bindPublisher(instance.extensionInstanceId)} className="rounded border border-border px-2 py-1">{publisherBinding === instance.extensionInstanceId ? '已绑定' : '绑定'}</button></div>)}{publisherInstances.length === 0 && <p>请安装新版发布插件，并打开已登录的抖音创作者发布页。</p>}</div>
                     {douyinVersion.coverAssetId && <p className="text-xs text-text-secondary">已选封面素材：{project.assets.find((asset) => asset.id === douyinVersion.coverAssetId)?.title || douyinVersion.coverAssetId}，将应用为横、竖双封面。{!publisherInstances.some((instance) => instance.extensionInstanceId === publisherBinding && instance.imageCoverSupported) && <span className="text-amber-700">请更新发布插件并绑定支持图片封面的浏览器。</span>}</p>}
@@ -552,36 +558,18 @@ function ProductVideoWorkbenchContent({ projectId, onClose }: ProductVideoWorkbe
                 </section>
             </div>}
 
-            <div className="grid min-h-0 flex-1 grid-cols-[220px_minmax(360px,1fr)_280px] grid-rows-[minmax(0,1fr)_250px]">
-                <aside className="row-span-2 min-h-0 overflow-y-auto border-r border-border bg-white p-3">
-                    <div className="mb-3 flex items-center justify-between"><h2 className="text-xs font-bold uppercase tracking-[0.12em] text-text-tertiary">工程素材</h2><span className="text-[10px] text-text-tertiary">{visualAssets.length}</span></div>
-                    <div className="space-y-2">
-                        {visualAssets.map((asset) => {
-                            const source = resolveAssetUrl(asset.thumbnailPath || asset.projectPath);
-                            const generated = asset.provenance?.kind === 'ai-generated';
-                            return <button key={asset.id} type="button" onClick={() => selectedScene && void applyCommand({ type: 'scene.asset', sceneId: selectedScene.id, assetId: asset.id })} className="group flex w-full gap-2 rounded-xl border border-border bg-[#F7F8FA] p-2 text-left hover:border-[#0F766E]/40">
-                                <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-[#0D1117]">{asset.kind === 'video' && !asset.thumbnailPath ? <video src={resolveAssetUrl(asset.projectPath)} muted preload="metadata" className="h-full w-full object-cover" /> : <img src={source} alt={asset.title} className="h-full w-full object-cover" />}</div>
-                                <div className="min-w-0 py-0.5"><p className="line-clamp-2 text-[11px] font-semibold">{asset.title}</p><span className={generated ? 'mt-1 inline-flex items-center gap-1 text-[10px] text-amber-700' : 'mt-1 inline-flex items-center gap-1 text-[10px] text-text-tertiary'}>{generated ? <Sparkles className="h-3 w-3" /> : <ImageIcon className="h-3 w-3" />}{generated ? 'AI 动效' : asset.kind === 'video' ? '已有视频' : '商品原图'}</span></div>
-                            </button>;
-                        })}
-                    </div>
-                </aside>
-
-                <main className="min-h-0 overflow-hidden bg-[#E9ECEF] p-4">
-                    <div className="flex h-full items-center justify-center">
-                        <div className="relative h-full max-h-[calc(100vh-350px)] overflow-hidden rounded-[18px] border-[6px] border-[#0D1117] bg-[#0D1117] shadow-[0_20px_50px_-24px_rgba(13,17,23,0.7)]" style={{ aspectRatio: `${project.canvas.width}/${project.canvas.height}` }}>
-                            {composition ? <Player component={VideoMotionComposition} inputProps={{ composition: composition as RemotionCompositionConfig, runtime: 'preview' }} durationInFrames={composition.durationInFrames} fps={composition.fps} compositionWidth={composition.width} compositionHeight={composition.height} controls loop style={{ width: '100%', height: '100%' }} /> : <div className="flex h-full items-center justify-center text-xs text-white/60">暂无可预览镜头</div>}
-                            {douyinVersion && <div className="pointer-events-none absolute inset-0" aria-label="抖音竖屏安全区示意">
-                                <div className="absolute right-0 top-[20%] h-[58%] w-[17%] border-l border-white/50 bg-black/15" />
-                                <div className="absolute bottom-0 left-0 h-[20%] w-full border-t border-white/50 bg-black/20" />
-                                <span className="absolute bottom-[21%] left-2 rounded bg-black/60 px-1.5 py-0.5 text-[9px] text-white">抖音按钮／文案安全区示意</span>
-                            </div>}
-                        </div>
-                    </div>
-                </main>
-
-                <aside className="min-h-0 overflow-y-auto border-l border-border bg-white p-4">
+</>,
+            chat: (        <aside data-product-project-editor-chat className="flex h-full min-h-0 flex-col bg-surface-secondary">
+            <div className="border-b border-border px-3 py-2 text-xs text-text-tertiary">当前版本的编辑对话 · 发送前保存手动输入</div>
+            {editor.error && <p className="px-3 py-2 text-xs text-red-700">{editor.error}</p>}
+            <div className="min-h-0 flex-1">{editor.sessionId ? <Suspense fallback={<p>加载编辑对话…</p>}><EditorChat fixedSessionId={editor.sessionId} beforeSend={editor.beforeSend}
+                fixedSessionTaskHints={{ workflowKind: 'product-project-edit' }} isActive showClearButton={false} showWelcomeShortcuts={false} showComposerShortcuts={false}
+                fixedSessionContextIndicatorMode="none" keepComposerInputActive contentLayout="wide" messageWorkflowPlacement="bottom" messageWorkflowVariant="compact" placeholder="修改当前作品，或撤销上一次修改…" /></Suspense> : <p className="p-4 text-xs">正在初始化编辑会话…</p>}</div>
+        </aside>),
+            editor: <div className="h-full overflow-y-auto"><div className="min-h-[220px]">                <ProductVideoTimeline project={project} undoCount={editor.snapshot?.undoCount} selectedSceneId={selectedSceneId} busy={Boolean(busy)} onSelect={setSelectedSceneId} onResize={(sceneId, durationMs) => applyCommand({ type: 'scene.duration', sceneId, durationMs })} onReorder={(sceneId, targetSceneId) => void applyCommand({ type: 'scene.reorder', sceneId, targetSceneId, position: 'before' })} onUndo={undoTimeline} onAddMusic={() => setMusicPickerOpen(true)} /></div>                <aside className="bg-surface-primary p-4">
                     {selectedScene ? <div className="space-y-5">
+                        <label className="block text-xs font-semibold">镜头标题<input className="mt-2 w-full rounded-lg border border-border bg-surface-primary p-2 text-sm" defaultValue={selectedScene.title} key={selectedScene.id + selectedScene.title} onChange={event => recordDraft('title-' + selectedScene.id, { type: 'scene.title', sceneId: selectedScene.id, title: event.target.value })} onBlur={saveOnBlur} /></label>
+                        <button type="button" className="rounded border border-border p-2 text-xs" disabled={Boolean(busy) || project.productVideo.scenes.length >= 8} onClick={() => void applyCommand({ type: 'scene.duplicate', sceneId: selectedScene.id, newSceneId: 'scene_' + crypto.randomUUID() })}>复制当前镜头</button>
                         {selectedScene.source === 'media-clip' && <section className="space-y-3 rounded-xl border border-border p-3" aria-label="来源视频截取">
                             <p className="text-xs font-semibold">已有视频 · {selectedVideoAsset?.title}</p>
                             <p className="text-[11px] text-text-tertiary">来源 {(Number(selectedVideoAsset?.durationMs || 0) / 1000).toFixed(2)} 秒 · {selectedVideoAsset?.probe?.hasAudio ? '含原音' : '无音轨'}</p>
@@ -589,19 +577,19 @@ function ProductVideoWorkbenchContent({ projectId, onClose }: ProductVideoWorkbe
                             <button className="rounded-lg border border-border px-3 py-1.5 text-xs disabled:opacity-40" disabled={Boolean(busy) || !sourceCut.start || !sourceCut.end} onClick={saveOnBlur}>保存截取区间</button>
                             <label className="block text-xs">原声音量（0–100%）<input aria-label="来源视频音量" type="number" min="0" max="100" step="5" disabled={Boolean(busy)} defaultValue={Math.round((selectedVideoClip?.volume ?? 1) * 100)} key={`${selectedScene.id}-${selectedVideoClip?.volume}`} className="mt-1 w-full rounded-lg border border-border px-2 py-1.5" onChange={(event) => recordDraft('volume-' + selectedScene.id, { type: 'scene.source-volume', sceneId: selectedScene.id, volume: event.target.value ? Number(event.target.value) / 100 : NaN })} onBlur={saveOnBlur}  /></label>
                         </section>}
-                        <div><div className="flex items-center justify-between"><h2 className="text-sm font-bold">{selectedScene.title}</h2><span className="rounded-full bg-surface-secondary px-2 py-1 text-[10px] text-text-tertiary">{selectedScene.source === 'ai-motion' ? 'AI 动效' : '原始素材'}</span></div>{selectedScene.generationStatus === 'failed' && <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800"><p>{selectedScene.error || '生成失败，当前使用原图回退。'}</p><button type="button" onClick={() => void retryScene()} disabled={busy === 'retry'} className="mt-2 inline-flex items-center gap-1 font-bold"><RefreshCw className={busy === 'retry' ? 'h-3 w-3 animate-spin' : 'h-3 w-3'} />重试此镜头</button></div>}{selectedScene.generationStatus === 'ready' && <p className="mt-2 inline-flex items-center gap-1 text-xs text-[#0F766E]"><CheckCircle2 className="h-3.5 w-3.5" />AI 镜头已生成</p>}</div>
+                        <div><div className="flex items-center justify-between"><h2 className="text-sm font-bold">{selectedScene.title}</h2><span className="rounded-full bg-surface-secondary px-2 py-1 text-[10px] text-text-tertiary">{selectedScene.source === 'ai-motion' ? 'AI 动效' : '原始素材'}</span></div>{selectedScene.generationStatus === 'failed' && <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800"><p>{selectedScene.error || '生成失败，当前使用原图回退。'}</p><button type="button" onClick={() => void retryScene()} disabled={busy === 'retry'} className="mt-2 inline-flex items-center gap-1 font-bold"><RefreshCw className={busy === 'retry' ? 'h-3 w-3 animate-spin' : 'h-3 w-3'} />重试此镜头</button></div>}{selectedScene.source === 'ai-motion' && selectedScene.generationStatus === 'pending' && <button type="button" className="mt-2 rounded border border-border p-2 text-xs" disabled={Boolean(busy)} onClick={() => void retryScene()}>生成此镜头（计费）</button>}{selectedScene.generationStatus === 'ready' && <p className="mt-2 inline-flex items-center gap-1 text-xs text-[#0F766E]"><CheckCircle2 className="h-3.5 w-3.5" />AI 镜头已生成</p>}</div>
                         <div>
-                            <label className="block text-xs font-semibold">镜头时长（秒）<input type="number" min={Math.round(1000 / project.canvas.fps) / 1000} max="30" step="0.001" disabled={Boolean(busy)} defaultValue={formatProductSceneSeconds(selectedScene.durationMs)} key={`${selectedScene.id}-${selectedScene.durationMs}`} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); }} onChange={(event) => recordDraft('duration-' + selectedScene.id, { type: 'scene.duration', sceneId: selectedScene.id, durationMs: event.target.value ? Math.round(Number(event.target.value) * 1000) : NaN })} onBlur={saveOnBlur}  className="mt-2 w-full rounded-lg border border-border bg-[#F7F8FA] px-3 py-2 text-sm tabular-nums disabled:opacity-50" /></label>
-                            <label className="mt-2 flex items-center justify-between gap-2 text-[11px] text-text-tertiary">镜头帧数<input aria-label="镜头帧数" type="number" min="1" max={30 * project.canvas.fps} step="1" disabled={Boolean(busy)} defaultValue={productSceneDurationFrames(selectedScene.durationMs, project.canvas.fps)} key={`frames-${selectedScene.id}-${selectedScene.durationMs}`} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); }} onChange={(event) => recordDraft('duration-' + selectedScene.id, { type: 'scene.duration', sceneId: selectedScene.id, durationMs: event.target.value && Number.isInteger(Number(event.target.value)) ? Math.round(Number(event.target.value) * 1000 / project.canvas.fps) : NaN })} onBlur={saveOnBlur}  className="w-24 rounded border border-border bg-[#F7F8FA] px-2 py-1 text-xs tabular-nums disabled:opacity-50" /></label>
+                            <label className="block text-xs font-semibold">镜头时长（秒）<input type="number" min={Math.round(1000 / project.canvas.fps) / 1000} max="30" step="0.001" disabled={Boolean(busy)} defaultValue={formatProductSceneSeconds(selectedScene.durationMs)} key={`${selectedScene.id}-${selectedScene.durationMs}`} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); }} onChange={(event) => recordDraft('duration-' + selectedScene.id, { type: 'scene.duration', sceneId: selectedScene.id, durationMs: event.target.value ? Math.round(Number(event.target.value) * 1000) : NaN })} onBlur={saveOnBlur}  className="mt-2 w-full rounded-lg border border-border bg-surface-secondary px-3 py-2 text-sm tabular-nums disabled:opacity-50" /></label>
+                            <label className="mt-2 flex items-center justify-between gap-2 text-[11px] text-text-tertiary">镜头帧数<input aria-label="镜头帧数" type="number" min="1" max={30 * project.canvas.fps} step="1" disabled={Boolean(busy)} defaultValue={productSceneDurationFrames(selectedScene.durationMs, project.canvas.fps)} key={`frames-${selectedScene.id}-${selectedScene.durationMs}`} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); }} onChange={(event) => recordDraft('duration-' + selectedScene.id, { type: 'scene.duration', sceneId: selectedScene.id, durationMs: event.target.value && Number.isInteger(Number(event.target.value)) ? Math.round(Number(event.target.value) * 1000 / project.canvas.fps) : NaN })} onBlur={saveOnBlur}  className="w-24 rounded border border-border bg-surface-secondary px-2 py-1 text-xs tabular-nums disabled:opacity-50" /></label>
                             <p className="mt-1.5 text-[10px] text-text-tertiary">按 {project.canvas.fps}fps 对齐到最近一帧，也可拖动时间线两侧调整。</p>
                         </div>
-                        <label className="block text-xs font-semibold">画面适配<select value={selectedScene.fitMode} onChange={(event) => void applyCommand({ type: 'scene.fit', sceneId: selectedScene.id, fitMode: event.target.value as ProductVideoFitMode })} className="mt-2 w-full rounded-lg border border-border bg-[#F7F8FA] px-3 py-2 text-sm">{FIT_OPTIONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
-                        {selectedScene.source !== 'media-clip' && <label className="block text-xs font-semibold">静态动效<select value={selectedScene.motionPreset} onChange={(event) => void applyCommand({ type: 'scene.motion', sceneId: selectedScene.id, motionPreset: event.target.value as ProductVideoMotionPreset })} className="mt-2 w-full rounded-lg border border-border bg-[#F7F8FA] px-3 py-2 text-sm">{MOTION_OPTIONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>}
-                        <label className="block text-xs font-semibold">屏幕文字<textarea defaultValue={selectedScene.overlayText || ''} key={`${selectedScene.id}-${selectedScene.overlayText}`} onChange={(event) => recordDraft('text-' + selectedScene.id, { type: 'scene.text', sceneId: selectedScene.id, text: event.target.value })} onBlur={saveOnBlur} rows={4} className="mt-2 w-full resize-none rounded-lg border border-border bg-[#F7F8FA] px-3 py-2 text-sm" /></label>
+                        <label className="block text-xs font-semibold">画面适配<select value={selectedScene.fitMode} onChange={(event) => void applyCommand({ type: 'scene.fit', sceneId: selectedScene.id, fitMode: event.target.value as ProductVideoFitMode })} className="mt-2 w-full rounded-lg border border-border bg-surface-secondary px-3 py-2 text-sm">{FIT_OPTIONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+                        {selectedScene.source !== 'media-clip' && <label className="block text-xs font-semibold">静态动效<select value={selectedScene.motionPreset} onChange={(event) => void applyCommand({ type: 'scene.motion', sceneId: selectedScene.id, motionPreset: event.target.value as ProductVideoMotionPreset })} className="mt-2 w-full rounded-lg border border-border bg-surface-secondary px-3 py-2 text-sm">{MOTION_OPTIONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>}
+                        <label className="block text-xs font-semibold">屏幕文字<textarea defaultValue={selectedScene.overlayText || ''} key={`${selectedScene.id}-${selectedScene.overlayText}`} onChange={(event) => recordDraft('text-' + selectedScene.id, { type: 'scene.text', sceneId: selectedScene.id, text: event.target.value })} onBlur={saveOnBlur} rows={4} className="mt-2 w-full resize-none rounded-lg border border-border bg-surface-secondary px-3 py-2 text-sm" /></label>
                         <div className="border-t border-border pt-4">
                             <div className="flex items-center justify-between"><h3 className="inline-flex items-center gap-1.5 text-xs font-bold"><Mic2 className="h-3.5 w-3.5 text-[#C05640]" />镜头旁白</h3><span className="text-[10px] text-text-tertiary">独立于屏幕文字 · 音量 100%</span></div>
-                            <label className="mt-3 block text-xs font-semibold">朗读文案<textarea defaultValue={selectedScene.narrationText || ''} key={`${selectedScene.id}-${selectedScene.narrationText}`} onChange={(event) => recordDraft('voice-' + selectedScene.id, { type: 'scene.narration-text', sceneId: selectedScene.id, text: event.target.value })} onBlur={saveOnBlur} rows={3} className="mt-2 w-full resize-none rounded-lg border border-border bg-[#F7F8FA] px-3 py-2 text-sm" /></label>
-                            <div className="mt-2 rounded-lg border border-border bg-[#F7F8FA] p-2.5 text-[11px]">
+                            <label className="mt-3 block text-xs font-semibold">朗读文案<textarea defaultValue={selectedScene.narrationText || ''} key={`${selectedScene.id}-${selectedScene.narrationText}`} onChange={(event) => recordDraft('voice-' + selectedScene.id, { type: 'scene.narration-text', sceneId: selectedScene.id, text: event.target.value })} onBlur={saveOnBlur} rows={3} className="mt-2 w-full resize-none rounded-lg border border-border bg-surface-secondary px-3 py-2 text-sm" /></label>
+                            <div className="mt-2 rounded-lg border border-border bg-surface-secondary p-2.5 text-[11px]">
                                 <p className={selectedScene.voiceoverStatus === 'failed' || selectedScene.voiceoverStatus === 'duration-conflict' ? 'font-semibold text-amber-700' : 'font-semibold text-text-secondary'}>{voiceoverStatusLabel(selectedScene.voiceoverStatus)}{selectedScene.voiceoverSource === 'imported' ? ' · 导入录音' : selectedScene.voiceoverSource === 'tts' ? ' · AI 合成' : ''}</p>
                                 {selectedScene.voiceoverError && <p className="mt-1 break-words text-amber-700">{selectedScene.voiceoverError}</p>}
                                 {selectedScene.voiceoverStatus === 'duration-conflict' && <p className="mt-1 text-amber-700">音频约 {((selectedScene.voiceoverDurationMs || 0) / 1000).toFixed(1)} 秒，镜头仅 {(selectedScene.durationMs / 1000).toFixed(1)} 秒。请延长镜头或换一段较短录音；当前不会裁剪音频。</p>}
@@ -611,26 +599,38 @@ function ProductVideoWorkbenchContent({ projectId, onClose }: ProductVideoWorkbe
                             <div className="mt-2 flex flex-wrap gap-2">
                                 <button type="button" onClick={() => void generateVoiceover()} disabled={Boolean(busy) || !selectedScene.narrationText?.trim() || selectedScene.voiceoverStatus === 'queued' || selectedScene.voiceoverStatus === 'generating'} className="inline-flex items-center gap-1 rounded-lg bg-[#C05640] px-2.5 py-1.5 text-[11px] font-semibold text-white disabled:opacity-40">{busy === 'voiceover.generate' || selectedScene.voiceoverStatus === 'generating' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Mic2 className="h-3 w-3" />}{selectedScene.voiceoverStatus === 'ready' ? '重新生成旁白' : selectedScene.voiceoverStatus === 'failed' || selectedScene.voiceoverStatus === 'stale' ? '重试生成' : '生成旁白'}</button>
                                 <div className="relative"><button type="button" onClick={() => setVoicePickerOpen((open) => !open)} disabled={Boolean(busy)} className="rounded-lg border border-border px-2.5 py-1.5 text-[11px] font-semibold disabled:opacity-40">{selectedVoiceAsset ? '替换录音' : '导入录音'}</button>
-                                    {voicePickerOpen && <div className="absolute right-0 top-9 z-30 w-64 rounded-xl border border-border bg-white p-2 shadow-xl"><p className="px-2 pb-1 text-[10px] font-bold text-text-tertiary">素材库音频</p><div className="max-h-36 overflow-y-auto">{libraryAudio.map((asset) => <button key={asset.id} type="button" onClick={() => void replaceVoiceover(asset.id)} className="block w-full truncate rounded px-2 py-1.5 text-left text-xs hover:bg-surface-secondary">{asset.title || '未命名音频'}</button>)}{libraryAudio.length === 0 && <p className="px-2 py-2 text-[11px] text-text-tertiary">素材库暂无音频</p>}</div><button type="button" onClick={() => void replaceVoiceover()} className="mt-1 flex w-full items-center gap-1.5 border-t border-border px-2 pt-2 text-left text-xs font-semibold"><FolderOpen className="h-3 w-3" />从本地文件导入</button></div>}
+                                    {voicePickerOpen && <div className="absolute right-0 top-9 z-30 w-64 rounded-xl border border-border bg-surface-primary p-2 shadow-xl"><p className="px-2 pb-1 text-[10px] font-bold text-text-tertiary">素材库音频</p><div className="max-h-36 overflow-y-auto">{libraryAudio.map((asset) => <button key={asset.id} type="button" onClick={() => void replaceVoiceover(asset.id)} className="block w-full truncate rounded px-2 py-1.5 text-left text-xs hover:bg-surface-secondary">{asset.title || '未命名音频'}</button>)}{libraryAudio.length === 0 && <p className="px-2 py-2 text-[11px] text-text-tertiary">素材库暂无音频</p>}</div><button type="button" onClick={() => void replaceVoiceover()} className="mt-1 flex w-full items-center gap-1.5 border-t border-border px-2 pt-2 text-left text-xs font-semibold"><FolderOpen className="h-3 w-3" />从本地文件导入</button></div>}
                                 </div>
                                 <button type="button" onClick={() => void applyCommand({ type: 'voiceover.remove', sceneId: selectedScene.id })} disabled={Boolean(busy) || !selectedVoiceAsset} className="rounded-lg border border-border px-2.5 py-1.5 text-[11px] text-text-secondary disabled:opacity-40">移除</button>
                             </div>
                         </div>
                         <button type="button" onClick={async () => { if (await appConfirm(`删除镜头“${selectedScene.title}”？`)) void applyCommand({ type: 'scene.delete', sceneId: selectedScene.id }); }} className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-600"><Trash2 className="h-3.5 w-3.5" />删除镜头</button>
                     </div> : <p className="text-xs text-text-tertiary">选择时间线中的镜头后编辑属性。</p>}
-                </aside>
-
-                <ProductVideoTimeline project={project} undoCount={editor.snapshot?.undoCount} selectedSceneId={selectedSceneId} busy={Boolean(busy)} onSelect={setSelectedSceneId} onResize={(sceneId, durationMs) => applyCommand({ type: 'scene.duration', sceneId, durationMs })} onReorder={(sceneId, targetSceneId) => void applyCommand({ type: 'scene.reorder', sceneId, targetSceneId, position: 'before' })} onUndo={undoTimeline} onAddMusic={() => setMusicPickerOpen(true)} />
-            </div>
-        </div>
-        <aside data-product-project-editor-chat className="flex min-h-0 flex-col border-l border-border bg-surface-secondary">
-            <div className="border-b border-border px-3 py-2 text-xs text-text-tertiary">当前版本的编辑对话 · 发送前保存手动输入</div>
-            {editor.error && <p className="px-3 py-2 text-xs text-red-700">{editor.error}</p>}
-            <div className="min-h-0 flex-1">{editor.sessionId ? <Suspense fallback={<p>加载编辑对话…</p>}><EditorChat fixedSessionId={editor.sessionId} beforeSend={editor.beforeSend}
-                fixedSessionTaskHints={{ workflowKind: 'product-project-edit' }} isActive showClearButton={false} showWelcomeShortcuts={false} showComposerShortcuts={false}
-                fixedSessionContextIndicatorMode="none" keepComposerInputActive contentLayout="wide" messageWorkflowPlacement="bottom" messageWorkflowVariant="compact" placeholder="修改当前作品，或撤销上一次修改…" /></Suspense> : <p className="p-4 text-xs">正在初始化编辑会话…</p>}</div>
-        </aside>
-        </div>
-        </ProductEditorContext.Provider>
-    );
+                </aside>                <aside className="rounded-xl border border-border bg-surface-primary p-3">
+                    <div className="mb-3 flex items-center justify-between"><h2 className="text-xs font-bold uppercase tracking-[0.12em] text-text-tertiary">工程素材</h2><span className="text-[10px] text-text-tertiary">{visualAssets.length}</span></div>
+                    <div className="space-y-2">
+                        {visualAssets.map((asset) => {
+                            const source = resolveAssetUrl(asset.thumbnailPath || asset.projectPath);
+                            const generated = asset.provenance?.kind === 'ai-generated';
+                            return <button key={asset.id} type="button" onClick={() => selectedScene && void applyCommand({ type: 'scene.asset', sceneId: selectedScene.id, assetId: asset.id })} className="group flex w-full gap-2 rounded-xl border border-border bg-surface-secondary p-2 text-left hover:border-[#0F766E]/40">
+                                <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-[#0D1117]">{asset.kind === 'video' && !asset.thumbnailPath ? <video src={resolveAssetUrl(asset.projectPath)} muted preload="metadata" className="h-full w-full object-cover" /> : <img src={source} alt={asset.title} className="h-full w-full object-cover" />}</div>
+                                <div className="min-w-0 py-0.5"><p className="line-clamp-2 text-[11px] font-semibold">{asset.title}</p><span className={generated ? 'mt-1 inline-flex items-center gap-1 text-[10px] text-amber-700' : 'mt-1 inline-flex items-center gap-1 text-[10px] text-text-tertiary'}>{generated ? <Sparkles className="h-3 w-3" /> : <ImageIcon className="h-3 w-3" />}{generated ? 'AI 动效' : asset.kind === 'video' ? '已有视频' : '商品原图'}</span></div>
+                            </button>;
+                        })}
+                    </div>
+                </aside></div>,
+            preview: (                <main className="min-h-0 h-full overflow-auto bg-surface-secondary p-4"><p className="mb-2 text-xs text-text-tertiary">本地时间线预览 · 待生成镜头使用原图示意</p>
+                    <div className="flex h-full items-center justify-center">
+                        <div className="relative h-full max-h-[calc(100vh-350px)] overflow-hidden rounded-[18px] border-[6px] border-[#0D1117] bg-[#0D1117] shadow-[0_20px_50px_-24px_rgba(13,17,23,0.7)]" style={{ aspectRatio: `${project.canvas.width}/${project.canvas.height}` }}>
+                            {composition ? <Player ref={player} component={VideoMotionComposition} inputProps={{ composition: composition as RemotionCompositionConfig, runtime: 'preview' }} durationInFrames={composition.durationInFrames} fps={composition.fps} compositionWidth={composition.width} compositionHeight={composition.height} controls loop style={{ width: '100%', height: '100%' }} /> : <div className="flex h-full items-center justify-center text-xs text-white/60">暂无可预览镜头</div>}
+                            {douyinVersion && <div className="pointer-events-none absolute inset-0" aria-label="抖音竖屏安全区示意">
+                                <div className="absolute right-0 top-[20%] h-[58%] w-[17%] border-l border-white/50 bg-black/15" />
+                                <div className="absolute bottom-0 left-0 h-[20%] w-full border-t border-white/50 bg-black/20" />
+                                <span className="absolute bottom-[21%] left-2 rounded bg-black/60 px-1.5 py-0.5 text-[9px] text-white">抖音按钮／文案安全区示意</span>
+                            </div>}
+                        </div>
+                    </div>
+                </main>),
+        }} />
+    </ProductEditorContext.Provider>;
 }

@@ -22,7 +22,7 @@ function readInitialSidebarWidth(): number {
   return Number.isFinite(storedWidth) ? clampSidebarWidth(storedWidth) : SIDEBAR_DEFAULT_WIDTH;
 }
 
-export function useLayoutSidebar(onBeforeToggle?: () => void) {
+export function useLayoutSidebar(onBeforeToggle?: () => void, creationActive = false) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(readInitialSidebarCollapsed);
   const [sidebarWidth, setSidebarWidth] = useState(readInitialSidebarWidth);
   const [isSidebarAnimating, setIsSidebarAnimating] = useState(false);
@@ -32,11 +32,18 @@ export function useLayoutSidebar(onBeforeToggle?: () => void) {
   const sidebarResizeFrameRef = useRef<number | null>(null);
   const pendingSidebarWidthRef = useRef(sidebarWidth);
   const sidebarWidthPersistTimerRef = useRef<number | null>(null);
+  const previousCreation = useRef(false);
+  const restoreCollapsed = useRef(isSidebarCollapsed);
+  useEffect(() => {
+    if (creationActive && !previousCreation.current) { restoreCollapsed.current = isSidebarCollapsed; setIsSidebarCollapsed(true); }
+    if (!creationActive && previousCreation.current) setIsSidebarCollapsed(restoreCollapsed.current);
+    previousCreation.current = creationActive;
+  }, [creationActive]);
   const sidebarVisualCollapsed = isSidebarCollapsed || sidebarAnimationDirection === 'collapsing';
 
   useEffect(() => {
-    window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(isSidebarCollapsed));
-  }, [isSidebarCollapsed]);
+    if (!creationActive) window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(isSidebarCollapsed));
+  }, [isSidebarCollapsed, creationActive]);
 
   useEffect(() => {
     if (sidebarWidthPersistTimerRef.current !== null) {

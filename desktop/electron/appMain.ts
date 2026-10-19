@@ -1,3 +1,6 @@
+import { readCreationWorkspace, assertCreationTurn } from './core/creationWorkspaceStore';
+import { CreationTurnSchema } from '../shared/creationWorkspace';
+import { registerCreationWorkspaceIpc } from './core/creationWorkspaceIpc';
 import { getCachedPublicationStatuses, refreshPublicationStatuses, bindPublicationBrowser, listPublicationJobs, readPublicationJob, preparePublication, actOnPublication } from './core/unifiedPublisherService';
 import { readPublicationSource } from './core/publicationSource';
 import { recordCompletedPublication, recoverPublicationCompletions, dismissPublicationOffer } from './core/publicationCompletionService';
@@ -230,7 +233,7 @@ import { listXhsPublishJobs } from './db';
 import { assertProductPublicationTarget } from './core/productWorkVersionService';
 import { getProductProjectEditorSession, resolveProductNoteEditor, readProductProjectEditor, validateProductEditorBinding, applyProductProjectEdit, undoProductProjectEdit, syncProductEditorDraft, recoverProductProjectEdits } from './core/productProjectEditorService';
 import { registerDreamStoryIpc } from './core/dreamStoryIpc';
-import { readDreamStory, assertDreamRequest } from './core/dreamStoryStore';
+import { readDreamStory, assertDreamRequest, applyDreamEdit } from './core/dreamStoryStore';
 import { ProductProjectEditorRefSchema, ProductProjectEditRequestSchema, type ProductProjectEditorBinding, type ProductProjectEditorTurn } from '../shared/productProjectEditor';
 import { PRODUCT_CREATION_CAPABILITIES, PRODUCT_CREATION_PROFILES, PRODUCT_TARGET_RULES, ProductCreationTargetSchema, productTargetLabel } from '../shared/productCreationTarget';
 import { createProductTargetVariant, listProductWorkVariants, bindLegacyProductWorkTarget, reviewProductVariantCopy } from './core/productWorkVersionService';
@@ -617,7 +620,7 @@ function recoverActiveXhsSessionBinding(
 ): Record<string, unknown> {
   const session = getChatSession(sessionId);
   const metadata = parseChatSessionMetadata(session?.metadata);
-  if (metadata.editorBindingKind === 'dream-story') return metadata;
+  if (metadata.editorBindingKind === 'creation-workspace' || metadata.editorBindingKind === 'dream-story') return metadata;
   if (metadata.editorBindingKind === 'product-project' && metadata.productProjectEditorBinding) return metadata;
   const directCandidates = [explicitPath, metadata.activeXhsNotePath, metadata.activeXhsNoteUri];
   let activePath = directCandidates
@@ -6022,6 +6025,7 @@ ipcMain.handle('publication:bind', (_, payload) => publicationReply(() => { bind
 ipcMain.handle('publication:dismiss-offer', (_, payload) => publicationReply(() => { dismissPublicationOffer(String(payload?.id || '')); return {}; }));
 
 registerDreamStoryIpc();
+  registerCreationWorkspaceIpc();
 ipcMain.handle('product-project-editor:session', async (_, payload: { project: unknown; selectedId?: string }) => {
   try { return { success: true, ...await getProductProjectEditorSession(ProductProjectEditorRefSchema.parse(payload?.project), payload?.selectedId) }; }
   catch (error) { return { success: false, error: String(error) }; }
@@ -9305,22 +9309,31 @@ async function executeChatMessage(
         throw new Error(`请从 [继续编辑此作品](${uri}) 进入当前版本的工程编辑对话，发送前会保存手动输入。`);
       }
     }
+    if (sessionMeta.editorBindingKind === 'creation-workspace') {
+      const workspace = await readCreationWorkspace(String(sessionMeta.creationWorkspaceId || ''));
+      if (workspace.sessionId !== sessionId || workspace.spaceId !== sessionMeta.spaceId) throw new Error('创作会话绑定不一致');
+      const sent = CreationTurnSchema.parse(rawTaskHints.creationWorkspaceTurn); assertCreationTurn(workspace, sent);
+      Object.assign(effectiveTaskHints, { workflowKind: 'creation-workspace', creationWorkspaceTurn: sent, creationTarget: undefined, explicitProductRefs: [], explicitVideoClipRefs: [], skipSubagentOrchestration: true });
+      outgoingMessage += '\n请通过 creation_read 和 creation_edit 编辑当前作品，所有修改同步到作品编辑和效果预览。';
+    }
     const productEditorBinding = sessionMeta.productProjectEditorBinding as ProductProjectEditorBinding | undefined;
     const isProductProjectEditor = sessionMeta.editorBindingKind === 'product-project' && Boolean(productEditorBinding);
     const isDreamEditor = sessionMeta.editorBindingKind === 'dream-story';
     if (isDreamEditor) {
-      const project = await readDreamStory(String(sessionMeta.dreamStoryProjectId || ''), String(sessionMeta.spaceId || ''));
+      let project = await readDreamStory(String(sessionMeta.dreamStoryProjectId || ''), String(sessionMeta.spaceId || ''));
       const sent = rawTaskHints.dreamStoryTurn as import('../shared/dreamStory').DreamRequest | undefined;
       if (!sent || !sent.requestId) throw new Error('请从梦境工作台保存输入后发送');
       assertDreamRequest(project, sent);
       if (project.dreamStory.dirty || !project.dreamStory.target) throw new Error('请先保存输入并确认 TikTok 目标');
-      if (!project.dreamStory.director && !project.dreamStory.fragments.some(fragment => fragment.text.trim())) throw new Error('请先记下至少一个梦境片段');
+      if (!project.dreamStory.director && !project.dreamStory.fragments.some(fragment => fragment.text.trim())) {
+        project = await applyDreamEdit({ ...sent, operations: [{ type: 'record.save', fragments: [{ ...project.dreamStory.fragments[0], text: String(message || '').trim(), locked: false }], style: project.dreamStory.style }] });
+      }
       if (JSON.stringify({ fragments: project.dreamStory.fragments, director: project.dreamStory.director, captions: project.dreamStory.captions }).length > 48000) throw new Error('梦境上下文过长，请精简记录、故事或字幕后再请求模型');
-      const turn = { spaceId: project.dreamStory.spaceId, projectId: project.id, requestId: sent.requestId,
+      const turn = { editPolicy: sent.editPolicy === 'direct' ? 'direct' as const : 'candidate' as const, selectedSceneId: sent.selectedSceneId, spaceId: project.dreamStory.spaceId, projectId: project.id, requestId: sent.requestId,
         expectedRevision: project.dreamStory.revision, expectedDraftEpoch: project.dreamStory.draftEpoch, targetDigest: project.dreamStory.targetDigest };
       Object.assign(effectiveTaskHints, { workflowKind: project.dreamStory.director ? 'dream-story-edit' : 'dream-story-create', dreamStoryTurn: turn,
         privacyScope: 'project', creationTarget: undefined, explicitProductRefs: [], explicitVideoClipRefs: [], skipSubagentOrchestration: true });
-      outgoingMessage += '\n\n仅使用梦境领域工具读取并编辑当前工程。采用、媒体生成和发布通过工作台按钮单独确认。';
+      outgoingMessage += '\n\n仅使用梦境领域工具读取并编辑当前工程，尊重运行时 editPolicy。普通编辑直接同步；媒体生成和发布通过工作台按钮单独确认。';
     }
     if (isProductProjectEditor) {
       const sent = rawTaskHints.productProjectEditorTurn as ProductProjectEditorTurn | undefined;
@@ -9382,7 +9395,7 @@ async function executeChatMessage(
       outgoingMessage = buildGardenFlowAuthoringPrompt(outgoingMessage, gardenFlowAuthoringHints);
     }
 
-    const runtimeMode = isProductProjectEditor || isDreamEditor || String(sessionMeta.editorBindingKind || '').trim() === 'xiaohongshu-note'
+    const runtimeMode = sessionMeta.editorBindingKind === 'creation-workspace' || isProductProjectEditor || isDreamEditor || String(sessionMeta.editorBindingKind || '').trim() === 'xiaohongshu-note'
       ? 'gardenflow'
       : resolveRuntimeModeForSession(String(sessionMeta.contextType || ''));
     const routeAnalysis = getAgentRuntime().analyzeRuntimeContext({

@@ -2362,6 +2362,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
 
             <button
               type="submit"
+              aria-label="发送消息"
               disabled={submitDisabled}
               className={clsx('flex h-9 w-9 items-center justify-center rounded-full transition-all duration-200', sendButtonClass)}
             >

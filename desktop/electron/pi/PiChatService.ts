@@ -1108,6 +1108,7 @@ export class PiChatService {
               const edit = result.data as import('../../shared/productProjectEditor').ProductProjectEditResult;
               this.sendToUI('data:changed', { scope: edit.video ? 'video-editor-v2' : 'manuscripts', action: toolName, entityId: edit.video?.id || edit.imageSet?.relativePath });
             }
+            if (result.success && ['dream_story_propose', 'dream_story_edit'].includes(toolName)) { const turn = preparedTaskMetadata.dreamStoryTurn as import('../../shared/dreamStory').DreamRequest | undefined; if (turn) this.sendToUI('data:changed', { scope: 'video-editor-v2', action: toolName, entityId: turn.projectId }); }
             this.maybeRegisterArtifactFromRuntimeToolResult(toolName, result, command);
             if (toolName === 'xhs_publish_prepare') {
               const data = result.data && typeof result.data === 'object' ? result.data as Record<string, unknown> : {};
@@ -1264,7 +1265,7 @@ export class PiChatService {
           messages: runtimeMessages,
           userInputContent: runtimeUserInputContent,
           signal,
-          maxTurns,
+          maxTurns: preparedExecution.route.workflowKind === 'creation-workspace' ? Math.min(maxTurns, 8) : maxTurns,
           maxTimeMinutes: captureTask ? Math.max(maxTimeMinutes, 20) : maxTimeMinutes,
           temperature,
           toolPack: 'gardenflow',
@@ -1282,6 +1283,7 @@ export class PiChatService {
           generationToolConstraints: preparedTaskMetadata.generationToolConstraints,
           productImageSetEditing: preparedTaskMetadata.productImageSetEditing === true,
           productProjectEditorTurn: preparedTaskMetadata.productProjectEditorTurn as import('../../shared/productProjectEditor').ProductProjectEditorTurn | undefined,
+          creationWorkspaceTurn: preparedTaskMetadata.creationWorkspaceTurn as import('../../shared/creationWorkspace').CreationTurn | undefined,
           dreamStoryTurn: preparedTaskMetadata.dreamStoryTurn as import('../../shared/dreamStory').DreamRequest | undefined,
           maxCompletionRecoveryAttempts: captureTask ? 8 : undefined,
           completionContract: {
@@ -1292,7 +1294,9 @@ export class PiChatService {
       );
       const dreamTurn = preparedTaskMetadata.dreamStoryTurn as import('../../shared/dreamStory').DreamRequest | undefined;
       const dreamWorkflow = preparedExecution.route.workflowKind === 'dream-story-create' || preparedExecution.route.workflowKind === 'dream-story-edit';
-      const runResult = dreamWorkflow && dreamTurn ? await runInWorkspaceSpace(dreamTurn.spaceId, () => runtime.run(content)) : await runtime.run(content);
+      const creationTurn = preparedTaskMetadata.creationWorkspaceTurn as import('../../shared/creationWorkspace').CreationTurn | undefined;
+      const boundSpace = dreamWorkflow && dreamTurn ? dreamTurn.spaceId : creationTurn?.spaceId;
+      const runResult = boundSpace ? await runInWorkspaceSpace(boundSpace, () => runtime.run(content)) : await runtime.run(content);
       const finalResultError = runResult.error || '';
       if (finalResultError) {
         if (signal.aborted || finalResultError === 'Query runtime cancelled') {
@@ -1661,6 +1665,9 @@ export class PiChatService {
       if (!content) throw new Error('梦境导演技能加载失败');
       preparedSystemPrompt += `\n<forced_skill name="dream-story-director">\n${content}\n</forced_skill>`;
       if (emitSkillActivation) this.sendToUI('chat:skill-activated', { name: skill.name, description: skill.description });
+    }
+    if (preparedExecution.route.workflowKind === 'creation-workspace') {
+      preparedSystemPrompt += '\n<creation_workbench>当前为三栏创作工作台：左侧对话，中间作品编辑，右侧效果预览。先 creation_read 读取最新草稿和真实素材，再 creation_edit 保存用户要求的修改，保留其他字段。缺少商品或来源时可以保存不完整的文案与编排，再询问或请用户在作品编辑中选择。所有标题、正文、页面和分镜都必须保存到结构化草稿，不能只写在回复中。保存后简述已修改内容。不要生成媒体、执行文件操作、另建工程或发布；这些由工作台明确确认。混剪只使用 sources 提供的真实来源 ID、时长与截取范围，不编造画面理解。</creation_workbench>';
     }
     if (preparedExecution.route.workflowKind === 'product-project-edit') {
       const skill = this.skillManager.getSkill('product-project-editor');
@@ -2305,7 +2312,7 @@ ${skillContent}
     if (String(metadata.runtimeMode || '').trim() === 'background-maintenance') {
       return 'background-maintenance';
     }
-    if (['xiaohongshu-note', 'product-project', 'dream-story'].includes(String(metadata.editorBindingKind || '').trim())) return 'gardenflow';
+    if (['creation-workspace', 'xiaohongshu-note', 'product-project', 'dream-story'].includes(String(metadata.editorBindingKind || '').trim())) return 'gardenflow';
     if (String(metadata.mode || '').trim() === 'xiaohongshu-note-editing') return 'gardenflow';
     const contextType = String(metadata.contextType || '').trim().toLowerCase();
     if (contextType === 'gardenflow') return 'gardenflow';

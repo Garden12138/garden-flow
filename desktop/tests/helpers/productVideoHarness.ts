@@ -9,7 +9,7 @@ import type { ProductVideoProposal, VideoEditorV2Project } from '../../shared/vi
 
 // Real approval SQL, project/catalog/media stores and job registry; only host, router,
 // image/video providers and the TTS HTTP boundary are isolated from user data.
-export async function productVideoHarness(options: { platformVersions?: boolean; productImageSets?: boolean; publication?: boolean; dreamStory?: boolean } = {}) {
+export async function productVideoHarness(options: { platformVersions?: boolean; productImageSets?: boolean; publication?: boolean; dreamStory?: boolean; creationWorkspaces?: boolean } = {}) {
     const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'gardenflow-video-closeout-')));
     const source = await fs.readFile(new URL('../../electron/db.ts', import.meta.url), 'utf8');
     let sql = new DatabaseSync(path.join(root, 'approvals.db'));
@@ -45,6 +45,7 @@ export async function productVideoHarness(options: { platformVersions?: boolean;
             const workspaceContext = new AsyncLocalStorage();
             export const runInWorkspaceSpace = (spaceId, operation) => workspaceContext.run(spaceId, operation);
             const state = globalThis.__fixture; const db = globalThis.__fixtureDb;
+            export const updateChatSessionTitle = (id, title) => { const value = state.sessions.get(id); if (value) state.sessions.set(id, { ...value, title }); };
             export const updateChatSessionMetadata = (id, metadata) => state.sessions.set(id, { ...state.sessions.get(id), id, metadata: JSON.stringify(metadata) });
             export const getChatSession = id => state.sessions.get(id) || (id.startsWith('product_editor_') ? null : { id, metadata: '{}' });
             export const createChatSession = (id, title, metadata) => { const value = {id, title, metadata: JSON.stringify(metadata)}; state.sessions.set(id, value); return value; };
@@ -97,6 +98,7 @@ export async function productVideoHarness(options: { platformVersions?: boolean;
         })}; export const app = { isPackaged: false, getAppPath: () => ${JSON.stringify(path.resolve(import.meta.dirname, '../..'))} };`,
     };
     const exports = `export * from './electron/core/productProjectEditorService';
+        ${options.creationWorkspaces ? `export * from './electron/core/creationWorkspaceStore'; export * from './electron/core/tools/creationWorkspaceTools'; export * from './electron/core/tools/dreamStoryTools';` : ''}
         ${options.dreamStory ? `export * from './electron/core/dreamStoryStore'; export * from './electron/core/dreamStoryMediaService';
         export * from './electron/core/dreamStoryRenderService'; export * from './electron/core/dreamStoryTransferService';
         export * from './electron/core/dreamStoryPublicationSource'; export * from './electron/core/mediaLibraryStore';` : ''}

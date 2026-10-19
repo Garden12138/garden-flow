@@ -359,7 +359,7 @@ export const routeIntent = async (params: {
   signal?: AbortSignal;
 }): Promise<IntentRoute> => {
   const fallback = applyDreamStoryWorkflowPolicy(applyProductProjectEditWorkflowPolicy(applyProductImageSetWorkflowPolicy(applyXhsPublishWorkflowPolicy(applyProductVideoWorkflowPolicy(buildFallbackRoute(params.context), params.context), params.context), params.context), params.context), params.context);
-  if (fallback.workflowKind === 'product-project-edit' || isDreamWorkflow(fallback.workflowKind)) return fallback;
+  if (fallback.workflowKind === 'creation-workspace' || fallback.workflowKind === 'product-project-edit' || isDreamWorkflow(fallback.workflowKind)) return fallback;
   if (!params.llm?.apiKey || !params.llm.baseURL || !params.llm.model) {
     return { ...fallback, routingFailure: 'unavailable' };
   }

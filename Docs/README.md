@@ -6,6 +6,7 @@
 | --- | --- |
 | [首次创作](./FIRST_CREATION.md) / [English](./FIRST_CREATION_EN.md) | 导入公开资料、选择角度并保存第一篇介绍稿 |
 | [商品创作与发布](./PRODUCT_CREATION.md) | 平台选择、视频／套图工程、持续编辑、导出和两步发布 |
+| [三栏创作工作台](./CREATION_WORKBENCH.md) | 对话、作品编辑、效果预览与自动保存 |
 | [梦境故事](./DREAM_STORY.md) | 私密记录、八幕故事、画面与声音、导出及 TikTok Studio 手动发布 |
 | [使用手册](./USER_MANUAL.md) | 空间、采集、知识、灵感、创作、生成、自动化和隐私 |
 | [演示与示例](./DEMO.md) | 实际界面、示例输入与可查看的创作产物 |

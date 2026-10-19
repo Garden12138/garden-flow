@@ -133,6 +133,18 @@ export const GARDENFLOW_CREATION_MODE_GROUP: ChatComposerModeGroup = {
     ],
 };
 
+const CREATION_ENTRY_CAPABILITIES: Record<string, import('../../../shared/creationWorkspace').CreationCapability> = {
+    'xiaohongshu-image-note': 'note-image', 'xiaohongshu-video-note': 'note-video',
+    'xiaohongshu-image': 'note-image', 'xiaohongshu-video': 'note-video',
+    'xiaohongshu-product-video': 'product-video', 'douyin-product-video': 'product-video', 'tiktok-product-video': 'product-video',
+    'xiaohongshu-product-remix': 'product-remix', 'douyin-product-remix': 'product-remix', 'tiktok-product-remix': 'product-remix',
+    'xiaohongshu-product-image-set': 'product-image-set', 'tiktok-dream-story': 'dream-story',
+};
+for (const option of GARDENFLOW_CREATION_MODE_GROUP.options) {
+    const capability = CREATION_ENTRY_CAPABILITIES[option.id];
+    if (capability && option.platformId) option.onSelect = () => dispatchAppIntent({ type: 'creation.start', platform: option.platformId as import('../../../shared/productCreationTarget').ProductPlatform, capability });
+}
+
 export const GARDENFLOW_COMPOSER_SHORTCUT_INPUTS_BY_SCENE: Record<GardenFlowComposerShortcutScene, GardenFlowComposerShortcutInput[]> = {
     ...GARDENFLOW_ATTACHMENT_ACTIONS_BY_SCENE,
     empty_new_chat: GARDENFLOW_DEFAULT_COMPOSER_SHORTCUT_INPUTS,

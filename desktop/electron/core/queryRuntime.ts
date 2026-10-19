@@ -883,7 +883,7 @@ export class QueryRuntime {
         model: this.config.model,
         temperature: this.config.temperature ?? 0.5,
         messages,
-        tools: this.registry.getToolSchemas().filter((tool) => isDreamWorkflow(this.config.workflowKind) ? DREAM_STORY_TOOLS.includes(tool.function.name) : this.config.workflowKind === 'product-project-edit'
+        tools: this.registry.getToolSchemas().filter((tool) => this.config.workflowKind === 'creation-workspace' ? ['creation_read', 'creation_edit', 'creation_undo'].includes(tool.function.name) : isDreamWorkflow(this.config.workflowKind) ? DREAM_STORY_TOOLS.includes(tool.function.name) : this.config.workflowKind === 'product-project-edit'
           ? ['product_project_read', 'product_project_edit', 'product_project_undo'].includes(tool.function.name)
           : this.config.workflowKind !== 'xhs-publish' || isXhsPublishWorkflowTool(tool.function.name)),
       }),
@@ -989,6 +989,7 @@ export class QueryRuntime {
     if (['product_project_read', 'product_project_edit', 'product_project_undo'].includes(toolCall.name)) {
       effectiveArgs._editorTurn = this.config.workflowKind === 'product-project-edit' ? this.config.productProjectEditorTurn : undefined;
     }
+    if (['creation_read', 'creation_edit', 'creation_undo'].includes(toolCall.name)) effectiveArgs._creationTurn = this.config.workflowKind === 'creation-workspace' && this.config.creationWorkspaceTurn ? { ...this.config.creationWorkspaceTurn, requestId: toolCall.id } : undefined;
     const tool = this.registry.getTool(toolCall.name);
     if (DREAM_STORY_TOOLS.includes(toolCall.name)) effectiveArgs._dreamTurn = isDreamWorkflow(this.config.workflowKind) ? this.config.dreamStoryTurn : undefined;
     if (isDreamWorkflow(this.config.workflowKind) && toolCall.name === 'dream_story_propose') effectiveArgs._proposalAttempt = this.dreamProposalAttempts;
@@ -1150,6 +1151,10 @@ export class QueryRuntime {
       },
     );
 
+    if (this.config.workflowKind === 'creation-workspace' && response.result.success && response.result.data && this.config.creationWorkspaceTurn) {
+      const workspace = (response.result.data as { workspace?: import('../../shared/creationWorkspace').CreationWorkspace }).workspace;
+      if (workspace?.id === this.config.creationWorkspaceTurn.workspaceId) this.config.creationWorkspaceTurn = { ...this.config.creationWorkspaceTurn, expectedRevision: workspace.revision, expectedDraftEpoch: workspace.draftEpoch };
+    }
     const summarized = this.summarizeToolResult(toolCall.name, response.result);
     const persistedToolResult = this.toolResults.add({
       sessionId: this.config.sessionId,

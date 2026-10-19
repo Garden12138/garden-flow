@@ -1,3 +1,4 @@
+import { createCreationWorkspaceBridge } from './domains/creationWorkspaceBridge';
 import { createPublicationBridge } from './domains/publicationBridge';
 import { createDreamStoryBridge } from './domains/dreamStoryBridge';
 import { createBridgeCore } from './core';
@@ -86,6 +87,7 @@ function createIpcRenderer() {
     ...createXhsPublisherBridge(core),
     ...createPublicationBridge(core),
     ...createDreamStoryBridge(core),
+    ...createCreationWorkspaceBridge(core),
     ...createTeamRuntimeBridge(core),
     ...createSystemBridge(core),
   };

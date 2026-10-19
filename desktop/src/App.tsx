@@ -1,3 +1,7 @@
+import { flushCreationBeforeNavigate } from './features/workbench/creationNavigation';
+import { CreationWorkspaceHost } from './features/creation/CreationWorkspaceHost';
+import { GARDENFLOW_NAVIGATE_EVENT } from './notifications/types';
+import type { AppIntent } from './features/app-shell/types';
 import { useState, useEffect, useCallback, lazy, Suspense, type ReactNode } from 'react';
 import { FileText, Loader2, MessageSquareWarning } from 'lucide-react';
 import { AppDialogsHost } from './components/AppDialogsHost';
@@ -46,6 +50,8 @@ function ViewLoadingFallback() {
 }
 
 function AuthenticatedApp() {
+  const [activeCreationWorkspaceId, setActiveCreationWorkspaceId] = useState<string | null>(() => window.localStorage.getItem('gardenflow:active-creation'));
+  useEffect(() => { if (activeCreationWorkspaceId) window.localStorage.setItem('gardenflow:active-creation', activeCreationWorkspaceId); else window.localStorage.removeItem('gardenflow:active-creation'); }, [activeCreationWorkspaceId]);
   const {
     currentView,
     setCurrentView,
@@ -67,6 +73,23 @@ function AuthenticatedApp() {
   const [knowledgeTitleBarContent, setKnowledgeTitleBarContent] = useState<ReactNode>(null);
   const [approvalTargetDocketId, setApprovalTargetDocketId] = useState('');
   const [generationAssetPicker, setGenerationAssetPicker] = useState<GenerationAssetPickerRequest | null>(null);
+  useEffect(() => {
+    let active = true;
+    const handle = (event: Event) => {
+      const intent = (event as CustomEvent<AppIntent>).detail;
+      if (intent?.type === 'creation.start') {
+        void window.ipcRenderer.creationWorkspace.start({ platform: intent.platform, capability: intent.capability }).then(result => {
+          if (!active) return;
+          if (!result.success || !result.workspace) throw new Error(result.error || '创建作品失败');
+          setActiveManuscriptEditorFile(null); setActiveVideoProjectId(null); setActiveCreationWorkspaceId(result.workspace.id); setCurrentView('gardenflow');
+        }).catch(reason => { void import('./utils/appDialogs').then(({ appAlert }) => appAlert(String(reason))); });
+      } else if (intent?.type === 'creation.open') {
+        setActiveManuscriptEditorFile(null); setActiveVideoProjectId(null); setActiveCreationWorkspaceId(intent.workspaceId); setCurrentView('gardenflow');
+      } else if (intent?.type === 'manuscript.open' || intent?.type === 'video-project.open' || intent?.type === 'dream-story.new' || (intent?.type === 'gardenflow.open' && intent.action)) setActiveCreationWorkspaceId(null);
+    };
+    window.addEventListener(GARDENFLOW_NAVIGATE_EVENT, handle);
+    return () => { active = false; window.removeEventListener(GARDENFLOW_NAVIGATE_EVENT, handle); };
+  }, [setActiveManuscriptEditorFile, setActiveVideoProjectId, setCurrentView]);
 
   const {
     subjectsModalOpen,
@@ -146,15 +169,17 @@ function AuthenticatedApp() {
     handleCoverStudioExecutionStateChange,
   } = useExecutionPersistence(setViewPersistent);
 
+  const isCreationWorkspaceActive = currentView === 'gardenflow' && Boolean(activeCreationWorkspaceId) && !activeManuscriptEditorFile && !activeVideoProjectId;
   const isVideoProjectActive = currentView === 'gardenflow' && Boolean(activeVideoProjectId);
   const isManuscriptEditorActive = currentView === 'gardenflow' && Boolean(activeManuscriptEditorFile) && !isVideoProjectActive;
-  const effectiveImmersiveMode: ImmersiveMode = isManuscriptEditorActive || isVideoProjectActive ? false : immersiveMode;
+  const effectiveImmersiveMode: ImmersiveMode = isManuscriptEditorActive || isVideoProjectActive || isCreationWorkspaceActive ? false : immersiveMode;
 
   return (
     <>
       <Layout
         currentView={currentView}
-        onNavigate={navigateToView}
+        creationActive={isCreationWorkspaceActive || isVideoProjectActive || isManuscriptEditorActive}
+        onNavigate={(view) => { void flushCreationBeforeNavigate().then(() => { setActiveCreationWorkspaceId(null); navigateToView(view); }).catch(reason => { void import('./utils/appDialogs').then(({ appAlert }) => appAlert(String(reason))); }); }}
         immersiveMode={effectiveImmersiveMode}
         hideGlobalSidebar={currentView === 'settings'}
         globalSidebarContent={gardenFlowGlobalSidebarContent}
@@ -204,8 +229,9 @@ function AuthenticatedApp() {
                   mode,
                   source: 'standalone',
                 })}
-                onOpenManuscript={navigateToManuscript}
+                onOpenManuscript={(path) => { setActiveCreationWorkspaceId(null); navigateToManuscript(path); }}
                 onOpenVideoProject={(projectId) => {
+                  setActiveCreationWorkspaceId(null);
                   setActiveManuscriptEditorFile(null);
                   setActiveVideoProjectId(projectId);
                   setCurrentView('gardenflow');
@@ -228,10 +254,11 @@ function AuthenticatedApp() {
             </Suspense>
           </div>
         )}
+        {isCreationWorkspaceActive && activeCreationWorkspaceId && <CreationWorkspaceHost key={activeCreationWorkspaceId} workspaceId={activeCreationWorkspaceId} onClose={() => { void flushCreationBeforeNavigate().then(() => setActiveCreationWorkspaceId(null)); }} />}
         {isVideoProjectActive && activeVideoProjectId && (
           <div className="h-full min-h-0 flex flex-col overflow-hidden">
             <Suspense fallback={<ViewLoadingFallback />}>
-              <ProductVideoWorkbench projectId={activeVideoProjectId} onClose={() => setActiveVideoProjectId(null)} />
+              <ProductVideoWorkbench projectId={activeVideoProjectId} onClose={() => { void flushCreationBeforeNavigate().then(() => setActiveVideoProjectId(null)); }} />
             </Suspense>
           </div>
         )}
@@ -286,7 +313,7 @@ function AuthenticatedApp() {
           </div>
         )}
         {(currentView !== 'gardenflow' || shouldRenderView(mountedViews, currentView, persistentViews, 'gardenflow')) && (
-          <div className={currentView === 'gardenflow' && !isManuscriptEditorActive && !isVideoProjectActive ? 'h-full min-h-0 flex flex-col' : 'hidden'}>
+          <div className={currentView === 'gardenflow' && !isManuscriptEditorActive && !isVideoProjectActive && !isCreationWorkspaceActive ? 'h-full min-h-0 flex flex-col' : 'hidden'}>
             <Suspense fallback={currentView === 'gardenflow' ? <ViewLoadingFallback /> : null}>
               <GardenFlowPage
                 pendingMessage={pendingGardenFlowMessage}
@@ -299,10 +326,11 @@ function AuthenticatedApp() {
                 gardenflowOnboardingVersion={gardenflowOnboardingVersion}
                 onGlobalSidebarContentChange={setGardenFlowGlobalSidebarContent}
                 onTitleBarActionsChange={setGardenFlowTitleBarActions}
-                onOpenChatSurface={openGardenFlowChatSurface}
-                onOpenManuscriptEditor={navigateToManuscript}
+                onOpenChatSurface={() => { void flushCreationBeforeNavigate().then(() => { setActiveCreationWorkspaceId(null); openGardenFlowChatSurface(); }); }}
+                onOpenManuscriptEditor={(path) => { void flushCreationBeforeNavigate().then(() => { setActiveCreationWorkspaceId(null); navigateToManuscript(path); }); }}
                 activeManuscriptPath={activeManuscriptEditorFile}
                 activeVideoProjectId={isVideoProjectActive ? activeVideoProjectId : null}
+                activeCreationWorkspaceId={isCreationWorkspaceActive ? activeCreationWorkspaceId : null}
                 titleBarActive={currentView === 'gardenflow' && !isManuscriptEditorActive}
               />
             </Suspense>

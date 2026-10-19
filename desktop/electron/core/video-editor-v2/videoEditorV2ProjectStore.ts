@@ -1429,7 +1429,16 @@ export async function reduceProductVideoEditCommand(current: VideoEditorV2Projec
     const asset = project.assets.find((item) => item.id === selectedClip?.assetId);
     if (!selectedClip || !asset?.durationMs || selectedClip.sourceStartMs + durationMs! > asset.durationMs) throw new Error('镜头时长超出来源视频，请调整截取区间');
   }
-  if (command.type === 'music.remove') {
+  if (command.type === 'scene.duplicate') {
+    if (!selectedScene || !selectedClip || productVideo.scenes.length >= 8 || productVideo.scenes.some(scene => scene.id === command.newSceneId)) throw new Error('无法复制镜头：来源不存在、镜头已满或 ID 重复');
+    const scenes = [...productVideo.scenes];
+    scenes.splice(scenes.indexOf(selectedScene) + 1, 0, { ...selectedScene, id: command.newSceneId, title: selectedScene.title + ' · 副本', voiceoverAssetId: undefined, voiceoverJobId: undefined, voiceoverRequestId: undefined, voiceoverStatus: 'needs-configuration' });
+    const tracks = project.timeline.tracks.map(track => ({ ...track, clips: [...track.clips, ...(['primary-video', 'subtitle'].includes(track.kind) ? track.clips.filter(clip => clip.sceneId === command.sceneId).map(clip => ({ ...clip, id: clip.id + '_' + command.newSceneId, sceneId: command.newSceneId })) : [])] }));
+    project = reflowProductTimeline({ ...project, productVideo: { ...productVideo, scenes }, timeline: { ...project.timeline, tracks } }, scenes.map(scene => scene.id));
+  } else if (command.type === 'scene.title') {
+    if (!selectedScene) throw new Error('镜头不存在');
+    project = { ...project, productVideo: { ...productVideo, scenes: productVideo.scenes.map(scene => scene.id === command.sceneId ? { ...scene, title: command.title } : scene) } };
+  } else if (command.type === 'music.remove') {
     project = { ...project, timeline: { ...project.timeline, tracks: project.timeline.tracks.map((track) => track.kind === 'music' ? { ...track, clips: [] } : track) } };
   } else if (command.type === 'voiceover.remove') {
     if (!productVideo.scenes.some((scene) => scene.id === command.sceneId)) throw new Error('分镜不存在');

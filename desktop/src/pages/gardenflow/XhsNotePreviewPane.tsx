@@ -1,5 +1,8 @@
+import { mergeCreationDraft } from '../../../shared/mergeCreationDraft';
+import { CreationWorkbench } from '../../features/workbench/CreationWorkbench';
+import { useCreationAutosave } from '../../features/workbench/useCreationAutosave';
 import { ProductImageSetPane } from '../../components/manuscripts/ProductImageSetPane';
-import { useCallback, useEffect, useMemo, useState, type ReactNode, type VideoHTMLAttributes } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef, type ReactNode, type VideoHTMLAttributes } from 'react';
 import { AlertTriangle, Check, Copy, Download, Image as ImageIcon, Loader2, Pencil, RefreshCw, Save, Upload, Video } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { ChatMessageLinkTarget } from '../../components/MessageItem';
@@ -18,6 +21,9 @@ type PreviewTab = 'publish' | 'copy' | 'assets';
 
 interface XhsNotePreviewPaneProps {
     target: ChatMessageLinkTarget;
+    chat?: ReactNode;
+    actions?: ReactNode;
+    registerFlush?: (flush: () => Promise<unknown>) => () => void;
 }
 
 interface XhsBridgeResult extends Partial<XhsNoteProjectSnapshot> {
@@ -156,31 +162,41 @@ function parseSubtitleLines(value: string): XhsSubtitleItem[] {
     }).filter((item) => item.text);
 }
 
-function XhsNoteStandardPreviewPane({ target }: XhsNotePreviewPaneProps) {
-    const [tab, setTab] = useState<PreviewTab>('publish');
+function XhsNoteStandardPreviewPane({ target, chat, registerFlush, actions }: XhsNotePreviewPaneProps) {
+    const [tab, setTab] = useState<PreviewTab>(chat ? 'copy' : 'publish');
     const [document, setDocument] = useState<XhsNoteDocument | null>(target.xhsNote || null);
-    const [draft, setDraft] = useState<XhsNoteDocument | null>(target.xhsNote || null);
-    const [editing, setEditing] = useState(false);
+    const [draft, setDraftState] = useState<XhsNoteDocument | null>(target.xhsNote || null);
+    const draftRef = useRef(draft); const documentRef = useRef(document); const dirtyRef = useRef(false);
+    const undo = useRef<XhsNoteDocument[]>([]); const saving = useRef<Promise<void> | null>(null);
+    const [editEpoch, setEditEpoch] = useState(0); const sequence = useRef(0);
+    const setDraft = (value: XhsNoteDocument | null) => { sequence.current++; draftRef.current = value; dirtyRef.current = true; setDraftState(value); setEditEpoch(sequence.current); };
+
+    const [editing, setEditing] = useState(Boolean(chat));
     const [busy, setBusy] = useState<'save' | 'refresh' | 'export' | `upload:${string}` | null>(null);
     const [message, setMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
     const [activePageSlotId, setActivePageSlotId] = useState('cover');
+    const [selectedShotId, setSelectedShotId] = useState('');
+    const videoRef = useRef<HTMLVideoElement>(null);
+    useEffect(() => { const index = draft?.storyboard.findIndex(shot => shot.id === selectedShotId) ?? -1; if (index >= 0 && videoRef.current?.readyState) videoRef.current.currentTime = draft!.storyboard.slice(0, index).reduce((sum, shot) => sum + shot.durationSeconds, 0); }, [selectedShotId]);
 
     const projectPath = target.projectPath || target.localPathCandidate || target.href;
 
     const applySnapshot = useCallback((result: XhsBridgeResult) => {
         const next = result.xhsNote || result.document;
-        if (!next) return;
-        setDocument(next);
-        setDraft(next);
+        if (!next || dirtyRef.current || saving.current) return;
+        if (documentRef.current && documentRef.current.revision !== next.revision) undo.current = [...undo.current, documentRef.current].slice(-30);
+        documentRef.current = next; draftRef.current = next;
+        setDocument(next); setDraftState(next);
     }, []);
 
     useEffect(() => {
-        setDocument(target.xhsNote || null);
-        setDraft(target.xhsNote || null);
-        setEditing(false);
+        if (dirtyRef.current) return;
+        documentRef.current = target.xhsNote || null; draftRef.current = target.xhsNote || null;
+        setDocument(target.xhsNote || null); setDraftState(target.xhsNote || null);
+        setEditing(Boolean(chat));
         setMessage(null);
         setActivePageSlotId('cover');
-    }, [target.href, target.version, target.xhsNote]);
+    }, [target.href]);
 
     useEffect(() => subscribeDataChanged((_event, payload?: { scope?: string }) => {
         if (payload?.scope !== 'manuscripts' && payload?.scope !== 'media') return;
@@ -204,27 +220,37 @@ function XhsNoteStandardPreviewPane({ target }: XhsNotePreviewPaneProps) {
     };
 
     const save = async () => {
-        if (!draft || !document) return;
-        setBusy('save');
-        setMessage(null);
-        try {
-            const result = await window.ipcRenderer.manuscripts.saveXhsNote<XhsBridgeResult>({
-                path: projectPath,
-                document: draft,
-                expectedRevision: document.revision,
-            });
-            if (!result?.success) throw new Error(result?.error || '保存失败');
-            applySnapshot(result);
-            setEditing(false);
-            setMessage({ tone: 'success', text: `已保存版本 ${result.version || result.xhsNote?.revision || ''}` });
-        } catch (error) {
-            setMessage({ tone: 'error', text: error instanceof Error ? error.message : String(error) });
-        } finally {
-            setBusy(null);
-        }
+        if (saving.current) return saving.current;
+        if (!dirtyRef.current || !draftRef.current || !documentRef.current) return;
+        const editingEpoch = sequence.current; const previous = documentRef.current;
+        const operation = (async () => {
+            setBusy('save');
+            const result = await window.ipcRenderer.manuscripts.saveXhsNote<XhsBridgeResult>({ path: projectPath, document: draftRef.current!, expectedRevision: previous.revision });
+            const next = result.xhsNote || result.document;
+            if (!result.success || !next) throw new Error(result.error || '保存失败，输入已保留');
+            undo.current = [...undo.current, previous].slice(-30); documentRef.current = next; setDocument(next);
+            if (editingEpoch === sequence.current) { dirtyRef.current = false; draftRef.current = next; setDraftState(next); }
+            setEditing(Boolean(chat)); setMessage({ tone: 'success', text: '已保存，可撤销' });
+        })(); saving.current = operation;
+        try { await operation; } catch (reason) { setMessage({ tone: 'error', text: String(reason) }); throw reason; }
+        finally { saving.current = null; setBusy(null); }
     };
+    const saveRef = useRef(save); saveRef.current = save;
+    useEffect(() => registerFlush?.(async () => { await saveRef.current(); if (dirtyRef.current) throw new Error('输入尚未保存，请重试'); }), [registerFlush]);
+    const autoSave = useCreationAutosave(Boolean(chat) && dirtyRef.current, editEpoch, save);
+    useEffect(() => { if (autoSave.error) setMessage({ tone: 'error', text: autoSave.error }); }, [autoSave.error]);
 
+    const retryFromLatest = async () => {
+        try {
+            const result = await window.ipcRenderer.manuscripts.getXhsNote<XhsBridgeResult>(projectPath);
+            const latest = result.xhsNote || result.document;
+            if (!result.success || !latest || !documentRef.current || !draftRef.current) throw new Error(result.error || '读取最新版本失败');
+            const rebased = mergeCreationDraft(documentRef.current, draftRef.current, latest);
+            documentRef.current = latest; setDocument(latest); setDraft(rebased); await saveRef.current();
+        } catch (reason) { setMessage({ tone: 'error', text: String(reason) }); }
+    };
     const exportPackage = async () => {
+        await save();
         setBusy('export');
         setMessage(null);
         try {
@@ -309,15 +335,15 @@ function XhsNoteStandardPreviewPane({ target }: XhsNotePreviewPaneProps) {
     const publishUrl = publishMedia?.previewUrl ? resolveAssetUrl(publishMedia.previewUrl) : '';
     const coverUrl = coverSlot?.previewUrl ? resolveAssetUrl(coverSlot.previewUrl) : '';
 
-    return (
+    const editorPane = (
         <div className="flex h-full min-h-0 flex-col bg-surface-secondary/25">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-surface-primary px-4 py-3">
                 <div className="flex rounded-xl bg-surface-secondary p-1">
                     {([
                         ['publish', '发布预览'],
-                        ['copy', '可复制内容'],
+                        ['copy', '内容'],
                         ['assets', '素材'],
-                    ] as Array<[PreviewTab, string]>).map(([value, label]) => (
+                    ] as Array<[PreviewTab, string]>).filter(([value]) => !chat || value !== 'publish').map(([value, label]) => (
                         <button
                             key={value}
                             type="button"
@@ -353,6 +379,7 @@ function XhsNoteStandardPreviewPane({ target }: XhsNotePreviewPaneProps) {
                 </div>
             )}
 
+            {message?.tone === 'error' && dirtyRef.current && <button type="button" className="mx-4 rounded border border-border px-3 py-2 text-left text-xs" onClick={() => void retryFromLatest()}>保留手动修改，按最新版本重试保存</button>}
             <div className="min-h-0 flex-1 overflow-auto p-4">
                 {tab === 'publish' && (
                     <div className="mx-auto max-w-[460px]">
@@ -413,8 +440,9 @@ function XhsNoteStandardPreviewPane({ target }: XhsNotePreviewPaneProps) {
                         <label className="grid gap-1.5 text-xs font-medium text-text-secondary">封面文案<textarea className={textareaClass} value={draft.coverText} onChange={(event) => setDraft({ ...draft, coverText: event.target.value })} /></label>
                         <label className="grid gap-1.5 text-xs font-medium text-text-secondary">正文<textarea className={`${textareaClass} min-h-[180px]`} value={draft.body} onChange={(event) => setDraft({ ...draft, body: event.target.value })} /></label>
                         <label className="grid gap-1.5 text-xs font-medium text-text-secondary">标签（每行一个）<textarea className={textareaClass} value={draft.hashtags.join('\n')} onChange={(event) => setDraft({ ...draft, hashtags: splitLines(event.target.value).map((item) => item.replace(/^#+/, '')) })} /></label>
+                        {draft.noteType === 'image' && <button type="button" className="rounded border border-border p-2 text-xs" onClick={() => { const id = crypto.randomUUID(); setDraft({ ...draft, imagePages: [...draft.imagePages, { id, index: draft.imagePages.length + 1, title: '', copy: '', visualBrief: '', imagePrompt: '', mediaSlotId: 'page_' + id }] }); }}>添加页面</button>}
                         {draft.imagePages.map((page) => (
-                            <fieldset key={page.id} className="grid gap-3 rounded-xl border border-border p-4">
+                            <fieldset key={page.id} onFocus={() => setActivePageSlotId(page.mediaSlotId)} className="grid gap-3 rounded-xl border border-border p-4">
                                 <legend className="px-2 text-xs font-semibold text-text-primary">第 {page.index} 页</legend>
                                 <input className={inputClass} placeholder="页面标题" value={page.title} onChange={(event) => setDraft({ ...draft, imagePages: updatePage(draft.imagePages, page.id, { title: event.target.value }) })} />
                                 <textarea className={textareaClass} placeholder="页面文案" value={page.copy} onChange={(event) => setDraft({ ...draft, imagePages: updatePage(draft.imagePages, page.id, { copy: event.target.value }) })} />
@@ -424,8 +452,9 @@ function XhsNoteStandardPreviewPane({ target }: XhsNotePreviewPaneProps) {
                         ))}
                         {draft.noteType === 'video' && <label className="grid gap-1.5 text-xs font-medium text-text-secondary">口播稿<textarea className={`${textareaClass} min-h-[180px]`} value={draft.voiceover} onChange={(event) => setDraft({ ...draft, voiceover: event.target.value })} /></label>}
                         {draft.noteType === 'video' && <div className="grid grid-cols-2 gap-3"><label className="grid gap-1.5 text-xs font-medium text-text-secondary">时长（秒）<input type="number" min="1" className={inputClass} value={draft.durationSeconds} onChange={(event) => setDraft({ ...draft, durationSeconds: Number(event.target.value) || 0 })} /></label><label className="grid gap-1.5 text-xs font-medium text-text-secondary">比例<input className={inputClass} value={draft.aspectRatio} onChange={(event) => setDraft({ ...draft, aspectRatio: event.target.value })} /></label></div>}
+                        {draft.noteType === 'video' && <button type="button" className="rounded border border-border p-2 text-xs" onClick={() => setDraft({ ...draft, storyboard: [...draft.storyboard, { id: crypto.randomUUID(), index: draft.storyboard.length + 1, shot: '', durationSeconds: 5, visual: '', generationPrompt: '', voiceover: '', onScreenText: '' }] })}>添加镜头</button>}
                         {draft.noteType === 'video' && draft.storyboard.map((item) => (
-                            <fieldset key={item.id} className="grid gap-3 rounded-xl border border-border p-4">
+                            <fieldset key={item.id} onFocus={() => setSelectedShotId(item.id)} className="grid gap-3 rounded-xl border border-border p-4">
                                 <legend className="px-2 text-xs font-semibold text-text-primary">分镜 {item.index}</legend>
                                 <div className="grid grid-cols-[1fr_110px] gap-3"><input className={inputClass} placeholder="镜头名称" value={item.shot} onChange={(event) => setDraft({ ...draft, storyboard: updateStoryboard(draft.storyboard, item.id, { shot: event.target.value }) })} /><input type="number" min="0" className={inputClass} value={item.durationSeconds} onChange={(event) => setDraft({ ...draft, storyboard: updateStoryboard(draft.storyboard, item.id, { durationSeconds: Number(event.target.value) || 0 }) })} /></div>
                                 <textarea className={textareaClass} placeholder="画面" value={item.visual} onChange={(event) => setDraft({ ...draft, storyboard: updateStoryboard(draft.storyboard, item.id, { visual: event.target.value }) })} />
@@ -436,8 +465,8 @@ function XhsNoteStandardPreviewPane({ target }: XhsNotePreviewPaneProps) {
                         ))}
                         {draft.noteType === 'video' && <label className="grid gap-1.5 text-xs font-medium text-text-secondary">字幕（每行：开始秒 Tab 结束秒 Tab 文案）<textarea className={`${textareaClass} min-h-[160px] font-mono text-xs`} value={subtitleLines(draft.subtitles)} onChange={(event) => setDraft({ ...draft, subtitles: parseSubtitleLines(event.target.value) })} /></label>}
                         <div className="flex justify-end gap-2 border-t border-border pt-4">
-                            <button type="button" onClick={() => { setDraft(document); setEditing(false); }} disabled={Boolean(busy)} className="h-9 rounded-xl border border-border px-4 text-sm font-medium text-text-secondary hover:bg-surface-secondary">取消</button>
-                            <button type="button" onClick={() => void save()} disabled={Boolean(busy)} className="inline-flex h-9 items-center gap-2 rounded-xl bg-accent-primary px-4 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{busy === 'save' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}保存修改</button>
+                            <button type="button" onClick={() => { setDraft(document); setEditing(Boolean(chat)); }} disabled={Boolean(busy)} className="h-9 rounded-xl border border-border px-4 text-sm font-medium text-text-secondary hover:bg-surface-secondary">取消</button>
+                            <button type="button" onClick={() => void save().catch(() => undefined)} disabled={Boolean(busy)} className="inline-flex h-9 items-center gap-2 rounded-xl bg-accent-primary px-4 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{busy === 'save' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}保存修改</button>
                         </div>
                     </div>
                 )}
@@ -487,9 +516,23 @@ function XhsNoteStandardPreviewPane({ target }: XhsNotePreviewPaneProps) {
             </div>
         </div>
     );
+    const selectedPage = draft.imagePages.find(page => page.mediaSlotId === activePageSlotId) || draft.imagePages[0];
+    const selectedShot = draft.storyboard.find(shot => shot.id === selectedShotId) || draft.storyboard[0];
+    const localPreview = <div className="h-full space-y-4 overflow-y-auto bg-surface-secondary p-4">
+        <p className="text-xs text-text-tertiary">{dirtyRef.current ? '本地编辑预览 · 正在保存' : '已保存内容'}{publishMedia?.status === 'stale' ? ' · 媒体待更新' : ''}</p>
+        <div className="overflow-hidden rounded-xl border border-border bg-surface-primary"><div className="relative flex items-center justify-center bg-surface-secondary" style={{ aspectRatio: draft.noteType === 'video' ? draft.aspectRatio.replace(':', '/') : '3/4' }}>
+            {publishUrl ? document.noteType === 'video' ? <video ref={videoRef} src={publishUrl} controls className="h-full w-full object-contain" /> : <img src={publishUrl} alt="当前页面" className="h-full w-full object-contain" /> : <span className="p-5 text-center text-sm text-text-tertiary">{selectedShot?.visual || selectedPage?.visualBrief || '媒体待生成或上传'}</span>}
+            {draft.coverText && <p className="absolute inset-x-4 bottom-5 rounded bg-surface-primary/90 p-3 text-center font-semibold">{selectedPage?.title || draft.coverText}</p>}
+        </div><div className="space-y-3 p-4"><h2 className="font-semibold">{draft.finalTitle || '作品标题'}</h2><p className="whitespace-pre-wrap text-sm">{selectedShot?.onScreenText || selectedPage?.copy || draft.body}</p><p className="text-xs text-accent-primary">{draft.hashtags.map(tag => '#' + tag).join(' ')}</p></div></div>
+        <div className="flex flex-wrap gap-2">{draft.imagePages.map((page, index) => <button type="button" key={page.id} onClick={() => setActivePageSlotId(page.mediaSlotId)} className="rounded border border-border px-2 py-1 text-xs">第 {index + 1} 页</button>)}</div>
+    </div>;
+    return chat ? <CreationWorkbench adapter={{ id: projectPath, changeToken: document.revision, title: draft.finalTitle || '未命名笔记', subtitle: `小红书 · ${draft.noteType === 'video' ? '视频笔记' : '图文笔记'}`, status: dirtyRef.current ? '正在保存…' : '已保存', flush: async () => { await save(); if (dirtyRef.current) throw new Error('当前输入尚未保存'); }, chat, editor: editorPane, preview: localPreview,
+        actions: <>{actions}<button type="button" className="rounded border border-border px-2 py-1 text-xs" disabled={!undo.current.length || Boolean(busy)} onClick={() => { const previous = undo.current.pop(); if (previous) { setDraft(previous); void save().catch(() => undefined); } }}>撤销</button><button type="button" className="rounded border border-border px-2 py-1 text-xs" onClick={() => void exportPackage()}>导出素材包</button></>,
+    }} /> : editorPane;
+
 }
 
 export function XhsNotePreviewPane(props: XhsNotePreviewPaneProps) {
     const projectKey = props.target.projectPath || props.target.localPathCandidate || props.target.relativePath || props.target.href;
-    return props.target.xhsNote?.productImageSet ? <ProductImageSetPane key={projectKey} target={props.target} /> : <XhsNoteStandardPreviewPane {...props} />;
+    return props.target.xhsNote?.productImageSet ? <ProductImageSetPane key={projectKey} target={props.target} chat={props.chat} actions={props.actions} /> : <XhsNoteStandardPreviewPane {...props} />;
 }

@@ -1,4 +1,5 @@
-import { lazy, Suspense, useMemo } from 'react';
+import { appAlert } from '../../utils/appDialogs';
+import { lazy, Suspense, useMemo, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
 import type { ChatMessageLinkTarget } from '../MessageItem';
 import { XhsNotePreviewPane } from '../../pages/gardenflow/XhsNotePreviewPane';
@@ -15,6 +16,7 @@ interface XhsNoteWorkbenchProps {
   editorSessionMetadata?: Record<string, unknown> | null;
   chatFocusSignal?: number;
   isActive?: boolean;
+  onClose?: () => void;
 }
 
 function buildXhsEditorContext(target: ChatMessageLinkTarget): string {
@@ -22,7 +24,7 @@ function buildXhsEditorContext(target: ChatMessageLinkTarget): string {
   const noteType = target.noteType === 'video' ? '视频笔记' : '图文笔记';
   return [
     ...(target.xhsNote?.productImageSet ? ['当前是商品套图工程。页面标题、文案、图片 ID、布局和统一配色在 document.productImageSet.pages/style 中编辑，imagePages 和 mediaSlots 由系统投影。商品快照、素材清单和 render/generation 记录不可自行改写；付费图片生成由工作台按页确认，禁止直接 image_generate。'] : []),
-    '当前对话嵌入在小红书稿件工作台右侧，所有修改都作用于左侧当前打开的结构化笔记。',
+    '当前对话位于创作工作台左侧，所有修改作用于中间的作品编辑，右侧展示效果预览。',
     '每次修改前先用 manuscripts note-get 读取最新 revision；保存时使用 manuscripts note-save --expected-revision <刚读取的版本>，禁止用普通 Markdown 写入覆盖结构化工程。',
     `当前工程路径：${projectPath}`,
     `当前工程 URI：${target.uri || target.href}`,
@@ -39,7 +41,10 @@ export function XhsNoteWorkbench({
   editorSessionMetadata = null,
   chatFocusSignal = 0,
   isActive = false,
+  onClose,
 }: XhsNoteWorkbenchProps) {
+  const flushNote = useRef<() => Promise<unknown>>(async () => undefined);
+  const registerFlush = (flush: () => Promise<unknown>) => { flushNote.current = flush; return () => { flushNote.current = async () => undefined; }; };
   const projectPath = target.projectPath || target.localPathCandidate || target.relativePath || target.href;
   const isProduct = Boolean(target.xhsNote?.productImageSet);
   const productEditor = useProductEditor(isProduct ? { kind: 'image-set', path: projectPath } : null);
@@ -60,14 +65,10 @@ export function XhsNoteWorkbench({
 
   return (
     <ProductEditorContext.Provider value={isProduct ? productEditor : null}>
-    <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_420px] bg-surface-primary text-text-primary">
-      <section className="min-h-0 border-r border-border bg-surface-primary">
-        <XhsNotePreviewPane target={target} />
-      </section>
-      <aside data-product-project-editor-chat={isProduct ? '' : undefined} className="min-h-0 bg-surface-secondary/55">
+    <XhsNotePreviewPane target={target} registerFlush={registerFlush} actions={onClose && <button type="button" className="rounded border border-border px-2 py-1 text-xs" onClick={() => { void (async () => { if (isProduct) await productEditor.beforeSend(); else await flushNote.current(); onClose(); })().catch(reason => { void appAlert(String(reason)); }); }}>返回对话</button>} chat={(      <aside data-product-project-editor-chat={isProduct ? '' : undefined} className="h-full min-h-0 bg-surface-secondary/55">
         <div className="flex h-full min-h-0 flex-col">
           <div className="border-b border-border bg-surface-primary/70 px-3 py-2 text-[11px] leading-5 text-text-tertiary">
-            这是当前稿件的独立对话；原创作对话仍保留在“对话”列表中，关闭稿件编辑器即可返回。
+            对话修改会同步到作品编辑；发送前自动保存手动输入。
           </div>
           <div className="min-h-0 flex-1 overflow-hidden">
             {(isProduct ? productEditor.sessionId : editorChatSessionId && editorChatReady) ? (
@@ -75,7 +76,7 @@ export function XhsNoteWorkbench({
                 <ChatWorkspace
                   isActive={isActive}
                   fixedSessionId={(isProduct ? productEditor.sessionId : editorChatSessionId)!}
-                  beforeSend={isProduct ? productEditor.beforeSend : undefined}
+                  beforeSend={isProduct ? productEditor.beforeSend : async () => { await flushNote.current(); return {}; }}
                   keepComposerInputActive={isProduct}
                   showClearButton={false}
                   showWelcomeShortcuts={false}
@@ -112,8 +113,8 @@ export function XhsNoteWorkbench({
             )}
           </div>
         </div>
-      </aside>
-    </div>
+      </aside>)} />
+
     </ProductEditorContext.Provider>
   );
 }

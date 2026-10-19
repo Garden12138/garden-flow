@@ -1,3 +1,4 @@
+import { CreationReadTool, CreationEditTool, CreationUndoTool } from './creationWorkspaceTools';
 import { ProductImageSetComposeTool } from './productImageSetComposeTool';
 /**
  * Built-in Tools - 内置工具导出
@@ -68,7 +69,7 @@ const ensureBuiltinToolDescriptorsRegistered = (): void => {
     const register = (descriptor: Parameters<typeof registerBuiltinToolDescriptor>[0]) => {
         registerBuiltinToolDescriptor(descriptor);
     };
-    for (const Tool of [ProductProjectReadTool, ProductProjectEditTool, ProductProjectUndoTool, DreamStoryReadTool, DreamStoryEditTool, DreamStoryProposeTool]) {
+    for (const Tool of [CreationReadTool, CreationEditTool, CreationUndoTool, ProductProjectReadTool, ProductProjectEditTool, ProductProjectUndoTool, DreamStoryReadTool, DreamStoryEditTool, DreamStoryProposeTool]) {
         const tool = new Tool();
         register({ name: tool.name, displayName: tool.displayName, description: tool.description, kind: tool.kind,
             contexts: ['gardenflow'], visibility: 'public', requiresContext: null, create: () => new Tool() });

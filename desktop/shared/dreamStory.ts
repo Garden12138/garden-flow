@@ -10,7 +10,7 @@ export const DreamReferenceCropSchema = z.object({ x: z.number().min(0).lt(1), y
 export type DreamReferenceCrop = z.infer<typeof DreamReferenceCropSchema>;
 export interface DreamImageReference { assetId: string; role: string; crop?: DreamReferenceCrop; }
 export interface DreamFrozenReference extends DreamImageReference { sha256: string; contentSha256?: string; previewRelativePath?: string; }
-export const DreamFragmentSchema = z.object({ id: DreamIdSchema, text: Text, locked: z.boolean().default(false) }).strict();
+export const DreamFragmentSchema = z.object({ id: DreamIdSchema, text: z.string().max(12000), locked: z.boolean().default(false) }).strict();
 export const DreamCharacterSchema = z.object({ id: DreamIdSchema, description: Text,
     wardrobe: z.string().max(2000).optional(), props: z.string().max(2000).optional(),
     revision: z.number().int().positive().default(1), referenceAssetIds: z.array(DreamIdSchema).max(10).default([]), referenceCrops: z.record(DreamIdSchema, DreamReferenceCropSchema).optional() }).strict();
@@ -57,7 +57,7 @@ export interface DreamMediaBinding {
     status: 'queued' | 'generating' | 'ready' | 'stale' | 'failed' | 'interrupted' | 'unknown'; error?: string; durationMs?: number;
 }
 export interface DreamStoryVersion {
-    id: string; createdAt: string; label: string; director?: DreamDirectorPackage;
+    id: string; createdAt: string; label: string; director?: DreamDirectorPackage; manualDraft?: DreamManualDraft;
     target?: DreamStoryTarget; fragments: DreamFragment[];
     media?: DreamStoryDocument['media']; musicAssetId?: string; musicVolume?: number; voiceVolume?: number;
     captions?: DreamStoryDocument['captions']; style?: string; dreamDate?: string; emotion?: string;
@@ -67,12 +67,14 @@ export interface DreamStoryCandidate {
     id: string; basedOnRevision: string; draftEpoch: number; targetDigest: string;
     director: DreamDirectorPackage; createdAt: string; calls: number; adoptedAt?: string;
 }
+export const DreamManualDraftSchema = z.object({ title: z.string().max(200), story: z.string().max(12000), visualStyle: z.string().max(12000), setting: z.string().max(12000), scenes: z.array(z.object({ id: DreamIdSchema, visual: z.string().max(12000), imagePrompt: z.string().max(12000), narration: z.string().max(12000), plannedDurationMs: z.number().int().min(0).max(90000) }).strict()).length(8) }).strict();
+export type DreamManualDraft = z.infer<typeof DreamManualDraftSchema>;
 export interface DreamStoryDocument {
     schemaVersion: 1 | 2; spaceId: string; workId?: string; revision: string; draftEpoch: number; dirty: boolean;
     fragments: DreamFragment[]; dreamDate?: string; emotion?: string; fidelity: 'preserve-dream' | 'adapt-freely';
     style: string; target?: DreamStoryTarget; targetDigest?: string;
     stage: 'record' | 'story' | 'storyboard' | 'media' | 'export' | 'publish';
-    director?: DreamDirectorPackage; candidates: DreamStoryCandidate[]; versions: DreamStoryVersion[];
+    manualDraft?: DreamManualDraft; director?: DreamDirectorPackage; candidates: DreamStoryCandidate[]; versions: DreamStoryVersion[];
     storyAdopted: boolean; storyboardAdopted: boolean; recordReviewRequired?: boolean; storySyncRequired?: boolean;
     media: Record<string, { image?: DreamMediaBinding; audio?: DreamMediaBinding; video?: DreamMediaBinding }>;
     mediaCandidates?: Array<{ sceneId: string; kind: DreamMediaKind; assetId: string; inputDigest: string; jobId?: string }>;
@@ -82,6 +84,8 @@ export interface DreamStoryDocument {
     undo: DreamStoryVersion[]; provenance?: { kind: 'legacy-director-package'; digest: string };
 }
 export const DreamEditOperationSchema = z.discriminatedUnion('type', [
+    z.object({ type: z.literal('director.draft'), draft: DreamManualDraftSchema }).strict(),
+    z.object({ type: z.literal('director.initialize'), director: DreamDirectorPackageSchema }).strict(),
     z.object({ type: z.literal('record.save'), fragments: z.array(DreamFragmentSchema).min(1).max(100), dreamDate: z.string().max(40).optional(), emotion: z.string().max(1000).optional(), style: z.string().max(2000).optional() }).strict(),
     z.object({ type: z.literal('target.confirm'), target: DreamStoryTargetSchema }).strict(),
     z.object({ type: z.literal('story.update'), story: Text }).strict(),
@@ -100,7 +104,7 @@ export const DreamEditOperationSchema = z.discriminatedUnion('type', [
     z.object({ type: z.literal('captions.update'), captions: z.array(z.object({ sceneId: DreamIdSchema, text: z.string().max(2000), startMs: z.number().int().nonnegative(), endMs: z.number().int().positive() }).strict()).max(1000) }).strict(),
 ]);
 export type DreamEditOperation = z.infer<typeof DreamEditOperationSchema>;
-export const DreamRequestSchema = z.object({ spaceId: DreamIdSchema, projectId: DreamIdSchema, requestId: DreamIdSchema,
+export const DreamRequestSchema = z.object({ editPolicy: z.enum(['direct', 'candidate']).optional(), selectedSceneId: DreamIdSchema.optional(), spaceId: DreamIdSchema, projectId: DreamIdSchema, requestId: DreamIdSchema,
     expectedRevision: z.string().min(1).max(160), expectedDraftEpoch: z.number().int().nonnegative(), targetDigest: z.string().max(160).optional() }).strict();
 export const DreamEditRequestSchema = DreamRequestSchema.extend({ operations: z.array(DreamEditOperationSchema).min(1).max(40) });
 export type DreamRequest = z.infer<typeof DreamRequestSchema>;

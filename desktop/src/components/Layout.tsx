@@ -19,6 +19,7 @@ import { flowStageForView, WORKBENCH_NAVIGATION, type WorkbenchNavigationItem } 
 
 interface LayoutProps {
   children: ReactNode;
+  creationActive?: boolean;
   currentView: ViewType;
   onNavigate: (view: ViewType) => void;
   immersiveMode?: ImmersiveMode;
@@ -75,7 +76,7 @@ const STAGE_SUMMARY_KEYS: Partial<Record<ViewType, I18nKey>> = {
   'media-library': 'workbench.stage.media.summary',
   automation: 'workbench.stage.schedule.summary',
 };
-export function Layout({ children, currentView, onNavigate, immersiveMode = false, hideGlobalSidebar = false, globalNotice = null, globalSidebarContent, activeModalView, renderTitleBarContent, renderTitleBarActions }: LayoutProps) {
+export function Layout({ children, creationActive = false, currentView, onNavigate, immersiveMode = false, hideGlobalSidebar = false, globalNotice = null, globalSidebarContent, activeModalView, renderTitleBarContent, renderTitleBarActions }: LayoutProps) {
   const { t } = useI18n();
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const notificationDrawerOpen = useNotificationStore((state) => state.drawerOpen);
@@ -95,7 +96,7 @@ export function Layout({ children, currentView, onNavigate, immersiveMode = fals
     sidebarVisualCollapsed,
     toggleSidebarCollapsed,
     startSidebarResize,
-  } = useLayoutSidebar();
+  } = useLayoutSidebar(undefined, creationActive);
   const {
     spaces,
     activeSpaceId,
