@@ -71,7 +71,7 @@ async function run(){
   const project=await poll(async()=>{const list=await api('list');return list.projects.find(p=>p.dreamStory.fragments[0]?.text.includes('钥匙'));},'record autosave');state={projectId:project.id};assert.equal(modelCalls,0);
   await js('(()=>{const field=document.querySelector(\"select[aria-label=梦境制作模式]\");Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,\"value\").set.call(field,'+JSON.stringify(compositionMode)+');field.dispatchEvent(new Event(\"change\",{bubbles:true}));return true;})()');
   await click('确认目标并开始创作');await poll(async()=>api('read',{projectId:project.id}).then(r=>r.project.dreamStory.target&&r.project),'confirmed target');
-  await click('梦境导演');await poll(async()=>js('Boolean(document.querySelector("[data-dream-story-editor-chat] [contenteditable=true]"))'),'bound director chat');
+  await poll(async()=>js('Boolean(document.querySelector("[data-dream-story-editor-chat] [contenteditable=true]"))'),'bound director chat');
   await js('(()=>{const editor=document.querySelector("[data-dream-story-editor-chat] [contenteditable=true]");editor.focus();editor.textContent="请保留意象，创作故事与八幕分镜。";const range=document.createRange();range.selectNodeContents(editor);range.collapse(false);const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);editor.dispatchEvent(new InputEvent("input",{bubbles:true,inputType:"insertText",data:"请保留意象，创作故事与八幕分镜。"}));return true;})()');
   await pause(150);await js('document.querySelector("[data-dream-story-editor-chat] [contenteditable=true]").closest("form").requestSubmit();true');
   await poll(async()=>api('read',{projectId:project.id}).then(r=>r.project.dreamStory.candidates.length),'model candidate');assert.equal(modelCalls,2);

@@ -151,9 +151,12 @@ export async function saveDreamCandidate(turn: DreamRequest, value: unknown, cal
 export async function getDreamSession(projectId: string): Promise<{ sessionId: string; project: VideoEditorV2Project }> {
     const project = await readDreamStory(projectId);
     const contextId = `dream-story:${project.dreamStory.spaceId}:${project.id}`;
-    const session = getChatSessionByContext(contextId, 'dream-story') || createChatSession('dream_' + dreamDigest(contextId).slice(0, 28), project.title, {});
-    updateChatSessionMetadata(session.id, { contextId, contextType: 'dream-story', isContextBound: true, spaceId: project.dreamStory.spaceId,
-        editorBindingKind: 'dream-story', dreamStoryProjectId: project.id, privacyScope: 'project', workflowKind: 'dream-story-edit', executionProfile: 'artifact-authoring' });
+    const existing = getChatSessionByContext(contextId, 'dream-story');
+    const session = existing || createChatSession('dream_' + dreamDigest(contextId).slice(0, 28), project.title, {});
+    let metadata: Record<string, unknown> = {};
+    try { const parsed = JSON.parse(session.metadata || '{}'); if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) metadata = parsed; } catch { /* Repair the binding while retaining the session and its messages. */ }
+    updateChatSessionMetadata(session.id, { ...metadata, contextId, contextType: 'dream-story', isContextBound: true, spaceId: project.dreamStory.spaceId,
+        editorBindingKind: 'dream-story', dreamStoryProjectId: project.id, privacyScope: 'project', workflowKind: 'dream-story-edit', executionProfile: 'artifact-authoring' }, { touchUpdatedAt: !existing });
     return { sessionId: session.id, project };
 }
 export async function syncDreamTikTokVersion(project: VideoEditorV2Project & { dreamStory: DreamStoryDocument }, copy?: ProductPublicationCopy): Promise<void> {

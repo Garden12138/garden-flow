@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react';
-import { Archive, ChevronRight, Clock3, Edit3, FilePlus2, FileText, Folder, FolderOpen, FolderPlus, History, Loader2, MoreHorizontal, Pin, Plus, RefreshCw, Trash2, Users, X } from 'lucide-react';
+import { Archive, ChevronRight, Clock3, Edit3, FilePlus2, FileText, Folder, FolderOpen, FolderPlus, History, Loader2, Moon, MoreHorizontal, Pin, Plus, RefreshCw, Trash2, Users, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { appAlert, appConfirm } from '../../utils/appDialogs';
 
@@ -17,6 +17,7 @@ export interface GardenFlowHistoryListItem extends ContextChatSessionListItem {
     speakerLabel: string;
     advisorId?: string;
     roomId?: string;
+    dreamStoryProjectId?: string;
 }
 
 export type GardenFlowHistorySessionActivity = 'running' | 'unread-complete' | 'failed';
@@ -1316,6 +1317,7 @@ export function GardenFlowHistorySidebarSection({
                             return (
                                 <div
                                     key={session.id}
+                                    data-history-session-id={session.id}
                                     role="button"
                                     tabIndex={0}
                                     onClick={() => {
@@ -1350,6 +1352,7 @@ export function GardenFlowHistorySidebarSection({
                                                 'flex min-w-0 items-center gap-1.5 text-[13px] font-semibold leading-tight transition-colors',
                                                 isActive ? 'text-text-primary' : 'text-text-secondary group-hover:text-text-primary'
                                             )}>
+                                                {session.dreamStoryProjectId && <Moon className="h-3.5 w-3.5 shrink-0 text-text-tertiary" aria-label="梦境故事对话" />}
                                                 {isAutomationSession && (
                                                     <Clock3
                                                         className="h-3.5 w-3.5 shrink-0 text-text-tertiary/80"

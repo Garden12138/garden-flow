@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { flushSync } from 'react-dom';
-import { Check, ChevronDown, Clapperboard, Image as ImageIcon, Sparkles, Trash2, X } from 'lucide-react';
+import { ChevronDown, Sparkles, Trash2, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { toGardenFlowAssetUrl } from '../../shared/localAsset';
 import { supportsAttachmentKindDirectInput } from '../../shared/modelCapabilities';
@@ -52,6 +52,8 @@ import { subscribeRuntimeEventStream, type ToolConfirmRequestPayload } from '../
 import { dispatchAppIntent } from '../features/app-shell/appIntent';
 import { uiMeasure, uiTraceInteraction } from '../utils/uiDebug';
 import { useDocumentThemeMode } from '../hooks/useDocumentThemeMode';
+import { ChatCreationModePicker, type ChatComposerModeGroup } from '../components/ChatCreationModePicker';
+export type { ChatComposerModeGroup, ChatComposerModeOption, ChatComposerModeParameter } from '../components/ChatCreationModePicker';
 import { ChatDropOverlay } from './chat/ChatDropOverlay';
 import { ChatAttachmentActionOverlay } from './chat/ChatAttachmentActionOverlay';
 import { useChatAttachments } from './chat/useChatAttachments';
@@ -440,30 +442,6 @@ export interface ChatShortcutContext {
 }
 
 export type ChatShortcutProvider = ChatShortcut[] | ((context: ChatShortcutContext) => ChatShortcut[]);
-
-export interface ChatComposerModeParameter {
-  id: string;
-  label: string;
-  taskHintKey: string;
-  valueType?: 'string' | 'number';
-  defaultValue: string;
-  options: Array<{ value: string; label: string }>;
-}
-
-export interface ChatComposerModeOption {
-  id: string;
-  label: string;
-  description?: string;
-  placeholder?: string;
-  icon?: 'image' | 'video';
-  parameters?: ChatComposerModeParameter[];
-  taskHints: Record<string, unknown>;
-}
-
-export interface ChatComposerModeGroup {
-  label: string;
-  options: ChatComposerModeOption[];
-}
 
 interface EnsureSessionForSendOptions {
   onCreated?: (sessionId: string) => void;
@@ -1706,6 +1684,7 @@ export function Chat({
   ));
   const [composerDraftHydratedSessionId, setComposerDraftHydratedSessionId] = useState<string | null>(null);
   const [selectedComposerModeId, setSelectedComposerModeId] = useState<string | null>(null);
+  const [selectedComposerPlatformId, setSelectedComposerPlatformId] = useState<string | null>(null);
   const [composerModeParameterValues, setComposerModeParameterValues] = useState<Record<string, string>>({});
   const [isProcessing, setIsProcessing] = useState(false);
   const [confirmRequest, setConfirmRequest] = useState<ToolConfirmRequest | null>(null);
@@ -1799,7 +1778,6 @@ export function Chat({
     `chat-${Math.random().toString(36).slice(2, 8)}-${Date.now().toString(36)}`
   );
   const composerRef = useRef<ChatComposerHandle>(null);
-  const composerModeDetailsRef = useRef<HTMLDetailsElement>(null);
 
   const activeComposerMode = useMemo(() => (
     composerModeGroup?.options.find((option) => option.id === selectedComposerModeId) || null
@@ -4723,11 +4701,13 @@ export function Chat({
     const attachments = requestedAttachments.length > 0
       ? requestedAttachments
       : getPendingAttachments();
+    const isShortcutSubmission = Boolean(shortcutTaskHints);
+    shortcutTaskHints = shortcutTaskHints || activeComposerModeTaskHints;
     if (shortcutTaskHints?.productCreationSetup === true && !shortcutTaskHints.creationTarget) {
       if (productTargetPendingRef.current) return;
-      if (assetMentions.filter(item => item.referenceType === 'product').length !== 1) { setErrorNotice('商品创作需要选择一个主商品。'); return; }
+      if (assetMentions.filter(item => item.referenceType === 'product').length !== 1) { setErrorNotice('请先使用 @ 选择一个主商品，再开始商品创作。'); return; }
       productTargetPendingRef.current = true;
-      const selection = await new Promise<{ target: ProductCreationTarget; durationSeconds: number; pageCount: number; brief: string } | null>(resolve => setProductTargetRequest({ initialBrief: input, initial: { contentKind: shortcutTaskHints?.workflowKind === 'product-image-set-compose' ? 'image-set' : 'video', compositionMode: shortcutTaskHints?.productVideoCompositionMode === 'existing-clips' ? 'existing-clips' : 'product-images' }, resolve }));
+      const selection = await new Promise<{ target: ProductCreationTarget; durationSeconds: number; pageCount: number; brief: string } | null>(resolve => setProductTargetRequest({ initialBrief: isShortcutSubmission ? input.trim() || content : content, initial: { platform: ProductPlatformSchema.catch('xiaohongshu').parse(shortcutTaskHints?.platform || selectedComposerPlatformId), contentKind: shortcutTaskHints?.workflowKind === 'product-image-set-compose' ? 'image-set' : 'video', compositionMode: shortcutTaskHints?.productVideoCompositionMode === 'existing-clips' ? 'existing-clips' : 'product-images' }, resolve }));
       productTargetPendingRef.current = false;
       if (!selection) return;
       const target = selection.target;
@@ -4932,7 +4912,7 @@ export function Chat({
       modelConfig: resolvedModelConfig || getChatModelConfig(),
       taskHints: mergeSkillMentionsIntoTaskHints(
         mergeShortcutTaskHints(
-          mergeShortcutTaskHints(mergeShortcutTaskHints(fixedSessionTaskHints, savedEditorHints), activeComposerModeTaskHints),
+          mergeShortcutTaskHints(fixedSessionTaskHints, savedEditorHints),
           shortcutTaskHints,
         ),
         skillMentions,
@@ -5110,13 +5090,6 @@ export function Chat({
   const shortcutChipClass = darkEmbedded
     ? 'flex-shrink-0 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-white/62 transition-colors hover:border-white/20 hover:text-white disabled:opacity-50'
     : 'flex-shrink-0 rounded-full border border-border bg-surface-primary px-3 py-1.5 text-xs text-text-secondary transition-colors hover:border-accent-primary/30 hover:text-accent-primary disabled:opacity-50';
-  const composerModeTriggerClass = activeComposerMode
-    ? darkEmbedded
-      ? 'border-rose-300/35 bg-rose-300/10 text-rose-100 hover:bg-rose-300/15'
-      : 'border-accent-primary/35 bg-accent-primary/10 text-accent-primary hover:bg-accent-primary/15'
-    : darkEmbedded
-      ? 'border-white/10 bg-white/[0.03] text-white/62 hover:border-white/20 hover:text-white'
-      : 'border-border bg-surface-primary text-text-secondary hover:border-accent-primary/30 hover:text-accent-primary';
   const composerContextUsageButtonClass = darkEmbedded
     ? 'peer relative flex h-8 w-8 items-center justify-center rounded-full bg-transparent text-white/70 transition-opacity duration-200 hover:text-white/92 focus:outline-none'
     : 'peer relative flex h-8 w-8 items-center justify-center rounded-full bg-transparent text-[#65707d] transition-opacity duration-200 hover:text-[#4c5662] focus:outline-none';
@@ -5201,103 +5174,31 @@ export function Chat({
 
   const renderComposerModeControl = () => {
     if (!composerModeGroup || composerModeGroup.options.length === 0) return null;
-    return (
-      <details ref={composerModeDetailsRef} className="group relative shrink-0 text-left">
-        <summary
-          className={clsx(
-            'inline-flex h-8 cursor-pointer list-none select-none items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors [&::-webkit-details-marker]:hidden',
-            composerModeTriggerClass,
-          )}
-          title={activeComposerMode ? `已开启${activeComposerMode.label}笔记模式` : `选择${composerModeGroup.label}类型`}
-        >
-          <Sparkles className="h-3.5 w-3.5" strokeWidth={1.8} />
-          <span>{composerModeGroup.label}</span>
-          {activeComposerMode ? <span className="opacity-75">· {activeComposerMode.label}</span> : null}
-          <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" strokeWidth={1.8} />
-        </summary>
-        <div className={clsx(
-          'absolute bottom-full left-0 z-50 mb-2 w-[320px] max-w-[calc(100vw-2rem)] rounded-2xl border p-2 shadow-[0_18px_55px_-18px_rgba(0,0,0,0.35)] backdrop-blur-xl',
-          darkEmbedded
-            ? 'border-white/10 bg-[#171b20]/95'
-            : 'border-border bg-surface-primary/95',
-        )}>
-          <div className="px-2.5 pb-2 pt-1">
-            <div className={clsx('text-xs font-semibold', darkEmbedded ? 'text-white/88' : 'text-text-primary')}>
-              选择笔记类型
-            </div>
-            <div className={clsx('mt-1 text-[11px] leading-4', darkEmbedded ? 'text-white/42' : 'text-text-tertiary')}>
-              只需输入创作想法，标题、正文和内容方案会自动补齐。
-            </div>
-          </div>
-          <div className="space-y-1">
-            {composerModeGroup.options.map((option) => {
-              const selected = option.id === activeComposerMode?.id;
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedComposerModeId(option.id);
-                    setComposerModeParameterValues(Object.fromEntries(
-                      (option.parameters || []).map((parameter) => [parameter.id, parameter.defaultValue]),
-                    ));
-                    composerModeDetailsRef.current?.removeAttribute('open');
-                    requestAnimationFrame(() => composerRef.current?.focus());
-                  }}
-                  className={clsx(
-                    'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors',
-                    selected
-                      ? darkEmbedded
-                        ? 'bg-rose-300/10 text-rose-100'
-                        : 'bg-accent-primary/10 text-accent-primary'
-                      : darkEmbedded
-                        ? 'text-white/72 hover:bg-white/[0.06] hover:text-white'
-                        : 'text-text-secondary hover:bg-surface-secondary hover:text-text-primary',
-                  )}
-                >
-                  <span className={clsx(
-                    'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
-                    selected
-                      ? darkEmbedded ? 'bg-rose-300/10' : 'bg-accent-primary/10'
-                      : darkEmbedded ? 'bg-white/[0.05]' : 'bg-surface-secondary',
-                  )}>
-                    {option.icon === 'video'
-                      ? <Clapperboard className="h-4 w-4" strokeWidth={1.8} />
-                      : <ImageIcon className="h-4 w-4" strokeWidth={1.8} />}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-xs font-semibold">{option.label}</span>
-                    {option.description ? (
-                      <span className={clsx('mt-0.5 block text-[11px] leading-4', selected ? 'opacity-70' : 'text-text-tertiary')}>
-                        {option.description}
-                      </span>
-                    ) : null}
-                  </span>
-                  {selected ? <Check className="h-4 w-4 shrink-0" strokeWidth={2} /> : null}
-                </button>
-              );
-            })}
-          </div>
-          {activeComposerMode ? (
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedComposerModeId(null);
-                setComposerModeParameterValues({});
-                composerModeDetailsRef.current?.removeAttribute('open');
-                requestAnimationFrame(() => composerRef.current?.focus());
-              }}
-              className={clsx(
-                'mt-1 w-full rounded-lg px-3 py-2 text-left text-[11px] transition-colors',
-                darkEmbedded ? 'text-white/42 hover:bg-white/[0.05] hover:text-white/72' : 'text-text-tertiary hover:bg-surface-secondary hover:text-text-secondary',
-              )}
-            >
-              退出小红书创作模式
-            </button>
-          ) : null}
-        </div>
-      </details>
-    );
+    return <ChatCreationModePicker
+      group={composerModeGroup}
+      platformId={selectedComposerPlatformId}
+      activeModeId={selectedComposerModeId}
+      dark={darkEmbedded}
+      disabled={isProcessing}
+      onPlatformChange={(id) => {
+        setSelectedComposerPlatformId(id);
+        setSelectedComposerModeId(null);
+        setComposerModeParameterValues({});
+      }}
+      onSelect={(option) => {
+        setSelectedComposerModeId(option.id);
+        setComposerModeParameterValues(Object.fromEntries(
+          (option.parameters || []).map((parameter) => [parameter.id, parameter.defaultValue]),
+        ));
+        requestAnimationFrame(() => composerRef.current?.focus());
+      }}
+      onClear={() => {
+        setSelectedComposerPlatformId(null);
+        setSelectedComposerModeId(null);
+        setComposerModeParameterValues({});
+        requestAnimationFrame(() => composerRef.current?.focus());
+      }}
+    />;
   };
 
   const renderComposerModeParameters = () => {
@@ -5880,6 +5781,6 @@ export function Chat({
   );
 }
 import { ProductCreationSetup } from '../components/product-video/ProductCreationSetup';
-import type { ProductCreationSelection, ProductCreationTarget } from '../../shared/productCreationTarget';
+import { ProductPlatformSchema, type ProductCreationSelection, type ProductCreationTarget } from '../../shared/productCreationTarget';
 import { VideoRemixSourcePicker } from '../components/product-video/VideoRemixSourcePicker';
 import type { ProductVideoClipReference } from '../../shared/productVideoRemix';

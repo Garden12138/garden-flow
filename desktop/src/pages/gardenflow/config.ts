@@ -1,5 +1,7 @@
 import type { ChatComposerModeGroup, ChatShortcut, ChatShortcutContext } from '../Chat';
 import { APP_BRAND } from '../../config/brand';
+import { PRODUCT_PLATFORM_LABELS } from '../../../shared/productCreationTarget';
+import { dispatchAppIntent } from '../../features/app-shell/appIntent';
 import type { ScheduleDraft, ScheduleTemplate } from './types';
 import {
     GARDENFLOW_ATTACHMENT_ACTIONS_BY_SCENE,
@@ -34,11 +36,13 @@ export const GARDENFLOW_DEFAULT_COMPOSER_SHORTCUT_INPUTS: GardenFlowComposerShor
     { label: '演示卡片', text: '请把一个产品、方法或案例做成小红书/短图文风格的演示卡片。请先设计演示路径，再输出封面、步骤页、对比页、总结页的内容结构、页面文案、视觉风格和生成提示词。' },
 ];
 
-export const GARDENFLOW_XHS_COMPOSER_MODE_GROUP: ChatComposerModeGroup = {
-    label: '小红书卡片',
+export const GARDENFLOW_CREATION_MODE_GROUP: ChatComposerModeGroup = {
+    label: '选择平台',
+    platforms: Object.entries(PRODUCT_PLATFORM_LABELS).map(([id, label]) => ({ id, label })),
     options: [
         {
             id: 'xiaohongshu-image-note',
+            platformId: 'xiaohongshu',
             label: '图文笔记',
             description: '5 个标题、正文、标签、封面文案和 6 页图文方案',
             placeholder: '输入一个选题或想法，例如：租房卧室的低成本改造',
@@ -58,6 +62,7 @@ export const GARDENFLOW_XHS_COMPOSER_MODE_GROUP: ChatComposerModeGroup = {
         },
         {
             id: 'xiaohongshu-video-note',
+            platformId: 'xiaohongshu',
             label: '视频笔记',
             description: '标题、正文、标签、封面文案、口播稿、分镜和字幕',
             placeholder: '输入一个视频想法，例如：讲清新手如何挑咖啡豆',
@@ -99,6 +104,31 @@ export const GARDENFLOW_XHS_COMPOSER_MODE_GROUP: ChatComposerModeGroup = {
                 deferredDiscovery: false,
                 teamEscalation: 'disabled',
             },
+        },
+        ...Object.entries(PRODUCT_PLATFORM_LABELS).flatMap(([platform, label]) => [
+            {
+                id: `${platform}-product-video`, platformId: platform, label: '商品视频',
+                description: `使用 @ 选择商品，为${label}编排原图视频；发送前确认规格`,
+                placeholder: '使用 @ 选择一个商品，再输入卖点、风格和创作要求', icon: 'video' as const,
+                taskHints: { productCreationSetup: true, platform, workflowKind: 'product-video-compose', productVideoCompositionMode: 'product-images' },
+            },
+            {
+                id: `${platform}-product-remix`, platformId: platform, label: '已有视频混剪',
+                description: '使用 @ 选择商品，发送时选择已有视频片段并确认规格',
+                placeholder: '使用 @ 选择一个商品，再描述希望如何混剪已有视频', icon: 'video' as const,
+                taskHints: { productCreationSetup: true, platform, workflowKind: 'product-video-compose', productVideoCompositionMode: 'existing-clips' },
+            },
+            ...(platform === 'xiaohongshu' ? [{
+                id: 'xiaohongshu-product-image-set', platformId: platform, label: '商品套图',
+                description: '使用 @ 选择商品，制作含封面的 3:4 商品套图',
+                placeholder: '使用 @ 选择一个商品，再描述套图的卖点与风格', icon: 'image' as const,
+                taskHints: { productCreationSetup: true, platform, workflowKind: 'product-image-set-compose' },
+            }] : []),
+        ]),
+        {
+            id: 'tiktok-dream-story', platformId: 'tiktok', label: '梦境故事', icon: 'moon',
+            description: '记录梦境，和导演对话创作故事、八幕分镜与竖屏短片',
+            taskHints: {}, onSelect: () => dispatchAppIntent({ type: 'dream-story.new' }),
         },
     ],
 };
@@ -150,7 +180,7 @@ export function createGardenFlowComposerShortcutsForContext(context: ChatShortcu
         action: 'send', taskHints: { productCreationSetup: true, workflowKind: 'product-image-set-compose', productImageSetCount: 5, platform: 'xiaohongshu', xhsNoteType: 'image' },
     }, {
         label: '视频混剪', text: '请使用我选择的已有视频为当前商品规划混剪，明确每个片段的来源、截取起止、顺序和屏幕文字，先提交人工确认。不要生成新的媒体。',
-        action: 'send', taskHints: { productCreationSetup: true, workflowKind: 'product-video-compose', productVideoCompositionMode: 'existing-clips', platform: 'xiaohongshu', xhsNoteType: 'video' },
+        action: 'send', taskHints: { productCreationSetup: true, workflowKind: 'product-video-compose', productVideoCompositionMode: 'existing-clips' },
     }, ...shortcuts];
     return shortcuts;
 }

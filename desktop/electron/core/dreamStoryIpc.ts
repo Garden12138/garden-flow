@@ -21,7 +21,11 @@ export function registerDreamStoryIpc(): void {
     handle('dream-story:list', async () => ({ projects: (await listVideoEditorV2Projects()).filter(project => project.projectKind === 'dream-story') }));
     handle('dream-story:edit', async input => ({ project: await applyDreamEdit(input) }));
     handle('dream-story:draft', async input => { DreamIdSchema.parse(input.projectId); if (typeof input.dirty !== 'boolean') throw new Error('草稿状态无效'); return { project: await markDreamDraft(input.projectId, input.dirty) }; });
-    handle('dream-story:session', async input => getDreamSession(input.projectId));
+    handle('dream-story:session', async (input, event) => {
+        const result = await getDreamSession(input.projectId);
+        if (!event.sender.isDestroyed()) event.sender.send('data:changed', { scope: 'chat-sessions', action: 'dream-story.session', entityId: result.sessionId });
+        return result;
+    });
     handle('dream-story:batch-preview', async input => ({ batch: await previewDreamBatch(input) }));
     handle('dream-story:batch-confirm', async input => ({ batch: await confirmDreamBatch(input) }));
     handle('dream-story:batch-cancel', async input => { await cancelDreamBatch(input.projectId, input.batchId); return { project: await readDreamStory(input.projectId) }; });

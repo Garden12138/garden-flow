@@ -302,6 +302,7 @@ function AuthenticatedApp() {
                 onOpenChatSurface={openGardenFlowChatSurface}
                 onOpenManuscriptEditor={navigateToManuscript}
                 activeManuscriptPath={activeManuscriptEditorFile}
+                activeVideoProjectId={isVideoProjectActive ? activeVideoProjectId : null}
                 titleBarActive={currentView === 'gardenflow' && !isManuscriptEditorActive}
               />
             </Suspense>

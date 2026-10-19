@@ -59,3 +59,20 @@ test('publication copy updates the native version once and recovery preserves it
     assert.equal(h.api.getTikTokVideoVersionByProject(project.id).revision, version.revision);
     assert.equal(h.api.getStoryProjectOperation('default', project.id, 'copy-crash').state, 'committed');
 });
+
+
+test('reopening a dream reuses its conversation and preserves history preferences and messages', async t => {
+    const h = await productVideoHarness({ dreamStory: true }); t.after(() => h.close());
+    const project = await h.api.createDreamStory();
+    const first = await h.api.getDreamSession(project.id);
+    const session = h.state.sessions.get(first.sessionId);
+    session.metadata = JSON.stringify({ ...JSON.parse(session.metadata), starred: true, archived: true, unread: true });
+    h.state.messages.push({ id: 'dream-history-message', session_id: first.sessionId, role: 'user', content: '记住海边的灯。' });
+    const reopened = await h.api.getDreamSession(project.id);
+    assert.equal(reopened.sessionId, first.sessionId);
+    assert.equal(h.state.sessions.size, 1);
+    const metadata = JSON.parse(h.state.sessions.get(first.sessionId).metadata);
+    assert.equal(metadata.starred, true); assert.equal(metadata.archived, true); assert.equal(metadata.unread, true);
+    assert.equal(metadata.privacyScope, 'project'); assert.equal(metadata.dreamStoryProjectId, project.id);
+    assert.equal(h.state.messages[0].content, '记住海边的灯。');
+});

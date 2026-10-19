@@ -1,6 +1,9 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { DreamStoryEntry } from '../components/dream-story/DreamStoryEntry';
+import { dreamStorySessionProjectId } from '../../shared/dreamStorySession';
+import { dispatchAppIntent } from '../features/app-shell/appIntent';
+import { subscribeDataChanged } from '../bridge/appEvents';
 import { Bot, Image as ImageIcon, Loader2, PanelRight, Plus, Sparkles, SlidersHorizontal, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { APP_BRAND } from '../config/brand';
@@ -23,7 +26,7 @@ import {
     GARDENFLOW_CONTEXT_TYPE,
     GARDENFLOW_DISPLAY_NAME,
     GARDENFLOW_WELCOME_ICON_SRC,
-    GARDENFLOW_XHS_COMPOSER_MODE_GROUP,
+    GARDENFLOW_CREATION_MODE_GROUP,
     RUNNER_INTERVAL_OPTIONS,
     RUNNER_MAX_AUTOMATION_OPTIONS,
     SCHEDULE_TEMPLATES,
@@ -231,6 +234,7 @@ interface GardenFlowProps {
     onOpenChatSurface?: () => void;
     onOpenManuscriptEditor?: (filePath: string) => void;
     activeManuscriptPath?: string | null;
+    activeVideoProjectId?: string | null;
     titleBarActive?: boolean;
 }
 
@@ -559,6 +563,7 @@ export function GardenFlow({
     onOpenChatSurface,
     onOpenManuscriptEditor,
     activeManuscriptPath = null,
+    activeVideoProjectId = null,
     titleBarActive = false,
 }: GardenFlowProps) {
     const debugUi = useCallback((event: string, extra?: Record<string, unknown>) => {
@@ -951,12 +956,14 @@ export function GardenFlow({
                     const isExternal = String(metadata.source || '').trim() === 'acp';
                     const isCurrentGardenFlowContext = metadata.contextId === contextId
                         && metadata.contextType === GARDENFLOW_CONTEXT_TYPE;
-                    if (!isExternal && !isCurrentGardenFlowContext) return [];
+                    const dreamProjectId = dreamStorySessionProjectId(metadata, activeSpaceId);
+                    if (!isExternal && !isCurrentGardenFlowContext && !dreamProjectId) return [];
                     return [{
                         ...createContextSessionListItem(session),
                         archived: true,
                         surface: isExternal ? 'external' : 'gardenflow',
-                        speakerLabel: isExternal ? 'External Agent' : GARDENFLOW_DISPLAY_NAME,
+                        speakerLabel: isExternal ? 'External Agent' : dreamProjectId ? '梦境导演' : GARDENFLOW_DISPLAY_NAME,
+                        dreamStoryProjectId: dreamProjectId || undefined,
                     }];
                 })
                 .sort((left, right) => sessionUpdatedAtMs(right) - sessionUpdatedAtMs(left));
@@ -1051,7 +1058,8 @@ export function GardenFlow({
             ...sessionList.map((session): GardenFlowHistoryListItem => ({
                 ...session,
                 surface: 'gardenflow',
-                speakerLabel: GARDENFLOW_DISPLAY_NAME,
+                speakerLabel: dreamStorySessionProjectId(session.metadata, activeSpaceId) ? '梦境导演' : GARDENFLOW_DISPLAY_NAME,
+                dreamStoryProjectId: dreamStorySessionProjectId(session.metadata, activeSpaceId) || undefined,
             })),
             ...externalAgentSessions.map((session): GardenFlowHistoryListItem => ({
                 ...session,
@@ -1059,7 +1067,10 @@ export function GardenFlow({
                 speakerLabel: 'External Agent',
             })),
         ].sort((left, right) => sessionUpdatedAtMs(right) - sessionUpdatedAtMs(left))
-    ), [externalAgentSessions, sessionList]);
+    ), [activeSpaceId, externalAgentSessions, sessionList]);
+    const historyActiveSessionId = activeVideoProjectId
+        ? unifiedHistorySessions.find(session => session.dreamStoryProjectId === activeVideoProjectId)?.id || null
+        : activeAiSurface === 'room' ? null : activeSessionId;
     const activeChatSessionId = activeAiSurface === 'room' ? null : activeSessionId;
     useEffect(() => {
         if (isActive && activeChatSessionId) {
@@ -1189,12 +1200,18 @@ export function GardenFlow({
 
         try {
             const contextId = buildGardenFlowContextId(nextActiveSpaceId);
-            const listResult = await uiMeasure('gardenflow', 'sessions:list_context', async () => (
-                window.ipcRenderer.chat.listContextSessionsGuarded<ContextChatSessionListItem>({
-                    contextId,
-                    contextType: GARDENFLOW_CONTEXT_TYPE,
-                })
-            ), { activeSpaceId: nextActiveSpaceId, spaceName: nextSpaceName }) as ContextChatSessionListItem[];
+            const [listResult, sessions] = await Promise.all([
+                uiMeasure('gardenflow', 'sessions:list_context', async () => (
+                    window.ipcRenderer.chat.listContextSessionsGuarded<ContextChatSessionListItem>({
+                        contextId,
+                        contextType: GARDENFLOW_CONTEXT_TYPE,
+                    })
+                ), { activeSpaceId: nextActiveSpaceId, spaceName: nextSpaceName }) as Promise<ContextChatSessionListItem[] | null>,
+                (window.ipcRenderer.chat.getSessions() as Promise<ChatSession[]>).catch(error => {
+                    console.error('Failed to load dream conversation history:', error);
+                    return [] as ChatSession[];
+                }),
+            ]);
 
             if (requestId !== sessionRequestIdRef.current) return;
             if (listResult == null) {
@@ -1209,7 +1226,11 @@ export function GardenFlow({
                 return;
             }
 
-            let items = sortContextSessionItems(listResult.filter((item) => {
+            const dreamItems = sessions
+                .filter(session => dreamStorySessionProjectId(session.metadata, nextActiveSpaceId))
+                .map(createContextSessionListItem);
+            const uniqueItems = new Map([...listResult, ...dreamItems].map(item => [item.id, item]));
+            let items = sortContextSessionItems([...uniqueItems.values()].filter((item) => {
                 const metadata = item.metadata && typeof item.metadata === 'object' && !Array.isArray(item.metadata)
                     ? item.metadata as Record<string, unknown>
                     : {};
@@ -1220,8 +1241,6 @@ export function GardenFlow({
             const rememberedSessionId = readGardenFlowLastSessionId(nextActiveSpaceId);
             const linkedSessionId = options?.preferredSessionId || activeSessionIdRef.current || rememberedSessionId;
             if (linkedSessionId && !items.some((item) => item.id === linkedSessionId)) {
-                const sessions = await window.ipcRenderer.chat.getSessions() as ChatSession[];
-                if (requestId !== sessionRequestIdRef.current) return;
                 const report = sessions.find((session) => session.id === linkedSessionId
                     && session.metadata?.contextType === 'gardenflow-capture'
                     && session.metadata.spaceId === nextActiveSpaceId
@@ -1231,16 +1250,21 @@ export function GardenFlow({
                 if (report) items = sortContextSessionItems([...items, createContextSessionListItem(report)]);
             }
 
+            // Bound editor conversations reopen through their project, never the generic composer.
+            const linkedDream = items.find(item => item.id === options?.preferredSessionId
+                && dreamStorySessionProjectId(item.metadata, nextActiveSpaceId));
+            if (linkedDream) dispatchAppIntent({ type: 'video-project.open', projectId: dreamStorySessionProjectId(linkedDream.metadata, nextActiveSpaceId)! });
+            const chatItems = items.filter(item => !dreamStorySessionProjectId(item.metadata, nextActiveSpaceId));
             const preserveManualDraft = manualDraftActiveRef.current
                 && !options?.preferredSessionId
                 && !activeSessionIdRef.current;
             let nextActiveSessionId = preserveManualDraft
                 ? null
-                : options?.preferredSessionId && items.some((item) => item.id === options.preferredSessionId)
+                : options?.preferredSessionId && chatItems.some((item) => item.id === options.preferredSessionId)
                     ? options.preferredSessionId
-                    : activeSessionIdRef.current && items.some((item) => item.id === activeSessionIdRef.current)
+                    : activeSessionIdRef.current && chatItems.some((item) => item.id === activeSessionIdRef.current)
                         ? activeSessionIdRef.current
-                        : rememberedSessionId && items.some((item) => item.id === rememberedSessionId)
+                        : rememberedSessionId && chatItems.some((item) => item.id === rememberedSessionId)
                             ? rememberedSessionId
                             : null;
 
@@ -1320,6 +1344,22 @@ export function GardenFlow({
             }
         }
     }, [loadContextSessions]);
+
+    useEffect(() => {
+        if (!shouldLoadHistory) return;
+        const refresh = () => { void loadContextSessions(activeSpaceId, activeSpaceName, { silent: true }); };
+        const unsubscribeData = subscribeDataChanged((_event, payload?: { scope?: string }) => {
+            if (payload?.scope === 'chat-sessions') refresh();
+        });
+        const unsubscribeRuntime = subscribeRuntimeEventStream({
+            eventTypes: ['runtime:done'],
+            onChatDone: ({ sessionId }) => {
+                const session = sessionListRef.current.find(item => item.id === sessionId);
+                if (dreamStorySessionProjectId(session?.metadata, activeSpaceId)) refresh();
+            },
+        });
+        return () => { unsubscribeData(); unsubscribeRuntime(); };
+    }, [activeSpaceId, activeSpaceName, loadContextSessions, shouldLoadHistory]);
 
     const applyRunnerForm = useCallback((status: RunnerStatus) => {
         setRunnerIntervalMinutes(status.intervalMinutes || 20);
@@ -1687,9 +1727,14 @@ export function GardenFlow({
 
     const switchHistorySession = useCallback((session: GardenFlowHistoryListItem) => {
         if (!session?.id) return;
-        onOpenChatSurface?.();
         clearSessionActivity(session.id);
         setHistorySessionUnread(session.id, false);
+        const dreamProjectId = dreamStorySessionProjectId(session.metadata, activeSpaceId);
+        if (dreamProjectId) {
+            dispatchAppIntent({ type: 'video-project.open', projectId: dreamProjectId });
+            return;
+        }
+        onOpenChatSurface?.();
         if (session.surface === 'room' && session.roomId) {
             setSelectedRoomId(session.roomId);
             setActiveAiSurface('room');
@@ -1700,7 +1745,7 @@ export function GardenFlow({
             setChatRefreshKey((value) => value + 1);
         }
         switchSession(session.id);
-    }, [clearSessionActivity, onOpenChatSurface, setHistorySessionUnread, switchSession]);
+    }, [activeSpaceId, clearSessionActivity, onOpenChatSurface, setHistorySessionUnread, switchSession]);
 
     const ensureActiveChatSessionForSend = useCallback(async (
         defaultTitle?: string,
@@ -2435,7 +2480,7 @@ export function GardenFlow({
             <GardenFlowHistorySidebarSection
                 historyLoading={historyLoading}
                 sessionList={unifiedHistorySessions}
-                activeSessionId={activeChatSessionId}
+                activeSessionId={historyActiveSessionId}
                 teamRooms={teamRooms}
                 activeRoomId={selectedRoomId}
                 activeSurface={activeAiSurface}
@@ -2458,7 +2503,7 @@ export function GardenFlow({
         );
     }, [
         activeAiSurface,
-        activeChatSessionId,
+        historyActiveSessionId,
         archiveUnifiedHistorySession,
         archivedSessionList,
         archivedSessionsLoading,
@@ -2569,7 +2614,7 @@ export function GardenFlow({
                                         showWelcomeShortcuts={true}
                                         showComposerShortcuts={true}
                                         composerModeGroup={activeAiSurface === 'gardenflow' && !activeXhsTaskHints
-                                            ? GARDENFLOW_XHS_COMPOSER_MODE_GROUP
+                                            ? GARDENFLOW_CREATION_MODE_GROUP
                                             : undefined}
                                         fixedSessionContextIndicatorMode="corner-ring"
                                         shortcuts={composerShortcuts}
