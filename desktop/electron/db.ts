@@ -1,6 +1,7 @@
 import type { PublicationJobContext, PublicationCompletion } from '../shared/publication';
 import type { PublicationPlatform } from '../shared/platformPublisher';
 import Database from 'better-sqlite3';
+import { initializeContentIntelligence, createContentIntelligenceRepository, deleteContentIntelligenceSpace } from './core/content-intelligence/repository';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import path from 'path';
 import { app } from 'electron';
@@ -12,6 +13,8 @@ import type { TikTokVideoVersion, TikTokPublishJob } from '../shared/tiktokVideo
 
 const dbPath = path.join(app.getPath('userData'), 'gardenflow.db');
 const db = new Database(dbPath);
+
+export const getContentIntelligenceRepository = () => createContentIntelligenceRepository(db, () => getWorkspacePaths().activeSpaceId);
 
 const DEFAULT_SPACE_ID = 'default';
 const DEFAULT_SPACE_NAME = '默认空间';
@@ -798,6 +801,7 @@ const initDb = () => {
 };
 
 initDb();
+initializeContentIntelligence(db);
 
 // Default workspace directory
 export const getDefaultWorkspaceDir = () => {
@@ -1395,7 +1399,10 @@ export const deleteSpace = (id: string): { deletedActiveSpace: boolean; activeSp
 
   const activeSpaceId = getActiveSpaceId();
   const deletedActiveSpace = activeSpaceId === normalizedId;
-  db.prepare('DELETE FROM spaces WHERE id = ?').run(normalizedId);
+  db.transaction(() => {
+    deleteContentIntelligenceSpace(db, normalizedId);
+    db.prepare('DELETE FROM spaces WHERE id = ?').run(normalizedId);
+  })();
   if (deletedActiveSpace) {
     setActiveSpace(DEFAULT_SPACE_ID);
   }
