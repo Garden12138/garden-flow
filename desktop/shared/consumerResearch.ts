@@ -38,10 +38,12 @@ export const ResearchRunSchema = z.object({
     coverage: SourceCoverageSchema, sourceCount: z.number().int().nonnegative(), referenceCount: z.number().int().nonnegative(),
     commentCount: z.number().int().nonnegative(), inputCharacters: z.number().int().nonnegative(),
     opportunityIds: z.array(CiId).max(10), issues: z.array(Text).max(100), calls: z.number().int().min(0).max(1),
+    summary: ConsumerProposalSchema.shape.comment_insight.optional(),
     errorCode: z.enum(['MODEL_NOT_CONFIGURED', 'MODEL_FAILED', 'INVALID_OUTPUT', 'SOURCE_CHANGED', 'INTERRUPTED']).optional(),
     createdAt: z.number().int().nonnegative(), updatedAt: z.number().int().nonnegative(),
 }).strict();
 export const ResearchStartSchema = z.object({ id: CiId, expectedRevision: z.number().int().positive(), consent: z.literal(true), modelFingerprint: CiDigest }).strict();
+export const ResearchCancelSchema = z.object({ id: CiId, expectedRevision: z.number().int().positive() }).strict();
 export { ResearchOpportunityMetadataSchema };
 export type ResearchScope = z.infer<typeof ResearchScopeSchema>;
 export type ResearchRun = z.infer<typeof ResearchRunSchema>;
