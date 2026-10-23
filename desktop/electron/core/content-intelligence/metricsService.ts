@@ -27,7 +27,7 @@ export function publicationForWorkspace(job: PublicationJobView, work: CreationW
     const matches = native?.kind === 'video' ? (source.kind === 'video' || source.kind === 'dream-story') && source.projectId === native.projectId
         : native?.kind === 'note' && (source.kind === 'note' || source.kind === 'image-set') && source.path === native.path;
     if (!matches) return null;
-    const receipt = job.receiptSource === 'tiktok-studio-posts' && job.publishStatus === 'published' && job.receiptUrl ? canonicalPublicationUrl(job.platform, job.receiptUrl) : null;
+    const receipt = job.platform === 'tiktok' && job.receiptSource === 'tiktok-studio-posts' && job.publishStatus === 'published' && job.receiptUrl ? canonicalPublicationUrl(job.platform, job.receiptUrl) : null;
     return { workspaceId: work.id, workspaceRevision: work.revision, platform: job.platform,
         accountAlias: 'account_' + ciDigest([job.platform, context.accountId]).slice(0, 16),
         ...(receipt || {}), origin: receipt ? 'receipt' : 'submission', status: receipt ? 'published' : 'submitted',
@@ -62,8 +62,9 @@ export function createContentMetricsService(repository: ContentMetricsRepository
         }
         return repository.publications(workspaceId);
     }
-    function compare(baselineId: string, variantId: string) {
+    function compare(baselineId: string, variantId: string, baselineRevision?: number, variantRevision?: number) {
         const baseline = repository.observation(baselineId); const variant = repository.observation(variantId);
+        if (baselineRevision !== undefined && baselineRevision !== baseline.revision || variantRevision !== undefined && variantRevision !== variant.revision) throw new Error('观测已修订，请刷新后比较');
         return compareMetricObservations(baseline, variant, repository.publication(baseline.input.publicationLinkId), repository.publication(variant.input.publicationLinkId));
     }
     return { attachManual, syncWork, compare };

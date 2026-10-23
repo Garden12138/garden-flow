@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { CiId, CiDigest } from './contentIntelligence.ts';
 import { WorkspaceSpaceIdSchema } from './workspaceSpace.ts';
 import { PublicationPlatformSchema } from './publication.ts';
+import { CreationCapabilitySchema } from './creationWorkspace.ts';
 
 const Timestamp = z.number().int().nonnegative().max(8640000000000000);
 const Text = z.string().trim().min(1).max(2000);
@@ -65,3 +66,8 @@ export interface MetricComparison {
     difference: number | null; relativeChange: number | null; confounders: string[];
     interpretation: 'insufficient' | 'observational';
 }
+export const MetricWorkSummarySchema = z.object({
+    id: CiId, revision: CiId, draftEpoch: z.number().int().nonnegative(), platform: PublicationPlatformSchema,
+    capability: CreationCapabilitySchema, updatedAt: z.string().datetime({ offset: true }), title: z.string().max(200),
+}).strict();
+export type MetricWorkSummary = z.infer<typeof MetricWorkSummarySchema>;

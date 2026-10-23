@@ -5,6 +5,8 @@ import { dreamDirector, dreamRequest } from './helpers/dreamStoryFixture.ts';
 // Run: pnpm --dir desktop exec node --test tests/creationWorkspace.test.ts
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { productVideoHarness } from './helpers/productVideoHarness.ts';
 import { createProductVideoVerificationPng } from '../electron/core/productVideoVerificationImage.ts';
 import { CreationStartSchema, supportsCreation } from '../shared/creationWorkspace.ts';
@@ -30,6 +32,19 @@ test('every supported capability starts with a saved blank work and a single bou
         if (capability.startsWith('note-') || capability === 'dream-story') assert.ok(value.native);
     }
     assert.equal(h.state.imageCalls + h.state.ttsCalls + h.state.localizationCalls, 0);
+});
+test('work summaries exclude malformed, symbolic and foreign-space records and expose no native paths', async t => {
+    const { h } = await fixture(t);
+    assert.equal((await h.api.listCreationWorkspaceSummaries()).length, 0);
+    const work = await h.api.startCreationWorkspace({ platform: 'xiaohongshu', capability: 'note-image' });
+    const directory = path.join(h.root, 'default/gardenflow/creation-workspaces');
+    await fs.writeFile(path.join(directory, 'bad.json'), '{');
+    await fs.writeFile(path.join(directory, 'foreign.json'), JSON.stringify({ ...work, id: 'foreign', spaceId: 'other' }));
+    await fs.writeFile(path.join(directory, 'malformed.json'), JSON.stringify({ ...work, id: 'malformed', updatedAt: 123 }));
+    await fs.symlink(path.join(directory, work.id + '.json'), path.join(directory, 'symlink.json'));
+    const list = await h.api.listCreationWorkspaceSummaries(); assert.equal(list.length, 1); assert.equal(list[0].id, work.id);
+    assert.equal(list[0].native, undefined); assert.equal(list[0].spaceId, undefined);
+    h.state.spaceId = 'other'; assert.equal((await h.api.listCreationWorkspaceSummaries()).length, 0);
 });
 test('incomplete manual drafts persist, undo and restart; stale model credentials cannot overwrite a new input', async t => {
     const { h } = await fixture(t);

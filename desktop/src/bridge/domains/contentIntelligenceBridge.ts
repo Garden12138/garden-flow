@@ -2,6 +2,7 @@ import type { z } from 'zod';
 import type { BridgeCore } from '../types';
 import type { CreationWorkspace } from '../../../shared/creationWorkspace';
 import type { PreviewResearchSchema, ResearchStartSchema, ResearchCancelSchema, ResearchRun, ResearchReference } from '../../../shared/consumerResearch';
+import type { ManualPublicationLinkSchema, MetricCsvPreviewSchema, MetricCsvImportSchema, MetricImportPreview, MetricObservation, PublicationLink, MetricWorkSummary, MetricComparison } from '../../../shared/contentExperiments';
 import type {
     AddEvidenceSchema, CiListSchema, CiResult, ContentEvidence, CreateOpportunitySchema, CreateOpportunityWorkSchema,
     EvidenceSourceView, Opportunity, OpportunityDetail, SourceIdentity, SourceSnapshot, TransitionOpportunitySchema, WorkLink,
@@ -26,5 +27,14 @@ export function createContentIntelligenceBridge(core: BridgeCore) {
         researchInput: (id: string) => invoke<ResearchReference[]>('ci:research-input', { id }),
         researchRuns: () => invoke<ResearchRun[]>('ci:research-list', {}),
         cancelResearch: (input: z.input<typeof ResearchCancelSchema>) => invoke<ResearchRun>('ci:research-cancel', input),
+        metricWorks: () => invoke<MetricWorkSummary[]>('ci:metric-works', {}),
+        attachPublication: (input: z.input<typeof ManualPublicationLinkSchema>) => invoke<PublicationLink>('ci:publication-manual', input),
+        syncPublication: (id: string) => invoke<PublicationLink[]>('ci:publication-sync', { id }),
+        publications: () => invoke<PublicationLink[]>('ci:publication-list', {}),
+        previewMetrics: (input: z.input<typeof MetricCsvPreviewSchema>) => invoke<MetricImportPreview>('ci:metric-preview', input),
+        importMetrics: (input: z.input<typeof MetricCsvImportSchema>) => invoke<{ changed: MetricObservation[]; duplicates: number; importDigest: string }>('ci:metric-import', input),
+        metrics: () => invoke<MetricObservation[]>('ci:metric-list', {}),
+        metricHistory: (id: string) => invoke<MetricObservation[]>('ci:metric-history', { id }),
+        compareMetrics: (baselineId: string, variantId: string, baselineRevision: number, variantRevision: number) => invoke<MetricComparison>('ci:metric-compare', { baselineId, variantId, baselineRevision, variantRevision }),
     } };
 }

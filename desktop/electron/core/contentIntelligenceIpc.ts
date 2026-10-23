@@ -1,16 +1,18 @@
 import path from 'node:path';
 import { ipcMain } from 'electron';
 import { z } from 'zod';
-import { getContentIntelligenceRepository, getConsumerResearchRepository, getSettings, getWorkspacePaths, runInWorkspaceSpace } from '../db';
+import { getContentIntelligenceRepository, getConsumerResearchRepository, getContentMetricsRepository, getSettings, getWorkspacePaths, runInWorkspaceSpace } from '../db';
 import { CiId } from '../../shared/contentIntelligence';
 import { createBrandWorkspaceStore } from './brandWorkspaceStore';
 import { getAllKnowledgeItems } from './knowledgeLoader';
-import { startCreationWorkspace, readCreationWorkspace } from './creationWorkspaceStore';
+import { startCreationWorkspace, readCreationWorkspace, listCreationWorkspaceSummaries } from './creationWorkspaceStore';
 import { createCiSourceAdapter } from './content-intelligence/sourceAdapters';
 import { createContentIntelligenceService } from './content-intelligence/service';
 import { createConsumerResearchService } from './content-intelligence/researchService';
 import { createConsumerResearchModel } from './content-intelligence/researchModel';
 import { requestWanderCompletion } from './wanderService';
+import { createContentMetricsService } from './content-intelligence/metricsService';
+import { listPublicationJobs } from './unifiedPublisherService';
 
 export function registerContentIntelligenceIpc(): void {
     const sources = createCiSourceAdapter({
@@ -20,6 +22,8 @@ export function registerContentIntelligenceIpc(): void {
     const service = createContentIntelligenceService(getContentIntelligenceRepository(), sources, { start: startCreationWorkspace, read: readCreationWorkspace });
     const research = createConsumerResearchService(getConsumerResearchRepository(), sources,
         createConsumerResearchModel(() => (getSettings() || {}) as Record<string, unknown>, requestWanderCompletion));
+    const metrics = getContentMetricsRepository();
+    const metricService = createContentMetricsService(metrics, { readWork: readCreationWorkspace, jobs: listPublicationJobs });
     const id = (input: unknown) => z.object({ id: CiId }).strict().parse(input).id;
     const handle = (channel: string, operation: (input: unknown) => unknown) => ipcMain.handle(channel, async (_event, input) => {
         const spaceId = getWorkspacePaths().activeSpaceId;
@@ -48,4 +52,16 @@ export function registerContentIntelligenceIpc(): void {
     handle('ci:research-input', input => getConsumerResearchRepository().references(id(input)));
     handle('ci:research-list', input => { z.object({}).strict().parse(input); return research.list(); });
     handle('ci:research-cancel', research.cancel);
+    handle('ci:metric-works', input => { z.object({}).strict().parse(input); return listCreationWorkspaceSummaries(); });
+    handle('ci:publication-manual', metricService.attachManual);
+    handle('ci:publication-sync', input => metricService.syncWork(id(input)));
+    handle('ci:publication-list', input => { z.object({}).strict().parse(input); return metrics.publications(); });
+    handle('ci:metric-preview', metrics.preview);
+    handle('ci:metric-import', metrics.importCsv);
+    handle('ci:metric-list', input => { z.object({}).strict().parse(input); return metrics.observations(); });
+    handle('ci:metric-history', input => metrics.history(id(input)));
+    handle('ci:metric-compare', input => {
+        const request = z.object({ baselineId: CiId, variantId: CiId, baselineRevision: z.number().int().positive(), variantRevision: z.number().int().positive() }).strict().parse(input);
+        return metricService.compare(request.baselineId, request.variantId, request.baselineRevision, request.variantRevision);
+    });
 }

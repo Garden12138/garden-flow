@@ -138,6 +138,8 @@ test('read-only publication adapter rejects exports, unknown submission, wrong w
     assert.equal(publicationForWorkspace({ ...job, context: { ...job.context!, accountId: '' } }, work, 'a'), null);
     assert.equal(publicationForWorkspace({ ...job, contentDigest: 'different' }, work, 'a'), null);
     assert.equal(publicationForWorkspace({ ...job, receiptSource: 'untrusted' }, work, 'a')?.origin, 'submission');
+    const wrongPlatform = { ...job, platform: 'xiaohongshu', receiptUrl: 'https://www.xiaohongshu.com/explore/abc', context: { ...job.context!, platform: 'xiaohongshu', snapshot: { ...job.context!.snapshot, platform: 'xiaohongshu', source: { kind: 'note', path: 'test.redpost' } } } } as PublicationJobView;
+    assert.equal(publicationForWorkspace(wrongPlatform, { ...work, platform: 'xiaohongshu', native: { kind: 'note', path: 'test.redpost' } }, 'a')?.origin, 'submission');
     for (const value of ['http://www.tiktok.com/@a/video/123', 'https://evil.test/@a/video/123', 'https://www.tiktok.com/creator-center', 'https://user:pass@www.tiktok.com/@a/video/123']) assert.equal(canonicalPublicationUrl('tiktok', value), null);
 });
 test('manual publication links retain explicit provenance and cannot forge trusted receipt or use another space work', async t => {

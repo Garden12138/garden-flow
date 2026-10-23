@@ -1,4 +1,5 @@
 import { recordCreationMetric } from './creationMetrics';
+import { MetricWorkSummarySchema } from '../../shared/contentExperiments';
 import { presetConfig } from '../../shared/noteCards';
 import { readCreationSource } from './creationSources';
 import { createProductTargetVariant } from './productWorkVersionService';
@@ -42,6 +43,20 @@ export async function readCreationWorkspace(id: string): Promise<CreationWorkspa
     if (value.version !== 1 || value.id !== id || value.spaceId !== getWorkspacePaths().activeSpaceId) throw new Error('作品不属于当前空间');
     CreationStartSchema.parse({ platform: value.platform, capability: value.capability }); // Validate the stored platform/capability without trusting file contents.
     return value;
+}
+export async function listCreationWorkspaceSummaries() {
+    const entries = await fs.readdir(root(), { withFileTypes: true }).catch(error => {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+        throw error;
+    });
+    const summaries = [];
+    for (const entry of entries.filter(value => value.isFile() && /^[a-zA-Z0-9_-]{1,160}\.json$/.test(value.name)).slice(0, 2000)) {
+        try {
+            const work = await readCreationWorkspace(entry.name.slice(0, -5));
+            summaries.push(MetricWorkSummarySchema.parse({ id: work.id, revision: work.revision, draftEpoch: work.draftEpoch, platform: work.platform, capability: work.capability, title: work.draft.title || CREATION_CAPABILITY_LABELS[work.capability], updatedAt: work.updatedAt }));
+        } catch { /* Corrupt or foreign-space records are never offered as an available work. */ }
+    }
+    return summaries.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)).slice(0, 1000);
 }
 function metadata(id: string) { return { creationWorkspaceId: id, spaceId: getWorkspacePaths().activeSpaceId }; }
 function bindSession(sessionId: string, extra: Record<string, unknown>) {
