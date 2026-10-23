@@ -99,7 +99,11 @@ test('opening a historical preview restores its actual selected scope and shows 
     assert.equal((dom.window.document.querySelector('[aria-label=确认研究模型费用]') as HTMLInputElement).checked, false);
     assert.equal(inputReads, 0);
     const raw = [...dom.window.document.querySelectorAll('details')].find(details => details.querySelector('summary')?.textContent?.startsWith('查看本轮将发送'))!;
-    await act(async () => { raw.open = true; raw.dispatchEvent(new dom.window.Event('toggle')); });
+    await act(async () => {
+        raw.open = true; raw.dispatchEvent(new dom.window.Event('toggle'));
+        await Promise.resolve(); // A second native toggle may arrive after the read resolves, before React commits.
+        raw.dispatchEvent(new dom.window.Event('toggle'));
+    });
     assert.equal(inputReads, 1); assert.ok(dom.window.document.querySelector('[aria-label=研究发送原文]')?.textContent?.includes('旧 A 冻结原文'));
     await act(async () => changed!()); assert.equal(dom.window.document.body.textContent?.includes('旧 A 冻结原文'), false);
 });

@@ -9,12 +9,12 @@ const sourceKey = (source: SourceSnapshot['source']) => JSON.stringify([source.k
 function data<T>(result: CiResult<T>): T { if (result.success === false) throw new Error(result.error); return result.data; }
 function ResearchInputPreview({ run }: { run: ResearchRun }) {
     const [references, setReferences] = useState<ResearchReference[] | null>(null); const [error, setError] = useState('');
-    const epoch = useRef(0); const pending = useRef(false);
-    useEffect(() => { epoch.current++; pending.current = false; setReferences(null); setError(''); return () => { epoch.current++; }; }, [run.id]);
+    const epoch = useRef(0); const pending = useRef(false); const loaded = useRef(false);
+    useEffect(() => { epoch.current++; pending.current = false; loaded.current = false; setReferences(null); setError(''); return () => { epoch.current++; }; }, [run.id]);
     return <details key={run.id} onToggle={async event => {
-        if (!event.currentTarget.open || references || pending.current) return;
+        if (!event.currentTarget.open || loaded.current || pending.current) return;
         const token = epoch.current; pending.current = true;
-        try { const result = data(await window.ipcRenderer.contentIntelligence.researchInput(run.id)); if (token === epoch.current) setReferences(result); }
+        try { const result = data(await window.ipcRenderer.contentIntelligence.researchInput(run.id)); if (token === epoch.current) { loaded.current = true; setReferences(result); } }
         catch (reason) { if (token === epoch.current) setError(String(reason)); }
         finally { if (token === epoch.current) pending.current = false; }
     }}>
