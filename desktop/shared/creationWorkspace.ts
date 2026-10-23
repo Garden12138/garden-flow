@@ -1,6 +1,7 @@
 import { CreationConfigSchema, CreationPresetSchema, SourceRefSchema } from './noteCards.ts';
 import { z } from 'zod';
 import { ProductPlatformSchema } from './productCreationTarget.ts';
+import { WorkspaceSpaceIdSchema } from './workspaceSpace.ts';
 
 export const CreationCapabilitySchema = z.enum(['note-image', 'note-video', 'product-video', 'product-remix', 'product-image-set', 'dream-story']);
 export type CreationCapability = z.infer<typeof CreationCapabilitySchema>;
@@ -36,7 +37,7 @@ export interface CreationWorkspace {
     sourceSessionId?: string; entry?: string; requestId?: string; startDigest?: string;
     sourceId?: string; createdAt: string; updatedAt: string; undo: CreationDraft[];
 }
-export const CreationTurnSchema = z.object({ workspaceId: Id, spaceId: Id, requestId: Id, expectedRevision: Id, expectedDraftEpoch: z.number().int().nonnegative(), selectedId: Id.optional() }).strict();
+export const CreationTurnSchema = z.object({ workspaceId: Id, spaceId: WorkspaceSpaceIdSchema, requestId: Id, expectedRevision: Id, expectedDraftEpoch: z.number().int().nonnegative(), selectedId: Id.optional() }).strict();
 export type CreationTurn = z.infer<typeof CreationTurnSchema>;
 export const CreationSaveSchema = CreationTurnSchema.extend({ draft: CreationDraftSchema, origin: z.enum(['manual', 'ai']).default('manual') });
 export function creationWorkspaceSessionId(metadata: unknown, spaceId: string): string | null {

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } fro
 import { RefreshCw, Sparkles, X, Trash2, Dices, FileText, Play, MessageSquarePlus, Search, Shuffle, Check, Eye, EyeOff, Package } from 'lucide-react';
 import { clsx } from 'clsx';
 import { WanderLoadingDice } from '../components/wander/WanderLoadingDice';
+import { ContentOpportunitiesPanel } from '../components/wander/ContentOpportunitiesPanel';
 import { resolveAssetUrl } from '../utils/pathManager';
 import type { PendingChatMessage } from '../features/app-shell/types';
 import {
@@ -205,6 +206,7 @@ type CommentSourceMode = 'random' | 'custom';
 const WANDER_SUBJECT_CATEGORY_NAMES = new Set(['品牌', '角色', '物品', '商品', '场景']);
 
 export function Wander({ isActive = true, onExecutionStateChange, onTitleBarContentChange, onNavigateToGardenFlow }: WanderProps) {
+  const [showOpportunities, setShowOpportunities] = useState(false);
   const [items, setItems] = useState<WanderItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [multiChoiceEnabled, setMultiChoiceEnabled] = useState(false);
@@ -2091,7 +2093,11 @@ export function Wander({ isActive = true, onExecutionStateChange, onTitleBarCont
 
   return (
     <div className="workbench-ideation flex h-full min-h-0 flex-col overflow-hidden bg-surface-primary">
-      <div className="flex min-h-0 flex-1">
+      <nav aria-label="灵感工作流" className="flex shrink-0 gap-2 border-b border-border px-4 py-2 text-xs text-text-secondary">
+        <button type="button" aria-pressed={!showOpportunities} className="rounded border border-border px-3 py-1" onClick={() => setShowOpportunities(false)}>灵感漫步与评论洞察</button>
+        <button type="button" aria-pressed={showOpportunities} className="rounded border border-border px-3 py-1" onClick={() => setShowOpportunities(true)}>消费者机会</button>
+      </nav>
+      {showOpportunities ? <div className="min-h-0 flex-1 overflow-hidden"><ContentOpportunitiesPanel /></div> : <div className="flex min-h-0 flex-1">
         <aside className="workbench-ideation__tray">
           <div className="workbench-ideation__tray-heading">
             <span>02 · IDEATE</span>
@@ -2116,7 +2122,7 @@ export function Wander({ isActive = true, onExecutionStateChange, onTitleBarCont
         </aside>
         {renderTopicList()}
         {renderTopicDetail()}
-      </div>
+      </div>}
 
       {showHistory && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-6 py-6" onClick={() => setShowHistory(false)}>

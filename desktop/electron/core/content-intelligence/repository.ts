@@ -6,6 +6,7 @@ import {
     canTransitionOpportunity, type SourceIdentity, type SourceSnapshot, type ContentEvidence, type Opportunity, type WorkLink,
 } from '../../../shared/contentIntelligence.ts';
 import { CreationStartSchema } from '../../../shared/creationWorkspace.ts';
+import { WorkspaceSpaceIdSchema } from '../../../shared/workspaceSpace.ts';
 
 // Both production better-sqlite3 and Node's temporary test databases satisfy this boundary.
 export interface CiDatabase {
@@ -69,11 +70,11 @@ export function deleteContentIntelligenceSpace(db: CiDatabase, spaceId: string):
     }
 }
 const WorkRequestSchema = z.object({
-    opportunityId: CiId, selection: CreationStartSchema, workspaceId: CiId.optional(),
+    opportunityId: CiId, selection: CreationStartSchema, intentDigest: z.string().optional(), workspaceId: CiId.optional(),
 }).strict();
 export function createContentIntelligenceRepository(db: CiDatabase, currentSpace: () => string) {
     function space(): string {
-        const id = CiId.parse(currentSpace());
+        const id = WorkspaceSpaceIdSchema.parse(currentSpace());
         if (!db.prepare('SELECT 1 FROM spaces WHERE id = ?').get(id)) throw new Error('空间不存在');
         return id;
     }
@@ -159,6 +160,10 @@ export function createContentIntelligenceRepository(db: CiDatabase, currentSpace
         getOpportunity(value.opportunityId);
         return request('work.create', requestId, value, () => value);
     }
+    function getWorkRequest(requestId: string) {
+        const row = db.prepare('SELECT result_json FROM ci_requests WHERE space_id = ? AND operation = ? AND request_id = ?').get(space(), 'work.create', CiId.parse(requestId));
+        return row ? WorkRequestSchema.parse(JSON.parse(row.result_json)) : null;
+    }
     function linkWork(requestId: string, workspaceId: string): WorkLink {
         const spaceId = space(); CiId.parse(workspaceId);
         return ciTransaction(db, () => {
@@ -175,6 +180,6 @@ export function createContentIntelligenceRepository(db: CiDatabase, currentSpace
     function linksForWork(workspaceId: string): WorkLink[] {
         return db.prepare('SELECT document_json FROM ci_work_links WHERE space_id = ? AND workspace_id = ? ORDER BY id').all(space(), CiId.parse(workspaceId)).map(row => decode(WorkLinkSchema, row));
     }
-    return { space, saveSnapshot, getSnapshot, addEvidence, getEvidence, createOpportunity, getOpportunity, transitionOpportunity, listOpportunities, reserveWork, linkWork, linksForWork };
+    return { space, saveSnapshot, getSnapshot, addEvidence, getEvidence, createOpportunity, getOpportunity, transitionOpportunity, listOpportunities, reserveWork, getWorkRequest, linkWork, linksForWork };
 }
 export type ContentIntelligenceRepository = ReturnType<typeof createContentIntelligenceRepository>;

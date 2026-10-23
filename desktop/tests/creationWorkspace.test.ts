@@ -45,6 +45,15 @@ test('incomplete manual drafts persist, undo and restart; stale model credential
     await assert.rejects(h.api.readCreationWorkspace('../escape'));
     h.state.spaceId = 'another'; await assert.rejects(h.api.readCreationWorkspace(value.id));
 });
+
+test('existing Chinese space IDs can start, save, reopen and undo a workspace without accepting path IDs', async t => {
+    const { h } = await fixture(t); h.state.spaceId = '中文品牌空间';
+    let value = await h.api.startCreationWorkspace({ platform: 'douyin', capability: 'product-video', requestId: 'chinese_space' });
+    value = await h.api.saveCreationWorkspace({ ...turn(value), draft: { ...value.draft, title: '中文空间中的创作' } });
+    h.restart(); value = await h.api.readCreationWorkspace(value.id); assert.equal(value.draft.title, '中文空间中的创作');
+    value = await h.api.undoCreationWorkspace(turn(value)); assert.equal(value.draft.title, '');
+    await assert.rejects(h.api.saveCreationWorkspace({ ...turn(value), spaceId: '../中文品牌空间', draft: value.draft }));
+});
 test('manual product video and image-set plans compile locally and reuse the original chat', async t => {
     const { h, product } = await fixture(t);
     for (const capability of ['product-video', 'product-image-set']) {

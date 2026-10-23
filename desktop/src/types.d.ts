@@ -1148,6 +1148,7 @@ declare global {
 
   interface Window {
     ipcRenderer: {
+      contentIntelligence: ReturnType<typeof import('./bridge/domains/contentIntelligenceBridge').createContentIntelligenceBridge>['contentIntelligence'];
       noteCard: ReturnType<typeof import('./bridge/domains/noteCardBridge').createNoteCardBridge>['noteCard'];
       publication: ReturnType<typeof import('./bridge/domains/publicationBridge').createPublicationBridge>['publication'];
       windowControls: {

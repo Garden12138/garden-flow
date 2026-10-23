@@ -8,6 +8,7 @@ import { NoteCardTurnSchema } from '../shared/noteCards';
 import { readCreationWorkspace, assertCreationTurn } from './core/creationWorkspaceStore';
 import { CreationTurnSchema } from '../shared/creationWorkspace';
 import { registerCreationWorkspaceIpc } from './core/creationWorkspaceIpc';
+import { registerContentIntelligenceIpc } from './core/contentIntelligenceIpc';
 import { getCachedPublicationStatuses, refreshPublicationStatuses, bindPublicationBrowser, listPublicationJobs, readPublicationJob, preparePublication, actOnPublication } from './core/unifiedPublisherService';
 import { readPublicationSource } from './core/publicationSource';
 import { recordCompletedPublication, recoverPublicationCompletions, dismissPublicationOffer } from './core/publicationCompletionService';
@@ -6033,6 +6034,7 @@ ipcMain.handle('publication:dismiss-offer', (_, payload) => publicationReply(() 
 
 registerDreamStoryIpc();
   registerCreationWorkspaceIpc();
+  registerContentIntelligenceIpc();
   registerNoteCardIpc();
 ipcMain.handle('product-project-editor:session', async (_, payload: { project: unknown; selectedId?: string }) => {
   try { return { success: true, ...await getProductProjectEditorSession(ProductProjectEditorRefSchema.parse(payload?.project), payload?.selectedId) }; }

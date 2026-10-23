@@ -101,3 +101,12 @@ test('space cleanup is scoped and transactional, including analysis, evidence an
     ciTransaction(h.sql, () => deleteContentIntelligenceSpace(h.sql, 'a')); assert.equal(h.repo.listOpportunities().items.length, 0);
     h.switch('b'); assert.equal(h.repo.getOpportunity(retained.id).spaceId, 'b');
 });
+
+test('existing Chinese space IDs are valid while unknown spaces and path traversal remain rejected', t => {
+    const h = fixture(t); h.sql.prepare('INSERT INTO spaces VALUES (?)').run('中文品牌空间'); h.switch('中文品牌空间');
+    const source = snapshot(); const evidence = h.repo.addEvidence(source, { key: 'review:one', start: 0, end: 8 }, source.segments[0].text);
+    const value = h.repo.createOpportunity(opportunity('chinese_space_request', [{ id: evidence.id, relation: 'supports' }]));
+    assert.equal(value.spaceId, '中文品牌空间'); assert.equal(h.repo.listOpportunities().items.length, 1);
+    h.switch('a'); assert.throws(() => h.repo.getOpportunity(value.id), /当前空间/);
+    h.switch('../中文品牌空间'); assert.throws(() => h.repo.listOpportunities());
+});

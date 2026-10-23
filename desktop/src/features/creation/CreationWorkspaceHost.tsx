@@ -6,6 +6,7 @@ import { PRODUCT_PLATFORM_LABELS, type ProductPlatform } from '../../../shared/p
 import { dispatchAppIntent } from '../app-shell/appIntent';
 import { subscribeDataChanged } from '../../bridge/appEvents';
 import { CreationDraftWorkbench } from './CreationDraftWorkbench';
+import { ContentEvidencePanel } from './ContentEvidencePanel';
 const VideoWorkbench = lazy(async () => ({ default: (await import('../../pages/VideoProjectWorkbench')).VideoProjectWorkbench }));
 const NoteWorkbench = lazy(async () => ({ default: (await import('../../components/manuscripts/ManuscriptEditorHost')).ManuscriptEditorHost }));
 export function CreationWorkspaceHost({ workspaceId, onClose }: { workspaceId: string; onClose: () => void }) {
@@ -42,6 +43,7 @@ export function CreationWorkspaceHost({ workspaceId, onClose }: { workspaceId: s
                 <button type="button" disabled={switching} onClick={() => void fork()} className="rounded border border-border px-2 py-1 disabled:opacity-40">另建版本</button><button type="button" onClick={() => void flushCreationBeforeNavigate().then(onClose).catch(reason => setError(String(reason)))} className="rounded border border-border px-2 py-1">返回对话</button></div>
         </div>
         {error && <p role="alert" className="px-3 py-2 text-xs text-red-600">{error}</p>}
+        <ContentEvidencePanel workspaceId={workspaceId} />
         <div className="min-h-0 flex-1"><Suspense fallback={<p className="p-4">加载作品…</p>}>{workspace.native?.kind === 'video' ? <VideoWorkbench projectId={workspace.native.projectId} onClose={onClose} /> : workspace.native?.kind === 'note' ? <NoteWorkbench filePath={workspace.native.path} isActive onClose={onClose} /> : <CreationDraftWorkbench key={workspace.id} initial={workspace} onMaterialized={load} />}</Suspense></div>
     </div>;
 }

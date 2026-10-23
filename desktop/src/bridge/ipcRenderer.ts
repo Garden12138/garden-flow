@@ -1,5 +1,6 @@
 import { createNoteCardBridge } from './domains/noteCardBridge';
 import { createCreationWorkspaceBridge } from './domains/creationWorkspaceBridge';
+import { createContentIntelligenceBridge } from './domains/contentIntelligenceBridge';
 import { createPublicationBridge } from './domains/publicationBridge';
 import { createDreamStoryBridge } from './domains/dreamStoryBridge';
 import { createBridgeCore } from './core';
@@ -89,6 +90,7 @@ function createIpcRenderer() {
     ...createPublicationBridge(core),
     ...createDreamStoryBridge(core),
     ...createCreationWorkspaceBridge(core),
+    ...createContentIntelligenceBridge(core),
     ...createNoteCardBridge(core),
     ...createTeamRuntimeBridge(core),
     ...createSystemBridge(core),
