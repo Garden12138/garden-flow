@@ -42,9 +42,17 @@ export const CreateOpportunitySchema = z.object({
     requestId: CiId, title: Text, problem: Text, audience: Text, angle: Text,
     evidence: z.array(EvidenceRelationSchema).max(100).default([]),
 }).strict();
+export const OpportunityScoreSchema = z.object({ value: z.number().int().min(0).max(5), reason: z.string().trim().min(1).max(2000) }).strict();
+export const ResearchOpportunityMetadataSchema = z.object({
+    runId: CiId, insightId: CiId, suggestedFormats: z.array(CreationCapabilitySchema).max(5),
+    uncertainties: z.array(z.string().min(1).max(2000)).max(40),
+    scores: z.object({ evidence: OpportunityScoreSchema, fit: OpportunityScoreSchema, feasibility: OpportunityScoreSchema, business: OpportunityScoreSchema, freshness: OpportunityScoreSchema }).strict(),
+    weightedScore: z.number().min(0).max(5), confidence: z.enum(['low', 'medium', 'unknown']),
+}).strict();
 export const OpportunitySchema = CreateOpportunitySchema.omit({ requestId: true }).extend({
     id: CiId, spaceId: WorkspaceSpaceIdSchema, status: OpportunityStatusSchema, revision: z.number().int().positive(),
     basis: z.enum(['evidence', 'hypothesis']), createdAt: Timestamp, updatedAt: Timestamp,
+    research: ResearchOpportunityMetadataSchema.optional(),
 }).strict();
 export const TransitionOpportunitySchema = z.object({
     id: CiId, requestId: CiId, expectedRevision: z.number().int().positive(), to: OpportunityStatusSchema,
