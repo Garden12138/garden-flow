@@ -7,7 +7,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { CreationStartSchema, CreationDraftSchema, CreationSaveSchema, CreationTurnSchema, CREATION_CAPABILITY_LABELS, type CreationWorkspace, type CreationTurn } from '../../shared/creationWorkspace';
+import { CreationStartSchema, CreationDraftSchema, CreationSaveSchema, CreationTurnSchema, CreationForkGuardSchema, CREATION_CAPABILITY_LABELS, type CreationWorkspace, type CreationTurn } from '../../shared/creationWorkspace';
 import { createChatSession, getChatSession, updateChatSessionMetadata, updateChatSessionTitle, getWorkspacePaths, runInWorkspaceSpace } from '../db';
 import { createDreamStory, getDreamSession, applyDreamEdit, copyDreamStoryTarget } from './dreamStoryStore';
 import { resolveDreamStoryTarget } from '../../shared/contentCreationTarget';
@@ -68,10 +68,14 @@ function existingCreationSession(id: string) {
     const session = getChatSession(id);
     try { return session && JSON.parse(session.metadata || '{}').creationWorkspaceId === id ? session : null; } catch { return null; }
 }
+export function creationWorkspaceIdForRequest(spaceId: string, requestId: string): string {
+    CreationTurnSchema.shape.spaceId.parse(spaceId); CreationTurnSchema.shape.requestId.parse(requestId);
+    return 'creation_' + createHash('sha256').update(spaceId + ':' + requestId).digest('hex').slice(0, 40);
+}
 export async function startCreationWorkspace(input: unknown, prepared?: { native: NonNullable<CreationWorkspace['native']>; sessionId: string }): Promise<CreationWorkspace> {
     const selection = CreationStartSchema.parse(input); const spaceId = getWorkspacePaths().activeSpaceId;
     return locked('start_' + (selection.requestId || randomUUID()), () => runInWorkspaceSpace(spaceId, async () => {
-        const id = 'creation_' + (selection.requestId ? createHash('sha256').update(spaceId + ':' + selection.requestId).digest('hex').slice(0, 40) : randomUUID());
+        const id = selection.requestId ? creationWorkspaceIdForRequest(spaceId, selection.requestId) : 'creation_' + randomUUID();
         if (selection.requestId) { try { const previous = await readCreationWorkspace(id); if (previous.startDigest && previous.startDigest !== createHash('sha256').update(JSON.stringify(selection)).digest('hex') || previous.platform !== selection.platform || previous.capability !== selection.capability) throw new Error('同一请求不能创建不同作品'); return previous; } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; } }
         for (const ref of selection.sourceRefs || []) await readCreationSource(ref, { limit: 1 });
         if (selection.productId) await createBrandWorkspaceStore(() => path.join(getWorkspacePaths().subjects, 'brand-workspace')).getProductCreativeReference(selection.productId);
@@ -193,34 +197,66 @@ async function latestCreationDraft(source: CreationWorkspace) {
     }
     return CreationDraftSchema.parse(draft);
 }
-export async function forkCreationWorkspace(id: string, input: unknown): Promise<CreationWorkspace> {
-    const selection = CreationStartSchema.parse(input); const source = await readCreationWorkspace(id);
-    const draft = await latestCreationDraft(source);
-    let prepared: Parameters<typeof startCreationWorkspace>[1];
-    if (source.capability === selection.capability && source.native?.kind === 'video') {
-        const project = await getVideoEditorV2Project(source.native.projectId); if (!project) throw new Error('来源作品不存在');
-        if (project.productVideo) {
-            const target = resolveProductCreationTarget({ platform: selection.platform, contentKind: 'video', compositionMode: selection.capability === 'product-remix' ? 'existing-clips' : 'product-images', aspectRatio: selection.platform === 'xiaohongshu' && project.canvas.aspectRatio === '16:9' ? '16:9' : '9:16' });
-            const copy = await createProductTargetVariant({ sourceProjectId: project.id, expectedUpdatedAt: project.updatedAt, target, duplicate: true });
-            prepared = { native: { kind: 'video', projectId: copy.id }, sessionId: (await getProductProjectEditorSession({ kind: 'video', projectId: copy.id })).sessionId };
-        } else if (project.dreamStory) {
-            const doc = project.dreamStory;
-            const copy = await copyDreamStoryTarget({ spaceId: source.spaceId, projectId: project.id, requestId: randomUUID(), expectedRevision: doc.revision, expectedDraftEpoch: doc.draftEpoch, targetDigest: doc.targetDigest, target: resolveDreamStoryTarget(doc.target || {}) });
-            prepared = { native: { kind: 'video', projectId: copy.id }, sessionId: (await getDreamSession(copy.id)).sessionId };
+export async function inspectCreationWorkspace(id: string) {
+    const workspace = await readCreationWorkspace(id); let native: unknown = null;
+    if (workspace.native?.kind === 'note') { const note = await getXhsNoteProject(workspace.native.path); native = { version: note.version, document: note.document }; }
+    else if (workspace.native?.kind === 'video') { native = await getVideoEditorV2Project(workspace.native.projectId); if (!native) throw new Error('来源工程不存在'); }
+    const contentVersion = createHash('sha256').update(JSON.stringify([1, workspace.spaceId, workspace.id, workspace.revision, workspace.draftEpoch, workspace.draft, workspace.native, native])).digest('hex');
+    return { workspace, contentVersion };
+}
+export async function forkCreationWorkspace(id: string, input: unknown, guardInput?: unknown): Promise<CreationWorkspace> {
+    const selection = CreationStartSchema.parse(input);
+    const guard = guardInput === undefined ? undefined : CreationForkGuardSchema.parse(guardInput);
+    CreationTurnSchema.shape.workspaceId.parse(id);
+    if (guard && !selection.requestId) throw new Error('带版本保护的复制需要请求 ID');
+    const execute = async () => {
+        if (guard) {
+            const targetId = creationWorkspaceIdForRequest(getWorkspacePaths().activeSpaceId, selection.requestId!);
+            const previous = await readCreationWorkspace(targetId).catch(error => { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null; throw error; });
+            if (previous) {
+                if (previous.sourceId === id && previous.sourceRevision === guard.expectedRevision && previous.sourceContentVersion === guard.contentVersion
+                    && previous.startDigest === createHash('sha256').update(JSON.stringify(selection)).digest('hex')) return previous;
+                throw new Error('复制未完整完成或请求冲突；已保留草稿，请人工复核，不会重复复制');
+            }
         }
-    }
-    const next = await startCreationWorkspace(selection, prepared);
-    next.sourceId = source.id;
-    next.draft = CreationDraftSchema.parse({ ...next.draft, title: draft.title, brief: draft.brief, body: draft.body, hashtags: draft.hashtags, productId: draft.productId,
-        ...(source.capability === next.capability ? { scenes: draft.scenes, pages: draft.pages, sourceAssetIds: draft.sourceAssetIds } : {}) });
-    if (next.native?.kind === 'note') {
-        const note = await getXhsNoteProject(next.native.path);
-        let content = { ...note.document, finalTitle: draft.title, body: draft.body, hashtags: draft.hashtags };
-        if (source.native?.kind === 'note' && source.capability === next.capability) {
-            const original = await getXhsNoteProject(source.native.path);
-            content = { ...content, coverText: original.document.coverText, titleCandidates: original.document.titleCandidates, imagePages: original.document.imagePages, mediaSlots: original.document.mediaSlots, creationConfig: original.document.creationConfig, voiceover: original.document.voiceover, storyboard: original.document.storyboard, subtitles: original.document.subtitles };
+        const source = await readCreationWorkspace(id);
+        const assertSource = async () => {
+            if (!guard) return;
+            const current = await inspectCreationWorkspace(id);
+            if (current.workspace.revision !== guard.expectedRevision || current.workspace.draftEpoch !== guard.expectedDraftEpoch || current.contentVersion !== guard.contentVersion) throw new Error('来源内容或版本已变化，请重新核对复制范围');
+        };
+        await assertSource();
+        const draft = await latestCreationDraft(source);
+        let prepared: Parameters<typeof startCreationWorkspace>[1];
+        if (source.capability === selection.capability && source.native?.kind === 'video') {
+            const project = await getVideoEditorV2Project(source.native.projectId); if (!project) throw new Error('来源作品不存在');
+            if (project.productVideo) {
+                const target = resolveProductCreationTarget({ platform: selection.platform, contentKind: 'video', compositionMode: selection.capability === 'product-remix' ? 'existing-clips' : 'product-images', aspectRatio: selection.platform === 'xiaohongshu' && project.canvas.aspectRatio === '16:9' ? '16:9' : '9:16' });
+                const copy = await createProductTargetVariant({ sourceProjectId: project.id, expectedUpdatedAt: project.updatedAt, target, duplicate: true });
+                prepared = { native: { kind: 'video', projectId: copy.id }, sessionId: (await getProductProjectEditorSession({ kind: 'video', projectId: copy.id })).sessionId };
+            } else if (project.dreamStory) {
+                const doc = project.dreamStory;
+                const copy = await copyDreamStoryTarget({ spaceId: source.spaceId, projectId: project.id, requestId: randomUUID(), expectedRevision: doc.revision, expectedDraftEpoch: doc.draftEpoch, targetDigest: doc.targetDigest, target: resolveDreamStoryTarget(doc.target || {}) });
+                prepared = { native: { kind: 'video', projectId: copy.id }, sessionId: (await getDreamSession(copy.id)).sessionId };
+            }
         }
-        await saveXhsNoteProject({ path: next.native.path, noteType: note.document.noteType, document: content, expectedRevision: note.version });
-    }
-    return persist(next);
+        const next = await startCreationWorkspace(selection, prepared);
+        next.sourceId = source.id;
+        next.draft = CreationDraftSchema.parse({ ...next.draft, title: draft.title, brief: draft.brief, body: draft.body, hashtags: draft.hashtags, productId: draft.productId,
+            ...(source.capability === next.capability ? { scenes: draft.scenes, pages: draft.pages, sourceAssetIds: draft.sourceAssetIds } : {}) });
+        if (next.native?.kind === 'note') {
+            const note = await getXhsNoteProject(next.native.path);
+            let content = { ...note.document, finalTitle: draft.title, body: draft.body, hashtags: draft.hashtags };
+            if (source.native?.kind === 'note' && source.capability === next.capability) {
+                const original = await getXhsNoteProject(source.native.path);
+                content = { ...content, coverText: original.document.coverText, titleCandidates: original.document.titleCandidates, imagePages: original.document.imagePages, mediaSlots: original.document.mediaSlots, creationConfig: original.document.creationConfig, voiceover: original.document.voiceover, storyboard: original.document.storyboard, subtitles: original.document.subtitles };
+            }
+            await saveXhsNoteProject({ path: next.native.path, noteType: note.document.noteType, document: content, expectedRevision: note.version });
+        }
+        await assertSource();
+        next.sourceRevision = source.revision;
+        if (guard) next.sourceContentVersion = guard.contentVersion;
+        return persist(next);
+    };
+    return guard ? locked('fork_' + selection.requestId, execute) : execute();
 }

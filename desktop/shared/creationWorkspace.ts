@@ -36,7 +36,9 @@ export interface CreationWorkspace {
     receipts?: Array<{ id: string; digest: string }>; unapplied?: Array<{ id: string; draft: CreationDraft; basedOnRevision: string }>;
     sourceSessionId?: string; entry?: string; requestId?: string; startDigest?: string;
     sourceId?: string; createdAt: string; updatedAt: string; undo: CreationDraft[];
+    sourceRevision?: string; sourceContentVersion?: string;
 }
+export const CreationForkGuardSchema = z.object({ expectedRevision: Id, expectedDraftEpoch: z.number().int().nonnegative(), contentVersion: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
 export const CreationTurnSchema = z.object({ workspaceId: Id, spaceId: WorkspaceSpaceIdSchema, requestId: Id, expectedRevision: Id, expectedDraftEpoch: z.number().int().nonnegative(), selectedId: Id.optional() }).strict();
 export type CreationTurn = z.infer<typeof CreationTurnSchema>;
 export const CreationSaveSchema = CreationTurnSchema.extend({ draft: CreationDraftSchema, origin: z.enum(['manual', 'ai']).default('manual') });
