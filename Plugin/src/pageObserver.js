@@ -691,6 +691,9 @@ function detectPageInfo() {
     }
 
     if (/(^|\.)douyin\.com$/i.test(hostname)) {
+        const modalId = new URL(location.href).searchParams.get('modal_id');
+        const modalRoot = /^\d+$/.test(modalId || '') ? Array.from(document.querySelectorAll(`[class~="video_${modalId}"]`)).find(node => !node.closest('.search-result-card') && isNodeVisible(node)) : null;
+        const isImagePage = pathname.startsWith('/note/') || Boolean(modalRoot?.querySelector('.dySwiperSlide, [data-e2e="image-gallery"]') && !modalRoot.querySelector('video'));
         const title = normalizeText(
             document.querySelector('[data-e2e="video-desc"]')?.textContent
             || document.querySelector('h1')?.textContent
@@ -704,9 +707,9 @@ function detectPageInfo() {
                 return (br.width * br.height) - (ar.width * ar.height);
             })
             .find((item) => isNodeVisible(item) || normalizeText(item.currentSrc || item.src));
-        if (pathname.startsWith('/video/') || pathname.startsWith('/note/') || videoEl || title) {
+        if (pathname.startsWith('/video/') || isImagePage || videoEl || title) {
             return {
-                kind: 'douyin-video',
+                kind: isImagePage ? 'douyin-image' : 'douyin-video',
                 action: 'save-douyin',
                 label: '保存抖音视频到知识库',
                 description: '当前页面已识别为抖音视频页。',
@@ -750,8 +753,9 @@ function detectPageInfo() {
 
     if (hostname === 'tiktok.com' || hostname.endsWith('.tiktok.com')) {
         const isVideoPage = pathname.includes('/video/');
+        const isImagePage = pathname.includes('/photo/');
         return {
-            kind: isVideoPage ? 'tiktok-video' : 'tiktok-page',
+            kind: isImagePage ? 'tiktok-image' : isVideoPage ? 'tiktok-video' : 'tiktok-page',
             platform: 'tiktok',
             action: 'save-tiktok',
             label: isVideoPage ? '保存 TikTok 视频页到知识库' : '保存 TikTok 页面到知识库',

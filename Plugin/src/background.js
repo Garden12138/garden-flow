@@ -1,3 +1,4 @@
+import { extractSocialPost, buildSocialPostEntry } from './capture/socialPost.js';
 import { configurePluginCapture } from './browserControlBackground.js';
 import { getNativeStatus, reportNativeCaptureAccessState, requestNativeHost, shouldReportNativeConnectionFailure } from './background/nativeTransport.js';
 import { exportPluginDiagnostics, reportPluginError } from './background/diagnostics.js';
@@ -78,6 +79,7 @@ const DEFAULT_PLUGIN_SETTINGS = {
   xhsKeywordNoteLimit: 20,
   xhsLinkBatchLimit: 50,
   xhsBloggerCollectionMode: 'api',
+  socialCommentLimit: 5,
   xhsSaveCommentsWithNote: true,
   saveToGardenFlowByDefault: true,
   autoUpdateCheck: false,
@@ -312,7 +314,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         error: describeError(error),
       });
       if (isPluginCaptureMessageType(message?.type)) {
-        if (['BROWSER_LOGIN_REQUIRED', 'BROWSER_SECURITY_CHALLENGE', 'CONTENT_NOT_ACCESSIBLE'].includes(String(error?.code || ''))) {
+        if (['BROWSER_LOGIN_REQUIRED', 'BROWSER_SECURITY_CHALLENGE', 'BROWSER_RATE_LIMITED', 'CONTENT_NOT_ACCESSIBLE'].includes(String(error?.code || ''))) {
           void reportNativeCaptureAccessState({
             code: error.code,
             platform: error.platform || inferCapturePlatform(sender?.tab?.url || message?.url || ''),
@@ -561,7 +563,8 @@ async function handleMessage(message, sender) {
     case 'xhs:export-current-note-json':
       return await exportCurrentXhsNoteJson(tabId);
     case 'save-douyin':
-      return await saveDouyinVideoFromTab(tabId);
+    case 'save-tiktok':
+      return await saveSocialPostFromTab(tabId, message.type === 'save-douyin' ? 'douyin' : 'tiktok', message);
     case 'save-youtube':
       return await saveYouTubeFromTab(tabId);
     case 'save-zhihu-answer':
@@ -570,7 +573,6 @@ async function handleMessage(message, sender) {
       return await saveZhihuArticleFromTab(tabId);
     case 'save-bilibili':
     case 'save-kuaishou':
-    case 'save-tiktok':
     case 'save-reddit':
     case 'save-x':
     case 'save-instagram':
@@ -610,7 +612,10 @@ async function inspectPage(tabId) {
     );
 
     const urlPageInfo = detectCaptureTargetFromUrl(currentUrl);
-    if (urlPageInfo?.detected) {
+    const parsedCurrentUrl = new URL(currentUrl);
+    if ((parsedCurrentUrl.hostname === 'douyin.com' || parsedCurrentUrl.hostname.endsWith('.douyin.com')) && parsedCurrentUrl.searchParams.has('modal_id')) {
+      pageInfo = await runExtraction(tabId, detectCaptureTarget);
+    } else if (urlPageInfo?.detected) {
       pageInfo = urlPageInfo;
     } else if (shouldTrustCache) {
       pageInfo = cached.pageInfo;
@@ -765,12 +770,13 @@ function detectCaptureTargetFromUrl(rawUrl) {
 
   if (/(^|\.)douyin\.com$/i.test(hostname)) {
     if (pathname.startsWith('/video/') || pathname.startsWith('/note/')) {
+      const isImagePage = pathname.startsWith('/note/');
       return {
-        kind: 'douyin-video',
+        kind: isImagePage ? 'douyin-image' : 'douyin-video',
         platform: 'douyin',
         action: 'save-douyin',
-        label: '保存抖音视频到知识库',
-        description: '当前页面已识别为抖音视频页。',
+        label: `保存抖音${isImagePage ? '图集' : '视频'}到知识库`,
+        description: `当前页面已识别为抖音${isImagePage ? '图集' : '视频'}页。`,
         detected: true,
       };
     }
@@ -809,12 +815,13 @@ function detectCaptureTargetFromUrl(rawUrl) {
 
   if (hostname === 'tiktok.com' || hostname.endsWith('.tiktok.com')) {
     const isVideoPage = pathname.includes('/video/');
+    const isImagePage = pathname.includes('/photo/');
     return {
-      kind: isVideoPage ? 'tiktok-video' : 'tiktok-page',
+      kind: isImagePage ? 'tiktok-image' : isVideoPage ? 'tiktok-video' : 'tiktok-page',
       platform: 'tiktok',
       action: 'save-tiktok',
-      label: isVideoPage ? '保存 TikTok 视频页到知识库' : '保存 TikTok 页面到知识库',
-      description: isVideoPage ? '当前页面已识别为 TikTok 视频页。' : '当前页面已识别为 TikTok 页面。',
+      label: isImagePage ? '保存 TikTok 图集到知识库' : isVideoPage ? '保存 TikTok 视频页到知识库' : '保存 TikTok 页面到知识库',
+      description: isImagePage ? '当前页面已识别为 TikTok 图集页。' : isVideoPage ? '当前页面已识别为 TikTok 视频页。' : '当前页面已识别为 TikTok 页面。',
       detected: true,
     };
   }
@@ -963,6 +970,7 @@ function normalizePluginSettings(input = {}) {
     xhsKeywordNoteLimit: Math.round(clampNumber(source.xhsKeywordNoteLimit, 1, 50, DEFAULT_PLUGIN_SETTINGS.xhsKeywordNoteLimit)),
     xhsLinkBatchLimit: Math.round(clampNumber(source.xhsLinkBatchLimit, 1, 50, DEFAULT_PLUGIN_SETTINGS.xhsLinkBatchLimit)),
     xhsBloggerCollectionMode: normalizeText(source.xhsBloggerCollectionMode) === 'tab' ? 'tab' : 'api',
+    socialCommentLimit: Math.trunc(clampNumber(source.socialCommentLimit, 0, 200, 5)),
     xhsSaveCommentsWithNote: source.xhsSaveCommentsWithNote !== false,
     saveToGardenFlowByDefault: source.saveToGardenFlowByDefault !== false,
     autoUpdateCheck: false,
@@ -2433,17 +2441,20 @@ async function fetchKnowledgeJson(endpoint, path, init = {}) {
     : await requestNativeHost(nativeMethod, {
       operationId,
       payload,
-    }, method === 'GET' ? 5_000 : 35_000);
+      ...(init.captureSpaceId === undefined ? {} : { spaceId: init.captureSpaceId }),
+    }, method === 'GET' ? 5_000 : Number(init.timeoutMs || 35_000));
   return nativeMethod === 'desktop.health'
     ? (result?.knowledge || result)
     : (result || { success: true });
 }
 
-async function postKnowledgeJson(path, payload, logScope) {
+async function postKnowledgeJson(path, payload, logScope, captureSpaceId) {
   pluginLog(`${logScope || 'knowledge-post'}-native`, { path });
   return await fetchKnowledgeJson(NATIVE_KNOWLEDGE_ENDPOINT, path, {
     method: 'POST',
     body: JSON.stringify(payload),
+    captureSpaceId,
+    timeoutMs: ['douyin', 'tiktok'].includes(payload?.platform) ? 210_000 : 35_000,
   });
 }
 
@@ -2473,7 +2484,7 @@ function parseBridgeJsonBody(body, label) {
   }
 }
 
-async function postKnowledgeEntry(payload) {
+async function postKnowledgeEntry(payload, captureSpaceId) {
   const endpoint = await resolveKnowledgeApiEndpoint();
   pluginLog('entry-submit', {
     endpoint: `${endpoint.baseUrl}${endpoint.endpointPath}/entries`,
@@ -2483,7 +2494,7 @@ async function postKnowledgeEntry(payload) {
     sourceUrl: String(payload?.source?.sourceUrl || ''),
     externalId: String(payload?.source?.externalId || ''),
   });
-  const response = await postKnowledgeJson('/entries', payload, 'entry-submit');
+  const response = await postKnowledgeJson('/entries', payload, 'entry-submit', captureSpaceId);
   pluginLog('entry-submit-success', {
     kind: String(payload?.kind || ''),
     entryId: response?.entryId || '',
@@ -2526,7 +2537,7 @@ async function postKnowledgeZhihuArticle(payload) {
   return response;
 }
 
-async function postKnowledgeXhsEntryV2(payload) {
+async function postKnowledgeXhsEntryV2(payload, captureSpaceId) {
   const endpoint = await resolveKnowledgeApiEndpoint();
   pluginLog('xhs-entry-v2-submit', {
     endpoint: `${endpoint.baseUrl}${endpoint.endpointPath}/xhs/v2/entries`,
@@ -2534,7 +2545,7 @@ async function postKnowledgeXhsEntryV2(payload) {
     sourceLink: String(payload?.source?.sourceLink || ''),
     commentCount: Array.isArray(payload?.comments?.items) ? payload.comments.items.length : 0,
   });
-  const response = await postKnowledgeJson('/xhs/v2/entries', payload, 'xhs-entry-v2-submit');
+  const response = await postKnowledgeJson('/xhs/v2/entries', payload, 'xhs-entry-v2-submit', captureSpaceId);
   pluginLog('xhs-entry-v2-submit-success', {
     entryId: response?.entryId || '',
     duplicate: Boolean(response?.duplicate),
@@ -4304,14 +4315,21 @@ async function saveCurrentPageFromTab(tabId, options = {}, existingInspection = 
   if (options.expectedProduct != null) assertExpectedProductMatches((await chrome.tabs.get(tabId)).url, options.expectedProduct);
   const inspection = existingInspection || await inspectPage(tabId);
   const action = normalizeText(inspection?.pageInfo?.action) || 'save-page-link';
+  if (options.expectedContent) {
+    const expectedAction = { xiaohongshu: 'save-xhs', douyin: 'save-douyin', tiktok: 'save-tiktok' }[options.expectedContent.platform];
+    if (!expectedAction || action !== expectedAction) throw Object.assign(new Error('作品详情尚未就绪，无法按普通网页保存采集任务'), { code: 'CONTENT_NOT_ACCESSIBLE' });
+  }
   if (['preview-product', 'save-product', 'preview-jd-product', 'save-jd-product'].includes(action)) {
     return await saveJdProductFromTab(tabId, options?.reviewOptions, options?.expectedProduct, options?.captureSpaceId);
   }
   if (action === 'save-xhs') {
-    return await saveXhsNoteFromTab(tabId);
+    return await saveXhsNoteFromTab(tabId, options);
   }
   if (action === 'save-douyin') {
-    return await saveDouyinVideoFromTab(tabId);
+    return await saveSocialPostFromTab(tabId, 'douyin', options);
+  }
+  if (action === 'save-tiktok') {
+    return await saveSocialPostFromTab(tabId, 'tiktok', options);
   }
   if (action === 'save-youtube') {
     return await saveYouTubeFromTab(tabId);
@@ -4501,7 +4519,8 @@ async function saveZhihuArticleFromTab(tabId) {
   };
 }
 
-async function saveXhsNoteFromTab(tabId) {
+async function saveXhsNoteFromTab(tabId, options = {}) {
+  const captureSpaceId = options.captureSpaceId ?? (await requestDesktopHealth()).captureSpaceId;
   const payload = await runExtraction(tabId, extractXhsNotePayload, { world: 'MAIN' });
   const settings = await readPluginSettings();
   console.log('[gardenflow-plugin][xhs] payload', {
@@ -4515,7 +4534,7 @@ async function saveXhsNoteFromTab(tabId) {
     throw captureAccessError(payload?.accessErrorCode, '小红书', payload?.source);
   }
   let commentsPayload = {};
-  if (settings.xhsSaveCommentsWithNote !== false) {
+  if (options.commentLimit !== 0 && settings.xhsSaveCommentsWithNote !== false) {
     await upsertCaptureCheckpoint(buildXhsCommentsCheckpoint({
       source: payload?.source,
       noteId: payload?.noteId,
@@ -4525,7 +4544,7 @@ async function saveXhsNoteFromTab(tabId) {
     })).catch((error) => {
       pluginWarn('xhs-comments-checkpoint-start-failed', { error: describeError(error) });
     });
-    commentsPayload = await runExtraction(tabId, extractXhsCommentsPayload, { world: 'MAIN', captureRuntime: true })
+    commentsPayload = await runExtraction(tabId, extractXhsCommentsPayload, { world: 'MAIN', captureRuntime: true, args: [options.commentLimit] })
       .catch((error) => {
         pluginWarn('xhs-comments-inline-extract-failed', {
           error: describeError(error),
@@ -4557,7 +4576,8 @@ async function saveXhsNoteFromTab(tabId) {
   }
   let response;
   try {
-    response = await postKnowledgeXhsEntryV2(buildXhsEntryV2Request(payload, commentsPayload));
+    if (options.expectedContent && (options.expectedContent.platform !== 'xiaohongshu' || String(payload.noteId) !== options.expectedContent.externalId)) throw new Error('页面作品已变化');
+    response = await postKnowledgeXhsEntryV2(buildXhsEntryV2Request(payload, commentsPayload), captureSpaceId);
     if (Array.isArray(commentsPayload?.comments) && commentsPayload.comments.length > 0) {
       await upsertCaptureCheckpoint(buildXhsCommentsCheckpoint(commentsPayload, {
         source: commentsPayload?.source || payload?.source,
@@ -4568,7 +4588,7 @@ async function saveXhsNoteFromTab(tabId) {
       });
     }
   } catch (error) {
-    if (settings.xhsSaveCommentsWithNote !== false) {
+    if (options.commentLimit !== 0 && settings.xhsSaveCommentsWithNote !== false) {
       await upsertCaptureCheckpoint(buildXhsCommentsCheckpoint(commentsPayload, {
         source: commentsPayload?.source || payload?.source,
         sourceId: commentsPayload?.noteId || payload?.noteId,
@@ -4600,7 +4620,7 @@ configurePluginCapture({
         type: 'save-xhs',
         title: createXhsTaskTitle('save-xhs', {}, tabId),
         tabId,
-        execute: () => saveXhsNoteFromTab(tabId),
+        execute: () => saveXhsNoteFromTab(tabId, options),
       });
     }
     return await saveCurrentPageFromTab(tabId, options, inspection);
@@ -6270,25 +6290,24 @@ async function exportCurrentXhsNoteJson(tabId) {
   return { success: true, mode: 'xhs-export-json', downloadId, filename };
 }
 
+async function saveSocialPostFromTab(tabId, platform, options = {}) {
+  const captureSpaceId = options.captureSpaceId ?? (await requestDesktopHealth()).captureSpaceId;
+  if (!captureSpaceId) throw new Error('请更新 GardenFlow 桌面端后采集作品');
+  const settings = await readPluginSettings();
+  const extractionOptions = { world: 'MAIN', args: [platform, { commentLimit: options.commentLimit ?? settings.socialCommentLimit, expectedContent: options.expectedContent }] };
+  let payload = await runExtraction(tabId, extractSocialPost, extractionOptions);
+  // Chrome can drop an async injection result when navigation replaces its
+  // frame. Retry the read once, retaining the exact expected post identity.
+  if (payload == null && options.expectedContent) payload = await runExtraction(tabId, extractSocialPost, extractionOptions);
+  if (payload?.accessErrorCode) {
+    throw Object.assign(new Error(payload.message || '作品采集失败'), { code: payload.accessErrorCode, platform, origin: safePageOrigin(payload.sourceUrl), recovery: '请在浏览器核对作品、登录或验证状态后重试', phase: 'capture', retryable: false });
+  }
+  const response = await postKnowledgeEntry(buildSocialPostEntry(payload), captureSpaceId);
+  return { success: true, mode: `${platform}-${payload.contentType === 'image_text' ? 'image' : 'video'}`, noteId: response.entryId, title: payload.title, duplicate: Boolean(response.duplicate), updated: Boolean(response.updated), capture: response.capture || payload.capture, comments: payload.comments.length };
+}
+
 async function saveDouyinVideoFromTab(tabId) {
-  const payload = await runExtraction(tabId, extractDouyinVideoPayload, { world: 'MAIN' });
-  console.log('[gardenflow-plugin][douyin] payload', {
-    noteId: payload?.noteId || '',
-    source: payload?.source || '',
-    title: payload?.title || '',
-    hasCoverUrl: Boolean(payload?.coverUrl || payload?.coverDataUrl),
-    videoUrl: String(payload?.videoUrl || ''),
-    hasVideoDataUrl: Boolean(payload?.videoDataUrl),
-  });
-  const response = await postKnowledgeEntry(buildDouyinEntry(payload));
-  return {
-    success: true,
-    mode: 'douyin',
-    noteId: response.entryId || '',
-    duplicate: Boolean(response.duplicate),
-    updated: Boolean(response.updated),
-    duplicateBy: response.duplicateBy || '',
-  };
+  return await saveSocialPostFromTab(tabId, 'douyin');
 }
 
 async function saveSocialPlatformFromTab(tabId, platformHint = '') {
@@ -8011,7 +8030,7 @@ async function extractXhsNotePayload() {
   };
 }
 
-async function extractXhsCommentsPayload() {
+async function extractXhsCommentsPayload(commentLimitInput) {
   const capture = window.__GARDENFLOW_CAPTURE_RUNTIME__;
   if (!capture) {
     throw new Error('GardenFlow capture runtime 未加载');
@@ -8154,7 +8173,8 @@ async function extractXhsCommentsPayload() {
 
   async function loadCommentsUntilLimit() {
     const targetTotal = parseCountText(readCommentsTotalText());
-    const targetCount = Math.min(targetTotal || 200, 200);
+    const requestedLimit = Number.isFinite(Number(commentLimitInput)) ? Math.max(0, Math.min(200, Math.trunc(Number(commentLimitInput)))) : 200;
+    const targetCount = Math.min(targetTotal || requestedLimit, requestedLimit);
     return await scrollAndTrackContentChange({
       rootResolver: getCommentsRoot,
       itemSelectors: commentItemSelectors,
@@ -8335,7 +8355,7 @@ async function extractXhsCommentsPayload() {
       createdAt: meta.createdAt,
       location: meta.location,
     });
-    if (comments.length >= 200) break;
+    if (comments.length >= (Number.isFinite(Number(commentLimitInput)) ? Math.min(200, Number(commentLimitInput)) : 200)) break;
   }
   const totalText = readCommentsTotalText();
   const total = parseCountText(totalText);
@@ -9939,6 +9959,9 @@ function detectCaptureTarget() {
     }
 
     const pathname = String(location.pathname || '');
+    const modalId = new URL(location.href).searchParams.get('modal_id');
+    const modalRoot = /^\d+$/.test(modalId || '') ? Array.from(document.querySelectorAll(`[class~="video_${modalId}"]`)).find(node => !node.closest('.search-result-card') && isNodeVisible(node)) : null;
+    const isImagePage = pathname.startsWith('/note/') || Boolean(modalRoot?.querySelector('.dySwiperSlide, [data-e2e="image-gallery"]') && !modalRoot.querySelector('video'));
     const title = String(
       document.querySelector('[data-e2e="video-desc"]')?.textContent
       || document.querySelector('h1')?.textContent
@@ -9952,9 +9975,9 @@ function detectCaptureTarget() {
         return (br.width * br.height) - (ar.width * ar.height);
       })
       .find((item) => isNodeVisible(item) || String(item.currentSrc || item.src || '').trim());
-    if (pathname.startsWith('/video/') || pathname.startsWith('/note/') || videoEl || title) {
+    if (pathname.startsWith('/video/') || isImagePage || videoEl || title) {
       return {
-        kind: 'douyin-video',
+        kind: isImagePage ? 'douyin-image' : 'douyin-video',
         platform: 'douyin',
         action: 'save-douyin',
         label: '保存抖音视频到知识库',
@@ -10001,8 +10024,9 @@ function detectCaptureTarget() {
   if (hostname === 'tiktok.com' || hostname.endsWith('.tiktok.com')) {
     const pathname = String(location.pathname || '');
     const isVideoPage = pathname.includes('/video/');
+    const isImagePage = pathname.includes('/photo/');
     return {
-      kind: isVideoPage ? 'tiktok-video' : 'tiktok-page',
+      kind: isImagePage ? 'tiktok-image' : isVideoPage ? 'tiktok-video' : 'tiktok-page',
       platform: 'tiktok',
       action: 'save-tiktok',
       label: isVideoPage ? '保存 TikTok 视频页到知识库' : '保存 TikTok 页面到知识库',

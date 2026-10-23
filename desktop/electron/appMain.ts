@@ -1,3 +1,7 @@
+import { persistSocialKnowledgeEntry, resolveSocialEntryId, serializeSocialWrite } from './core/socialKnowledgeStore';
+import { socialPlatformFromUrl } from '../shared/socialCapture';
+import { saveSocialCaptureUrl } from './core/socialCaptureRuntime';
+import { supportsDashscopeFlashTranscription, transcribeDashscopeFlash } from './core/dashscopeTranscription';
 import { registerNoteCardIpc } from './core/noteCardIpc';
 import { noteCardTurn, readNoteCard } from './core/noteCardEditor';
 import { NoteCardTurnSchema } from '../shared/noteCards';
@@ -13323,6 +13327,15 @@ ipcMain.handle('manuscripts:move', async (_, { sourcePath, targetDir }: { source
   }
 });
 
+ipcMain.handle('capture:save-url', async (_event, payload: { url?: string; commentLimit?: number; entryId?: string }) => {
+  const captureSpaceId = getActiveSpaceId();
+  try {
+    return await saveSocialCaptureUrl({ url: String(payload?.url || ''), commentLimit: payload?.commentLimit ?? 5, captureSpaceId });
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
 // --------- Knowledge Base ---------
 function getKnowledgeRedbookDir() {
   return getWorkspacePaths().knowledgeRedbook;
@@ -14151,6 +14164,7 @@ ipcMain.handle('knowledge:get-item-detail', async (_, payload?: {
 
     return {
       id: item.id,
+      knowledgeKind: 'redbook-note',
       type: String(meta.type || item.noteType || ''),
       sourceUrl,
       title: String(meta.title || item.title || item.id),
@@ -14173,8 +14187,15 @@ ipcMain.handle('knowledge:get-item-detail', async (_, payload?: {
         collects: typeof meta.stats?.collects === 'number' ? Number(meta.stats.collects) : undefined,
         comments: Number(meta.stats?.comments || 0),
         shares: Number(meta.stats?.shares || 0),
+        views: typeof meta.stats?.views === 'number' ? meta.stats.views : undefined,
       },
       commentsSnapshot,
+      platform: meta.platform,
+      publishedAt: meta.publishedAt,
+      authorProfileUrl: meta.authorProfileUrl,
+      contentType: meta.contentType,
+      capture: meta.capture,
+      socialComments: buildXhsCommentsSnapshotView(commentsSnapshot, { noteId: item.id, sourceLink: sourceUrl, total: Number(meta.stats?.comments || commentsSnapshot.length), platform: meta.platform || 'xiaohongshu' }),
       xhsComments: buildXhsCommentsSnapshotView(commentsSnapshot, {
         noteId: item.id,
         sourceLink: sourceUrl,
@@ -15209,7 +15230,7 @@ function countTruthyDirectoryEntries(entries: Array<string | fsSync.Dirent>): nu
   return entries.filter(Boolean).length;
 }
 
-function createKnowledgeAssetPersister(noteDir: string) {
+function createKnowledgeAssetPersister(noteDir: string, sourceUrl = 'https://www.xiaohongshu.com/') {
   const persistedBySource = new Map<string, string>();
   let nextImageIndex = 0;
 
@@ -15244,9 +15265,9 @@ function createKnowledgeAssetPersister(noteDir: string) {
       await fs.writeFile(outputPath, decoded.buffer);
     } else if (/^https?:\/\//i.test(source)) {
       if (input.kind === 'image') {
-        await downloadImageToFile(source, outputPath);
+        await downloadImageToFile(source, outputPath, sourceUrl);
       } else {
-        await downloadFile(source, outputPath);
+        await downloadFile(source, outputPath, sourceUrl);
       }
     } else {
       return '';
@@ -15281,6 +15302,15 @@ async function queueKnowledgeVideoTranscription(input: {
   const noteDir = input.noteDir;
   const metaPath = input.metaPath;
   const meta = input.meta;
+  const writeTranscriptPatch = async (patch: Record<string, unknown>) => {
+    const write = async () => {
+      const latest = JSON.parse(await fs.readFile(metaPath, 'utf8').catch(() => JSON.stringify(meta)));
+      Object.assign(meta, latest, patch);
+      await fs.writeFile(metaPath, JSON.stringify(meta, null, 2));
+    };
+    if (meta.platform && meta.externalId) await serializeSocialWrite(`${path.dirname(noteDir)}:${meta.platform}:${meta.externalId}`, write);
+    else await write();
+  };
 
   (async () => {
     const videoPath = path.join(noteDir, String(meta.video));
@@ -15291,7 +15321,7 @@ async function queueKnowledgeVideoTranscription(input: {
       meta.transcriptFile = 'transcript.txt';
       meta.transcriptionStatus = 'completed';
       await fs.writeFile(path.join(noteDir, meta.transcriptFile), transcript);
-      await fs.writeFile(metaPath, JSON.stringify(meta, null, 2));
+      await writeTranscriptPatch({ transcript, transcriptFile: meta.transcriptFile, transcriptionStatus: 'completed' });
       indexManager.addToQueue(normalizeVideo(
         noteId,
         meta,
@@ -15301,14 +15331,14 @@ async function queueKnowledgeVideoTranscription(input: {
       win?.webContents.send('knowledge:note-updated', { noteId, hasTranscript: true, transcriptionStatus: 'completed' });
     } else if (transcriptResult.error) {
       meta.transcriptionStatus = 'failed';
-      await fs.writeFile(metaPath, JSON.stringify(meta, null, 2));
+      await writeTranscriptPatch({ transcriptionStatus: 'failed' });
       console.warn(`[Transcription] Skipped background transcript for ${noteId}: ${transcriptResult.error}`);
       win?.webContents.send('knowledge:note-updated', { noteId, hasTranscript: false, transcriptionStatus: 'failed' });
     }
   })().catch((err) => {
     console.error('Failed to transcribe video:', err);
     meta.transcriptionStatus = 'failed';
-    fs.writeFile(metaPath, JSON.stringify(meta, null, 2)).catch(() => {});
+    void writeTranscriptPatch({ transcriptionStatus: 'failed' }).catch(() => {});
     win?.webContents.send('knowledge:note-updated', { noteId, hasTranscript: false, transcriptionStatus: 'failed' });
   });
 }
@@ -15497,7 +15527,7 @@ async function persistStructuredKnowledgeNote(input: {
   }
 }
 
-async function persistKnowledgeEntry(entry: KnowledgeEntryPayload): Promise<{ success: boolean; entryId?: string; duplicate?: boolean; updated?: boolean; error?: string }> {
+async function persistKnowledgeEntry(entry: KnowledgeEntryPayload): Promise<{ success: boolean; entryId?: string; duplicate?: boolean; updated?: boolean; error?: string; capture?: import('../shared/socialCapture').SocialCaptureState }> {
   const kind = String(entry?.kind || '').trim();
   const source = entry?.source || {};
   const content = entry?.content || {};
@@ -15505,6 +15535,25 @@ async function persistKnowledgeEntry(entry: KnowledgeEntryPayload): Promise<{ su
   const options = entry?.options || {};
   const sourceLink = String(source?.sourceLink || source?.sourceUrl || '').trim();
   const externalId = String(source?.externalId || '').trim();
+
+  const socialPlatform = entry.platform || (kind.startsWith('douyin-') ? 'douyin' : kind.startsWith('tiktok-') ? 'tiktok' : null);
+  if ((socialPlatform === 'douyin' || socialPlatform === 'tiktok') && ['douyin-video', 'douyin-image', 'tiktok-video', 'tiktok-image'].includes(kind)) {
+    return await persistSocialKnowledgeEntry({ ...entry, platform: socialPlatform, contentType: entry.contentType || (kind.endsWith('-video') ? 'video' : 'image_text') }, {
+      root: getKnowledgeRedbookDir(),
+      createPersister: createKnowledgeAssetPersister,
+      verifyVideo: verifyVideoFileDecodable,
+      onSaved: async (id, directory, meta, updated) => {
+        indexManager.addToQueue(normalizeNote(id, meta, meta.indexText || meta.content));
+        emitKnowledgeCatalogChanged({ action: updated ? 'update' : 'create', entryId: id, kind });
+        win?.webContents.send(updated ? 'knowledge:note-updated' : 'knowledge:new-note', { noteId: id, title: meta.title });
+        if (meta.video && !meta.transcript && meta.transcriptionStatus !== 'processing') {
+          meta.transcriptionStatus = 'processing';
+          await fs.writeFile(path.join(directory, 'meta.json'), JSON.stringify(meta, null, 2));
+          await queueKnowledgeVideoTranscription({ noteId: id, noteDir: directory, metaPath: path.join(directory, 'meta.json'), meta });
+        }
+      },
+    });
+  }
 
   if (kind === 'youtube-video') {
     const videoUrl = String(sourceLink || '').trim();
@@ -15541,7 +15590,7 @@ async function persistKnowledgeEntry(entry: KnowledgeEntryPayload): Promise<{ su
     : rawVideoSource || '';
 
   const result = await persistStructuredKnowledgeNote({
-    noteId: externalId || `${kind || 'entry'}_${Date.now()}`,
+    noteId: socialPlatformFromUrl(sourceLink) === 'xiaohongshu' && externalId ? await resolveSocialEntryId(getKnowledgeRedbookDir(), 'xiaohongshu', externalId) : externalId || `${kind || 'entry'}_${Date.now()}`,
     kind: kind || 'webpage',
     title: String(content?.title || '').trim() || '未命名内容',
     content: String(content?.text || content?.description || '').trim(),
@@ -15616,8 +15665,13 @@ function validateBrowserKnowledgeEntry(entry: BrowserKnowledgeEntryPayload): Bro
     entry.assets?.coverUrl,
     entry.assets?.thumbnailUrl,
     entry.assets?.videoUrl,
+    ...(Array.isArray(entry.assets?.videoUrls) ? entry.assets.videoUrls : []),
     ...(Array.isArray(entry.assets?.imageUrls) ? entry.assets.imageUrls : []),
   ].filter((item): item is string => typeof item === 'string' && Boolean(item.trim()));
+  if (entry.assets?.videoUrls !== undefined && (!Array.isArray(entry.assets.videoUrls) || entry.assets.videoUrls.length > 3
+    || entry.assets.videoUrls.some((item) => typeof item !== 'string' || !/^https?:\/\//i.test(item)))) {
+    throw bridgePayloadError('INVALID_MEDIA_SOURCE', '视频候选仅支持最多 3 个 HTTP(S) 地址');
+  }
   for (const assetSource of assetSources) validateRemoteMediaSource(assetSource);
   const hasContent = Boolean(
     String(entry.content?.title || '').trim()
@@ -15636,6 +15690,7 @@ async function handleBrowserCaptureBridgeRequest(
   _context: BrowserCaptureBridgeRequestContext,
 ): Promise<unknown> {
   if (method === 'desktop.health') {
+    const captureSpaceId = getActiveSpaceId();
     await Promise.all([ensureKnowledgeRedbookDir(), ensureKnowledgeYoutubeDir()]);
     const [redbookDirs, youtubeDirs, mediaAssets] = await Promise.all([
       fs.readdir(getKnowledgeRedbookDir(), { withFileTypes: true }).catch(() => []),
@@ -15645,6 +15700,7 @@ async function handleBrowserCaptureBridgeRequest(
     return {
       success: true,
       status: 'ok',
+      captureSpaceId,
       app: 'GardenFlow',
       appVersion: app.getVersion(),
       bridgeProtocolVersion: browserCaptureBridgeService.getStatus().protocolVersion,
@@ -15662,9 +15718,10 @@ async function handleBrowserCaptureBridgeRequest(
     throw bridgePayloadError('OPERATION_ID_REQUIRED', '写入请求缺少 operationId');
   }
   const captureSpaceId = method === 'assets.ingestProduct'
-    ? resolveProductCaptureSpaceId(params.spaceId, getActiveSpaceId(), listSpaces().map((space) => space.id)) : '';
+    ? resolveProductCaptureSpaceId(params.spaceId, getActiveSpaceId(), listSpaces().map((space) => space.id))
+    : method.startsWith('knowledge.') ? resolveProductCaptureSpaceId(params.spaceId, getActiveSpaceId(), listSpaces().map((space) => space.id)) : '';
   const operationKey = captureSpaceId ? `${method}:${captureSpaceId}:${operationId}` : `${method}:${operationId}`;
-  return browserCaptureOperationResults.run(operationKey, async () => {
+  return browserCaptureOperationResults.run(operationKey, () => runInWorkspaceSpace(captureSpaceId || getActiveSpaceId(), async () => {
     const payload = params.payload;
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
       throw bridgePayloadError('INVALID_CAPTURE_PAYLOAD', '采集请求 payload 格式无效');
@@ -15679,6 +15736,7 @@ async function handleBrowserCaptureBridgeRequest(
         entryId: persisted.entryId,
         duplicate: Boolean(persisted.duplicate),
         updated: Boolean(persisted.updated),
+        ...(persisted.capture ? { capture: persisted.capture } : {}),
       };
     } else if (method === 'knowledge.ingestXhsEntryV2') {
       const normalized = normalizeXhsV2Entry(payload);
@@ -15761,7 +15819,7 @@ async function handleBrowserCaptureBridgeRequest(
     }
 
     return result;
-  });
+  }));
 }
 
 
@@ -15808,22 +15866,31 @@ const fetchWithRetries = async (
   throw lastError instanceof Error ? lastError : new Error(`Download failed: ${normalizedUrl}`);
 };
 
-const downloadImageToFile = async (url: string, outputPath: string) => {
+const captureAssetHeaders = (sourceUrl: string) => {
+  const platform = socialPlatformFromUrl(sourceUrl);
+  const origin = platform === 'douyin' ? 'https://www.douyin.com' : platform === 'tiktok' ? 'https://www.tiktok.com' : 'https://www.xiaohongshu.com';
+  return { ...XHS_ASSET_REQUEST_HEADERS, Referer: `${origin}/`, Origin: origin };
+};
+
+const downloadImageToFile = async (url: string, outputPath: string, sourceUrl = 'https://www.xiaohongshu.com/') => {
   const response = await fetchWithRetries(url, {
     headers: {
-      ...XHS_ASSET_REQUEST_HEADERS,
+      ...captureAssetHeaders(sourceUrl),
       'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
     },
   });
+  const type = String(response.headers.get('content-type') || '').toLowerCase();
+  if (type && !type.startsWith('image/') && !type.includes('octet-stream')) throw new Error('下载结果不是图片');
   const buffer = Buffer.from(await response.arrayBuffer());
+  if (!buffer.length) throw new Error('图片文件为空');
   const fs = require('fs/promises');
   await fs.writeFile(outputPath, buffer);
 };
 
-const downloadFile = async (url: string, outputPath: string) => {
+const downloadFile = async (url: string, outputPath: string, sourceUrl = 'https://www.xiaohongshu.com/') => {
   const response = await fetchWithRetries(url, {
     headers: {
-      ...XHS_ASSET_REQUEST_HEADERS,
+      ...captureAssetHeaders(sourceUrl),
       'Accept': '*/*',
     },
     timeoutMs: 45000,
@@ -16095,6 +16162,8 @@ const transcribeVideoToText = async (videoPath: string): Promise<{ text: string 
     }
   })();
   const modelName = String(settings?.transcription_model || 'whisper-1').trim() || 'whisper-1';
+  const isDashscopeFlashAsr = supportsDashscopeFlashTranscription(endpoint, modelName);
+  const transcriptionRequestEndpoint = isDashscopeFlashAsr ? new URL('/api/v1/services/aigc/multimodal-generation/generation', endpoint).toString() : safeUrlJoin(endpoint, '/audio/transcriptions');
   const isOfficialOpenAiTranscriptionModel = /^(whisper-1|gpt-4o-transcribe|gpt-4o-mini-transcribe(?:-\d{4}-\d{2}-\d{2})?|gpt-4o-transcribe-diarize)$/i.test(modelName);
   const isOfficialGeminiEndpoint =
     endpointHost === 'generativelanguage.googleapis.com' || endpointHost.endsWith('.googleapis.com');
@@ -16106,7 +16175,7 @@ const transcribeVideoToText = async (videoPath: string): Promise<{ text: string 
     return 'v1beta';
   };
   const isLikelyUnsupportedTranscriptionEndpoint =
-    endpointHost.includes('dashscope.aliyuncs.com') ||
+    (endpointHost.includes('dashscope.aliyuncs.com') && !isDashscopeFlashAsr) ||
     endpointHost.includes('volces.com');
   if (isLikelyUnsupportedTranscriptionEndpoint) {
     const message = `当前转录端点可能不支持 OpenAI /audio/transcriptions：${endpoint}`;
@@ -16129,6 +16198,9 @@ const transcribeVideoToText = async (videoPath: string): Promise<{ text: string 
     const fileMimeType = preparedAudio.mimeType;
     if (preparedAudio.source === 'original' && TRANSCRIBE_VIDEO_EXTENSIONS.has(extensionFromPath(videoPath))) {
       return { text: null, error: '转录前音频抽取失败：已阻止将原始视频文件直接上传到 ASR。请检查源视频完整性后重试。' };
+    }
+    if (isDashscopeFlashAsr) {
+      return { text: await transcribeDashscopeFlash({ endpoint, model: modelName, apiKey, audioBuffer, mimeType: fileMimeType, sampleRate: preparedAudio.source === 'ffmpeg-mp3' ? 16000 : undefined }) };
     }
     const endpointUrl = safeUrlJoin(endpoint, '/audio/transcriptions');
     console.log('[Transcription] payload prepared', {
@@ -16255,7 +16327,7 @@ const transcribeVideoToText = async (videoPath: string): Promise<{ text: string 
     const detail = Number.isFinite(maybeStatus) && maybeStatus > 0
       ? `${message} (status=${maybeStatus})`
       : message;
-    return { text: null, error: `转录请求失败：${detail} | endpoint=${safeUrlJoin(endpoint, '/audio/transcriptions')}` };
+    return { text: null, error: `转录请求失败：${detail} | endpoint=${transcriptionRequestEndpoint}` };
   } finally {
     if (preparedAudioCleanup) {
       await preparedAudioCleanup();

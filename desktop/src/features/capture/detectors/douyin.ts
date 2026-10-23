@@ -35,21 +35,23 @@ export function detectDouyinClipboardCandidate(
   }
 
   let awemeId = '';
-  if (pathParts[0] === 'video') {
+  if (pathParts[0] === 'video' || pathParts[0] === 'note') {
     awemeId = cleanAwemeId(pathParts[1]);
   } else if (pathParts[0] === 'share' && pathParts[1] === 'video') {
     awemeId = cleanAwemeId(pathParts[2]);
   }
 
+  awemeId ||= cleanAwemeId(parsed.searchParams.get('modal_id') || parsed.searchParams.get('aweme_id') || '');
   if (!awemeId) return null;
 
+  const kind = pathParts[0] === 'note' ? 'douyin-image' : 'douyin-video';
   return {
-    id: candidateId('douyin-video', awemeId),
-    kind: 'douyin-video',
+    id: candidateId(kind, awemeId),
+    kind,
     platform: 'douyin',
     rawText,
     rawUrl: sanitized,
-    canonicalUrl: `https://www.douyin.com/video/${awemeId}`,
+    canonicalUrl: `https://www.douyin.com/${pathParts[0] === 'note' ? 'note' : 'video'}/${awemeId}`,
     externalId: awemeId,
     confidence: 'exact',
     source,

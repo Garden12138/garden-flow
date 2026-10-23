@@ -1,5 +1,10 @@
+import type { SocialCapturePlatform, SocialCaptureState, SocialComment } from '../../shared/socialCapture.ts';
+
 export type BrowserKnowledgeEntryPayload = {
     kind?: string;
+    platform?: SocialCapturePlatform;
+    contentType?: 'video' | 'image_text';
+    capture?: SocialCaptureState;
     source?: {
         sourceLink?: string;
         sourceUrl?: string;
@@ -18,25 +23,20 @@ export type BrowserKnowledgeEntryPayload = {
         siteName?: string;
         tags?: string[];
         publishedAt?: string;
-        commentsSnapshot?: Array<{
-            author?: string;
-            text?: string;
-            likes?: number;
-            replies?: number;
-            createdAt?: string;
-            location?: string;
-        }>;
+        commentsSnapshot?: SocialComment[];
         stats?: {
             likes?: number;
             collects?: number;
             comments?: number;
             shares?: number;
+            views?: number;
         };
     };
     assets?: {
         coverUrl?: string;
         imageUrls?: string[];
         videoUrl?: string;
+        videoUrls?: string[];
         thumbnailUrl?: string;
     };
     options?: {
@@ -116,6 +116,7 @@ export function buildXhsCommentsSnapshotView(
         noteId?: string;
         sourceLink?: string;
         total?: number;
+        platform?: string;
     } = {},
 ) {
     const items = (Array.isArray(value) ? value : [])
@@ -137,7 +138,7 @@ export function buildXhsCommentsSnapshotView(
                 author: {
                     userId: scalarText(author.userId || source.userId, 500) || undefined,
                     nickname: nickname || undefined,
-                    profileUrl: scalarText(author.profileUrl || source.profileUrl, 8_000) || undefined,
+                    profileUrl: scalarText(author.profileUrl || source.authorProfileUrl || source.profileUrl, 8_000) || undefined,
                     avatarUrl: scalarText(author.avatarUrl || source.avatarUrl, 8_000) || undefined,
                     isNoteAuthor: Boolean(author.isNoteAuthor || source.isNoteAuthor),
                 },
@@ -164,7 +165,7 @@ export function buildXhsCommentsSnapshotView(
     const total = Number.isFinite(requestedTotal) ? Math.max(items.length, requestedTotal) : items.length;
     return {
         schemaVersion: 2,
-        platform: 'xiaohongshu',
+        platform: options.platform || 'xiaohongshu',
         noteId: scalarText(options.noteId, 500),
         entryId: scalarText(options.noteId, 500),
         sourceLink: scalarText(options.sourceLink, 8_000),

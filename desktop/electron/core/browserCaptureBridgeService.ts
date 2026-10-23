@@ -56,7 +56,7 @@ export type BrowserCaptureExtensionInstance = {
     extensionKind: BrowserExtensionKind;
     capabilities: string[];
     accessProblem?: {
-        code: 'BROWSER_LOGIN_REQUIRED' | 'BROWSER_SECURITY_CHALLENGE' | 'CONTENT_NOT_ACCESSIBLE';
+        code: 'BROWSER_LOGIN_REQUIRED' | 'BROWSER_SECURITY_CHALLENGE' | 'BROWSER_RATE_LIMITED' | 'CONTENT_NOT_ACCESSIBLE';
         platform: string;
         origin: string;
         recovery: string;
@@ -155,6 +155,7 @@ export class BrowserCaptureBridgeService {
     private readonly instances = new Map<string, BrowserCaptureExtensionInstance>();
     private readonly hostSockets = new Map<string, net.Socket>();
     private readonly pendingForwards = new Map<string, {
+        socket: net.Socket;
         resolve: (value: unknown) => void;
         reject: (error: Error) => void;
         timer: ReturnType<typeof setTimeout>;
@@ -333,6 +334,12 @@ export class BrowserCaptureBridgeService {
         });
         const cleanup = () => {
             this.sockets.delete(socket);
+            for (const [id, pending] of this.pendingForwards) {
+                if (pending.socket !== socket) continue;
+                this.pendingForwards.delete(id);
+                clearTimeout(pending.timer);
+                pending.reject(Object.assign(new Error('浏览器插件的原生消息通道已断开，请重新连接后重试'), { code: 'BROWSER_INSTANCE_UNAVAILABLE' }));
+            }
             // A replacement native host may have registered the same browser ID
             // before the old socket's close event arrives.
             if (state.extensionInstanceId && this.hostSockets.get(state.extensionInstanceId) === socket) {
@@ -497,9 +504,9 @@ export class BrowserCaptureBridgeService {
         }
         const accessProblemInput = isObject(params.accessProblem) ? params.accessProblem : null;
         const accessCode = String(accessProblemInput?.code || '');
-        const accessProblem = ['BROWSER_LOGIN_REQUIRED', 'BROWSER_SECURITY_CHALLENGE', 'CONTENT_NOT_ACCESSIBLE'].includes(accessCode)
+        const accessProblem = ['BROWSER_LOGIN_REQUIRED', 'BROWSER_SECURITY_CHALLENGE', 'BROWSER_RATE_LIMITED', 'CONTENT_NOT_ACCESSIBLE'].includes(accessCode)
             ? {
-                code: accessCode as 'BROWSER_LOGIN_REQUIRED' | 'BROWSER_SECURITY_CHALLENGE' | 'CONTENT_NOT_ACCESSIBLE',
+                code: accessCode as 'BROWSER_LOGIN_REQUIRED' | 'BROWSER_SECURITY_CHALLENGE' | 'BROWSER_RATE_LIMITED' | 'CONTENT_NOT_ACCESSIBLE',
                 platform: String(accessProblemInput?.platform || 'webpage').slice(0, 100),
                 origin: String(accessProblemInput?.origin || '').slice(0, 2_000),
                 recovery: String(accessProblemInput?.recovery || '').slice(0, 500),
@@ -595,7 +602,7 @@ export class BrowserCaptureBridgeService {
                     code: 'BROWSER_CONTROL_TIMEOUT',
                 }));
             }, timeoutMs);
-            this.pendingForwards.set(id, { resolve, reject, timer });
+            this.pendingForwards.set(id, { socket, resolve, reject, timer });
             try {
                 writeFrame(socket, { jsonrpc: '2.0', id, method, params });
             } catch (error) {

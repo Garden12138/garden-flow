@@ -1,3 +1,4 @@
+import { SOCIAL_CAPTURE_LABELS } from '../../shared/socialCapture';
 import { getBrowserCaptureBridgeService } from './browserCaptureBridgeService';
 import { getXhsPublisherBinding } from '../db';
 import { XHS_AUTO_CAPTURE_TASK_ID } from './xhsAutoCaptureCompletion';
@@ -364,6 +365,38 @@ async function checkXhsAutoCaptureReadiness(
     };
 }
 
+export const SOCIAL_AUTO_CAPTURE_IDS = { douyin: 'builtin:douyin-auto-capture', tiktok: 'builtin:tiktok-auto-capture' } as const;
+export function socialCaptureTaskPlatform(id: string): 'douyin' | 'tiktok' | null {
+    return id === SOCIAL_AUTO_CAPTURE_IDS.douyin ? 'douyin' : id === SOCIAL_AUTO_CAPTURE_IDS.tiktok ? 'tiktok' : null;
+}
+
+function socialAutoCaptureDefinition(platform: 'douyin' | 'tiktok'): BuiltinAutomationDefinition {
+    const label = SOCIAL_CAPTURE_LABELS[platform];
+    return {
+        id: SOCIAL_AUTO_CAPTURE_IDS[platform], name: `${label}自动采集`,
+        description: `按关键词在已登录浏览器中采集${label}视频和图集，保存媒体及评论，部分结果可补采。默认关闭。`,
+        supportedPlatforms: ['darwin', 'win32', 'linux'],
+        trigger: { kind: 'schedule', schedule: { mode: 'daily', time: '10:00' } },
+        requiredSkills: [`${platform}-auto-capture`],
+        settingsSchema: [
+            ...XHS_AUTO_CAPTURE_SETTINGS.map((field) => field.key === 'maxNotesPerRun' ? { ...field, label: '单轮目标新增作品数' } : field),
+            { key: 'commentLimit', label: '每条作品评论数', type: 'number', min: 0, max: 200, defaultValue: 5, description: '默认 5 条；0 表示不采评论。按页面当前排序采样。' },
+        ],
+        buildPrompt: (settings) => `${label}自动采集：由结构化运行时执行页内搜索、打开作品、capture.save、返回搜索页；仅完整新增计入配额。关键词：${toStringList(settings.keywords).join(' / ')}。每条评论数：${clampNumber(settings.commentLimit, 5, 0, 200)}。`,
+        checkReadiness: async (settings) => {
+            const report = await checkXhsAutoCaptureReadiness(settings);
+            const instances = (getBrowserCaptureBridgeService()?.getStatus().instances || []).filter((instance) => instance.extensionKind === 'capture');
+            const problem = instances.map((instance) => instance.accessProblem).find((problem) => problem?.platform === platform && ['BROWSER_LOGIN_REQUIRED', 'BROWSER_SECURITY_CHALLENGE', 'BROWSER_RATE_LIMITED'].includes(problem.code));
+            report.taskId = SOCIAL_AUTO_CAPTURE_IDS[platform];
+            const login = report.checks.find((check) => check.id === 'browser-login');
+            if (login) { login.status = problem || !instances.length ? 'unknown' : 'ok'; login.detail = problem ? `上次访问受限，本轮执行时重新核验：${problem.recovery || problem.code}` : (instances.length ? '执行时核验平台登录与页面状态' : '插件未连接'); login.hint = problem?.recovery; }
+            for (const check of report.checks) if (check.hint) check.hint = check.hint.replaceAll('小红书', label);
+            const failed = report.checks.find((check) => check.status === 'failed');
+            return { ...report, ready: !failed, blockingReason: failed ? `${failed.label}：${failed.detail}` : '' };
+        },
+    };
+}
+
 const BUILTIN_AUTOMATION_DEFINITIONS: BuiltinAutomationDefinition[] = [
     {
         id: XHS_AUTO_CAPTURE_ID,
@@ -387,6 +420,8 @@ const BUILTIN_AUTOMATION_DEFINITIONS: BuiltinAutomationDefinition[] = [
         buildPrompt: buildJdAutoCapturePrompt,
         checkReadiness: checkJdAutoCaptureReadiness,
     },
+    socialAutoCaptureDefinition('douyin'),
+    socialAutoCaptureDefinition('tiktok'),
     marketplaceAutoCaptureDefinition('taobao'),
     marketplaceAutoCaptureDefinition('tmall'),
     ...(['xiaohongshu', 'douyin', 'tiktok'] as const).map((platform): BuiltinAutomationDefinition => ({

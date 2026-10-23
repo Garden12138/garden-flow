@@ -11,7 +11,7 @@ const manualRun = source.slice(source.indexOf('  async runBuiltinTaskNow('), sou
 const execution = source.slice(source.indexOf('  private async executeBuiltinTask('), source.indexOf('  private buildLongCyclePrompt('));
 const code = (await transform(`globalThis.Runner = class { ${manualRun}\n${execution} };`, { loader: 'ts', target: 'es2022' })).code;
 
-const taskIds = ['jd-product-auto-capture', 'taobao-product-auto-capture', 'tmall-product-auto-capture', 'xhs-auto-capture'];
+const taskIds = ['jd-product-auto-capture', 'taobao-product-auto-capture', 'tmall-product-auto-capture', 'xhs-auto-capture', 'builtin:douyin-auto-capture', 'builtin:tiktok-auto-capture'];
 
 function harness(options: {
     enabled?: boolean;
@@ -38,6 +38,8 @@ function harness(options: {
         getActiveSpaceId: () => 'default', nowIso: () => new Date().toISOString(), getTaskGraphRuntime: () => runtime,
         computeNextRunForBuiltinTask: () => { calls.push({ type: 'schedule' }); return '2026-10-10T03:00:00.000Z'; },
         JD_AUTO_CAPTURE_TASK_ID: taskIds[0], XHS_AUTO_CAPTURE_TASK_ID: taskIds[3],
+        socialCaptureTaskPlatform: (id: string) => id === taskIds[4] ? 'douyin' : id === taskIds[5] ? 'tiktok' : null,
+        runSocialCaptureTask: capture,
         marketplaceCapturePlatform: (id: string) => ({ [taskIds[1]]: 'taobao', [taskIds[2]]: 'tmall' }[id] || null),
         resolveJdAutoCaptureLaunch: () => ({}), resolveMarketplaceAutoCaptureLaunch: () => ({}), resolveXhsAutoCaptureLaunch: () => ({}),
         runJdStructuredCaptureRound: capture, runProductStructuredCaptureRound: capture, runXhsStructuredCaptureRound: capture,
@@ -71,9 +73,9 @@ test('manual builtin capture runs with the schedule disabled and retains a resul
         assert.equal(states.get(id)?.enabled, false);
         assert.ok(calls.some((call) => call.type === 'status' && call.running === id));
     }
-    assert.equal(calls.filter((call) => call.type === 'capture').length, 4);
-    assert.equal(calls.filter((call) => call.type === 'report').length, 4);
-    assert.equal(calls.filter((call) => call.type === 'persist').length, 4);
+    assert.equal(calls.filter((call) => call.type === 'capture').length, taskIds.length);
+    assert.equal(calls.filter((call) => call.type === 'report').length, taskIds.length);
+    assert.equal(calls.filter((call) => call.type === 'persist').length, taskIds.length);
     assert.equal(calls.filter((call) => call.type === 'schedule').length, 0);
 });
 

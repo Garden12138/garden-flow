@@ -352,7 +352,9 @@ export function handleNativeResponse(message) {
   if (!(message && typeof message === 'object' && 'id' in message)) return false;
   const id = String(message.id);
   const pending = pendingNativeRequests.get(id);
-  if (!pending) return false;
+  // Late replies and id:null errors are still replies, never browser commands.
+  // Routing them as commands produces another event notification and error reply.
+  if (!pending) return !message.method && ('result' in message || 'error' in message);
   pendingNativeRequests.delete(id);
   let response;
   try {
@@ -582,7 +584,7 @@ export async function reportNativeCaptureAccessState(problem = null) {
   const registration = sanitizeNativeRegistration(await getNativeRegistration());
   if (!registration) return false;
   const source = problem && typeof problem === 'object' ? problem : null;
-  const accessProblem = source && ['BROWSER_LOGIN_REQUIRED', 'BROWSER_SECURITY_CHALLENGE', 'CONTENT_NOT_ACCESSIBLE'].includes(String(source.code || ''))
+  const accessProblem = source && ['BROWSER_LOGIN_REQUIRED', 'BROWSER_SECURITY_CHALLENGE', 'BROWSER_RATE_LIMITED', 'CONTENT_NOT_ACCESSIBLE'].includes(String(source.code || ''))
     ? {
         code: String(source.code),
         platform: String(source.platform || 'webpage').slice(0, 100),

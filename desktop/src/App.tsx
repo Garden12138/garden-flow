@@ -149,6 +149,22 @@ function AuthenticatedApp() {
     setImmersiveMode,
   });
 
+  // GardenFlow reports sidebar content back to this component. Keep navigation
+  // callbacks stable so that report does not trigger another sidebar effect.
+  const handleOpenGardenFlowChatSurface = useCallback(() => {
+    void flushCreationBeforeNavigate().then(() => {
+      setActiveCreationWorkspaceId(null);
+      openGardenFlowChatSurface();
+    });
+  }, [openGardenFlowChatSurface]);
+
+  const handleOpenGardenFlowManuscript = useCallback((filePath: string) => {
+    void flushCreationBeforeNavigate().then(() => {
+      setActiveCreationWorkspaceId(null);
+      navigateToManuscript(filePath);
+    });
+  }, [navigateToManuscript]);
+
   const {
     pendingGenerationIntent,
     setPendingGenerationIntent,
@@ -333,8 +349,8 @@ function AuthenticatedApp() {
                 gardenflowOnboardingVersion={gardenflowOnboardingVersion}
                 onGlobalSidebarContentChange={setGardenFlowGlobalSidebarContent}
                 onTitleBarActionsChange={setGardenFlowTitleBarActions}
-                onOpenChatSurface={() => { void flushCreationBeforeNavigate().then(() => { setActiveCreationWorkspaceId(null); openGardenFlowChatSurface(); }); }}
-                onOpenManuscriptEditor={(path) => { void flushCreationBeforeNavigate().then(() => { setActiveCreationWorkspaceId(null); navigateToManuscript(path); }); }}
+                onOpenChatSurface={handleOpenGardenFlowChatSurface}
+                onOpenManuscriptEditor={handleOpenGardenFlowManuscript}
                 activeManuscriptPath={activeManuscriptEditorFile}
                 activeVideoProjectId={isVideoProjectActive ? activeVideoProjectId : null}
                 activeCreationWorkspaceId={isCreationWorkspaceActive ? activeCreationWorkspaceId : null}

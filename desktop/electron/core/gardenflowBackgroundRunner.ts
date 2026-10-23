@@ -1,3 +1,5 @@
+import { runSocialCaptureTask } from './socialCaptureRuntime';
+import { socialCaptureTaskPlatform } from './builtinAutomationTasks';
 import { EventEmitter } from 'events';
 import path from 'node:path';
 import fs from 'node:fs/promises';
@@ -39,10 +41,6 @@ import {
   type BuiltinAutomationReadinessReport,
 } from './builtinAutomationTasks';
 import { XHS_AUTO_CAPTURE_TASK_ID } from './xhsAutoCaptureCompletion';
-import {
-  createXhsStructuredCaptureIo,
-  runXhsStructuredCaptureRound,
-} from './xhsStructuredCapture';
 import {
   createJdStructuredCaptureIo,
   runJdStructuredCaptureRound,
@@ -2371,6 +2369,7 @@ export class GardenFlowBackgroundRunner extends EventEmitter {
       state.updatedAt = nowIso();
     };
 
+    const executionSpaceId = getActiveSpaceId();
     try {
       const readiness = await definition.checkReadiness(state.settings);
       if (!readiness.ready) {
@@ -2389,8 +2388,8 @@ export class GardenFlowBackgroundRunner extends EventEmitter {
         return;
       }
 
-      if (definition.id === XHS_AUTO_CAPTURE_TASK_ID) {
-        const captureSpaceId = getActiveSpaceId();
+      if (definition.id === XHS_AUTO_CAPTURE_TASK_ID || socialCaptureTaskPlatform(definition.id)) {
+        const captureSpaceId = executionSpaceId;
         const launch = resolveXhsAutoCaptureLaunch(state.settings);
         this.emit('log', {
           level: 'info',
@@ -2398,16 +2397,14 @@ export class GardenFlowBackgroundRunner extends EventEmitter {
           reason,
           at: nowIso(),
         });
-        const round = await runXhsStructuredCaptureRound(
-          {
-            keyword: launch.keyword,
-            maxNotes: launch.maxNotesPerRun,
-            pacing: launch.pacing,
-          },
-          createXhsStructuredCaptureIo((level, message) => {
-            this.emit('log', { level, message, reason, at: nowIso() });
-          }),
-        );
+        const round = await runSocialCaptureTask({
+          platform: socialCaptureTaskPlatform(definition.id) || 'xiaohongshu',
+          captureSpaceId,
+          keyword: launch.keyword,
+          maxNotes: launch.maxNotesPerRun,
+          pacing: launch.pacing,
+          ...(socialCaptureTaskPlatform(definition.id) ? { commentLimit: Number(state.settings.commentLimit ?? 5) } : {}),
+        }, (level, message) => this.emit('log', { level, message, reason, at: nowIso() }));
         const reportSessionId = this.postCaptureReport(round.summary, `[内置自动化结果:${definition.name}]`, definition.id, captureSpaceId);
         runtime.addArtifact(runtimeTaskId, { type: 'capture-report', label: `${definition.name}采集报告`, metadata: { sessionId: reportSessionId, isolated: true } });
         if (round.status === 'blocked') {
@@ -2425,8 +2422,15 @@ export class GardenFlowBackgroundRunner extends EventEmitter {
           });
           return;
         }
+        if (round.status === 'partial') {
+          state.lastRunAt = nowIso(); state.lastResult = 'partial'; state.lastError = round.reason || '部分作品需要补采';
+          settleNextRun();
+          runtime.addCheckpoint(runtimeTaskId, 'execute_tools', '采集部分完成，已保存结果保留', { saved: round.saved, partial: round.partial, failed: round.failed });
+          runtime.completeTask(runtimeTaskId, `builtin:${definition.id}:partial`);
+          return;
+        }
         if (round.status !== 'captured') {
-          throw new Error(round.reason || '小红书采集未完成，不记为成功');
+          throw new Error(round.reason || '作品采集未完成，不记为成功');
         }
         runtime.addCheckpoint(runtimeTaskId, 'execute_tools', '结构化采集完成', {
           builtinTaskId: definition.id,
@@ -2451,7 +2455,7 @@ export class GardenFlowBackgroundRunner extends EventEmitter {
 
       if (definition.id === JD_AUTO_CAPTURE_TASK_ID || marketplaceCapturePlatform(definition.id)) {
         const capturePlatform = marketplaceCapturePlatform(definition.id) || 'jd';
-        const captureSpaceId = getActiveSpaceId();
+        const captureSpaceId = executionSpaceId;
         const launch = capturePlatform === 'jd' ? resolveJdAutoCaptureLaunch(state.settings) : resolveMarketplaceAutoCaptureLaunch(state.settings);
         this.emit('log', {
           level: 'info',

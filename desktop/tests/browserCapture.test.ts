@@ -509,6 +509,30 @@ type RpcResponse = {
     error?: { data?: { code?: string } };
 };
 
+test('native host disconnect immediately rejects its unfinished request', { timeout: 2000 }, async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'gardenflow-forward-disconnect-'));
+    const previous = process.env.GARDENFLOW_BROWSER_CONTROL_STATE_DIR;
+    process.env.GARDENFLOW_BROWSER_CONTROL_STATE_DIR = root;
+    const service = new BrowserCaptureBridgeService({ appVersion: '0.0.1', handleRequest: async () => ({ ok: true }) });
+    let client: Awaited<ReturnType<typeof openBridgeClient>> | undefined;
+    try {
+        await service.start();
+        const descriptor = JSON.parse(await fs.readFile(browserCaptureDescriptorPath(), 'utf8')) as BrowserCaptureBridgeDescriptor;
+        client = await openBridgeClient(descriptor);
+        await client.request('bridge.hello', { role: 'native_host', bridgeProtocolVersion: BROWSER_CAPTURE_BRIDGE_PROTOCOL_VERSION, authToken: descriptor.hostAuthToken, origin: BROWSER_CAPTURE_EXTENSION_ORIGIN, hostInstanceId: 'disconnect-host' });
+        await client.request('extension.register', { extensionId: BROWSER_CAPTURE_EXTENSION_ID, extensionInstanceId: 'disconnect-browser', extensionKind: 'capture', browser: 'chrome', version: '0.0.1' });
+        const rejected = assert.rejects(service.invokeBrowserControl('tools/call', {}, { timeoutMs: 10000 }), { code: 'BROWSER_INSTANCE_UNAVAILABLE' });
+        client.close();
+        await rejected;
+    } finally {
+        client?.close();
+        await service.stop();
+        if (previous === undefined) delete process.env.GARDENFLOW_BROWSER_CONTROL_STATE_DIR;
+        else process.env.GARDENFLOW_BROWSER_CONTROL_STATE_DIR = previous;
+        await fs.rm(root, { recursive: true, force: true });
+    }
+});
+
 test('publisher reconnect wait targets the same browser and old socket cleanup preserves replacement', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(),'gardenflow-publisher-reconnect-'));
     const previous = process.env.GARDENFLOW_BROWSER_CONTROL_STATE_DIR;

@@ -116,6 +116,12 @@ function bindEvents() {
     void runCaptureAction(button.dataset.action || '');
   });
   elements.captureOptions.addEventListener('change', (event) => {
+    if (event.target?.id === 'social-comment-limit') {
+      const limit = Math.max(0, Math.min(200, Math.trunc(Number(event.target.value)) || 0));
+      currentSettings = { ...currentSettings, socialCommentLimit: limit };
+      void sendMessage({ type: 'settings:update', settings: currentSettings });
+      return;
+    }
     if (event.target?.id === 'xhs-save-comments-inline') {
       void updateXhsSaveCommentsSetting(Boolean(event.target.checked));
       return;
@@ -365,6 +371,17 @@ function renderCaptureActions(nextContext) {
         : item.label;
     button.disabled = Boolean(capturePendingAction) || automatedCapturePending || !isHealthy || item.disabled;
     elements.captureActions.appendChild(button);
+  }
+
+  if (['douyin', 'tiktok'].includes(config.variant)) {
+    const label = document.createElement('label');
+    label.className = 'capture-switch-row';
+    const input = document.createElement('input');
+    input.id = 'social-comment-limit'; input.type = 'number'; input.min = '0'; input.max = '200';
+    input.value = String(currentSettings?.socialCommentLimit ?? 5);
+    input.disabled = Boolean(capturePendingAction) || automatedCapturePending;
+    const text = document.createElement('span'); text.textContent = '评论数量（0 关闭）';
+    label.append(text, input); elements.captureOptions.appendChild(label); elements.captureOptions.classList.remove('hidden');
   }
 
   if (config.variant === 'xhs-note') {
@@ -623,6 +640,7 @@ async function runCaptureAction(action) {
       tabId,
       tabUrl: tab.url || '',
       windowId: Number(tab.windowId || 0) || undefined,
+      ...(['saveDouyin', 'saveTiktok'].includes(action) ? { commentLimit: currentSettings?.socialCommentLimit ?? 5 } : {}),
       ...(['saveJdProduct', 'saveProduct'].includes(action) ? {
         reviewOptions: productReviewOptionsForSave(jdReviewOptions, jdProductPreview?.reviewCapture?.availableFilters || []),
       } : {}),
@@ -639,7 +657,7 @@ async function runCaptureAction(action) {
       jdProductPreview = response.product;
     }
     captureFeedback = {
-      status: response?.preview && response?.product ? productPreviewFeedback(response.product).status : 'success',
+      status: response?.preview && response?.product ? productPreviewFeedback(response.product).status : response?.capture?.status === 'partial' ? 'warning' : 'success',
       message: summarizeActionResponse(response, meta.done),
     };
     await refreshTaskQueue(false);
@@ -942,10 +960,10 @@ function getCaptureActionConfig(nextContext) {
   if (platform === 'douyin') {
     return {
       variant: 'douyin',
-      title: 'GardenFlow 视频采集',
+      title: pageInfo?.kind === 'douyin-image' ? 'GardenFlow 图集采集' : 'GardenFlow 视频采集',
       subtitle: '抖音',
       actions: [
-        { label: '保存视频', action: 'saveDouyin', primary: true, title: '保存当前抖音视频到 GardenFlow' },
+        { label: pageInfo?.kind === 'douyin-image' ? '保存图集' : '保存视频', action: 'saveDouyin', primary: true, title: `保存当前抖音${pageInfo?.kind === 'douyin-image' ? '图集' : '视频'}到 GardenFlow` },
       ],
     };
   }
@@ -982,7 +1000,7 @@ function getCaptureActionConfig(nextContext) {
   const platformMap = {
     bilibili: { subtitle: 'Bilibili', label: pageType === 'video' ? '保存视频' : '保存页面', action: 'saveBilibili', title: '保存当前 Bilibili 内容到 GardenFlow' },
     kuaishou: { subtitle: '快手', label: pageType === 'video' ? '保存视频' : '保存页面', action: 'saveKuaishou', title: '保存当前快手内容到 GardenFlow' },
-    tiktok: { subtitle: 'TikTok', label: pageType === 'video' ? '保存视频' : '保存页面', action: 'saveTiktok', title: '保存当前 TikTok 内容到 GardenFlow' },
+    tiktok: { subtitle: 'TikTok', label: pageInfo?.kind === 'tiktok-image' ? '保存图集' : pageType === 'video' ? '保存视频' : '保存页面', action: 'saveTiktok', title: '保存当前 TikTok 内容到 GardenFlow' },
     reddit: { subtitle: 'Reddit', label: pageType === 'post' ? '保存帖子' : '保存页面', action: 'saveReddit', title: '保存当前 Reddit 内容到 GardenFlow' },
     x: { subtitle: 'X', label: pageType === 'post' ? '保存推文' : '保存页面', action: 'saveX', title: '保存当前 X 内容到 GardenFlow' },
     instagram: { subtitle: 'Instagram', label: pageType === 'post' || pageType === 'video' ? '保存内容' : '保存页面', action: 'saveInstagram', title: '保存当前 Instagram 内容到 GardenFlow' },
@@ -1036,6 +1054,7 @@ function getCaptureActionMeta(action) {
 }
 
 function summarizeActionResponse(response, fallback) {
+  if (response?.capture?.status === 'partial') return `已部分保存，可在素材库重试补采：${(response.capture.errors || []).join('；')}`;
   if (['jd-product-preview', 'product-preview'].includes(response?.mode)) {
     return productPreviewFeedback(response.product).message;
   }
@@ -1056,8 +1075,8 @@ function summarizeActionResponse(response, fallback) {
   }
   if (response?.noteId) {
     const identity = String(response.title || response.noteId || '').trim();
-    if (response.duplicate) return `知识库中已存在${identity ? `（${identity}）` : ''}`;
     if (response.updated) return `已更新知识库${identity ? `（${identity}）` : ''}`;
+    if (response.duplicate) return `知识库中已存在${identity ? `（${identity}）` : ''}`;
     return `已保存到 GardenFlow${identity ? `（${identity}）` : ''}`;
   }
   if (response?.mode === 'xhs-blogger-notes') {

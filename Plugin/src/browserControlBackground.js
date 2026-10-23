@@ -1,3 +1,4 @@
+import { annotateDouyinSearchCards } from './capture/socialPost.js';
 import { assertBrowserActionAllowed, BROWSER_ACTION_LEVELS, browserPolicyError, buildBrowserPolicyMetadata, classifyBrowserAction, DANGEROUS_ACTION_TEXT, DANGEROUS_CDP_METHODS, resolveBrowserPolicyPageUrl } from './background/browserPolicy.js';
 import { createActiveTabObserver } from './background/activeTabObserver.js';
 import { buildBrowserCapabilityMetadata, buildPluginRegistrationPayload } from './background/browserCapabilities.js';
@@ -175,7 +176,7 @@ const BROWSER_CONTROL_MCP_TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        site: { type: 'string', enum: ['xiaohongshu', 'xhs', 'douyin', 'jd', 'jingdong', 'taobao', 'tb', 'tmall', 'tm', 'youtube', 'web'] },
+        site: { type: 'string', enum: ['xiaohongshu', 'xhs', 'douyin', 'tiktok', 'jd', 'jingdong', 'taobao', 'tb', 'tmall', 'tm', 'youtube', 'web'] },
         operation: { type: 'string', enum: ['search', 'author_scan', 'content_scan'] },
         query: { type: 'string' },
         url: { type: 'string' },
@@ -212,13 +213,15 @@ const BROWSER_CONTROL_MCP_TOOLS = [
   },
   {
     name: 'capture.save',
-    description: 'Save the current page using the same site-specific plugin capture path as the side panel. Supports Xiaohongshu notes and JD, Taobao, and Tmall products. Product reviews default to five per scope; use actual page filter IDs or labels and optional per-filter limits.',
+    description: 'Save the current page using the same site-specific plugin capture path as the side panel. Supports Xiaohongshu, Douyin and TikTok videos/image posts, and JD, Taobao, and Tmall products. Product reviews default to five per scope; use actual page filter IDs or labels and optional per-filter limits.',
     inputSchema: {
       type: 'object',
       properties: {
         tabId: { type: 'number' },
         sessionId: { type: 'string' },
-        captureSpaceId: { type: 'string', description: 'Pin the product ingestion to the desktop task startup space.' },
+        captureSpaceId: { type: 'string', description: 'Pin ingestion to the desktop task startup space.' },
+        commentLimit: { type: 'integer', minimum: 0, maximum: 200 },
+        expectedContent: { type: 'object', properties: { platform: { type: 'string', enum: ['xiaohongshu', 'douyin', 'tiktok'] }, externalId: { type: 'string' } }, required: ['platform', 'externalId'], additionalProperties: false },
         expectedProduct: {
           type: 'object',
           properties: {
@@ -1660,6 +1663,8 @@ async function runBrowserAction(action, context = {}) {
         );
         try {
           result = await saveCurrentPageViaPluginCapture(tabId, {
+            commentLimit: normalized.commentLimit,
+            expectedContent: normalized.expectedContent,
             reviewOptions: normalized.reviewOptions,
             expectedProduct: normalized.expectedProduct,
             captureSpaceId: normalized.captureSpaceId,
@@ -1690,12 +1695,12 @@ async function runBrowserAction(action, context = {}) {
           if (!tabClosed) {
             publishCaptureActivity(
               tabId,
-              normalized.closeAfterSave === true ? 'error' : 'success',
+              normalized.closeAfterSave === true ? 'error' : result?.capture?.status === 'partial' ? 'warning' : 'success',
               normalized.closeAfterSave === true
                 ? `商品已保存，但商品页关闭失败，桌面端将重试：${closeError}`
                 : ['jd-product', 'product'].includes(result?.mode)
                   ? `采集完成：已保存 ${Number(result.capturedReviews || 0)} 条评论`
-                  : '采集完成',
+                  : result?.capture?.status === 'partial' ? `已部分保存：${(result.capture.errors || []).join('；')}` : '采集完成',
               { action: captureAction, result },
             );
           }
@@ -1728,6 +1733,7 @@ async function runBrowserAction(action, context = {}) {
           },
           readSiteEvidence: async (tabId, options) => {
             await requireActiveControlledTabLease(session, tabId, 'research.run');
+            await prepareSocialResearchCards(tabId, options);
             return await sendContentMessage(tabId, CONTENT_SITE_RESEARCH_EXTRACT_TYPE, options || {});
           },
           applyFilters: async (tabId, options) => {
@@ -1736,7 +1742,13 @@ async function runBrowserAction(action, context = {}) {
           },
           submitSearch: async (tabId, options) => {
             await requireActiveControlledTabLease(session, tabId, 'research.run');
-            return await sendContentMessage(tabId, CONTENT_SITE_RESEARCH_SUBMIT_SEARCH_TYPE, options || {});
+            const delivery = await sendContentMessage(tabId, CONTENT_SITE_RESEARCH_SUBMIT_SEARCH_TYPE, { ...(options || {}), nativeSearchSubmit: true });
+            const submitted = delivery?.response || delivery;
+            if (submitted?.success && submitted.requiresNativeEnter === true) {
+              await dispatchKeyboardPress({ tabId: Number(tabId), key: 'Enter', code: 'Enter', keyCode: 13 }, { activeTabId: Number(tabId), session });
+              return { ...submitted, submitted: true };
+            }
+            return delivery;
           },
           openItem: async (tabId, options) => {
             await requireActiveControlledTabLease(session, tabId, 'research.run');
@@ -2788,6 +2800,7 @@ async function getBrowserControlInfo() {
   const lifecycle = await getLifecycleStatus().catch(() => null);
   return {
     success: true,
+    socialCaptureVersion: 1,
     ...buildBrowserCapabilityMetadata({
       pluginId: PLUGIN_ID,
       manifest,
@@ -3829,15 +3842,20 @@ async function createControlledTab(options = {}) {
   return { success: true, tab, window: created, createdWindow: true, windowId: created.id || tab.windowId || null };
 }
 
+async function prepareSocialResearchCards(tabId, options = {}) {
+  if ((options.siteId || options.site?.id || options.site) !== 'douyin') return;
+  await chrome.scripting.executeScript({ target: { tabId: Number(tabId) }, world: 'MAIN', func: annotateDouyinSearchCards });
+}
+
 function buildSiteResearchNavigationDeps(session) {
   return {
     getTab: async (tabId) => await chrome.tabs.get(Number(tabId)).catch(() => null),
     listTabs: async () => await chrome.tabs.query({}),
-    prepareItemClick: async (tabId, options) => await sendContentMessage(
-      Number(tabId),
-      CONTENT_SITE_RESEARCH_PREPARE_ITEM_CLICK_TYPE,
-      options || {},
-    ),
+    prepareItemClick: async (tabId, options) => {
+      await requireActiveControlledTabLease(session, Number(tabId), 'research.run');
+      await prepareSocialResearchCards(tabId, options);
+      return await sendContentMessage(Number(tabId), CONTENT_SITE_RESEARCH_PREPARE_ITEM_CLICK_TYPE, options || {});
+    },
     prepareItemClose: async (tabId, options) => await sendContentMessage(
       Number(tabId),
       CONTENT_SITE_RESEARCH_PREPARE_ITEM_CLOSE_TYPE,
@@ -3855,6 +3873,7 @@ function buildSiteResearchNavigationDeps(session) {
     }),
     readSiteEvidence: async (tabId, options) => {
       await requireActiveControlledTabLease(session, Number(tabId), 'research.run');
+      await prepareSocialResearchCards(tabId, options);
       return await sendContentMessage(Number(tabId), CONTENT_SITE_RESEARCH_EXTRACT_TYPE, options || {});
     },
     claimTab: async (tabId, pageRole) => await claimTabForSession(session, Number(tabId), 'agent', pageRole),

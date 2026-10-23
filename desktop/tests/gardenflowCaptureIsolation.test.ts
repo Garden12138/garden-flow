@@ -11,7 +11,7 @@ const writer = source.slice(source.indexOf('  private postCaptureReport('), sour
 const runner = source.slice(source.indexOf('  private async executeBuiltinTask('), source.indexOf('  private buildLongCyclePrompt('));
 const code = (await transform(`globalThis.CaptureRunner = class { ${writer}\n${runner} };`, { loader: 'ts', target: 'es2022' })).code;
 
-test('JD, Taobao, Tmall and XHS completed capture reports remain in task/space sessions and retain automation results', async () => {
+test('JD, Taobao, Tmall, XHS, Douyin and TikTok completed capture reports remain in task/space sessions and retain automation results', async () => {
     const sessions: any[] = [{ id: 'creative-session', metadata: { contextId: 'gardenflow-singleton:default' } }];
     const messages: any[] = [{ session_id: 'creative-session', content: '待确认分镜', status: 'pending' }];
     const events: any[] = [];
@@ -19,12 +19,15 @@ test('JD, Taobao, Tmall and XHS completed capture reports remain in task/space s
     const states = new Map<string, any>();
     let space = 'default';
     let switchDuringCapture = false;
+    let expectedCaptureSpace: string | undefined;
     const runtime = { addArtifact: (_: string, artifact: any) => artifacts.push(artifact), addCheckpoint() {}, completeNode() {}, completeTask() {}, failTask: (_: string, error: string) => assert.fail(error) };
-    const capture = async (input: any) => { if (input.platform) assert.equal(input.captureSpaceId, space); if (switchDuringCapture) space = 'other'; return { status: 'captured', summary: '采集完成：成功 2 项，重复 1 项，完整资料与图片已入库。', saved: 2, duplicates: 1, recaptured: 1, failed: 0, capturedReviews: 10 }; };
+    const capture = async (input: any) => { if (input.platform) assert.equal(input.captureSpaceId, expectedCaptureSpace || space); if (switchDuringCapture) space = 'other'; return { status: 'captured', summary: '采集完成：成功 2 项，重复 1 项，完整资料与图片已入库。', saved: 2, duplicates: 1, recaptured: 1, failed: 0, capturedReviews: 10 }; };
     const sandbox: any = {
         getActiveSpaceId: () => space, nowIso: () => new Date().toISOString(), getTaskGraphRuntime: () => runtime,
         computeNextRunForBuiltinTask: () => Date.now() + 3600000,
         JD_AUTO_CAPTURE_TASK_ID: 'jd-capture', XHS_AUTO_CAPTURE_TASK_ID: 'xhs-capture',
+        socialCaptureTaskPlatform: (id: string) => id === 'dy-capture' ? 'douyin' : id === 'tt-capture' ? 'tiktok' : null,
+        runSocialCaptureTask: capture,
         marketplaceCapturePlatform: (id: string) => ({ 'tb-capture': 'taobao', 'tm-capture': 'tmall' }[id] || null),
         resolveMarketplaceAutoCaptureLaunch: () => ({}), runProductStructuredCaptureRound: capture,
         resolveJdAutoCaptureLaunch: () => ({}), resolveXhsAutoCaptureLaunch: () => ({}),
@@ -44,7 +47,7 @@ test('JD, Taobao, Tmall and XHS completed capture reports remain in task/space s
         return states.get(definition.id);
     };
     for (const targetSpace of ['default', 'other']) {
-        for (const id of ['jd-capture', 'xhs-capture', 'tb-capture', 'tm-capture']) {
+        for (const id of ['jd-capture', 'xhs-capture', 'tb-capture', 'tm-capture', 'dy-capture', 'tt-capture']) {
             space = targetSpace;
             await service.executeBuiltinTask({ id, name: id, checkReadiness: async () => ({ ready: true }) }, 'manual');
             assert.equal(states.get(id).lastResult, 'success');
@@ -52,15 +55,18 @@ test('JD, Taobao, Tmall and XHS completed capture reports remain in task/space s
     }
     space = 'default'; switchDuringCapture = true;
     await service.executeBuiltinTask({ id: 'jd-capture', name: '京东', checkReadiness: async () => ({ ready: true }) }, 'manual');
-    assert.equal(sessions.length, 9);
+    assert.equal(sessions.length, 13);
     assert.equal(messages.filter((m) => m.session_id === 'creative-session').length, 1);
     assert.equal(messages[0].status, 'pending');
     assert.equal(messages.at(-1).session_id, 'session_gardenflow_capture_default_jd-capture');
-    assert.equal(artifacts.length, 9);
+    assert.equal(artifacts.length, 13);
     for (const artifact of artifacts) {
         assert.equal(artifact.type, 'capture-report');
         assert.equal(artifact.metadata.isolated, true);
         assert.ok(sessions.some((session) => session.id === artifact.metadata.sessionId));
     }
     assert.ok(events.filter((event) => event.type === 'message').every((event) => event.isolated && event.sessionId !== 'creative-session'));
+    space = 'default'; expectedCaptureSpace = 'default'; switchDuringCapture = false;
+    await service.executeBuiltinTask({ id: 'tt-capture', name: 'TikTok', checkReadiness: async () => { space = 'other'; return { ready: true }; } }, 'manual');
+    assert.equal(messages.at(-1).session_id, 'session_gardenflow_capture_default_tt-capture');
 });

@@ -197,20 +197,26 @@ export async function dispatchKeyboardType(action = {}, options = {}) {
 export async function dispatchKeyboardPress(action = {}, options = {}) {
   const startedAt = Date.now();
   const tabId = requireTabId(action, options.activeTabId, 'input.keyboardPress');
-  const key = String(action.key || action.code || '');
+  const key = normalizeKeyName(action.key || action.code || '');
   if (!key) throw new Error('input.keyboardPress requires key');
   emitPixelInputTelemetry('input.started', { actionType: 'input.keyboardPress', tabId, key });
   await focusTabForPixelInput(tabId);
   await attachCdpTab(tabId);
   if (action.selector || action.focusSelector) await focusElementForKeyboardCombo(tabId, action.selector || action.focusSelector, action);
+  const mappedKey = keyEventParams(key);
   const params = {
-    key,
-    code: String(action.code || key),
-    windowsVirtualKeyCode: Number(action.windowsVirtualKeyCode || action.keyCode || 0) || undefined,
-    nativeVirtualKeyCode: Number(action.nativeVirtualKeyCode || action.keyCode || 0) || undefined,
+    ...mappedKey,
+    code: String(action.code || mappedKey.code || key),
+    windowsVirtualKeyCode: Number(action.windowsVirtualKeyCode || action.keyCode || mappedKey.windowsVirtualKeyCode || 0) || undefined,
+    nativeVirtualKeyCode: Number(action.nativeVirtualKeyCode || action.keyCode || mappedKey.nativeVirtualKeyCode || 0) || undefined,
     modifiers: modifierMaskFromAction(action),
   };
   await sendCdpCommandWithTimeout({ tabId }, 'Input.dispatchKeyEvent', { ...params, type: 'rawKeyDown' }, Number(action.timeoutMs || CDP_COMMAND_TIMEOUT_MS));
+  // rawKeyDown alone omits the printable event used by search inputs that
+  // submit on keypress. Match a physical Enter without changing shortcuts.
+  if (key === 'Enter' && !(params.modifiers & 7)) {
+    await sendCdpCommandWithTimeout({ tabId }, 'Input.dispatchKeyEvent', { ...params, type: 'char', text: '\r', unmodifiedText: '\r' }, Number(action.timeoutMs || CDP_COMMAND_TIMEOUT_MS));
+  }
   await sendCdpCommandWithTimeout({ tabId }, 'Input.dispatchKeyEvent', { ...params, type: 'keyUp' }, Number(action.timeoutMs || CDP_COMMAND_TIMEOUT_MS));
   emitPixelInputTelemetry('input.succeeded', { actionType: 'input.keyboardPress', tabId, key, durationMs: Date.now() - startedAt });
   return { success: true, tabId, key };

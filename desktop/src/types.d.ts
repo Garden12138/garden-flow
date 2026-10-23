@@ -1786,6 +1786,7 @@ declare global {
       clipboardReadText: () => Promise<string>;
       clipboardWriteText: (text: string) => Promise<{ success: boolean; error?: string; text?: string }>;
       capture: {
+        saveUrl: (payload: { url: string; commentLimit?: number }) => Promise<{ success: boolean; noteId?: string; duplicate?: boolean; updated?: boolean; error?: string; capture?: import('../shared/socialCapture').SocialCaptureState }>;
         saveYoutubeNote: (payload: {
           videoId: string;
           videoUrl: string;

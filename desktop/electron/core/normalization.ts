@@ -40,8 +40,8 @@ export function normalizeNote(
       coverUrl: meta.cover || (meta.images && meta.images[0]),
       url: meta.sourceUrl || meta.url,
       author: meta.author,
-      publishDate: meta.createdAt,
-      platform: 'redbook' // Default or derive
+      publishDate: meta.publishedAt || meta.createdAt,
+      platform: meta.platform || (String(meta.captureKind || meta.type || '').startsWith('douyin-') ? 'douyin' : String(meta.captureKind || meta.type || '').startsWith('tiktok-') ? 'tiktok' : 'redbook')
     },
     scope: 'user'
   };
@@ -57,6 +57,9 @@ export function normalizeVideo(
   scope: 'user' | 'advisor' = 'user',
   advisorId?: string
 ): KnowledgeItem {
+  if (['douyin', 'tiktok'].includes(meta.platform) || /^(douyin|tiktok)-/.test(String(meta.captureKind || meta.type || ''))) {
+    return normalizeNote(videoId, meta, [meta.content, transcript].filter(Boolean).join('\n\n'));
+  }
   return {
     id: videoId,
     sourceId: meta.videoId || videoId,

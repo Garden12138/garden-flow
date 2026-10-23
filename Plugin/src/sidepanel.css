@@ -378,10 +378,22 @@ h1 {
   line-height: 1.35;
 }
 
-.capture-switch-row input {
+.capture-switch-row input[type="checkbox"] {
   width: 16px;
   height: 16px;
   accent-color: var(--gf-iris);
+}
+
+.capture-switch-row input[type="number"] {
+  width: 72px;
+  height: 30px;
+  box-sizing: border-box;
+  border: 1px solid var(--gf-border);
+  border-radius: 7px;
+  background: var(--gf-surface);
+  color: var(--gf-ink);
+  padding: 0 8px;
+  font: inherit;
 }
 
 .capture-status {

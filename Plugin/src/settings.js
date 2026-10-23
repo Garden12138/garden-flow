@@ -1,10 +1,12 @@
 const DEFAULT_SETTINGS = {
+  socialCommentLimit: 5,
   xhsSaveCommentsWithNote: true,
   saveToGardenFlowByDefault: true,
 };
 
 const elements = {
   form: document.getElementById('settings-form'),
+  socialCommentLimit: document.getElementById('social-comment-limit'),
   xhsSaveComments: document.getElementById('xhs-save-comments'),
   saveDefault: document.getElementById('save-default'),
   reset: document.getElementById('reset-settings'),
@@ -50,6 +52,7 @@ function sendMessage(message) {
 
 function normalizeFormSettings() {
   return {
+    socialCommentLimit: Math.max(0, Math.min(200, Math.trunc(Number(elements.socialCommentLimit.value)) || 0)),
     xhsSaveCommentsWithNote: elements.xhsSaveComments.checked,
     saveToGardenFlowByDefault: elements.saveDefault.checked,
   };
@@ -57,6 +60,7 @@ function normalizeFormSettings() {
 
 function renderSettings(settings) {
   const next = { ...DEFAULT_SETTINGS, ...(settings || {}) };
+  elements.socialCommentLimit.value = String(next.socialCommentLimit ?? 5);
   elements.xhsSaveComments.checked = next.xhsSaveCommentsWithNote !== false;
   elements.saveDefault.checked = next.saveToGardenFlowByDefault !== false;
 }

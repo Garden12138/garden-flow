@@ -1,10 +1,13 @@
-export type ClipboardCapturePlatform = 'youtube' | 'xiaohongshu' | 'douyin';
+export type ClipboardCapturePlatform = 'youtube' | 'xiaohongshu' | 'douyin' | 'tiktok';
 
 export type ClipboardCaptureKind =
   | 'youtube-video'
   | 'xhs-note'
   | 'xhs-profile'
-  | 'douyin-video';
+  | 'douyin-video'
+  | 'douyin-image'
+  | 'tiktok-video'
+  | 'tiktok-image';
 
 export type ClipboardCaptureConfidence = 'exact' | 'probable';
 
@@ -28,6 +31,7 @@ export type ClipboardCaptureTaskStatus =
   | 'queued'
   | 'running'
   | 'success'
+  | 'partial'
   | 'failed'
   | 'skipped';
 
@@ -48,6 +52,8 @@ export interface ClipboardCaptureTask {
 export interface ClipboardCaptureExecutionResult {
   success: boolean;
   duplicate?: boolean;
+  partial?: boolean;
+  updated?: boolean;
   skipped?: boolean;
   jobId?: string;
   noteId?: string;

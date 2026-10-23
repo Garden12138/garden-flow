@@ -1,3 +1,4 @@
+import type { SocialCaptureState, SocialComment } from '../../../shared/socialCapture';
 export interface XhsCommentItem {
     id?: string;
     platformCommentId?: string;
@@ -43,6 +44,13 @@ export interface XhsCommentsSnapshot {
 }
 
 export interface Note { type?: string; sourceUrl?: string;
+    platform?: string;
+    publishedAt?: string;
+    authorProfileUrl?: string;
+    contentType?: 'video' | 'image_text';
+    capture?: SocialCaptureState;
+    commentsSnapshot?: SocialComment[];
+    socialComments?: XhsCommentsSnapshot;
     id: string;
     knowledgeKind?: string;
     title: string;
@@ -70,6 +78,8 @@ export interface Note { type?: string; sourceUrl?: string;
         likes: number;
         collects?: number;
         comments?: number;
+        shares?: number;
+        views?: number;
     };
     createdAt: string;
     updatedAt?: string;
@@ -109,6 +119,7 @@ export type KnowledgeTypeFilter =
     | 'xhs-blogger'
     | 'xhs-comments'
     | 'douyin-video'
+    | 'douyin-image'
     | 'bilibili'
     | 'kuaishou'
     | 'tiktok'
@@ -259,7 +270,8 @@ export const resolveNoteCardKind = (note: Note): KnowledgeCardItem['kind'] => {
     if (note.type === 'link-article' || note.type === 'text') {
         return note.captureKind === 'wechat-article' ? 'wechat-article' : 'link-article';
     }
-    if (note.captureKind === 'douyin-video') return 'douyin-video';
+    if (captureKind === 'douyin-image') return 'douyin-image';
+    if (captureKind === 'douyin-video') return 'douyin-video';
     if (note.captureKind === 'xhs-video' || note.video) return 'xhs-video';
     return 'xhs-image';
 };

@@ -1,4 +1,5 @@
 import { Link2, Loader2 } from 'lucide-react';
+import { clipboardCapturePlatformLabel } from './clipboardDetector';
 import { useI18n } from '../../i18n';
 import { useClipboardCapturePrompt } from './useClipboardCapturePrompt';
 
@@ -18,17 +19,18 @@ export function ClipboardCapturePrompt() {
             <Link2 className="w-5 h-5" />
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="text-base font-semibold text-text-primary">{t('app.youtubeDetected')}</h3>
-            <p className="text-sm text-text-secondary mt-1">{t('app.youtubeCaptureDescription')}</p>
+            <h3 className="text-base font-semibold text-text-primary">{clipboardCapturePlatformLabel(clipboardCapture.candidate)}链接</h3>
+            <p className="text-sm text-text-secondary mt-1">将作品保存到本机素材库，媒体和评论按可获取内容保存。</p>
             <div className="mt-3 rounded-md border border-border bg-surface-secondary px-3 py-2 text-xs text-text-tertiary break-all">
               {clipboardCapture.candidate.rawUrl}
             </div>
             <div className="mt-2 text-xs text-text-secondary">
-              videoId: <span className="font-mono">{clipboardCapture.candidate.videoId}</span>
+              作品 ID：<span className="font-mono">{clipboardCapture.candidate.externalId || '打开链接后识别'}</span>
             </div>
           </div>
         </div>
 
+        {clipboardCapture.candidate.platform !== 'youtube' && <label className="mt-4 flex items-center gap-3 text-sm text-text-secondary">评论数量（0 表示关闭）<input aria-label="评论数量" type="number" min={0} max={200} value={clipboardCapture.commentLimit} disabled={clipboardCapture.status === 'saving'} onChange={(event) => clipboardCapture.setCommentLimit(Math.max(0, Math.min(200, Number(event.target.value) || 0)))} className="w-20 rounded border border-border px-2 py-1" /></label>}
         {clipboardCapture.message && (
           <div className={`mt-4 text-sm ${
             clipboardCapture.status === 'error' ? 'text-red-600' : clipboardCapture.status === 'success' ? 'text-green-600' : 'text-text-secondary'

@@ -9,6 +9,7 @@ import { BrowserControlTransport } from './browser-client.mjs';
 import {
   assertNativeHostVersionCompatibility,
   classifyDesktopBridgeHandshake,
+  handleNativeResponse,
   normalizeProductVersion,
   shouldReportNativeConnectionFailure,
 } from '../src/background/nativeTransport.js';
@@ -25,6 +26,7 @@ try {
   await testOversizedResponse();
   testNativeHostVersionCompatibility();
   testDesktopBridgeHandshakeClassification();
+  testOrphanedNativeResponses();
   console.log(JSON.stringify({
     ok: true,
     isolatedStateRoot: tempRoot,
@@ -37,11 +39,19 @@ try {
       'native_host_protocol_mismatch_rejected',
       'old_app_requires_upgrade',
       'bridge_error_is_reportable_but_app_not_running_is_suppressed',
+      'orphaned_responses_do_not_reenter_command_router',
     ],
   }, null, 2));
 } finally {
   await Promise.all(servers.map((server) => closeServer(server)));
   await fs.rm(tempRoot, { recursive: true, force: true });
+}
+
+function testOrphanedNativeResponses() {
+  assert.equal(handleNativeResponse({ jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Invalid request' } }), true);
+  assert.equal(handleNativeResponse({ jsonrpc: '2.0', id: 'timed-out-call', result: { success: true } }), true);
+  assert.equal(handleNativeResponse({ jsonrpc: '2.0', id: 'new-command', method: 'tools/call', params: {} }), false);
+  assert.equal(handleNativeResponse({ jsonrpc: '2.0', method: 'event', params: {} }), false);
 }
 
 function testNativeHostVersionCompatibility() {

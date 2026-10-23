@@ -233,6 +233,19 @@ async function runSiteResearchMacro(requestInput, deps = {}) {
       if (submitted?.success !== true) {
         return researchSearchFailure(request, tab, targetUrl, submitted);
       }
+      if (['douyin', 'tiktok'].includes(request.site.id)) {
+        let searchRouteReady = false;
+        for (let waited = 0; waited < 20_000; waited += 250) {
+          const currentTab = await deps.getTab?.(tab.id);
+          try {
+            const route = new URL(currentTab?.url || '');
+            searchRouteReady = /\/search(?:\/|$)/.test(route.pathname) && !route.searchParams.has('modal_id');
+          } catch { /* Navigation may not yet expose a URL. */ }
+          if (searchRouteReady) break;
+          await delayWithDeps(250, deps);
+        }
+        if (!searchRouteReady) return researchSearchFailure(request, tab, targetUrl, { reason: 'search_navigation_unconfirmed', message: '页内搜索未进入结果页，已停止采集' });
+      }
       if (beforeTabs) {
         // Some marketplace search buttons open an ordinary child tab. Only
         // adopt a new tab with this search page as opener and a declared host.
@@ -890,7 +903,7 @@ function resolveSiteCapability(value, sourceUrl) {
     .find((spec) => spec.aliases.includes(requested))?.id || '';
   const id = alias || requested || inferSiteId(sourceUrl);
   const spec = SITE_CAPABILITY_SPECS[id];
-  if (!spec) throw new Error('research.run requires supported site: xiaohongshu, douyin, jd, taobao, tmall, youtube, or web');
+  if (!spec) throw new Error('research.run requires supported site: xiaohongshu, douyin, tiktok, jd, taobao, tmall, youtube, or web');
   if (sourceUrl && !urlMatchesSite(sourceUrl, spec)) throw new Error(`URL does not belong to ${spec.displayName}`);
   return spec;
 }
@@ -960,6 +973,7 @@ function isLikelySiteHomeUrl(url, siteId) {
   try {
     const path = new URL(url).pathname.replace(/\/+$/, '') || '/';
     if (siteId === 'xiaohongshu') return path === '/' || path === '/explore';
+    if (siteId === 'tiktok') return path === '/';
     if (siteId === 'douyin') return path === '/' || path === '/jingxuan';
     if (['taobao', 'tmall'].includes(siteId)) return path === '/';
     if (siteId === 'jd') return path === '/' || path.toLowerCase() === '/search';
@@ -977,6 +991,7 @@ function isLikelySiteDetailUrl(url, siteId) {
         || /^\/discovery\/item\//.test(path)
         || /^\/user\/profile\//.test(path);
     }
+    if (siteId === 'tiktok') return /^\/@[^/]+\/(video|photo)\//.test(path);
     if (siteId === 'douyin') {
       return /^\/video\//.test(path) || /^\/note\//.test(path) || /^\/user\//.test(path);
     }

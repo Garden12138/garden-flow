@@ -10,9 +10,8 @@ const SITE_CARD_SELECTORS = Object.freeze({
     'a[href*="/discovery/item/"]',
     'a[href*="/user/profile/"] [href*="/explore/"]',
   ]),
-  douyin: Object.freeze([
-    'a[href*="/video/"]',
-  ]),
+  douyin: Object.freeze(['[data-gardenflow-content-id]', '.search-result-card', '[href*="/video/"]', '[href*="/note/"]', '[href*="modal_id="]']),
+  tiktok: Object.freeze(['a[href*="/video/"], a[href*="/photo/"]']),
   jd: Object.freeze([
     'li.gl-item .p-img a[href*="item.jd.com/"]',
     'li.gl-item .p-name a[href*="item.jd.com/"]',
@@ -22,6 +21,7 @@ const SITE_CARD_SELECTORS = Object.freeze({
 });
 
 const SITE_DETAIL_CLOSE_SELECTORS = Object.freeze({
+  tiktok: Object.freeze(['[data-e2e="browse-close"]', 'button[aria-label*="Close"]', '[role="dialog"] button[aria-label*="close" i]']),
   xiaohongshu: Object.freeze([
     '[class*="note-detail"] [class*="close"]',
     '[class*="modal"] [class*="close"]',
@@ -42,6 +42,11 @@ const RESULT_LIST_OPERATIONS = new Set(['search', 'author_scan']);
 const MAX_INTERACTION_ANCESTORS = 6;
 
 const SITE_SEARCH_UI = Object.freeze({
+  tiktok: Object.freeze({
+    opens: Object.freeze(['[data-e2e="nav-search"]']),
+    inputs: Object.freeze(['input[data-e2e="search-user-input"]', 'input[name="q"]', 'input[placeholder*="Search"]', 'input[placeholder*="搜索"]', 'input[type="search"]']),
+    submits: Object.freeze(['[data-e2e="search-box-button"]', '[data-e2e="search-button"]', 'button[type="submit"]', '[role="search"] button']),
+  }),
   xiaohongshu: Object.freeze({
     inputs: Object.freeze([
       '#search-input-in-feeds',
@@ -149,6 +154,9 @@ export function extractSiteResearch(input = {}) {
     pageState,
   };
   if (pageState.blocker) return { ...base, success: false, reason: pageState.blocker };
+  if (operation === 'search' && ['douyin', 'tiktok'].includes(site) && pageState.surface !== 'search_results') {
+    return { ...base, success: false, reason: 'search_results_unavailable', items: [] };
+  }
   if (operation === 'content_scan' && detailOpenMode === 'page_click' && !DETAIL_SURFACES.has(pageState.surface)) {
     return {
       ...base,
@@ -159,8 +167,8 @@ export function extractSiteResearch(input = {}) {
   }
   const extracted = site === 'xiaohongshu'
     ? extractXiaohongshu(operation, limit, commentLimit, detailOpenMode)
-    : site === 'douyin'
-      ? extractDouyin(operation, limit, commentLimit, detailOpenMode)
+    : ['douyin', 'tiktok'].includes(site)
+      ? extractDouyin(operation, limit, commentLimit, detailOpenMode, site)
       : ['taobao', 'tmall'].includes(site)
         ? extractMarketplaceSearch({ limit, query: String(input.query || '') })
       : site === 'jd'
@@ -187,7 +195,19 @@ export async function submitSiteResearchSearch(input = {}) {
   if (!query) return { success: false, reason: 'search_query_missing', message: 'page UI search requires query', sourceUrl: location.href };
   const spec = SITE_SEARCH_UI[site];
   if (!spec) return { success: false, reason: 'search_ui_site_unsupported', message: `${site} does not support page UI search`, sourceUrl: location.href };
-  const inputSelector = spec.inputs.find((selector) => firstVisible([selector]));
+  let inputSelector = spec.inputs.find((selector) => firstVisible([selector]));
+  let openedSearch = false;
+  const readinessAttempts = ['douyin', 'tiktok'].includes(site) ? 80 : 1;
+  for (let attempt = 0; !inputSelector && attempt < readinessAttempts; attempt += 1) {
+    const state = readPageState(site);
+    if (state.blocker) return { success: false, reason: state.blocker, sourceUrl: location.href };
+    if (!openedSearch && spec.opens) {
+      const opener = spec.opens.find((selector) => firstVisible([selector]));
+      if (opener) { await clickElement({ selector: opener }); openedSearch = true; }
+    }
+    if (readinessAttempts > 1 || openedSearch) await delay(250);
+    inputSelector = spec.inputs.find((selector) => firstVisible([selector]));
+  }
   if (!inputSelector) {
     return { success: false, reason: 'search_input_unavailable', message: 'platform search input is not visible', sourceUrl: location.href };
   }
@@ -232,6 +252,10 @@ export async function submitSiteResearchSearch(input = {}) {
   if (!inputNode) {
     return { success: false, reason: 'search_input_detached', message: 'platform search input was replaced before submit', sourceUrl: location.href };
   }
+  if (input.nativeSearchSubmit === true && site === 'tiktok') {
+    inputNode.focus();
+    return { success: true, submitted: false, requiresNativeEnter: true, method: 'native_enter', inputSelector, sourceUrl: location.href };
+  }
   for (const type of ['keydown', 'keypress', 'keyup']) {
     inputNode.dispatchEvent(new KeyboardEvent(type, {
       key: 'Enter',
@@ -266,6 +290,16 @@ export async function prepareSiteResearchItemClick(input = {}) {
   const itemId = String(interactionRef.itemId || input.item?.id || input.itemId || '').trim();
   const expectedUrl = normalizeUrl(interactionRef.sourceUrl || input.item?.sourceUrl || input.sourceUrl || '');
   let match = findSiteCardTarget(site, { itemId, expectedUrl });
+  const scroll = interactionRef.scrollState;
+  if (!match && ['douyin', 'tiktok'].includes(site) && scroll && Number.isFinite(scroll.top) && scroll.top >= 0 && scroll.top <= 1e7) {
+    const scroller = scroll.root === 'results' ? document.querySelector(`[data-gardenflow-search-scroll="${site}"]`) : document.scrollingElement;
+    if (scroller) {
+      scroller.scrollTop = scroll.top;
+      scroller.scrollLeft = Number.isFinite(scroll.left) ? scroll.left : 0;
+      await delay(250);
+      match = findSiteCardTarget(site, { itemId, expectedUrl });
+    }
+  }
   if (!match) {
     return {
       success: false,
@@ -433,13 +467,13 @@ function extractXiaohongshu(operation, limit, commentLimit, detailOpenMode) {
   });
 }
 
-function extractDouyin(operation, limit, commentLimit, detailOpenMode) {
+function extractDouyin(operation, limit, commentLimit, detailOpenMode, site = 'douyin') {
   if (operation === 'search' || operation === 'author_scan') {
-    const cards = extractCards(SITE_CARD_SELECTORS.douyin, limit, {
-      title: ['[class*="title"]', '[data-e2e*="desc"]'],
+    const cards = extractCards(SITE_CARD_SELECTORS[site], limit, {
+      title: ['[data-gardenflow-open-id]', '[class*="title"]', '[data-e2e*="desc"]'],
       author: ['[class*="author"]', '[data-e2e*="author"]'],
       engagement: ['[class*="count"]', '[data-e2e*="like"]'],
-    }, 'douyin', detailOpenMode);
+    }, site, detailOpenMode);
     return {
       items: cards.items,
       resultState: cards.resultState,
@@ -448,7 +482,7 @@ function extractDouyin(operation, limit, commentLimit, detailOpenMode) {
     };
   }
   return extractContent({
-    title: ['[data-e2e="video-desc"]', '[class*="video-info"] h1', 'h1'],
+    title: ['[data-e2e="browse-video-desc"]', '[data-e2e="video-desc"]', '[class*="video-info"] h1', 'h1'],
     author: ['[data-e2e*="author"]', '[class*="author"]'],
     body: ['[data-e2e="video-desc"]', '[class*="desc"]'],
     comments: ['[data-e2e*="comment-item"]', '[class*="comment-item"]', '[class*="commentItem"]'],
@@ -615,8 +649,8 @@ function extractCards(selectors, limit, fields, site = 'web', detailOpenMode = '
     if (target) interactableCount += 1;
     if (requireInteractionTarget && !target) continue;
     if (seen.has(href) || (itemId && seen.has(`id:${itemId}`))) continue;
-    const root = anchor.closest('article, li, section, [role="listitem"]') || target || anchor.parentElement || anchor;
-    const title = text(firstNode(fields.title || [], root)) || text(anchor);
+    const root = anchor.matches('.search-result-card') ? anchor : anchor.closest('article, li, section, [role="listitem"]') || target || anchor.parentElement || anchor;
+    const title = text(firstNode(fields.title || [], root)) || String(anchor.getAttribute('aria-label') || anchor.querySelector('img')?.getAttribute('alt') || '').trim() || text(anchor);
     if (!title && !isLikelyContentUrl(href)) continue;
     seen.add(href);
     if (itemId) seen.add(`id:${itemId}`);
@@ -634,6 +668,7 @@ function extractCards(selectors, limit, fields, site = 'web', detailOpenMode = '
         itemId,
         sourceUrl: href,
         rank: items.length,
+        ...(['douyin', 'tiktok'].includes(site) ? { scrollState: readSocialCardScrollState(anchor, site) } : {}),
       },
     });
     if (items.length >= limit) break;
@@ -819,11 +854,15 @@ function detectSiteSurface(site, blocker) {
     if (/search_result/.test(pathname)) return 'search_results';
     return 'entry';
   }
+  if (site === 'tiktok') {
+    if (/\/@[^/]+\/(video|photo)\//.test(pathname)) return 'detail';
+    if (firstVisible(['[data-e2e="browse-video"]', '[data-e2e="browse-close"]'])) return 'detail_overlay';
+    if (/\/search/.test(pathname)) return 'search_results';
+    return 'entry';
+  }
   if (site === 'douyin') {
-    if (firstVisible(['[data-e2e="video-desc"]', '[class*="video-info"]', '[role="dialog"] [class*="video"]'])) {
-      return /\/video\//.test(pathname) ? 'detail' : 'detail_overlay';
-    }
-    if (/\/video\//.test(pathname)) return 'detail';
+    if (/\/(video|note)\//.test(pathname)) return 'detail';
+    if (new URL(location.href).searchParams.get('modal_id') || firstVisible(['[role="dialog"] [class*="video"]'])) return 'detail_overlay';
     if (/search/.test(pathname)) return 'search_results';
     return 'entry';
   }
@@ -851,11 +890,14 @@ function findSiteCardTarget(site, { itemId, expectedUrl }) {
 function* iterateCardAnchors(selectors) {
   for (const selector of selectors) {
     for (const anchor of document.querySelectorAll(selector)) {
-      const href = normalizeUrl(anchor.href || anchor.getAttribute('href') || '');
+      const mediaIds = anchor.matches('.search-result-card') ? new Set(Array.from(anchor.querySelectorAll('[class*="video_"]')).flatMap((node) => Array.from(String(node.className || '').matchAll(/\bvideo_(\d{8,})\b/g), (match) => match[1]))) : new Set();
+      const annotatedId = inferSite(location.hostname) === 'douyin' ? String(anchor.getAttribute('data-gardenflow-content-id') || (mediaIds.size === 1 ? [...mediaIds][0] : '')) : '';
+      const annotatedUrl = /^\d+$/.test(annotatedId) ? `https://www.douyin.com/${anchor.getAttribute('data-gardenflow-content-type') === 'image_text' ? 'note' : 'video'}/${annotatedId}` : '';
+      const href = normalizeUrl(annotatedUrl || anchor.href || anchor.getAttribute('href') || '');
       if (!href) continue;
       yield {
         anchor,
-        target: resolveInteractionTarget(anchor),
+        target: resolveInteractionTarget(annotatedId ? anchor.querySelector(`[data-gardenflow-open-id="${annotatedId}"]`) || anchor : anchor),
         href,
         itemId: externalIdFromUrl(href),
       };
@@ -863,11 +905,21 @@ function* iterateCardAnchors(selectors) {
   }
 }
 
+function readSocialCardScrollState(node, site) {
+  for (let parent = node.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
+    if (/(auto|scroll)/.test(getComputedStyle(parent).overflowY) && parent.scrollHeight > parent.clientHeight + 5) {
+      parent.setAttribute('data-gardenflow-search-scroll', site);
+      return { root: 'results', top: parent.scrollTop || 0, left: parent.scrollLeft || 0 };
+    }
+  }
+  return { root: 'document', top: document.scrollingElement?.scrollTop || 0, left: document.scrollingElement?.scrollLeft || 0 };
+}
+
 function resolveInteractionTarget(anchor) {
   let candidate = anchor;
   for (let depth = 0; candidate && depth <= MAX_INTERACTION_ANCESTORS; depth += 1) {
     if (candidate === document.body || candidate === document.documentElement) break;
-    if (isRenderable(candidate) && findVisibleClickPoint(candidate)) return candidate;
+    if (isRenderable(candidate)) return candidate;
     candidate = candidate.parentElement;
   }
   return null;
@@ -968,7 +1020,7 @@ function readMeta(names) {
 }
 
 function normalizeSite(value) {
-  const aliases = { xhs: 'xiaohongshu', redbook: 'xiaohongshu', rednote: 'xiaohongshu', dy: 'douyin', jingdong: 'jd', tb: 'taobao', tm: 'tmall', yt: 'youtube', generic_web: 'web', generic: 'web' };
+  const aliases = { xhs: 'xiaohongshu', redbook: 'xiaohongshu', rednote: 'xiaohongshu', dy: 'douyin', tt: 'tiktok', jingdong: 'jd', tb: 'taobao', tm: 'tmall', yt: 'youtube', generic_web: 'web', generic: 'web' };
   const normalized = String(value || '').trim().toLowerCase();
   return aliases[normalized] || normalized || 'web';
 }
@@ -982,6 +1034,7 @@ function normalizeDetailOpenMode(value) {
 function inferSite(hostname) {
   const host = String(hostname || '').toLowerCase();
   if (host.includes('xiaohongshu.com') || host.includes('rednote.com')) return 'xiaohongshu';
+  if (host === 'tiktok.com' || host.endsWith('.tiktok.com')) return 'tiktok';
   if (host.includes('douyin.com')) return 'douyin';
   if (host === 'jd.com' || host.endsWith('.jd.com') || host === 'jd.hk' || host.endsWith('.jd.hk')) return 'jd';
   if (host === 'tmall.com' || host.endsWith('.tmall.com')) return 'tmall';
@@ -1001,7 +1054,9 @@ function normalizeUrl(value) {
 
 function externalIdFromUrl(value) {
   try {
-    const parts = new URL(value, location.href).pathname.split('/').filter(Boolean);
+    const url = new URL(value, location.href);
+    if (url.searchParams.get('modal_id')) return url.searchParams.get('modal_id');
+    const parts = url.pathname.split('/').filter(Boolean);
     return parts.at(-1) || '';
   } catch {
     return '';
@@ -1009,7 +1064,7 @@ function externalIdFromUrl(value) {
 }
 
 function isLikelyContentUrl(value) {
-  return /\/(explore|discovery\/item|video|watch)\//.test(value)
+  return /\/(explore|discovery\/item|video|note|photo|watch)\//.test(value)
     || /\/\d+\.html(?:[?#]|$)/i.test(value)
     || /[?&]v=/.test(value);
 }

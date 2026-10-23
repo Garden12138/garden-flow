@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { extractYouTubeCandidateFromClipboard, type YouTubeClipboardCandidate } from './youtubeClipboard';
+import { detectClipboardCaptureCandidate, clipboardCaptureDedupeKey, clipboardCapturePlatformLabel } from './clipboardDetector';
+import { enqueueClipboardCapture } from './browserCaptureClient';
+import type { ClipboardCaptureCandidate } from './captureTypes';
 
 const CLIPBOARD_POLL_BOOT_DELAY_MS = 4000;
 const CLIPBOARD_POLL_FOCUS_DELAY_MS = 1500;
@@ -7,7 +9,7 @@ const CLIPBOARD_POLL_MIN_INTERVAL_MS = 12_000;
 const CLIPBOARD_POLL_IDLE_INTERVAL_MS = 45_000;
 const CLIPBOARD_POLL_MAX_INTERVAL_MS = 120_000;
 
-export type ClipboardCaptureStatus = 'idle' | 'saving' | 'success' | 'error';
+export type ClipboardCaptureStatus = 'idle' | 'saving' | 'success' | 'partial' | 'error';
 
 function isEditableElement(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -16,10 +18,11 @@ function isEditableElement(target: EventTarget | null): boolean {
 }
 
 export function useClipboardCapturePrompt() {
-  const [candidate, setCandidate] = useState<YouTubeClipboardCandidate | null>(null);
+  const [candidate, setCandidate] = useState<ClipboardCaptureCandidate | null>(null);
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<ClipboardCaptureStatus>('idle');
   const [message, setMessage] = useState('');
+  const [commentLimit, setCommentLimit] = useState(5);
 
   const lastClipboardTextRef = useRef('');
   const pollingRef = useRef(false);
@@ -35,28 +38,7 @@ export function useClipboardCapturePrompt() {
     statusRef.current = status;
   }, [status]);
 
-  const enqueueYoutubeFromClipboard = useCallback(async (nextCandidate: YouTubeClipboardCandidate) => {
-    const payload = {
-      videoId: nextCandidate.videoId,
-      videoUrl: nextCandidate.videoUrl,
-      title: `YouTube_${nextCandidate.videoId}`,
-      description: '',
-      thumbnailUrl: '',
-    };
-
-    const result = await window.ipcRenderer.capture.saveYoutubeNote(payload) as {
-      success?: boolean;
-      duplicate?: boolean;
-      error?: string;
-      noteId?: string;
-    } | null;
-
-    if (!result?.success) {
-      throw new Error(result?.error || '保存 YouTube 任务失败');
-    }
-
-    return result;
-  }, []);
+  const enqueueFromClipboard = useCallback((nextCandidate: ClipboardCaptureCandidate) => enqueueClipboardCapture(nextCandidate, commentLimit), [commentLimit]);
 
   const close = useCallback(() => {
     if (status === 'saving') return;
@@ -73,26 +55,27 @@ export function useClipboardCapturePrompt() {
     setMessage('正在加入后台采集...');
 
     try {
-      const result = await enqueueYoutubeFromClipboard(candidate);
-      capturedYouTubeSetRef.current.add(candidate.videoId);
-      setStatus('success');
-      setMessage(
-        result?.duplicate
-          ? '该视频已在知识库中，已跳过重复采集。'
-          : '已加入后台采集，稍后可在知识库看到处理结果。',
-      );
+      const result = await enqueueFromClipboard(candidate);
+      if (!result.success) throw new Error(result.error || '采集失败');
+      if (candidate.platform === 'youtube') capturedYouTubeSetRef.current.add(clipboardCaptureDedupeKey(candidate));
+      setStatus(result.partial ? 'partial' : 'success');
+      setMessage(result.partial ? `已部分保存，可在素材库重试补采。${result.error || ''}` : (
+        result.updated ? '已更新原有素材。' : result.duplicate
+          ? '素材已在知识库中。'
+          : '已保存采集结果，可在素材库查看。'
+      ));
       window.setTimeout(() => {
         setOpen(false);
         setCandidate(null);
         setStatus('idle');
         setMessage('');
-      }, 1000);
+      }, result.partial ? 5000 : 1000);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       setStatus('error');
       setMessage(`采集失败：${errorMessage}`);
     }
-  }, [candidate, enqueueYoutubeFromClipboard, status]);
+  }, [candidate, enqueueFromClipboard, status]);
 
   useEffect(() => {
     (window as unknown as { __gardenflowGlobalClipboardWatcher?: boolean }).__gardenflowGlobalClipboardWatcher = true;
@@ -124,13 +107,13 @@ export function useClipboardCapturePrompt() {
       }
 
       lastClipboardTextRef.current = normalizedText;
-      const nextCandidate = extractYouTubeCandidateFromClipboard(normalizedText);
+      const nextCandidate = detectClipboardCaptureCandidate(normalizedText, 'poll');
       if (!nextCandidate) return false;
-      if (capturedYouTubeSetRef.current.has(nextCandidate.videoId)) return false;
+      if (capturedYouTubeSetRef.current.has(clipboardCaptureDedupeKey(nextCandidate))) return false;
 
       setCandidate(nextCandidate);
       setStatus('idle');
-      setMessage('检测到剪贴板里的 YouTube 链接，是否开始后台采集？');
+      setMessage(`检测到${clipboardCapturePlatformLabel(nextCandidate)}链接，确认后开始采集。`);
       setOpen(true);
       return true;
     };
@@ -179,7 +162,7 @@ export function useClipboardCapturePrompt() {
       }
     };
     const handlePaste = (event: ClipboardEvent) => {
-      if (promptOpenRef.current || statusRef.current === 'saving') return;
+      if (isEditableElement(event.target) || promptOpenRef.current || statusRef.current === 'saving') return;
       if (applyClipboardText(event.clipboardData?.getData('text') || '')) {
         nextPollDelayMs = CLIPBOARD_POLL_IDLE_INTERVAL_MS;
         schedulePoll(nextPollDelayMs);
@@ -202,6 +185,8 @@ export function useClipboardCapturePrompt() {
 
   return {
     candidate,
+    commentLimit,
+    setCommentLimit,
     open,
     status,
     message,

@@ -99,7 +99,7 @@ class ClipboardCaptureQueue {
       };
       appendLog('开始执行采集任务');
       const result = await entry.execute(entry.task.candidate, { updateTask, appendLog });
-      entry.task.status = result.skipped ? 'skipped' : result.success ? 'success' : 'failed';
+      entry.task.status = result.skipped ? 'skipped' : result.partial ? 'partial' : result.success ? 'success' : 'failed';
       entry.task.error = result.error;
       entry.task.debugDetails = result.debugDetails;
       entry.task.serverJobId = result.jobId || entry.task.serverJobId;

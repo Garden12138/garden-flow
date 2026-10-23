@@ -1,3 +1,5 @@
+import { CaptureLinkDialog } from '../features/capture/CaptureLinkDialog';
+import { SocialPostDetail } from '../features/knowledge/SocialPostDetail';
 import { dispatchAppIntent } from '../features/app-shell/appIntent';
 import { useEffect, useMemo, useState, useCallback, useRef, type ReactNode } from 'react';
 import { JdProductNoteDetail } from '../components/products/JdProductNoteDetail';
@@ -91,6 +93,7 @@ function ObsidianIcon({ className }: { className?: string }) {
 
 
 export function Knowledge({ onNavigateToGardenFlow, isEmbedded = false, isActive = true, onTitleBarContentChange, referenceContent }: KnowledgeProps) {
+    const [isLinkCaptureOpen, setIsLinkCaptureOpen] = useState(false);
     const [notes, setNotes] = useState<Note[]>([]);
     const [youtubeVideos, setYoutubeVideos] = useState<YouTubeVideo[]>([]);
     const [documentSources, setDocumentSources] = useState<DocumentKnowledgeSource[]>([]);
@@ -869,6 +872,7 @@ export function Knowledge({ onNavigateToGardenFlow, isEmbedded = false, isActive
             'xhs-blogger': 0,
             'xhs-comments': 0,
             'douyin-video': 0,
+            'douyin-image': 0,
             'bilibili': 0,
             'kuaishou': 0,
             'tiktok': 0,
@@ -895,6 +899,7 @@ export function Knowledge({ onNavigateToGardenFlow, isEmbedded = false, isActive
             { key: 'xhs-blogger' as const, label: '小红书博主', count: counts['xhs-blogger'] },
             { key: 'xhs-comments' as const, label: '小红书评论', count: counts['xhs-comments'] },
             { key: 'douyin-video' as const, label: '抖音视频', count: counts['douyin-video'] },
+            { key: 'douyin-image' as const, label: '抖音图集', count: counts['douyin-image'] },
             { key: 'bilibili' as const, label: 'Bilibili', count: counts.bilibili },
             { key: 'kuaishou' as const, label: '快手', count: counts.kuaishou },
             { key: 'tiktok' as const, label: 'TikTok', count: counts.tiktok },
@@ -1459,6 +1464,8 @@ export function Knowledge({ onNavigateToGardenFlow, isEmbedded = false, isActive
                 return '小红书博主';
             case 'xhs-comments':
                 return '小红书评论';
+            case 'douyin-image':
+                return '抖音图集';
             case 'douyin-video':
                 return '抖音视频';
             case 'bilibili':
@@ -2002,6 +2009,9 @@ export function Knowledge({ onNavigateToGardenFlow, isEmbedded = false, isActive
                     )}
 
                     <div className="flex items-center gap-1 rounded-xl border border-border/80 bg-surface-elevated p-1 shadow-lg shadow-black/10">
+                        <button type="button" onClick={() => setIsLinkCaptureOpen(true)} className="inline-flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-bold text-text-primary transition-all hover:bg-surface-secondary/80">
+                            <Plus className="h-3.5 w-3.5" />链接采集
+                        </button>
                         <button
                             type="button"
                             onClick={handleAddDocumentFiles}
@@ -3135,6 +3145,8 @@ export function Knowledge({ onNavigateToGardenFlow, isEmbedded = false, isActive
                 )}
             </div>
 
+            {isLinkCaptureOpen && <CaptureLinkDialog onClose={() => setIsLinkCaptureOpen(false)} onSaved={() => void loadCatalogPage(true)} />}
+
             {/* Xiaohongshu Note Detail Modal */}
             {selectedNote && (
                 jdProductNoteSource(selectedNote) ? (
@@ -3145,7 +3157,7 @@ export function Knowledge({ onNavigateToGardenFlow, isEmbedded = false, isActive
                         onChat={() => openNoteInGardenFlow(selectedNote)}
                         onRemove={() => void handleDeleteNote(selectedNote.id)}
                     />
-                ) : isXiaohongshuNoteDetail(selectedNote) ? renderXhsNoteDetail(selectedNote) : (
+                ) : /^(douyin|tiktok)-(video|image)$/.test(selectedNote.captureKind || selectedNote.type || '') ? <SocialPostDetail note={selectedNote} onClose={() => setSelectedNote(null)} onRefresh={() => void openNoteDetail(selectedNote)} onChat={() => openNoteInGardenFlow(selectedNote)} /> : isXiaohongshuNoteDetail(selectedNote) ? renderXhsNoteDetail(selectedNote) : (
                 <div
                     className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[6px] animate-in fade-in duration-300"
                     onClick={() => setSelectedNote(null)}

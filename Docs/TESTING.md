@@ -32,6 +32,10 @@ pnpm build
 | 统一发布、两步确认、完成询问与恢复 | [publicationManagement.test.ts](../desktop/tests/publicationManagement.test.ts) |
 | 采集报告路由、跨空间保护与恢复 | [gardenflowCaptureReportNavigation.test.ts](../desktop/tests/gardenflowCaptureReportNavigation.test.ts) |
 | 自动采集保存与任务页面清理状态 | [marketplaceAutoCaptureRuntime.test.ts](../desktop/tests/marketplaceAutoCaptureRuntime.test.ts) |
+| 抖音／TikTok 素材隔离、评论标识升级／回复保留、补采、三种分享短链身份保护、限流停止和配额 | [socialCapture.test.ts](../desktop/tests/socialCapture.test.ts) |
+| 两平台视频、图集、评论加载中途限流、已读评论保留和新版搜索控件 | [test-social-post.mjs](../Plugin/scripts/test-social-post.mjs) |
+| 插件历史容量限制、存储满后的恢复、活动任务与终态回执保留 | [test-runtime-storage.mjs](../Plugin/scripts/test-runtime-storage.mjs) |
+| 百炼 Flash 转写协议、模型与端点匹配、音频大小限制和错误保留 | [dashscopeTranscription.test.ts](../desktop/tests/dashscopeTranscription.test.ts) |
 | TikTok 真实页面夹具执行 | [tiktokPublisherDom.test.ts](../desktop/tests/tiktokPublisherDom.test.ts) |
 
 三栏创作的定向回归：
@@ -46,6 +50,8 @@ pnpm --dir desktop exec node --test tests/creationWorkspace.test.ts tests/creati
 pnpm --dir Plugin check
 pnpm --dir PublishPlugin check
 pnpm --dir Plugin test:marketplace-search
+pnpm --dir Plugin test:runtime-storage
+pnpm --dir Plugin test:social-post
 pnpm --dir Plugin test:taobao-product
 pnpm --dir Plugin test:jd-product
 ```

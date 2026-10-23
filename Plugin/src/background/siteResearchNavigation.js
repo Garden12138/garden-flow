@@ -53,6 +53,7 @@ export async function openSiteResearchItem(input = {}, deps = {}) {
   const pollIntervalMs = clampNumber(input.pollIntervalMs, 100, 1_000, DEFAULT_POLL_INTERVAL_MS);
   const startedAt = Date.now();
   let lastEvidence = null;
+  let identityMismatchUrl = '';
   while (Date.now() - startedAt <= timeoutMs) {
     const tabs = await deps.listTabs().catch(() => []);
     const child = findNewChildTab(
@@ -80,6 +81,10 @@ export async function openSiteResearchItem(input = {}, deps = {}) {
         await deps.waitForTabComplete(child.id, timeoutMs).catch(() => {});
       }
       const currentChild = await deps.getTab(child.id).catch(() => child) || child;
+      if (!matchesExpectedSocialPost(currentChild.url, input, prepared)) {
+        if (typeof deps.closeNewTab === 'function') await deps.closeNewTab(child.id).catch(() => null);
+        return { ...failure('item_identity_mismatch', 'the opened post did not match the selected card identity'), itemId: prepared.itemId || '', mismatchedUrl: currentChild.url || '' };
+      }
       return openedResult('new_tab', sourceBefore, currentChild, prepared, clickPoint);
     }
 
@@ -88,14 +93,25 @@ export async function openSiteResearchItem(input = {}, deps = {}) {
       return failure('item_source_tab_closed', 'research source tab closed while opening the selected item');
     }
     if (meaningfulUrlChanged(sourceBefore.url, sourceCurrent.url)) {
+      if (!matchesExpectedSocialPost(sourceCurrent.url, input, prepared)) {
+        identityMismatchUrl = sourceCurrent.url || '';
+        await delay(pollIntervalMs, deps);
+        continue;
+      }
       if (typeof deps.waitForTabComplete === 'function') {
         await deps.waitForTabComplete(sourceTabId, timeoutMs).catch(() => {});
       }
-      return openedResult('same_tab_route', sourceBefore, sourceCurrent, prepared, clickPoint);
+      const openedIn = new URL(sourceCurrent.url).searchParams.has('modal_id') ? 'same_tab_overlay' : 'same_tab_route';
+      return openedResult(openedIn, sourceBefore, sourceCurrent, prepared, clickPoint);
     }
 
     lastEvidence = await readDetailEvidence(deps, sourceTabId, input);
     if (isDetailEvidence(lastEvidence)) {
+      if (!matchesExpectedSocialPost(lastEvidence.content?.sourceUrl || lastEvidence.pageState?.url || sourceCurrent.url, input, prepared)) {
+        identityMismatchUrl = lastEvidence.content?.sourceUrl || sourceCurrent.url || '';
+        await delay(pollIntervalMs, deps);
+        continue;
+      }
       return openedResult('same_tab_overlay', sourceBefore, sourceCurrent, prepared, clickPoint);
     }
     await delay(pollIntervalMs, deps);
@@ -103,12 +119,26 @@ export async function openSiteResearchItem(input = {}, deps = {}) {
 
   await recoverUnconfirmedOpen(sourceTabId, sourceBefore.url || '', deps);
   return {
-    ...failure('item_open_timeout', 'the selected social-media card click produced no detail surface'),
+    ...failure(identityMismatchUrl ? 'item_identity_mismatch' : 'item_open_timeout', identityMismatchUrl ? 'the opened post did not match the selected card identity' : 'the selected social-media card click produced no detail surface'),
     itemId: prepared.itemId || input.item?.id || '',
     sourceUrl: sourceBefore.url || '',
     observedUrl: prepared.observedUrl || '',
+    ...(identityMismatchUrl ? { mismatchedUrl: identityMismatchUrl } : {}),
     lastPageState: lastEvidence?.pageState || null,
   };
+}
+
+function matchesExpectedSocialPost(href, input, prepared) {
+  const site = String(input.site?.id || input.siteId || input.site || input.platform || '');
+  if (!['douyin', 'tiktok'].includes(site)) return true;
+  const expectedId = String(prepared.itemId || input.item?.interactionRef?.itemId || input.item?.id || '');
+  if (!/^\d+$/.test(expectedId)) return false;
+  try {
+    const url = new URL(href);
+    if (url.hostname !== `${site}.com` && !url.hostname.endsWith(`.${site}.com`)) return false;
+    const pathId = url.pathname.match(site === 'douyin' ? /\/(?:video|note)\/(\d+)/ : /\/@[^/]+\/(?:video|photo)\/(\d+)/)?.[1];
+    return (url.searchParams.get('modal_id') || pathId) === expectedId;
+  } catch { return false; }
 }
 
 async function refreshItemForClick(sourceTabId, input, deps) {
@@ -166,6 +196,13 @@ export async function closeSiteResearchItem(input = {}, deps = {}) {
       if (await waitForSourceRestored(sourceTabId, sourceBeforeUrl, input, deps, requireListSurface)) {
         return { success: true, restored: true, method: 'page_click', sourceTabId, targetTabId };
       }
+    }
+  }
+
+  if (requireListSurface && typeof deps.pressEscape === 'function') {
+    await deps.pressEscape(sourceTabId).catch(() => null);
+    if (await waitForSourceRestored(sourceTabId, sourceBeforeUrl, input, deps, true)) {
+      return { success: true, restored: true, method: 'escape', sourceTabId, targetTabId };
     }
   }
 
@@ -243,7 +280,7 @@ async function waitForSourceRestored(tabId, expectedUrl, input, deps, requireLis
           executionMode: 'extract',
         }));
         const surface = String(evidence?.pageState?.surface || '').trim();
-        if (evidence?.success === true && (surface === 'search_results' || surface === 'entry')) return true;
+        if (evidence?.success === true && (surface === 'search_results' || input.operation !== 'search' && surface === 'entry')) return true;
       } catch {
         // The page may be between routes; continue the bounded restore wait.
       }
