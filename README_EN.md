@@ -94,6 +94,25 @@ The dark theme keeps the same hierarchy and information density:
 
 Exact availability depends on the protocols and models offered by your configured providers.
 
+## Future directions (open for discussion)
+
+These are **candidate product directions open for discussion**, including extensions to existing capabilities. Scope, priority, and timelines have not been decided; directions may change, merge, or be dropped. **They are not commitments to implement or ship features.** Refer to the capability matrix above and the [roadmap (Chinese)](./ROADMAP.md) for current capabilities and known limitations.
+
+| Candidate direction | Problem to address and areas to explore |
+| --- | --- |
+| Audience opportunity radar | Extend comment insights to connect audience questions, counterexamples, and changes across sources, and track opportunities worth creating for or validating. |
+| Learning from edits | Extract expression preferences from user-approved edits, with brand or account scope, inspection, and undo controls to reduce repeated corrections. |
+| Content experiments informed by results | Extend retrospectives by linking observed performance to accounts, content versions, and observation windows, with traceable hypotheses and next actions. |
+| Content sets organized around a goal | Plan complementary pieces for a launch, campaign, or series, sharing facts and assets to reduce repeated planning. |
+| Ongoing research and content maintenance | Link sources, conclusions, and works so source updates can flag affected content for review and revision. |
+| Professional knowledge delivery | Organize the user's own expertise and sources into maintainable guides, training materials, and resource packages, exploring modular content, versioning, and delivery formats. |
+| Consumer research and product improvement | Compare usage obstacles, unmet needs, and purchase concerns across products, variants, and reviews to inform product selection, descriptions, and improvements. |
+| Localization across markets | Extend existing language and platform versions with local contexts, terminology, units, and editorial review while keeping product facts consistent. |
+| Recurring series and connected stories | Build on existing story and subject assets to explore reusable characters, settings, and plot details across episodes, continuity checks, and series planning. |
+| Discoverability in AI search | Explore citations, content gaps, and source maintenance to help original knowledge be found and cited accurately; rankings and citations are not guaranteed. |
+
+Share concrete use cases, workflow pain points, and the directions you would most like to validate in [Discussions](https://github.com/Garden12138/garden-flow/discussions).
+
 ## Quick start
 
 ### Install a release build
