@@ -80,6 +80,11 @@ async function run() {
    await click('消费者研究');await poll(()=>js('Boolean(document.querySelector("[aria-label=消费者研究] input[data-research-source]"))'),'research source selector');
    await js('document.querySelector("[aria-label=消费者研究] input[data-research-source]").click();true');
    await click('预览本轮范围与模型');await poll(()=>js('Boolean(document.querySelector("[aria-label=研究范围预览]"))'),'frozen research preview');assert.equal(modelRequests,0);
+   const frozen=(await invoke('researchRuns'))[0];assert.equal(frozen.sourceOverviews[0].title,source.title);assert.equal(frozen.sourceOverviews[0].version,source.version);
+   assert.equal(frozen.sourceOverviews[0].commentCount,frozen.commentCount);assert.ok(frozen.commentCount>0);const exactInput=await invoke('researchInput',frozen.id);assert.equal(exactInput.length,frozen.referenceCount);assert.equal(exactInput.filter(ref=>ref.kind==='comment').length,frozen.commentCount);
+   const rawSummary='查看本轮将发送的原文（仅读取本地快照）';await js('Array.from(document.querySelectorAll("summary")).find(summary=>summary.textContent.trim()==='+JSON.stringify(rawSummary)+').click();true');
+   await poll(()=>js('Boolean(document.querySelector("[aria-label=研究发送原文]"))'),'actual frozen input readable before confirmation');assert.equal(modelRequests,0);
+   await fs.writeFile(path.join(root,'scope-preview-private.png'),(await window.webContents.capturePage()).toPNG());
    assert.equal(await js('Array.from(document.querySelectorAll("button")).find(button=>button.textContent.trim()==="确认并运行分析").disabled'),true);
    await js('document.querySelector("input[aria-label=确认研究模型费用]").click();true');await click('确认并运行分析');
    await poll(async()=>(await invoke('list')).items.length===1,'structured proposal with verified real quote');

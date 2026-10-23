@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ciDigest } from '../electron/core/content-intelligence/repository.ts';
-import { prepareResearchReferences, verifyConsumerProposal, researchOpportunityScore } from '../electron/core/content-intelligence/researchDomain.ts';
+import { prepareResearchReferences, describeResearchSources, verifyConsumerProposal, researchOpportunityScore } from '../electron/core/content-intelligence/researchDomain.ts';
 import { ConsumerProposalSchema, ResearchScopeSchema, ResearchStartSchema } from '../shared/consumerResearch.ts';
 import { SourceSnapshotSchema } from '../shared/contentIntelligence.ts';
 
@@ -61,4 +61,20 @@ test('oversized text is explicitly sampled, and deterministic scores are ranking
     const result = prepareResearchReferences(scope([source]), [source]); assert.equal(result.references[0].text.length, 2000); assert.equal(result.coverage.partial, true);
     const sample = ConsumerProposalSchema.parse(proposal('ref', 'quote')).opportunities[0]; assert.equal(researchOpportunityScore(sample), 3);
     sample.scores.evidence.value = 5; sample.scores.fit.value = 0; assert.equal(researchOpportunityScore(sample), 2.85);
+});
+
+test('multi-product context cannot crowd out the comment sample and each frozen source reports its exact sent scope', () => {
+    const sources = Array.from({ length: 20 }, (_, index) => {
+        const source = snapshot('product_' + index, 2);
+        const payload = { ...source, segments: [...Array.from({ length: 24 }, (_, field) => ({ key: 'spec_' + field, kind: 'fact' as const, text: `规格 ${field}` })), ...source.segments.filter(segment => segment.kind === 'comment')] };
+        const { version, ...content } = payload; return { ...content, version: ciDigest(content) };
+    });
+    const result = prepareResearchReferences(scope(sources, 100), sources);
+    assert.equal(result.commentCount, 40); assert.equal(result.referenceCount, 200); assert.equal(result.coverage.partial, true);
+    assert.equal(result.sourceOverviews.length, 20);
+    for (const source of result.sourceOverviews) { assert.equal(source.commentCount, 2); assert.ok(source.referenceCount >= 3); }
+    assert.equal(result.sourceOverviews.reduce((sum, source) => sum + source.inputCharacters, 0), result.inputCharacters);
+    assert.equal(result.sourceOverviews.reduce((sum, source) => sum + source.referenceCount, 0), result.referenceCount);
+    const invalid = result.references.map(ref => ({ ...ref })); invalid[0].text = '快照中不存在的原文';
+    assert.throws(() => describeResearchSources(scope(sources), sources, invalid), /输入与来源快照不匹配/);
 });

@@ -106,3 +106,27 @@ test('source filtering and priority cursors use verified scoped evidence and pre
     h.switch('中文空间'); assert.deepEqual(h.base.listOpportunities({ source: h.source.source }).items, []);
     assert.throws(() => h.base.listOpportunities({ after: high }), /当前空间/);
 });
+
+test('legacy research previews hydrate frozen source names and exact input without redirecting to current metadata', t => {
+    const h = fixture(t); const run = h.repo.preview(h.input, [h.source], model);
+    const old = { ...run }; delete old.sourceOverviews; old.sourceDigest = '0'.repeat(64); // Previous sampler version.
+    h.db.prepare('UPDATE ci_analysis_runs SET document_json = ? WHERE id = ?').run(JSON.stringify(old), run.id);
+    const latest = { ...h.source, title: '当前来源已改名' }; const { version, ...payload } = latest; latest.version = ciDigest(payload); h.base.saveSnapshot(latest);
+    const restored = h.repo.get(run.id);
+    assert.equal(restored.sourceOverviews?.[0].title, h.source.title); assert.equal(restored.sourceOverviews?.[0].version, h.source.version);
+    assert.equal(h.repo.references(run.id)[0].text, h.source.segments[0].text);
+    assert.equal(h.repo.preview(h.input, [h.source], model).id, run.id); assert.equal(h.repo.get(run.id).calls, 0);
+    h.switch('中文空间'); assert.throws(() => h.repo.references(run.id), /当前空间/);
+});
+
+test('multiple quotes from one comment cannot inflate an opportunity confidence tier', t => {
+    const h = fixture(t); const { version, ...payload } = h.source;
+    const source = { ...payload, coverage: { ...payload.coverage, captured: 6, requested: 6 }, segments: [...payload.segments,
+        ...Array.from({ length: 5 }, (_, index) => ({ key: 'other_' + index, kind: 'comment' as const, text: '无关的合成评论 ' + index }))] };
+    const snapshot = { ...source, version: ciDigest(source) };
+    const run = h.repo.preview({ ...h.input, scope: { sources: [{ source: snapshot.source, version: snapshot.version }] } }, [snapshot], model);
+    const started = h.repo.claim(consent(run)).run; const ref = h.repo.references(run.id)[0];
+    const output = proposal(ref.id); output.insights[0].supportRefs = ['固定后', '会滑动', '固定后会滑动'].map(quote => ({ refId: ref.id, quote }));
+    const complete = h.repo.finish(run.id, started.revision, output);
+    const opportunity = h.base.getOpportunity(complete.opportunityIds[0]); assert.equal(opportunity.evidence.length, 3); assert.equal(opportunity.research?.confidence, 'low');
+});

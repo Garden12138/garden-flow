@@ -14,6 +14,11 @@ export const ResearchReferenceSchema = z.object({
     id: CiId, source: SourceIdentitySchema, version: CiDigest, key: z.string().min(1).max(300),
     kind: z.enum(['comment', 'fact', 'text']), text: z.string().min(1).max(2000),
 }).strict();
+export const ResearchSourceOverviewSchema = z.object({
+    source: SourceIdentitySchema, version: CiDigest, title: z.string().max(500),
+    capturedAt: z.number().int().nonnegative().max(8640000000000000).optional(), coverage: SourceCoverageSchema,
+    referenceCount: z.number().int().nonnegative(), commentCount: z.number().int().nonnegative(), inputCharacters: z.number().int().nonnegative(),
+}).strict();
 export const ResearchModelSchema = z.object({
     sourceId: z.string().max(160), name: z.string().min(1).max(200), host: z.string().min(1).max(300), fingerprint: CiDigest,
 }).strict();
@@ -36,6 +41,7 @@ export const ResearchRunSchema = z.object({
     id: CiId, spaceId: WorkspaceSpaceIdSchema, requestId: CiId, sourceDigest: CiDigest, scope: ResearchScopeSchema,
     model: ResearchModelSchema.nullable(), status: ResearchStatusSchema, revision: z.number().int().positive(),
     coverage: SourceCoverageSchema, sourceCount: z.number().int().nonnegative(), referenceCount: z.number().int().nonnegative(),
+    sourceOverviews: z.array(ResearchSourceOverviewSchema).max(20).optional(),
     commentCount: z.number().int().nonnegative(), inputCharacters: z.number().int().nonnegative(),
     opportunityIds: z.array(CiId).max(10), issues: z.array(Text).max(100), calls: z.number().int().min(0).max(1),
     summary: ConsumerProposalSchema.shape.comment_insight.optional(),

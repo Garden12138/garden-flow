@@ -1,12 +1,32 @@
 import { useEffect, useRef, useState } from 'react';
 import type { SourceSnapshot, CiResult } from '../../../shared/contentIntelligence';
-import type { ResearchRun } from '../../../shared/consumerResearch';
+import type { ResearchRun, ResearchReference } from '../../../shared/consumerResearch';
 import { dispatchAppIntent } from '../../features/app-shell/appIntent';
 
 const buttonClass = 'rounded border border-border px-3 py-1.5 text-xs hover:bg-surface-secondary disabled:opacity-40';
 const statusLabels = { queued: '待确认', running: '分析中', interrupted: '已中断，不会自动重试', partial: '部分完成，请复核', succeeded: '分析完成', failed: '分析失败', cancelled: '已取消' };
 const sourceKey = (source: SourceSnapshot['source']) => JSON.stringify([source.kind, source.namespace, source.id]);
 function data<T>(result: CiResult<T>): T { if (result.success === false) throw new Error(result.error); return result.data; }
+function ResearchInputPreview({ run }: { run: ResearchRun }) {
+    const [references, setReferences] = useState<ResearchReference[] | null>(null); const [error, setError] = useState('');
+    const epoch = useRef(0); const pending = useRef(false);
+    useEffect(() => { epoch.current++; pending.current = false; setReferences(null); setError(''); return () => { epoch.current++; }; }, [run.id]);
+    return <details key={run.id} onToggle={async event => {
+        if (!event.currentTarget.open || references || pending.current) return;
+        const token = epoch.current; pending.current = true;
+        try { const result = data(await window.ipcRenderer.contentIntelligence.researchInput(run.id)); if (token === epoch.current) setReferences(result); }
+        catch (reason) { if (token === epoch.current) setError(String(reason)); }
+        finally { if (token === epoch.current) pending.current = false; }
+    }}>
+        <summary className="cursor-pointer">查看本轮将发送的原文（仅读取本地快照）</summary>
+        {error && <p role="alert">{error}</p>}
+        {!references && !error && <p>正在读取已冻结的输入…</p>}
+        {references && <div aria-label="研究发送原文" className="mt-2 max-h-64 space-y-2 overflow-y-auto">{references.map(reference => <div key={reference.id} className="rounded border border-border p-2">
+            <p className="font-medium">{run.sourceOverviews?.find(source => sourceKey(source.source) === sourceKey(reference.source))?.title || reference.source.id} · {reference.kind === 'comment' ? '评论' : '资料'}</p>
+            <p className="whitespace-pre-wrap break-words">{reference.text}</p>
+        </div>)}</div>}
+    </details>;
+}
 export function ConsumerResearchPanel({ onResults }: { onResults: () => void }) {
     const [sources, setSources] = useState<SourceSnapshot[]>([]); const [selected, setSelected] = useState<string[]>([]);
     const [runs, setRuns] = useState<ResearchRun[]>([]); const [preview, setPreview] = useState<ResearchRun | null>(null);
@@ -66,11 +86,17 @@ export function ConsumerResearchPanel({ onResults }: { onResults: () => void }) 
         {error && <p role="alert" className="rounded border border-red-400 p-2 text-xs">{error}</p>}
         {preview && <div aria-label="研究范围预览" className="space-y-2 rounded border border-border bg-surface-secondary p-3 text-xs">
             <strong>{statusLabels[preview.status]}</strong><p>{preview.sourceCount} 个来源 · 已保存评论 {preview.coverage.captured} 条 · 本轮分析评论 {preview.commentCount} 条 · 发送 {preview.referenceCount} 个片段，共 {preview.inputCharacters} 字符</p>
+            {!!preview.sourceOverviews?.length ? <ul aria-label="本轮已冻结的发送范围" className="space-y-2">{preview.sourceOverviews.map(source => <li key={sourceKey(source.source)} className="rounded border border-border p-2">
+                <p className="break-words font-medium">{source.title} · {source.source.namespace} · 版本 {source.version.slice(0, 12)}</p>
+                <p>采集时间：{source.capturedAt === undefined ? '缺失' : new Date(source.capturedAt).toLocaleString()} · 本轮评论 {source.commentCount} 条 / 已保存 {source.coverage.captured} 条 · 发送 {source.referenceCount} 个片段、{source.inputCharacters} 字符</p>
+                <p>{source.coverage.partial ? '部分采集' : '本次采集完整'}{source.coverage.issues.length ? ` · ${source.coverage.issues.join('；')}` : ''}</p>
+            </li>)}</ul> : <p role="alert">此预览缺少来源清单，请从运行记录重新查看或重新选择范围。</p>}
+            <ResearchInputPreview run={preview} />
             <p>{preview.coverage.partial ? '存在部分采集或采样限制' : '仅代表本次已入库范围'}；以上字符数不是供应商计费 Token 数。</p>
             {preview.coverage.issues.map((issue, index) => <p key={index}>{issue}</p>)}
             {preview.model ? <p>模型：{preview.model.name} · 供应商主机：{preview.model.host}</p> : <p>尚未配置灵感文本模型。<button type="button" className="underline" onClick={() => dispatchAppIntent({ type: 'settings.open', tab: 'ai' })}>打开设置</button></p>}
             {preview.status === 'queued' && <><label className="flex items-start gap-2"><input aria-label="确认研究模型费用" type="checkbox" checked={consent} disabled={busy || !preview.model} onChange={event => setConsent(event.target.checked)} /><span>确认将上述所选原文发送给此供应商；文本请求可能收费。本轮最多调用一次，失败或取消后不会自动重试。</span></label>
-                <button type="button" className={buttonClass} disabled={busy || !consent || !preview.model || !preview.inputCharacters} onClick={() => void act(async token => {
+                <button type="button" className={buttonClass} disabled={busy || !consent || !preview.model || !preview.inputCharacters || !preview.sourceOverviews?.length} onClick={() => void act(async token => {
                     const run = data(await window.ipcRenderer.contentIntelligence.startResearch({ id: preview.id, expectedRevision: preview.revision, consent: true, modelFingerprint: preview.model!.fingerprint }));
                     if (token !== epoch.current) return; updateRun(run); setConsent(false);
                 })}>确认并运行分析</button></>}
@@ -78,7 +104,11 @@ export function ConsumerResearchPanel({ onResults }: { onResults: () => void }) 
             {['partial', 'succeeded'].includes(preview.status) && <p>形成 {preview.opportunityIds.length} 个候选机会。模型总结与排序仍需核对原文，0 个可信机会也是有效结果。</p>}
         </div>}
         {!!runs.length && <details><summary className="cursor-pointer text-xs">最近 50 次研究记录（含待确认预览）</summary><div className="mt-2 space-y-2">{runs.map(run => <div key={run.id} className="flex flex-wrap items-center gap-2 rounded border border-border p-2 text-xs"><span className="flex-1">{new Date(run.createdAt).toLocaleString()} · {statusLabels[run.status]} · {run.opportunityIds.length} 个机会 · 已请求 {run.calls} 次</span>
-            <button type="button" className={buttonClass} disabled={busy} onClick={() => { setPreview(run); setConsent(false); }}>查看范围</button>
+            <button type="button" className={buttonClass} disabled={busy} onClick={() => void act(async token => {
+                const frozen = data(await window.ipcRenderer.contentIntelligence.researchRun(run.id)); if (token !== epoch.current) return;
+                setSelected(frozen.scope.sources.map(ref => sourceKey(ref.source))); setMaxComments(frozen.scope.maxComments); setCompleteOnly(frozen.scope.completeOnly); setGoal(frozen.scope.goal);
+                request.current = undefined; updateRun(frozen); setConsent(false);
+            })}>查看范围</button>
             {['queued', 'running'].includes(run.status) && <button type="button" className={buttonClass} disabled={busy} onClick={() => void act(async token => { const result = data(await window.ipcRenderer.contentIntelligence.cancelResearch({ id: run.id, expectedRevision: run.revision })); if (token === epoch.current) updateRun(result); })}>取消本轮</button>}
             {['failed', 'cancelled', 'interrupted'].includes(run.status) && <button type="button" className={buttonClass} disabled={busy} onClick={() => { setSelected(run.scope.sources.map(ref => sourceKey(ref.source))); setGoal(run.scope.goal); setMaxComments(run.scope.maxComments); setCompleteOnly(run.scope.completeOnly); invalidate(); }}>重新选择并预览</button>}
         </div>)}</div></details>}

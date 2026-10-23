@@ -74,6 +74,15 @@ test('disabled or changed model configuration blocks confirmation without fallin
     const disabled = await h.service.preview({ ...h.input(), requestId: 'disabled' }); assert.equal(disabled.model, null);
 });
 
+test('missing durable input fails before a provider call is claimed', async t => {
+    const h = fixture(t); const run = await h.service.preview(h.input());
+    const unavailable = createConsumerResearchService({ ...h.repo, references: () => { throw new Error('研究输入快照不可用'); } },
+        { list: async () => [h.data.a], read: async () => h.data.a, validity: async () => 'verified' as const },
+        { describe: () => description, analyze: async () => { assert.fail('provider must not be called'); } });
+    await assert.rejects(unavailable.start(consent(run)), /输入快照不可用/);
+    assert.equal(h.repo.get(run.id).calls, 0); assert.equal(h.repo.get(run.id).status, 'queued'); assert.equal(h.calls(), 0);
+});
+
 test('model adapter uses the configured wander route, passes no tools, forbids implicit retries and validates structured output', async () => {
     const settings: any = { ai_sources_json: [{ id: 'local', baseURL: 'http://127.0.0.1:12345/v1', model: 'synthetic', apiKey: '' }], ai_model_routes_json: { wander: { mode: 'custom', sourceId: 'local', model: 'synthetic' } } };
     let calls = 0; let request: any;

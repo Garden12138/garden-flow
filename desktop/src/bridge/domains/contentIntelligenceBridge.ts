@@ -1,7 +1,7 @@
 import type { z } from 'zod';
 import type { BridgeCore } from '../types';
 import type { CreationWorkspace } from '../../../shared/creationWorkspace';
-import type { PreviewResearchSchema, ResearchStartSchema, ResearchCancelSchema, ResearchRun } from '../../../shared/consumerResearch';
+import type { PreviewResearchSchema, ResearchStartSchema, ResearchCancelSchema, ResearchRun, ResearchReference } from '../../../shared/consumerResearch';
 import type {
     AddEvidenceSchema, CiListSchema, CiResult, ContentEvidence, CreateOpportunitySchema, CreateOpportunityWorkSchema,
     EvidenceSourceView, Opportunity, OpportunityDetail, SourceIdentity, SourceSnapshot, TransitionOpportunitySchema, WorkLink,
@@ -23,6 +23,7 @@ export function createContentIntelligenceBridge(core: BridgeCore) {
         previewResearch: (input: z.input<typeof PreviewResearchSchema>) => invoke<ResearchRun>('ci:research-preview', input),
         startResearch: (input: z.input<typeof ResearchStartSchema>) => invoke<ResearchRun>('ci:research-start', input),
         researchRun: (id: string) => invoke<ResearchRun>('ci:research-get', { id }),
+        researchInput: (id: string) => invoke<ResearchReference[]>('ci:research-input', { id }),
         researchRuns: () => invoke<ResearchRun[]>('ci:research-list', {}),
         cancelResearch: (input: z.input<typeof ResearchCancelSchema>) => invoke<ResearchRun>('ci:research-cancel', input),
     } };

@@ -67,7 +67,7 @@ test('IPC handler and typed bridge channels match, are registered, and never acc
     const main = await fs.readFile(new URL('../electron/core/contentIntelligenceIpc.ts', import.meta.url), 'utf8');
     const bridge = await fs.readFile(new URL('../src/bridge/domains/contentIntelligenceBridge.ts', import.meta.url), 'utf8');
     const channels = (value: string) => [...new Set([...value.matchAll(/['"]ci:([a-z-]+)['"]/g)].map(match => match[1]))].sort();
-    assert.equal(channels(main).length, 15); assert.deepEqual(channels(main), channels(bridge));
+    assert.equal(channels(main).length, 16); assert.deepEqual(channels(main), channels(bridge));
     assert.ok(main.includes('runInWorkspaceSpace(spaceId'));
     const startup = await fs.readFile(new URL('../electron/appMain.ts', import.meta.url), 'utf8'); assert.ok(startup.includes('registerContentIntelligenceIpc();'));
 });

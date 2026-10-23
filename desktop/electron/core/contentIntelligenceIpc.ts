@@ -45,6 +45,7 @@ export function registerContentIntelligenceIpc(): void {
     handle('ci:research-preview', research.preview);
     handle('ci:research-start', research.start);
     handle('ci:research-get', input => research.get(id(input)));
+    handle('ci:research-input', input => getConsumerResearchRepository().references(id(input)));
     handle('ci:research-list', input => { z.object({}).strict().parse(input); return research.list(); });
     handle('ci:research-cancel', research.cancel);
 }

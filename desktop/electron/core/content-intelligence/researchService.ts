@@ -26,6 +26,7 @@ export function createConsumerResearchService(repository: ConsumerResearchReposi
         const original = repository.get(request.id);
         if (original.status !== 'queued') return original;
         if (model.describe()?.fingerprint !== request.modelFingerprint) throw new Error('模型配置已变化，请重新预览并确认');
+        const references = repository.references(original.id); // Validate the exact durable input before claiming a potentially billed call.
         await verifyCurrentSources(original);
         if (repository.space() !== space) throw new Error('空间已变化');
         const claim = repository.claim(request); if (!claim.claimed) return claim.run;
@@ -33,7 +34,7 @@ export function createConsumerResearchService(repository: ConsumerResearchReposi
         // The captured AsyncLocalStorage space from the IPC remains attached to this bounded background job.
         void (async () => {
             try {
-                const output = await model.analyze(repository.references(claim.run.id), claim.run.scope.goal, claim.run.model!, AbortSignal.any([controller.signal, AbortSignal.timeout(90000)]));
+                const output = await model.analyze(references, claim.run.scope.goal, claim.run.model!, AbortSignal.any([controller.signal, AbortSignal.timeout(90000)]));
                 if (controller.signal.aborted || repository.space() !== space) return;
                 await verifyCurrentSources(claim.run);
                 if (controller.signal.aborted || repository.space() !== space) return;

@@ -4,7 +4,7 @@ import { InsightSchema, OpportunitySchema, type SourceSnapshot } from '../../../
 import { CiId } from '../../../shared/contentIntelligence.ts';
 import { PreviewResearchSchema, ResearchReferenceSchema, ResearchRunSchema, ResearchStartSchema, ResearchCancelSchema, type ResearchModel, type ResearchRun } from '../../../shared/consumerResearch.ts';
 import { ciDigest, ciTransaction, createContentIntelligenceRepository, type CiDatabase } from './repository.ts';
-import { prepareResearchReferences, verifyConsumerProposal, researchOpportunityScore } from './researchDomain.ts';
+import { prepareResearchReferences, describeResearchSources, verifyConsumerProposal, researchOpportunityScore } from './researchDomain.ts';
 
 export function initializeConsumerResearch(db: CiDatabase): void {
     ciTransaction(db, () => db.exec(`CREATE TABLE IF NOT EXISTS ci_analysis_inputs (
@@ -30,13 +30,22 @@ export function createConsumerResearchRepository(db: CiDatabase, currentSpace: (
         return ResearchRunSchema.parse(JSON.parse(row.document_json));
     };
     function get(id: string): ResearchRun {
-        return decode(db.prepare('SELECT document_json FROM ci_analysis_runs WHERE space_id = ? AND id = ?').get(base.space(), CiId.parse(id)));
+        const run = decode(db.prepare('SELECT document_json FROM ci_analysis_runs WHERE space_id = ? AND id = ?').get(base.space(), CiId.parse(id)));
+        if (!run.sourceOverviews) {
+            const snapshots = run.scope.sources.map(ref => base.getSnapshot(ref.source, ref.version));
+            run.sourceOverviews = describeResearchSources(run.scope, snapshots, readReferences(run.id));
+        }
+        return run;
     }
     function list() {
         return db.prepare('SELECT document_json FROM ci_analysis_runs WHERE space_id = ? ORDER BY rowid DESC LIMIT 50').all(base.space()).map(decode);
     }
     function references(id: string) {
-        get(id);
+        const run = get(id); const values = readReferences(id);
+        describeResearchSources(run.scope, run.scope.sources.map(ref => base.getSnapshot(ref.source, ref.version)), values);
+        return values;
+    }
+    function readReferences(id: string) {
         const row = db.prepare('SELECT document_json FROM ci_analysis_inputs WHERE space_id = ? AND run_id = ?').get(base.space(), id);
         if (!row) throw new Error('研究输入快照不可用');
         return z.array(ResearchReferenceSchema).max(200).parse(JSON.parse(row.document_json));
@@ -52,9 +61,14 @@ export function createConsumerResearchRepository(db: CiDatabase, currentSpace: (
         const sourceDigest = ciDigest([prepared.sourceDigest, model?.fingerprint || null]); const spaceId = base.space();
         return ciTransaction(db, () => {
             const old = db.prepare('SELECT document_json FROM ci_analysis_runs WHERE space_id = ? AND request_id = ?').get(spaceId, parsed.requestId);
-            if (old) { const run = decode(old); if (run.sourceDigest !== sourceDigest) throw new Error('同一预览请求不能用于不同范围'); return run; }
+            if (old) {
+                const run = decode(old);
+                // Sampler upgrades must not turn a retry of a frozen request into a new analysis.
+                if (ciDigest(run.scope) !== ciDigest(parsed.scope) || run.model?.fingerprint !== model?.fingerprint) throw new Error('同一预览请求不能用于不同范围');
+                return get(run.id);
+            }
             const duplicate = db.prepare("SELECT document_json FROM ci_analysis_runs WHERE space_id = ? AND json_extract(document_json, '$.sourceDigest') = ? AND status IN ('queued', 'running', 'partial', 'succeeded') ORDER BY rowid DESC LIMIT 1").get(spaceId, sourceDigest);
-            if (duplicate) return decode(duplicate);
+            if (duplicate) return get(decode(duplicate).id);
             const now = Date.now(); const { references, ...counts } = prepared;
             const run = ResearchRunSchema.parse({ ...counts, sourceDigest, id: randomUUID(), spaceId, requestId: parsed.requestId, scope: parsed.scope, model,
                 status: 'queued', revision: 1, opportunityIds: [], issues: [], calls: 0, createdAt: now, updatedAt: now });
@@ -112,7 +126,7 @@ export function createConsumerResearchRepository(db: CiDatabase, currentSpace: (
                 if (result.reviewState === 'needs_evidence' || candidate.missingEvidence.length) { value.status = 'needs_evidence'; invalid = true; }
                 value.research = { runId: run.id, insightId: insight.id, suggestedFormats: candidate.suggestedFormats,
                     uncertainties: [...new Set([...insight.uncertainties, ...candidate.missingEvidence, '仅为本次样本的创作建议，不能推断消费者总体'])].slice(0, 40),
-                    scores: candidate.scores, weightedScore: researchOpportunityScore(candidate), confidence: result.reviewState !== 'verified' ? 'unknown' : run.coverage.partial || run.commentCount < 5 || result.verified.filter(quote => quote.relation === 'supports').length < 3 ? 'low' : 'medium' };
+                    scores: candidate.scores, weightedScore: researchOpportunityScore(candidate), confidence: result.reviewState !== 'verified' ? 'unknown' : run.coverage.partial || run.commentCount < 5 || new Set(result.verified.filter(quote => quote.relation === 'supports').map(quote => quote.refId)).size < 3 ? 'low' : 'medium' };
                 const parsed = OpportunitySchema.parse(value);
                 db.prepare('UPDATE ci_opportunities SET status = ?, document_json = ? WHERE space_id = ? AND id = ?').run(parsed.status, JSON.stringify(parsed), parsed.spaceId, parsed.id);
                 return parsed.id;

@@ -1,4 +1,4 @@
-import { ConsumerProposalSchema, ResearchReferenceSchema, ResearchScopeSchema, type ResearchReference, type ResearchScope, type ConsumerProposal } from '../../../shared/consumerResearch.ts';
+import { ConsumerProposalSchema, ResearchReferenceSchema, ResearchScopeSchema, ResearchSourceOverviewSchema, type ResearchReference, type ResearchScope, type ConsumerProposal } from '../../../shared/consumerResearch.ts';
 import { SourceSnapshotSchema, type SourceSnapshot, type ContentEvidence } from '../../../shared/contentIntelligence.ts';
 import { ciDigest, sourceKey } from './repository.ts';
 
@@ -21,10 +21,13 @@ export function prepareResearchReferences(input: ResearchScope, snapshotsInput: 
         source.coverage.issues.forEach(issue => issues.add(issue));
         if (source.capturedAt === undefined) { issues.add('部分来源缺少采集时间'); partial = true; }
     }
-    // Round-robin selection preserves source order and avoids using one large source for the entire sample.
-    const queues = selected.map(snapshot => snapshot.segments.filter(segment => segment.text.trim()).map(segment => ({ snapshot, segment })));
+    // Keep one context segment per source, then sample comments before filling remaining context.
+    // Otherwise a multi-product scope can spend its entire bounded budget on specifications.
+    const contexts = selected.map(snapshot => snapshot.segments.filter(segment => segment.kind !== 'comment' && segment.text.trim()).map(segment => ({ snapshot, segment })));
+    const comments = selected.map(snapshot => snapshot.segments.filter(segment => segment.kind === 'comment' && segment.text.trim()).map(segment => ({ snapshot, segment })));
+    const batches = [contexts.map(queue => queue.slice(0, 1)), comments, contexts.map(queue => queue.slice(1))];
     const references: ResearchReference[] = []; let commentCount = 0; let inputCharacters = 0; let omitted = 0;
-    for (let offset = 0; queues.some(queue => queue.length > offset); offset++) {
+    for (const queues of batches) for (let offset = 0; queues.some(queue => queue.length > offset); offset++) {
         for (const queue of queues) {
             const value = queue[offset]; if (!value) continue;
             const { snapshot, segment } = value;
@@ -42,8 +45,33 @@ export function prepareResearchReferences(input: ResearchScope, snapshotsInput: 
     const limits = [...issues].slice(0, 39);
     if (issues.size > limits.length) limits.push('其他来源限制请回看各来源详情');
     return { references, sourceCount: selected.length, commentCount, referenceCount: references.length, inputCharacters,
+        sourceOverviews: describeResearchSources(scope, selected, references),
         coverage: { captured, ...(requestedKnown ? { requested } : {}), partial, issues: limits },
-        sourceDigest: ciDigest({ version: 1, scope, versions: selected.map(snapshot => snapshot.version), references }) };
+        sourceDigest: ciDigest({ version: 2, scope, versions: selected.map(snapshot => snapshot.version), references }) };
+}
+
+export function describeResearchSources(input: ResearchScope, snapshotsInput: SourceSnapshot[], referencesInput: ResearchReference[]) {
+    const scope = ResearchScopeSchema.parse(input);
+    const snapshots = new Map(snapshotsInput.map(value => { const snapshot = SourceSnapshotSchema.parse(value); return [sourceKey(snapshot.source), snapshot] as const; }));
+    const references = referencesInput.map(value => ResearchReferenceSchema.parse(value));
+    const selected = new Map(scope.sources.map(ref => [sourceKey(ref.source), ref.version]));
+    if (selected.size !== scope.sources.length || snapshots.size !== selected.size || snapshotsInput.length !== selected.size
+        || new Set(references.map(reference => reference.id)).size !== references.length) throw new Error('研究来源清单不匹配');
+    for (const reference of references) {
+        const key = sourceKey(reference.source); const snapshot = snapshots.get(key);
+        if (!selected.has(key) || selected.get(key) !== reference.version || snapshot?.version !== reference.version
+            || !snapshot.segments.find(segment => segment.key === reference.key && segment.kind === reference.kind)?.text.startsWith(reference.text)) {
+            throw new Error('研究输入与来源快照不匹配');
+        }
+    }
+    return scope.sources.map(ref => {
+        const snapshot = snapshots.get(sourceKey(ref.source));
+        if (!snapshot || snapshot.version !== ref.version) throw new Error('研究来源版本不匹配');
+        const sent = references.filter(reference => sourceKey(reference.source) === sourceKey(ref.source));
+        return ResearchSourceOverviewSchema.parse({ source: ref.source, version: ref.version, title: snapshot.title, capturedAt: snapshot.capturedAt,
+            coverage: snapshot.coverage, referenceCount: sent.length, commentCount: sent.filter(reference => reference.kind === 'comment').length,
+            inputCharacters: sent.reduce((sum, reference) => sum + reference.text.length, 0) });
+    });
 }
 
 export interface VerifiedResearchQuote {
