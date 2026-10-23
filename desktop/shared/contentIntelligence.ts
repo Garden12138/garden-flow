@@ -68,6 +68,7 @@ export function canTransitionOpportunity(from: OpportunityStatus, to: Opportunit
 }
 export const CiListSchema = z.object({
     status: OpportunityStatusSchema.optional(), after: CiId.optional(), limit: z.number().int().min(1).max(100).default(30),
+    source: SourceIdentitySchema.optional(), sort: z.enum(['recent', 'priority']).default('recent'),
 }).strict();
 export const AddEvidenceSchema = z.object({
     source: SourceIdentitySchema, version: CiDigest, locator: EvidenceLocatorSchema, excerpt: z.string().min(1).max(2000),

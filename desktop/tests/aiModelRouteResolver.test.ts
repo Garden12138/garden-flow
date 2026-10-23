@@ -25,6 +25,17 @@ const localSource = {
   models: ['qwen3:8b'],
 };
 
+test('explicit research scope follows wander and disabled routes cannot retain a callable source', () => {
+  const settings = { ai_sources_json: [openAiSource, localSource], ai_model_routes_json: {
+    chat: { mode: 'custom', sourceId: 'openai-main', model: 'chat-model' },
+    wander: { mode: 'custom', sourceId: 'ollama-local', model: 'local-research' },
+  } };
+  const selected = resolveSettingsLlm(settings, { scope: 'wander' });
+  assert.equal(selected?.modelName, 'local-research'); assert.equal(selected?.sourceId, 'ollama-local');
+  settings.ai_model_routes_json.wander.mode = 'disabled';
+  assert.equal(resolveSettingsLlm(settings, { scope: 'wander' }), null);
+});
+
 test('background work follows the configured chat route', () => {
   const resolved = resolveSettingsLlm({
     ai_sources_json: JSON.stringify([openAiSource]),

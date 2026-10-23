@@ -150,8 +150,17 @@ export function createContentIntelligenceRepository(db: CiDatabase, currentSpace
     }
     function listOpportunities(input: unknown = {}) {
         const query = CiListSchema.parse(input); const spaceId = space();
-        const rows = db.prepare('SELECT document_json FROM ci_opportunities WHERE space_id = ? AND (? IS NULL OR status = ?) AND id > ? ORDER BY id LIMIT ?')
-            .all(spaceId, query.status || null, query.status || null, query.after || '', query.limit + 1);
+        // Only these fixed expressions can enter SQL; all renderer values remain bound parameters.
+        const sortValue = query.sort === 'priority' ? "COALESCE(json_extract(o.document_json, '$.research.weightedScore'), -1)" : "json_extract(o.document_json, '$.createdAt')";
+        const cursor = query.after ? getOpportunity(query.after) : null;
+        const cursorValue = cursor ? query.sort === 'priority' ? cursor.research?.weightedScore ?? -1 : cursor.createdAt : null;
+        const source = query.source ? sourceKey(query.source) : null;
+        const rows = db.prepare(`SELECT o.document_json FROM ci_opportunities o WHERE o.space_id = ? AND (? IS NULL OR o.status = ?)
+            AND (? IS NULL OR EXISTS (SELECT 1 FROM json_each(o.document_json, '$.evidence') ref JOIN ci_evidence e
+                ON e.id = json_extract(ref.value, '$.id') AND e.space_id = o.space_id WHERE e.source_key = ?))
+            AND (? IS NULL OR ${sortValue} < ? OR (${sortValue} = ? AND o.id > ?))
+            ORDER BY ${sortValue} DESC, o.id ASC LIMIT ?`)
+            .all(spaceId, query.status || null, query.status || null, source, source, cursorValue, cursorValue, cursorValue, query.after || '', query.limit + 1);
         const items = rows.slice(0, query.limit).map(row => decode(OpportunitySchema, row));
         return { items, ...(rows.length > query.limit ? { next: items[items.length - 1].id } : {}) };
     }

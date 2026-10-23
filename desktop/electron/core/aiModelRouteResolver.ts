@@ -153,10 +153,12 @@ export function resolveSettingsLlm(
   options?: {
     preferChat?: boolean;
     contextType?: string;
+    scope?: AiRouteScope;
   },
 ): ResolvedSettingsLlm | null {
-  const scope = scopeFromContext(String(options?.contextType || ''), Boolean(options?.preferChat));
+  const scope = options?.scope || scopeFromContext(String(options?.contextType || ''), Boolean(options?.preferChat));
   const route = routeRecord(settings, scope);
+  if (route.mode === 'disabled') return null;
   const sources = parseAiSources(settings);
   const sourceId = canonicalizeSourceId(
     text(route.sourceId || route.source_id)

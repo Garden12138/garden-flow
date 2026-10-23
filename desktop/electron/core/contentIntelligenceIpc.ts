@@ -1,13 +1,16 @@
 import path from 'node:path';
 import { ipcMain } from 'electron';
 import { z } from 'zod';
-import { getContentIntelligenceRepository, getWorkspacePaths, runInWorkspaceSpace } from '../db';
+import { getContentIntelligenceRepository, getConsumerResearchRepository, getSettings, getWorkspacePaths, runInWorkspaceSpace } from '../db';
 import { CiId } from '../../shared/contentIntelligence';
 import { createBrandWorkspaceStore } from './brandWorkspaceStore';
 import { getAllKnowledgeItems } from './knowledgeLoader';
 import { startCreationWorkspace, readCreationWorkspace } from './creationWorkspaceStore';
 import { createCiSourceAdapter } from './content-intelligence/sourceAdapters';
 import { createContentIntelligenceService } from './content-intelligence/service';
+import { createConsumerResearchService } from './content-intelligence/researchService';
+import { createConsumerResearchModel } from './content-intelligence/researchModel';
+import { requestWanderCompletion } from './wanderService';
 
 export function registerContentIntelligenceIpc(): void {
     const sources = createCiSourceAdapter({
@@ -15,6 +18,8 @@ export function registerContentIntelligenceIpc(): void {
         knowledge: getAllKnowledgeItems,
     });
     const service = createContentIntelligenceService(getContentIntelligenceRepository(), sources, { start: startCreationWorkspace, read: readCreationWorkspace });
+    const research = createConsumerResearchService(getConsumerResearchRepository(), sources,
+        createConsumerResearchModel(() => (getSettings() || {}) as Record<string, unknown>, requestWanderCompletion));
     const id = (input: unknown) => z.object({ id: CiId }).strict().parse(input).id;
     const handle = (channel: string, operation: (input: unknown) => unknown) => ipcMain.handle(channel, async (_event, input) => {
         const spaceId = getWorkspacePaths().activeSpaceId;
@@ -37,4 +42,9 @@ export function registerContentIntelligenceIpc(): void {
     handle('ci:opportunity-transition', service.transitionOpportunity);
     handle('ci:work-create', service.createWork);
     handle('ci:work-evidence', input => service.workEvidence(id(input)));
+    handle('ci:research-preview', research.preview);
+    handle('ci:research-start', research.start);
+    handle('ci:research-get', input => research.get(id(input)));
+    handle('ci:research-list', input => { z.object({}).strict().parse(input); return research.list(); });
+    handle('ci:research-cancel', research.cancel);
 }

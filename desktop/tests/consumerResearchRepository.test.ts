@@ -88,3 +88,21 @@ test('invalid output rolls back every derived row; no-model preview and empty pr
     const complete = h.repo.finish(run.id, started.revision, { comment_insight: { questions: [], pain_points: [], objections: [], demand_signals: [], opportunity: '' }, insights: [], opportunities: [] });
     assert.equal(complete.status, 'succeeded'); assert.equal(complete.opportunityIds.length, 0);
 });
+
+test('source filtering and priority cursors use verified scoped evidence and preserve ranking across pages', t => {
+    const h = fixture(t);
+    const manual = h.base.createOpportunity({ requestId: 'manual', title: '手动假设', problem: '尚无证据', audience: '待定', angle: '待验证' });
+    const createRanked = (requestId: string, score: number) => {
+        const run = h.repo.preview({ ...h.input, requestId, scope: { ...h.input.scope, goal: requestId } }, [h.source], model);
+        const started = h.repo.claim(consent(run)).run; const output = proposal(h.repo.references(run.id)[0].id);
+        for (const value of Object.values(output.opportunities[0].scores)) value.value = score;
+        return h.repo.finish(run.id, started.revision, output).opportunityIds[0];
+    };
+    const low = createRanked('low', 1); const high = createRanked('high', 5);
+    const first = h.base.listOpportunities({ sort: 'priority', limit: 1, source: h.source.source }); assert.equal(first.items[0].id, high);
+    const next = h.base.listOpportunities({ sort: 'priority', limit: 1, source: h.source.source, after: first.next }); assert.equal(next.items[0].id, low); assert.equal(next.next, undefined);
+    assert.equal(h.base.listOpportunities({ sort: 'priority' }).items.at(-1)?.id, manual.id);
+    assert.deepEqual(h.base.listOpportunities({ source: { ...h.source.source, namespace: 'jd' } }).items, []);
+    h.switch('中文空间'); assert.deepEqual(h.base.listOpportunities({ source: h.source.source }).items, []);
+    assert.throws(() => h.base.listOpportunities({ after: high }), /当前空间/);
+});

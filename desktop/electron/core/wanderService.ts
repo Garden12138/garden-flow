@@ -335,7 +335,7 @@ async function runWanderDeepThinkWithAgent(params: {
     return finalContent;
 }
 
-async function requestWanderCompletion(params: {
+export async function requestWanderCompletion(params: {
     baseURL: string;
     apiKey: string;
     model: string;
@@ -349,6 +349,8 @@ async function requestWanderCompletion(params: {
     retryTimeoutMs?: number;
     streamPreview?: boolean;
     onProgress?: (previewText: string) => void;
+    signal?: AbortSignal;
+    maxTokens?: number;
 }): Promise<string> {
     const sendRequest = async (withResponseFormat: boolean, effectiveTimeoutMs: number, useStream: boolean) => {
         const startedAt = Date.now();
@@ -358,6 +360,7 @@ async function requestWanderCompletion(params: {
         const isQwenFamily = lower.includes('qwen') || lower.includes('dashscope.aliyuncs.com');
         const payload = {
             model: params.model,
+            max_tokens: params.maxTokens,
             temperature: params.temperature,
             messages: params.messages,
             response_format: withResponseFormat ? { type: 'json_object' } : undefined,
@@ -372,7 +375,7 @@ async function requestWanderCompletion(params: {
                 Authorization: `Bearer ${params.apiKey}`,
             },
             body: JSON.stringify(payload),
-            signal: controller.signal,
+            signal: params.signal ? AbortSignal.any([controller.signal, params.signal]) : controller.signal,
         }).catch((error) => {
             clearTimeout(timeout);
             if (controller.signal.aborted) {
