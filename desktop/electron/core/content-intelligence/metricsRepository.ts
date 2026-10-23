@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { CiId } from '../../../shared/contentIntelligence.ts';
 import { WorkspaceSpaceIdSchema } from '../../../shared/workspaceSpace.ts';
-import { MetricCsvImportSchema, MetricObservationSchema, PublicationLinkSchema, type MetricImportPreview, type MetricImportRow, type MetricObservation, type PublicationLink } from '../../../shared/contentExperiments.ts';
+import { MetricCsvPreviewSchema, MetricCsvImportSchema, MetricObservationSchema, PublicationLinkSchema, type MetricImportPreview, type MetricImportRow, type MetricObservation, type PublicationLink } from '../../../shared/contentExperiments.ts';
 import { ciDigest, ciTransaction, type CiDatabase } from './repository.ts';
 import { metricIdentity, readMetricCsv } from './metricsDomain.ts';
 
@@ -76,7 +76,7 @@ export function createContentMetricsRepository(db: CiDatabase, currentSpace: () 
         return db.prepare('SELECT document_json FROM ci_metric_observations WHERE space_id = ? AND id = ? ORDER BY revision DESC').all(space(), id).map(row => decode(MetricObservationSchema, row));
     }
     function preview(input: unknown): MetricImportPreview {
-        const spaceId = space(); const parsed = readMetricCsv(input); const seen = new Map<string, number>();
+        const spaceId = space(); const request = MetricCsvPreviewSchema.parse(input); const parsed = readMetricCsv(request); const seen = new Map<string, number>();
         const rows: MetricImportRow[] = [];
         for (const row of parsed.rows) {
             if (!row.input) { rows.push({ row: row.row, status: 'error', error: row.error }); continue; }
@@ -100,7 +100,7 @@ export function createContentMetricsRepository(db: CiDatabase, currentSpace: () 
                     status: !previous ? 'new' : ciDigest(previous.input) === ciDigest(value) ? 'duplicate' : 'conflict' });
             } catch (error) { rows.push({ row: row.row, status: 'error', error: error instanceof Error ? error.message : '发布关联不可用' }); }
         }
-        return { headers: parsed.headers, rows, digest: ciDigest([spaceId, input, rows]) };
+        return { headers: parsed.headers, rows, digest: ciDigest([spaceId, request, rows]) };
     }
     function importCsv(input: unknown) {
         const parsed = MetricCsvImportSchema.parse(input);

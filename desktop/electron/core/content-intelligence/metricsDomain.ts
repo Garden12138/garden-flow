@@ -39,19 +39,20 @@ const csvNumber = (value: string): number => {
 export function readMetricCsv(input: unknown) {
     const request = MetricCsvPreviewSchema.parse(input); const [headers = [], ...data] = parseMetricCsv(request.csv);
     if (new Set(headers).size !== headers.length || !headers.length) throw new Error('CSV 标题缺失或重复');
-    const mapped = MetricCsvFields.map(field => request.mapping[field]);
+    const mapped = MetricCsvFields.map(field => request.mapping[field]).filter((name): name is string => name !== undefined);
     if (new Set(mapped).size !== mapped.length || mapped.some(name => !headers.includes(name))) throw new Error('字段映射缺失或重复');
     const rows = data.map((cells, index) => {
         try {
             if (cells.length !== headers.length) throw new Error('列数与标题不一致');
-            const get = (field: typeof MetricCsvFields[number]) => cells[headers.indexOf(request.mapping[field])].trim();
+            const get = (field: typeof MetricCsvFields[number]) => { const column = request.mapping[field]; return column === undefined ? '' : cells[headers.indexOf(column)].trim(); };
             const alignment = get('alignment');
             const value = MetricInputSchema.parse({ publicationLinkId: get('publicationLinkId'),
                 metric: { key: get('metric'), definition: get('definition'), unit: get('unit') }, value: csvNumber(get('value')),
                 window: { startAt: csvTime(get('start')), endAt: csvTime(get('end')), timeZone: get('timeZone'), alignment,
                     ...(get('ageStartHours') ? { ageStartMs: csvNumber(get('ageStartHours')) * 3600000 } : {}),
                     ...(get('ageEndHours') ? { ageEndMs: csvNumber(get('ageEndHours')) * 3600000 } : {}) },
-                confounders: get('confounders') ? get('confounders').split('|') : [], sourceNote: get('sourceNote') });
+                confounders: get('confounders') ? get('confounders').split('|') : [], sourceNote: get('sourceNote'),
+                ...(request.mapping.observedAt ? { observedAt: csvTime(get('observedAt')) } : {}) });
             return { row: index + 2, input: value };
         } catch (error) { return { row: index + 2, error: error instanceof Error && error.name !== 'ZodError' ? error.message : '观测字段不符合契约' }; }
     });
@@ -66,6 +67,8 @@ export function compareMetricObservations(baseline: MetricObservation, variant: 
     if (baseLink.accountAlias !== variantLink.accountAlias) reasons.push('账号别名不同');
     if (baseLink.id === variantLink.id || baseLink.externalWorkId === variantLink.externalWorkId) reasons.push('须为两个不同作品');
     if (ciDigest(a.metric) !== ciDigest(b.metric)) reasons.push('指标定义或单位不同');
+    if (a.observedAt === undefined || b.observedAt === undefined) reasons.push('缺少观测时间，无法确认窗口已结束');
+    else if (a.observedAt < a.window.endAt || b.observedAt < b.window.endAt) reasons.push('至少一组观测的窗口尚未结束');
     if (a.window.timeZone !== b.window.timeZone || a.window.alignment !== b.window.alignment) reasons.push('窗口时间区或对齐方式不同');
     if (a.window.alignment === 'calendar' ? a.window.startAt !== b.window.startAt || a.window.endAt !== b.window.endAt
         : a.window.ageStartMs !== b.window.ageStartMs || a.window.ageEndMs !== b.window.ageEndMs) reasons.push('观察窗口不可比');

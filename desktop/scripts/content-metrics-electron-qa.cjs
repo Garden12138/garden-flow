@@ -39,8 +39,8 @@ async function run(){
   await field('观测工程',works[index].id,'select');await field('观测账号别名','合成验收账号');await field('平台作品ID',String(111+index));await field('发布关联来源说明','合成发布声明，仅协议测试；不是真实业绩');await click('保存人工发布关联');await poll(async()=>(await invoke('publications')).length===index+1,'manual labelled publication link');
  }
  const links=await invoke('publications');const control=links.find(value=>value.workspaceId===works[0].id),variant=links.find(value=>value.workspaceId===works[1].id);assert.ok(control&&variant);assert.ok(links.every(value=>value.origin==='manual'&&value.status==='declared-published'));
- const headers='publicationLinkId,metric,definition,unit,value,start,end,timeZone,alignment,ageStartHours,ageEndHours,confounders,sourceNote';
- const csv=value=>headers+'\n'+[[control.id,value],[variant.id,150]].map(([id,count])=>[id,'likes','合成窗口新增点赞计数','count',count,'2026-10-01T00:00:00Z','2026-10-02T00:00:00Z','Asia/Shanghai','calendar','','','合成测试，无因果结论','合成观测，仅协议测试'].join(',')).join('\n');
+ const headers='publicationLinkId,metric,definition,unit,value,start,end,timeZone,alignment,ageStartHours,ageEndHours,confounders,sourceNote,observedAt';
+ const csv=value=>headers+'\n'+[[control.id,value],[variant.id,150]].map(([id,count])=>[id,'likes','合成窗口新增点赞计数','count',count,'2026-10-01T00:00:00Z','2026-10-02T00:00:00Z','Asia/Shanghai','calendar','','','合成测试，无因果结论','合成观测，仅协议测试','2026-10-02T00:00:00Z'].join(',')).join('\n');
  await field('指标CSV内容',csv(100),'textarea');await click('预览观测导入');await poll(()=>js('Boolean(document.querySelector("[aria-label=观测导入预览]"))'),'import preview');assert.equal((await invoke('metrics')).length,0);
  assert.equal(await js('Array.from(document.querySelectorAll("button")).find(button=>button.textContent.trim()==="确认导入观测").disabled'),true);
  await js('document.querySelector("[aria-label=观测导入预览]").scrollIntoView({block:"center"});true');await pause(400);await fs.writeFile(path.join(root,'import-preview-private.png'),(await window.webContents.capturePage()).toPNG());

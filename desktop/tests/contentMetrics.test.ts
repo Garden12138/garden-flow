@@ -15,11 +15,11 @@ import type { PublicationJobView } from '../shared/publication.ts';
 const mapping = Object.fromEntries(MetricCsvFields.map(key => [key, key]));
 const start = Date.parse('2026-10-01T00:00:00Z');
 const input = (id = 'pub-one', value = 10): MetricInput => ({ publicationLinkId: id, metric: { key: 'likes', unit: 'count', definition: '观察窗口内新增点赞次数，平台后台导出' },
-    value, window: { startAt: start, endAt: start + 86400000, timeZone: 'Asia/Shanghai', alignment: 'calendar' }, confounders: [], sourceNote: '合成测试观测，不是真实业绩' });
+    value, window: { startAt: start, endAt: start + 86400000, timeZone: 'Asia/Shanghai', alignment: 'calendar' }, observedAt: start + 86400000, confounders: [], sourceNote: '合成测试观测，不是真实业绩' });
 const csv = (items: MetricInput[]) => metricCsvTemplate + items.map(value => [value.publicationLinkId, value.metric.key, value.metric.definition, value.metric.unit, value.value,
     new Date(value.window.startAt).toISOString(), new Date(value.window.endAt).toISOString(), value.window.timeZone, value.window.alignment,
     value.window.ageStartMs === undefined ? '' : value.window.ageStartMs / 3600000, value.window.ageEndMs === undefined ? '' : value.window.ageEndMs / 3600000,
-    value.confounders.join('|'), value.sourceNote].map(cell => '"' + String(cell).replaceAll('"', '""') + '"').join(',')).join('\r\n');
+    value.confounders.join('|'), value.sourceNote, value.observedAt === undefined ? '' : new Date(value.observedAt).toISOString()].map(cell => '"' + String(cell).replaceAll('"', '""') + '"').join(',')).join('\r\n');
 const linkInput = (workspaceId = 'work-one', externalWorkId = '100') => ({ workspaceId, workspaceRevision: 'rev-one', platform: 'tiktok' as const,
     accountAlias: 'test-alias', externalWorkId, origin: 'manual' as const, status: 'declared-published' as const, sourceNote: '合成测试手工声明，不是真实发布', observedAt: start });
 function fixture(t: any) {
@@ -113,6 +113,8 @@ test('deterministic comparisons refuse incompatible observations and zero denomi
     const base = makeObs('a', 10); const next = makeObs('b', 15);
     assert.equal(compareMetricObservations(base, next, a, b).relativeChange, .5);
     assert.equal(compareMetricObservations(makeObs('a', 0), next, a, b).relativeChange, null);
+    assert.equal(compareMetricObservations({ ...base, input: { ...base.input, observedAt: undefined } }, next, a, b).interpretation, 'insufficient');
+    assert.equal(compareMetricObservations({ ...base, input: { ...base.input, observedAt: start } }, next, a, b).comparable, false);
     for (const changed of [{ ...b, platform: 'douyin' as const }, { ...b, accountAlias: 'different' }, { ...b, spaceId: 'different' }, { ...b, externalWorkId: '1' }]) {
         const result = compareMetricObservations(base, next, a, changed); assert.equal(result.comparable, false); assert.equal(result.difference, null); assert.equal(result.interpretation, 'insufficient');
     }
@@ -120,8 +122,22 @@ test('deterministic comparisons refuse incompatible observations and zero denomi
         assert.equal(compareMetricObservations(base, { ...next, input: changed }, a, b).comparable, false);
     }
     const age = { ...base, input: { ...base.input, window: { ...base.input.window, alignment: 'post-age' as const, ageStartMs: 0, ageEndMs: 86400000 }, confounders: ['未知付费流量'] } };
-    const ageNext = { ...next, input: { ...next.input, window: { ...age.input.window, startAt: start + 86400000, endAt: start + 2 * 86400000 } } };
+    const ageNext = { ...next, input: { ...next.input, observedAt: start + 2 * 86400000, window: { ...age.input.window, startAt: start + 86400000, endAt: start + 2 * 86400000 } } };
     const result = compareMetricObservations(age, ageNext, a, b); assert.equal(result.comparable, true); assert.deepEqual(result.confounders, ['未知付费流量']); assert.equal(result.interpretation, 'observational');
+});
+test('legacy timestamp-less CSV remains readable and idempotent without inventing an observation time', t => {
+    const h = fixture(t); const link = h.repo.recordPublication(linkInput());
+    const current = csv([input(link.id)]); const rows = parseMetricCsv(current).map(row => row.slice(0, -1));
+    const legacyCsv = rows.map(row => row.map(cell => '"' + cell.replaceAll('"', '""') + '"').join(',')).join('\n');
+    const legacyMapping = { ...mapping } as Record<string, string>; delete legacyMapping.observedAt;
+    const payload = { csv: legacyCsv, mapping: legacyMapping }; const preview = h.repo.preview(payload);
+    assert.equal(preview.rows[0].input?.observedAt, undefined);
+    const request = { ...payload, requestId: 'legacy-import', previewDigest: preview.digest, confirmed: true, reviseConflicts: false };
+    const result = h.repo.importCsv(request); assert.deepEqual(h.repo.importCsv(request), result); assert.equal(result.changed[0].input.observedAt, undefined);
+    const explicitBlank = h.repo.preview({ csv: legacyCsv, mapping: { ...legacyMapping, observedAt: '' } });
+    const normalized = h.repo.preview(payload); assert.equal(explicitBlank.digest, normalized.digest);
+    const window = { startAt: start, endAt: start + 2 * 365 * 86400000, timeZone: 'UTC', alignment: 'post-age', ageStartMs: 0, ageEndMs: 2 * 365 * 86400000 };
+    assert.equal(MetricWindowSchema.safeParse(window).success, true);
 });
 
 const work = { id: 'work', spaceId: 'a', platform: 'tiktok', revision: 'revision', native: { kind: 'video', projectId: 'native' } } as CreationWorkspace;

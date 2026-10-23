@@ -13,7 +13,7 @@
 先建立发布关联，再复制其「发布关联 ID」到 CSV 的 `publicationLinkId` 列。页面可填入空白模板标题，或选择本地 CSV。默认列如下，列名不同时可在字段映射中指定：
 
 ```csv
-publicationLinkId,metric,definition,unit,value,start,end,timeZone,alignment,ageStartHours,ageEndHours,confounders,sourceNote
+publicationLinkId,metric,definition,unit,value,start,end,timeZone,alignment,ageStartHours,ageEndHours,confounders,sourceNote,observedAt
 ```
 
 - `metric`：稳定的指标键，如 `likes`。`definition`：完整口径，需注明累计值或窗口新增值，以及数据来自哪里。
@@ -22,6 +22,7 @@ publicationLinkId,metric,definition,unit,value,start,end,timeZone,alignment,ageS
 - `alignment`：`calendar` 比较同一日历窗口；`post-age` 比较发布后相同的时龄窗口。后者必须填写 `ageStartHours`、`ageEndHours`，且时长与起止时间一致；前者留空。
 - `confounders`：推广、付费流量、发布时间等干扰因素，用 `|` 分隔，可空。未提供不代表不存在。
 - `sourceNote`：真实观测来源和限制，必填。不要把没有窗口依据的公开累计数描述为窗口新增数。
+- `observedAt`：实际读取数据的时间，使用带偏移的 ISO 时间，与导入时间分别保留。旧 CSV 没有此列时可将该字段映射留空；旧观测保持时间未知，不能参与差异比较，直到人工补充并保留修订。观测发生时窗口尚未结束的记录也不能用于比较。
 
 CSV 支持引号、逗号和引号内换行，最多 100 万字符、1000 行；界面选择文件另限 1 MB。先预览全部映射结果，修复错误行，再明确确认导入。重复观测不追加；冲突值只有确认修订后才写入新版本，全部旧值保留。导入期间已有观测变化时，必须重新预览。
 
