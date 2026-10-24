@@ -1,6 +1,6 @@
 import { CiDigest, SourceSnapshotSchema } from '../../../shared/contentIntelligence.ts';
 import { CheckSourceMaintenanceSchema, MaintenanceWorkReferenceSchema, type SourceMaintenanceImpact } from '../../../shared/sourceMaintenance.ts';
-import type { CreationWorkspace } from '../../../shared/creationWorkspace.ts';
+import { CREATION_CAPABILITY_LABELS, type CreationWorkspace } from '../../../shared/creationWorkspace.ts';
 import type { MaintenanceWorkspaceScan } from '../creationWorkspaceMaintenance.ts';
 import type { CiSourceAdapter } from './sourceAdapters.ts';
 import type { SourceMaintenanceRepository } from './maintenanceRepository.ts';
@@ -9,7 +9,7 @@ import { affectedWorkspaceLineage } from './maintenanceDomain.ts';
 
 export function createSourceMaintenanceService(repository: SourceMaintenanceRepository, sources: Pick<CiSourceAdapter, 'read'>, adapter: {
     scan(): Promise<MaintenanceWorkspaceScan>;
-    inspect(id: string): Promise<{ workspace: CreationWorkspace; contentVersion: string; nativeRevision?: string }>;
+    inspect(id: string): Promise<{ workspace: CreationWorkspace; contentVersion: string; nativeRevision?: string; title?: string }>;
 }) {
     const sameSpace = (space: string) => { if (repository.space() !== space) throw new Error('空间已变化，请重新检查来源'); };
     async function currentSource(source: Parameters<CiSourceAdapter['read']>[0]) {
@@ -48,7 +48,7 @@ export function createSourceMaintenanceService(repository: SourceMaintenanceRepo
             const opportunities = [...new Set(references.links.filter(link => ancestors.has(link.workspaceId)).map(link => link.opportunityId))].sort();
             const relatedEvidence = [...new Set(references.opportunities.filter(value => opportunities.includes(value.id)).flatMap(value => value.evidence.filter(ref => evidenceIds.has(ref.id)).map(ref => ref.id)))].sort();
             const metadata = byId.get(id); let availability: 'available' | 'missing' | 'unreadable' = metadata ? 'available' : scan.excludedIds.includes(id) ? 'unreadable' : 'missing';
-            let contentVersion: string | undefined; let targetRevision = metadata?.revision;
+            let contentVersion: string | undefined; let targetRevision = metadata?.revision; let title = metadata?.title || (metadata ? `${CREATION_CAPABILITY_LABELS[metadata.capability]}（未命名）` : '关联工程（无法读取）');
             if (metadata) {
                 try {
                     const actual = await adapter.inspect(id); sameSpace(spaceId);
@@ -57,13 +57,14 @@ export function createSourceMaintenanceService(repository: SourceMaintenanceRepo
                         sourceId: actual.workspace.sourceId, productId: actual.workspace.draft.productId, title: actual.workspace.draft.title, platform: actual.workspace.platform, capability: actual.workspace.capability });
                     if (ciDigest(actualMetadata) !== ciDigest(metadata)) throw Object.assign(new Error('工程索引已变化，请重新检查'), { code: 'MAINTENANCE_SCAN_CHANGED' });
                     contentVersion = CiDigest.parse(actual.contentVersion); targetRevision = actual.nativeRevision || actual.workspace.revision;
+                    title = actual.title?.slice(0, 500) || title;
                 } catch (error) {
                     sameSpace(spaceId); const code = (error as { code?: string }).code;
                     if (code === 'MAINTENANCE_SCOPE_MISMATCH' || code === 'MAINTENANCE_SCAN_CHANGED' || code === 'WORKSPACE_SCOPE_MISMATCH') throw error;
                     availability = code === 'ENOENT' ? 'missing' : 'unreadable';
                 }
             }
-            impacts.push({ id: 'impact_' + ciDigest(['workspace', id]), kind: 'workspace', targetId: id, title: metadata?.title || id,
+            impacts.push({ id: 'impact_' + ciDigest(['workspace', id]), kind: 'workspace', targetId: id, title,
                 versionDigest: ciDigest([id, metadata ?? null, availability, contentVersion ?? null, opportunities, relatedEvidence]), reviewState: 'needs_review',
                 reason: parent ? 'inherited-work' : 'direct-work', evidenceIds: relatedEvidence, opportunityIds: opportunities,
                 ...(parent ? { viaWorkspaceId: parent } : {}), availability, ...(targetRevision ? { targetRevision } : {}) });

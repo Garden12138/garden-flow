@@ -204,18 +204,18 @@ async function latestCreationDraft(source: CreationWorkspace) {
     return CreationDraftSchema.parse(draft);
 }
 export async function inspectCreationWorkspace(id: string) {
-    const workspace = await readCreationWorkspace(id); let native: unknown = null; let nativeRevision: string | undefined;
+    const workspace = await readCreationWorkspace(id); let native: unknown = null; let nativeRevision: string | undefined; let title = workspace.draft.title;
     if (workspace.native?.kind === 'note') {
-        const note = await getXhsNoteProject(workspace.native.path); native = { version: note.version, document: note.document }; nativeRevision = String(note.version);
+        const note = await getXhsNoteProject(workspace.native.path); native = { version: note.version, document: note.document }; nativeRevision = String(note.version); title = note.document.finalTitle || title;
         const ref = note.document.productImageSet ? { kind: 'image-set' as const, path: note.relativePath } : await resolveProductNoteEditor(note.relativePath);
         if (ref) nativeRevision = (await readProductProjectEditor(ref)).revision;
     } else if (workspace.native?.kind === 'video') {
-        const project = await getVideoEditorV2Project(workspace.native.projectId); if (!project) throw new Error('来源工程不存在'); native = project;
+        const project = await getVideoEditorV2Project(workspace.native.projectId); if (!project) throw new Error('来源工程不存在'); native = project; title = project.title || title;
         if (project.productVideo) nativeRevision = (await readProductProjectEditor(workspace.native)).revision;
     }
     // Publication copy can live outside the timeline document and change without a workspace save.
     const contentVersion = createHash('sha256').update(JSON.stringify([1, workspace.spaceId, workspace.id, workspace.revision, workspace.draftEpoch, workspace.draft, workspace.native, native, nativeRevision])).digest('hex');
-    return { workspace, contentVersion, nativeRevision };
+    return { workspace, contentVersion, nativeRevision, title };
 }
 export async function forkCreationWorkspace(id: string, input: unknown, guardInput?: unknown): Promise<CreationWorkspace> {
     const selection = CreationStartSchema.parse(input);

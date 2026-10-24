@@ -56,6 +56,8 @@ GardenFlow 是本地优先的 Electron 桌面应用，配套两个 Chromium 扩�
 
 内容研究、观测、实验与成组内容的共享契约位于 `desktop/shared/`，主进程实现位于 `desktop/electron/core/content-intelligence/`，使用同一 SQLite 连接中的增量 `ci_*` 表。来源适配只读现有商品和知识库，引用由确定性原文定位验证；指标计算与空间授权不交给模型。工程创建复用现有 `CreationWorkspace` 和持久化请求，文件与关联保存分步恢复。研究与实验解释作业重启后中断，不自动追加请求；成组规划接入现有 Agent 的只读与候选工具，作品、媒体和发布仍逐项确认。界面入口见[消费者机会](./CONTENT_OPPORTUNITIES.md)、[观测与实验](./CONTENT_EXPERIMENTS.md)和[成组内容](./CONTENT_CAMPAIGNS.md)。
 
+来源维护复用上述只读适配和不可变来源快照，以来源身份与旧版本定位证据、机会及工程，再沿注册工程的 `sourceId` 查找派生关系。独立扫描器计数排除记录并拒绝超限，不把工作选择器的分页结果当作完整范围。`ci_source_changes` 保存冻结的差异与影响图，`ci_source_maintenance_decisions` 追加逐项人工决定；工程版本或影响图变化形成新轮次。请求幂等、空间授权及原文定位均由主进程执行，处理记录不改变历史引用、原工程或发布状态。
+
 schema 升级必须：
 
 - 幂等，可对同一数据库重复执行；

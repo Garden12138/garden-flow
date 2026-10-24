@@ -6,6 +6,7 @@ import { PRODUCT_PLATFORM_LABELS, type ProductPlatform } from '../../../shared/p
 import { dispatchAppIntent } from '../../features/app-shell/appIntent';
 import { OpportunityEvidence } from '../../features/creation/ContentEvidencePanel';
 import { ConsumerResearchPanel } from './ConsumerResearchPanel';
+import { SourceMaintenancePanel } from './SourceMaintenancePanel';
 
 const statusLabels: Record<OpportunityStatus, string> = { proposed: '待采用', accepted: '已采用', needs_evidence: '需要证据', dismissed: '已忽略', archived: '已归档' };
 const inputClass = 'w-full rounded border border-border bg-surface-primary p-2 text-sm';
@@ -16,6 +17,7 @@ export function ContentOpportunitiesPanel() {
     const [status, setStatus] = useState<OpportunityStatus | ''>(''); const [detail, setDetail] = useState<OpportunityDetail | null>(null);
     const [error, setError] = useState(''); const [busy, setBusy] = useState(false); const [showForm, setShowForm] = useState(false);
     const [showResearch, setShowResearch] = useState(false); const [sort, setSort] = useState<'recent' | 'priority'>('recent');
+    const [showMaintenance, setShowMaintenance] = useState(false);
     const [sourceFilter, setSourceFilter] = useState('');
     const [form, setForm] = useState({ title: '', problem: '', audience: '', angle: '' });
     const [sourceIndex, setSourceIndex] = useState(''); const [segmentKey, setSegmentKey] = useState(''); const [quote, setQuote] = useState('');
@@ -38,7 +40,7 @@ export function ContentOpportunitiesPanel() {
         void load(token).catch(reason => { if (token === epoch.current) setError(String(reason)); });
     }, [load]);
     useEffect(() => {
-        const clear = () => { epoch.current++; pending.current = false; requests.current.clear(); setItems([]); setNext(undefined); setSources([]); setSourceFilter(''); setShowResearch(false); setDetail(null); setEvidence([]); setQuote(''); setForm({ title: '', problem: '', audience: '', angle: '' }); setShowForm(false); setSourceIndex(''); setSegmentKey(''); setError(''); setBusy(false); };
+        const clear = () => { epoch.current++; pending.current = false; requests.current.clear(); setItems([]); setNext(undefined); setSources([]); setSourceFilter(''); setShowResearch(false); setShowMaintenance(false); setDetail(null); setEvidence([]); setQuote(''); setForm({ title: '', problem: '', audience: '', angle: '' }); setShowForm(false); setSourceIndex(''); setSegmentKey(''); setError(''); setBusy(false); };
         window.ipcRenderer.spaces.onChanged(clear);
         return () => { epoch.current++; window.ipcRenderer.spaces.offChanged(clear); };
     }, []);
@@ -51,11 +53,13 @@ export function ContentOpportunitiesPanel() {
     return <section aria-label="消费者机会" className="flex h-full min-h-0 flex-1 flex-col overflow-y-auto p-4 text-text-primary">
         <div className="mb-4 flex flex-wrap items-center gap-3"><div className="flex-1"><h2 className="text-lg font-semibold">消费者机会</h2><p className="text-xs text-text-secondary">用当前空间已入库资料保留依据，采纳后进入创作。</p></div>
             <button type="button" className={buttonClass} disabled={busy} onClick={() => { setShowResearch(value => !value); }}>消费者研究</button>
+            <button type="button" className={buttonClass} aria-expanded={showMaintenance} disabled={busy} onClick={() => setShowMaintenance(value => !value)}>来源复核</button>
             <select aria-label="机会状态" value={status} onChange={event => setStatus(event.target.value as typeof status)} disabled={busy} className={inputClass + ' max-w-40'}><option value="">全部状态</option>{Object.entries(statusLabels).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select>
             <button type="button" className={buttonClass} disabled={busy} onClick={() => void act(async token => { await load(token); })}>刷新</button>
             <button type="button" className={buttonClass} disabled={busy} onClick={() => void act(async token => { const result = resultData(await window.ipcRenderer.contentIntelligence.sources()); if (token !== epoch.current) return; setSources(result); setShowForm(true); })}>手动新建机会</button>
         </div>
         {showResearch && <ConsumerResearchPanel onResults={() => { void load(epoch.current).catch(reason => setError(String(reason))); }} />}
+        {showMaintenance && <SourceMaintenancePanel />}
         <div className="mb-3 flex flex-wrap gap-2 text-xs"><select aria-label="机会排序" className="rounded border border-border bg-surface-primary p-2" value={sort} disabled={busy} onChange={event => setSort(event.target.value as typeof sort)}><option value="recent">最近记录</option><option value="priority">建议优先级（非概率）</option></select>
             <select aria-label="机会来源筛选" className="max-w-72 rounded border border-border bg-surface-primary p-2" value={sourceFilter} disabled={busy} onFocus={() => { if (!sources.length) void act(async token => { const result = resultData(await window.ipcRenderer.contentIntelligence.sources()); if (token === epoch.current) setSources(result); }); }} onChange={event => setSourceFilter(event.target.value)}><option value="">全部来源</option>{sources.map(source => <option key={JSON.stringify(source.source)} value={JSON.stringify(source.source)}>{source.title} · {source.source.namespace}</option>)}</select>
         </div>
