@@ -75,6 +75,7 @@ export const AddEvidenceSchema = z.object({
 }).strict();
 export const CreateOpportunityWorkSchema = z.object({
     opportunityId: CiId, requestId: CiId, expectedRevision: z.number().int().positive(),
+    additionalBrief: z.string().trim().min(1).max(8000).optional(),
     selection: z.object({ platform: ProductPlatformSchema, capability: CreationCapabilitySchema, presetId: CreationPresetSchema.optional(), productId: CiId.optional() }).strict()
         .refine(value => supportsCreation(value.platform, value.capability), '当前平台不支持此创作方式'),
 }).strict();

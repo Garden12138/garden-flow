@@ -6,6 +6,7 @@ import { initializeConsumerResearch, recoverConsumerResearch, createConsumerRese
 import { initializeContentMetrics, createContentMetricsRepository, deleteContentMetricsSpace } from './core/content-intelligence/metricsRepository';
 import { initializeContentExperiments, recoverContentExperimentTasks, createContentExperimentsRepository, deleteContentExperimentsSpace } from './core/content-intelligence/experimentsRepository';
 import { initializeExperimentExplanations, recoverExperimentExplanations, createExperimentExplanationRepository, deleteExperimentExplanationsSpace } from './core/content-intelligence/explanationRepository';
+import { initializeContentCampaigns, recoverContentCampaigns, createContentCampaignsRepository, deleteContentCampaignsSpace } from './core/content-intelligence/campaignsRepository';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import path from 'path';
 import { app } from 'electron';
@@ -23,6 +24,7 @@ export const getConsumerResearchRepository = () => createConsumerResearchReposit
 export const getContentMetricsRepository = () => createContentMetricsRepository(db, () => getWorkspacePaths().activeSpaceId);
 export const getContentExperimentsRepository = () => createContentExperimentsRepository(db, () => getWorkspacePaths().activeSpaceId);
 export const getExperimentExplanationRepository = () => createExperimentExplanationRepository(db, () => getWorkspacePaths().activeSpaceId);
+export const getContentCampaignsRepository = () => createContentCampaignsRepository(db, () => getWorkspacePaths().activeSpaceId);
 
 const DEFAULT_SPACE_ID = 'default';
 const DEFAULT_SPACE_NAME = '默认空间';
@@ -817,6 +819,8 @@ initializeContentExperiments(db);
 recoverContentExperimentTasks(db);
 initializeExperimentExplanations(db);
 recoverExperimentExplanations(db);
+initializeContentCampaigns(db);
+recoverContentCampaigns(db);
 
 // Default workspace directory
 export const getDefaultWorkspaceDir = () => {
@@ -1417,6 +1421,7 @@ export const deleteSpace = (id: string): { deletedActiveSpace: boolean; activeSp
   db.transaction(() => {
     deleteContentExperimentsSpace(db, normalizedId);
     deleteExperimentExplanationsSpace(db, normalizedId);
+    deleteContentCampaignsSpace(db, normalizedId);
     deleteContentMetricsSpace(db, normalizedId);
     deleteConsumerResearchSpace(db, normalizedId);
     deleteContentIntelligenceSpace(db, normalizedId);

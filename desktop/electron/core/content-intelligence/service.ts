@@ -58,7 +58,8 @@ export function createContentIntelligenceService(repository: ContentIntelligence
                 if (parsed.selection.capability.startsWith('product-') && !productId) throw new Error('请先为机会绑定明确的商品证据');
                 const brief = [`机会：${opportunity.title}`, `问题：${opportunity.problem}`, `受众：${opportunity.audience}`, `角度：${opportunity.angle}`,
                     `依据性质：${opportunity.basis === 'hypothesis' ? '用户假设，尚无消费者证据' : '仅本次已采集样本，不代表消费者总体'}`,
-                    ...detail.evidence.map(evidence => `${opportunity.evidence.find(ref => ref.id === evidence.id)?.relation} [${evidence.id}] ${evidence.excerpt}`)].join('\n');
+                    ...detail.evidence.map(evidence => `${opportunity.evidence.find(ref => ref.id === evidence.id)?.relation} [${evidence.id}] ${evidence.excerpt}`),
+                    ...(parsed.additionalBrief ? [`用户确认的内容任务：${parsed.additionalBrief}`] : [])].join('\n');
                 const selection = CreationStartSchema.parse({ ...parsed.selection, productId, entry: 'conversation', brief,
                     requestId: 'ci_' + ciDigest([opportunity.id, parsed.requestId]) });
                 // No await between the final revision check and the durable reservation.

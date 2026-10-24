@@ -87,6 +87,15 @@ export function createContentMetricsRepository(db: CiDatabase, currentSpace: () 
         observation(id);
         return db.prepare('SELECT document_json FROM ci_metric_observations WHERE space_id = ? AND id = ? ORDER BY revision DESC').all(space(), id).map(row => decode(MetricObservationSchema, row));
     }
+    function workCounts(workspaceId: string) {
+        CiId.parse(workspaceId); const spaceId = space();
+        const links = db.prepare('SELECT COUNT(*) AS total FROM ci_publication_links WHERE space_id = ? AND workspace_id = ?').get(spaceId, workspaceId);
+        const observations = db.prepare(`SELECT COUNT(*) AS total FROM ci_metric_observations a JOIN ci_publication_links p
+            ON p.space_id = a.space_id AND p.id = a.publication_link_id
+            WHERE a.space_id = ? AND p.workspace_id = ? AND a.revision =
+            (SELECT MAX(b.revision) FROM ci_metric_observations b WHERE b.space_id = a.space_id AND b.id = a.id)`).get(spaceId, workspaceId);
+        return { publications: Number(links.total), observations: Number(observations.total) };
+    }
     function preview(input: unknown): MetricImportPreview {
         const spaceId = space(); const request = MetricCsvPreviewSchema.parse(input); const parsed = readMetricCsv(request); const seen = new Map<string, number>();
         const rows: MetricImportRow[] = [];
@@ -129,6 +138,6 @@ export function createContentMetricsRepository(db: CiDatabase, currentSpace: () 
             return { changed, duplicates: next.rows.filter(row => row.status === 'duplicate').length, importDigest };
         });
     }
-    return { space, request, completedRequest, publication, publications, recordPublication, observation, observations, history, preview, importCsv };
+    return { space, request, completedRequest, publication, publications, recordPublication, observation, observations, history, workCounts, preview, importCsv };
 }
 export type ContentMetricsRepository = ReturnType<typeof createContentMetricsRepository>;
