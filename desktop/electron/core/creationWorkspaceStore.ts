@@ -17,7 +17,7 @@ import { resolveProductCreationTarget, ProductCreationTargetSchema } from '../..
 import { ProductVideoComposeParamsSchema } from '../../shared/productVideoProposal';
 import { createProductImageSet } from './productImageSetService';
 import { createProductVideoProject, getVideoEditorV2Project } from './video-editor-v2/videoEditorV2ProjectStore';
-import { readProductProjectEditor, productEditorKey, getProductProjectEditorSession, applyProductProjectEdit } from './productProjectEditorService';
+import { readProductProjectEditor, productEditorKey, getProductProjectEditorSession, applyProductProjectEdit, resolveProductNoteEditor } from './productProjectEditorService';
 import { readProductVideoRemixSources, resolveProductVideoRemixFiles } from './productVideoRemixSources';
 
 const events = new EventEmitter();
@@ -198,11 +198,18 @@ async function latestCreationDraft(source: CreationWorkspace) {
     return CreationDraftSchema.parse(draft);
 }
 export async function inspectCreationWorkspace(id: string) {
-    const workspace = await readCreationWorkspace(id); let native: unknown = null;
-    if (workspace.native?.kind === 'note') { const note = await getXhsNoteProject(workspace.native.path); native = { version: note.version, document: note.document }; }
-    else if (workspace.native?.kind === 'video') { native = await getVideoEditorV2Project(workspace.native.projectId); if (!native) throw new Error('来源工程不存在'); }
-    const contentVersion = createHash('sha256').update(JSON.stringify([1, workspace.spaceId, workspace.id, workspace.revision, workspace.draftEpoch, workspace.draft, workspace.native, native])).digest('hex');
-    return { workspace, contentVersion };
+    const workspace = await readCreationWorkspace(id); let native: unknown = null; let nativeRevision: string | undefined;
+    if (workspace.native?.kind === 'note') {
+        const note = await getXhsNoteProject(workspace.native.path); native = { version: note.version, document: note.document }; nativeRevision = String(note.version);
+        const ref = note.document.productImageSet ? { kind: 'image-set' as const, path: note.relativePath } : await resolveProductNoteEditor(note.relativePath);
+        if (ref) nativeRevision = (await readProductProjectEditor(ref)).revision;
+    } else if (workspace.native?.kind === 'video') {
+        const project = await getVideoEditorV2Project(workspace.native.projectId); if (!project) throw new Error('来源工程不存在'); native = project;
+        if (project.productVideo) nativeRevision = (await readProductProjectEditor(workspace.native)).revision;
+    }
+    // Publication copy can live outside the timeline document and change without a workspace save.
+    const contentVersion = createHash('sha256').update(JSON.stringify([1, workspace.spaceId, workspace.id, workspace.revision, workspace.draftEpoch, workspace.draft, workspace.native, native, nativeRevision])).digest('hex');
+    return { workspace, contentVersion, nativeRevision };
 }
 export async function forkCreationWorkspace(id: string, input: unknown, guardInput?: unknown): Promise<CreationWorkspace> {
     const selection = CreationStartSchema.parse(input);

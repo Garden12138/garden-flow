@@ -36,6 +36,7 @@ export function publicationForWorkspace(job: PublicationJobView, work: CreationW
 }
 export function createContentMetricsService(repository: ContentMetricsRepository, adapter: {
     readWork(id: string): Promise<CreationWorkspace>; jobs(): PublicationJobView[];
+    readNativeRevision?(id: string): Promise<string | undefined>;
 }) {
     async function attachManual(input: unknown) {
         const request = ManualPublicationLinkSchema.parse(input); const spaceId = repository.space();
@@ -44,10 +45,12 @@ export function createContentMetricsService(repository: ContentMetricsRepository
         if (work.revision !== request.expectedRevision || work.platform !== request.platform) throw new Error('工程版本或平台已变化');
         const canonical = request.url ? canonicalPublicationUrl(request.platform, request.url) : null;
         if (request.url && (!canonical || canonical.externalWorkId !== request.externalWorkId)) throw new Error('作品网址与平台作品 ID 不一致');
+        const nativeRevision = await adapter.readNativeRevision?.(work.id);
+        if (repository.space() !== spaceId) throw new Error('空间已变化');
         return repository.request('publication.manual', request.requestId, request, () => repository.recordPublication({
             workspaceId: work.id, workspaceRevision: work.revision, platform: request.platform, accountAlias: request.accountAlias,
             externalWorkId: request.externalWorkId, ...(canonical ? { url: canonical.url } : {}),
-            origin: 'manual', status: 'declared-published', sourceNote: request.sourceNote, observedAt: request.observedAt,
+            origin: 'manual', status: 'declared-published', sourceNote: request.sourceNote, observedAt: request.observedAt, ...(nativeRevision ? { nativeRevision } : {}),
         }));
     }
     async function syncWork(workspaceId: string) {

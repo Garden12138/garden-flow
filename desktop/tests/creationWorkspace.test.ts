@@ -179,11 +179,13 @@ test('guarded copies are concurrent/restart idempotent and preserve later edits 
 test('guarded copy detects native edits outside workspace revision and refuses to replay a partial target', async t => {
     const { h } = await fixture(t); const source = await h.api.startCreationWorkspace({ platform: 'xiaohongshu', capability: 'note-image' });
     const original = await h.api.inspectCreationWorkspace(source.id); const guard = { expectedRevision: source.revision, expectedDraftEpoch: source.draftEpoch, contentVersion: original.contentVersion };
+    assert.ok(original.nativeRevision);
     const note = await h.api.getXhsNoteProject(source.native.path);
     await h.api.saveXhsNoteProject({ path: note.relativePath, noteType: note.document.noteType, document: { ...note.document, body: '原生编辑器的新内容' }, expectedRevision: note.version });
     assert.equal((await h.api.readCreationWorkspace(source.id)).revision, source.revision);
     await assert.rejects(h.api.forkCreationWorkspace(source.id, { platform: source.platform, capability: source.capability, requestId: 'native-stale' }, guard), /版本已变化/);
     const updated = await h.api.inspectCreationWorkspace(source.id); const nextGuard = { ...guard, contentVersion: updated.contentVersion };
+    assert.notEqual(updated.nativeRevision, original.nativeRevision);
     const selection = { platform: source.platform, capability: source.capability, requestId: 'partial-copy' };
     const partial = await h.api.startCreationWorkspace(selection); const before = await h.api.getXhsNoteProject(partial.native.path);
     await assert.rejects(h.api.forkCreationWorkspace(source.id, selection, nextGuard), /人工复核/);

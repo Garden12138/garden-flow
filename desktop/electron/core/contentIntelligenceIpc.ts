@@ -5,7 +5,7 @@ import { getContentIntelligenceRepository, getConsumerResearchRepository, getCon
 import { CiId } from '../../shared/contentIntelligence';
 import { createBrandWorkspaceStore } from './brandWorkspaceStore';
 import { getAllKnowledgeItems } from './knowledgeLoader';
-import { startCreationWorkspace, readCreationWorkspace, listCreationWorkspaceSummaries } from './creationWorkspaceStore';
+import { startCreationWorkspace, readCreationWorkspace, listCreationWorkspaceSummaries, inspectCreationWorkspace } from './creationWorkspaceStore';
 import { createCiSourceAdapter } from './content-intelligence/sourceAdapters';
 import { createContentIntelligenceService } from './content-intelligence/service';
 import { createConsumerResearchService } from './content-intelligence/researchService';
@@ -23,7 +23,7 @@ export function registerContentIntelligenceIpc(): void {
     const research = createConsumerResearchService(getConsumerResearchRepository(), sources,
         createConsumerResearchModel(() => (getSettings() || {}) as Record<string, unknown>, requestWanderCompletion));
     const metrics = getContentMetricsRepository();
-    const metricService = createContentMetricsService(metrics, { readWork: readCreationWorkspace, jobs: listPublicationJobs });
+    const metricService = createContentMetricsService(metrics, { readWork: readCreationWorkspace, jobs: listPublicationJobs, readNativeRevision: async id => (await inspectCreationWorkspace(id)).nativeRevision });
     const id = (input: unknown) => z.object({ id: CiId }).strict().parse(input).id;
     const handle = (channel: string, operation: (input: unknown) => unknown) => ipcMain.handle(channel, async (_event, input) => {
         const spaceId = getWorkspacePaths().activeSpaceId;

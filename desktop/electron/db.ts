@@ -4,6 +4,7 @@ import Database from 'better-sqlite3';
 import { initializeContentIntelligence, createContentIntelligenceRepository, deleteContentIntelligenceSpace } from './core/content-intelligence/repository';
 import { initializeConsumerResearch, recoverConsumerResearch, createConsumerResearchRepository, deleteConsumerResearchSpace } from './core/content-intelligence/researchRepository';
 import { initializeContentMetrics, createContentMetricsRepository, deleteContentMetricsSpace } from './core/content-intelligence/metricsRepository';
+import { initializeContentExperiments, recoverContentExperimentTasks, createContentExperimentsRepository, deleteContentExperimentsSpace } from './core/content-intelligence/experimentsRepository';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import path from 'path';
 import { app } from 'electron';
@@ -19,6 +20,7 @@ const db = new Database(dbPath);
 export const getContentIntelligenceRepository = () => createContentIntelligenceRepository(db, () => getWorkspacePaths().activeSpaceId);
 export const getConsumerResearchRepository = () => createConsumerResearchRepository(db, () => getWorkspacePaths().activeSpaceId);
 export const getContentMetricsRepository = () => createContentMetricsRepository(db, () => getWorkspacePaths().activeSpaceId);
+export const getContentExperimentsRepository = () => createContentExperimentsRepository(db, () => getWorkspacePaths().activeSpaceId);
 
 const DEFAULT_SPACE_ID = 'default';
 const DEFAULT_SPACE_NAME = '默认空间';
@@ -809,6 +811,8 @@ initializeContentIntelligence(db);
 initializeConsumerResearch(db);
 recoverConsumerResearch(db);
 initializeContentMetrics(db);
+initializeContentExperiments(db);
+recoverContentExperimentTasks(db);
 
 // Default workspace directory
 export const getDefaultWorkspaceDir = () => {
@@ -1407,6 +1411,7 @@ export const deleteSpace = (id: string): { deletedActiveSpace: boolean; activeSp
   const activeSpaceId = getActiveSpaceId();
   const deletedActiveSpace = activeSpaceId === normalizedId;
   db.transaction(() => {
+    deleteContentExperimentsSpace(db, normalizedId);
     deleteContentMetricsSpace(db, normalizedId);
     deleteConsumerResearchSpace(db, normalizedId);
     deleteContentIntelligenceSpace(db, normalizedId);
