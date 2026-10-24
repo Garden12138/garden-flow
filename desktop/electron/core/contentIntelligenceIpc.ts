@@ -16,6 +16,7 @@ import { listPublicationJobs } from './unifiedPublisherService';
 import { createContentExperimentsService } from './content-intelligence/experimentsService';
 import { createExperimentExplanationService } from './content-intelligence/explanationService';
 import { createExperimentExplanationModel } from './content-intelligence/explanationModel';
+import { createLocalContentCampaignsService } from './content-intelligence/campaignsRuntime';
 
 export function registerContentIntelligenceIpc(): void {
     const sources = createCiSourceAdapter({
@@ -29,6 +30,7 @@ export function registerContentIntelligenceIpc(): void {
     const metricService = createContentMetricsService(metrics, { readWork: readCreationWorkspace, jobs: listPublicationJobs, readNativeRevision: async id => (await inspectCreationWorkspace(id)).nativeRevision });
     const experiments = createContentExperimentsService(getContentExperimentsRepository(), { inspect: inspectCreationWorkspace, fork: forkCreationWorkspace, idForRequest: creationWorkspaceIdForRequest });
     const explanations = createExperimentExplanationService(getExperimentExplanationRepository(), createExperimentExplanationModel(() => (getSettings() || {}) as Record<string, unknown>, requestWanderCompletion));
+    const campaigns = createLocalContentCampaignsService();
     const id = (input: unknown) => z.object({ id: CiId }).strict().parse(input).id;
     const handle = (channel: string, operation: (input: unknown) => unknown) => ipcMain.handle(channel, async (_event, input) => {
         const spaceId = getWorkspacePaths().activeSpaceId;
@@ -89,4 +91,16 @@ export function registerContentIntelligenceIpc(): void {
     handle('ci:explanation-cancel', explanations.cancel);
     handle('ci:explanation-get', input => explanations.get(id(input)));
     handle('ci:explanation-list', input => explanations.list(id(input)));
+    handle('ci:campaign-list', input => { z.object({}).strict().parse(input); return campaigns.list(); });
+    handle('ci:campaign-create', campaigns.create);
+    handle('ci:campaign-detail', input => campaigns.detail(id(input)));
+    handle('ci:campaign-context', input => campaigns.planningContext(id(input)));
+    handle('ci:campaign-add', campaigns.add);
+    handle('ci:campaign-propose', campaigns.propose);
+    handle('ci:campaign-update-item', campaigns.updateItem);
+    handle('ci:campaign-order', campaigns.reorder);
+    handle('ci:campaign-confirm', campaigns.confirm);
+    handle('ci:campaign-archive', campaigns.archive);
+    handle('ci:campaign-work', campaigns.createWork);
+    handle('ci:campaign-work-context', input => campaigns.forWork(id(input)));
 }

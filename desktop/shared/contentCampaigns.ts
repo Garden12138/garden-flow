@@ -1,5 +1,8 @@
 import { z } from 'zod';
 import { CiId } from './contentIntelligence.ts';
+import type { OpportunityDetail } from './contentIntelligence.ts';
+import type { CreationCapability } from './creationWorkspace.ts';
+import type { ProductPlatform } from './productCreationTarget.ts';
 import { WorkspaceSpaceIdSchema } from './workspaceSpace.ts';
 import { CreationCapabilitySchema, supportsCreation } from './creationWorkspace.ts';
 import { ProductPlatformSchema } from './productCreationTarget.ts';
@@ -64,3 +67,14 @@ export interface CampaignWorkStatus {
     publicationStatesPartial: boolean;
 }
 export interface CampaignDetail { campaign: ContentCampaign; works: CampaignWorkStatus[]; }
+export const CampaignProductResourcesSchema = z.object({
+    id: CiId, name: z.string().max(500), version: z.string().max(200),
+    facts: z.array(z.object({ key: z.string().max(500), value: z.string().max(4000), origin: z.string().max(100) }).strict()).max(60),
+    catalogAssets: z.array(z.object({ id: CiId, role: z.string().max(200) }).strict()).max(80),
+    catalogAssetCount: z.number().int().nonnegative(), partial: z.boolean(), availability: z.literal('catalog-only-not-file-verified'),
+}).strict();
+export type CampaignProductResources = z.infer<typeof CampaignProductResourcesSchema>;
+export interface CampaignPlanningContext {
+    campaign: ContentCampaign; opportunities: OpportunityDetail[]; resources: CampaignProductResources[];
+    supportedTargets: Array<{ platform: ProductPlatform; capability: CreationCapability }>; boundary: string;
+}

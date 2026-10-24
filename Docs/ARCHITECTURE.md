@@ -54,6 +54,8 @@ GardenFlow 是本地优先的 Electron 桌面应用，配套两个 Chromium 扩�
 
 `desktop/electron/db.ts` 管理 SQLite schema。数据库保存设置、空间元数据、会话、任务、索引、媒体登记和运行记录；用户可见的素材、稿件与媒体文件保存在 workspace。
 
+内容研究、观测、实验与成组内容的共享契约位于 `desktop/shared/`，主进程实现位于 `desktop/electron/core/content-intelligence/`，使用同一 SQLite 连接中的增量 `ci_*` 表。来源适配只读现有商品和知识库，引用由确定性原文定位验证；指标计算与空间授权不交给模型。工程创建复用现有 `CreationWorkspace` 和持久化请求，文件与关联保存分步恢复。研究与实验解释作业重启后中断，不自动追加请求；成组规划接入现有 Agent 的只读与候选工具，作品、媒体和发布仍逐项确认。界面入口见[消费者机会](./CONTENT_OPPORTUNITIES.md)、[观测与实验](./CONTENT_EXPERIMENTS.md)和[成组内容](./CONTENT_CAMPAIGNS.md)。
+
 schema 升级必须：
 
 - 幂等，可对同一数据库重复执行；

@@ -30,6 +30,8 @@ export function createContentCampaignsRepository(db: CiDatabase, currentSpace: (
     const decode = (row: any): ContentCampaign => { if (!row) throw new Error('成组内容不存在或不属于当前空间'); return ContentCampaignSchema.parse(JSON.parse(row.document_json)); };
     const get = (id: string) => decode(db.prepare('SELECT document_json FROM ci_campaigns WHERE space_id = ? AND id = ?').get(space(), CiId.parse(id)));
     const list = () => db.prepare('SELECT document_json FROM ci_campaigns WHERE space_id = ? ORDER BY rowid DESC LIMIT 100').all(space()).map(decode);
+    const forWork = (workspaceId: string) => db.prepare(`SELECT document_json FROM ci_campaigns WHERE space_id = ? AND EXISTS
+        (SELECT 1 FROM json_each(ci_campaigns.document_json, '$.items') item WHERE json_extract(item.value, '$.workspaceId') = ?) ORDER BY rowid DESC LIMIT 100`).all(space(), CiId.parse(workspaceId)).map(decode);
     function write(value: ContentCampaign, update: Partial<ContentCampaign>) {
         const next = ContentCampaignSchema.parse({ ...value, ...update, revision: value.revision + 1, updatedAt: Date.now() });
         db.prepare('UPDATE ci_campaigns SET status = ?, document_json = ? WHERE space_id = ? AND id = ?').run(next.status, JSON.stringify(next), space(), next.id); return next;
@@ -77,9 +79,11 @@ export function createContentCampaignsRepository(db: CiDatabase, currentSpace: (
     function propose(input: unknown) {
         const request = ProposeCampaignItemsSchema.parse(input); const result = metrics.request('campaign.propose', request.requestId, request, () => {
             const value = editable(request.id, request.expectedRevision); if (value.items.length + request.items.length > 8) throw new Error('每组最多8条内容，请先新建组');
-            const added: CampaignItem[] = [];
+            const identity = (candidate: CampaignCandidate) => ciDigest([candidate.role, candidate.title, candidate.target, candidate.opportunity.id]);
+            const seen = new Set(value.items.map(identity)); const added: CampaignItem[] = [];
             for (const proposed of request.items) {
                 const { dependsOn, ...fields } = proposed; const candidate = validateCandidate(value, fields);
+                if (seen.has(identity(candidate))) throw new Error('成组候选重复，请修改已有条目而非重复追加'); seen.add(identity(candidate));
                 added.push(item(candidate, dependsOn.map(index => added[index].id), 'agent'));
             }
             write(value, { items: [...value.items, ...added], planVersion: value.planVersion + 1, confirmedPlanVersion: undefined }); return { id: value.id };
@@ -133,6 +137,6 @@ export function createContentCampaignsRepository(db: CiDatabase, currentSpace: (
             return write(value, { items: value.items.map(item => item.id === next.id ? next : item) });
         });
     }
-    return { space, get, list, create, add, propose, updateItem, reorder, confirm, archive, claimWork, finishWork };
+    return { space, get, list, forWork, create, add, propose, updateItem, reorder, confirm, archive, claimWork, finishWork };
 }
 export type ContentCampaignsRepository = ReturnType<typeof createContentCampaignsRepository>;

@@ -1,5 +1,5 @@
 import { CiId } from '../../../shared/contentIntelligence.ts';
-import { CreateCampaignWorkSchema, CAMPAIGN_ROLE_LABELS, type CampaignDetail } from '../../../shared/contentCampaigns.ts';
+import { CreateCampaignWorkSchema, CAMPAIGN_ROLE_LABELS, type CampaignDetail, type CampaignProductResources, type CampaignPlanningContext } from '../../../shared/contentCampaigns.ts';
 import { CreationStartSchema, supportsCreation, CreationCapabilitySchema } from '../../../shared/creationWorkspace.ts';
 import type { CreationWorkspace } from '../../../shared/creationWorkspace.ts';
 import type { PublicationCompletion, PublicationJobView } from '../../../shared/publication.ts';
@@ -10,14 +10,17 @@ import { publicationForWorkspace } from './metricsService.ts';
 
 export function createContentCampaignsService(repository: ContentCampaignsRepository, intelligence: ContentIntelligenceService, metrics: ContentMetricsRepository, adapter: {
     read(id: string): Promise<CreationWorkspace>; completions(): PublicationCompletion[]; jobs?(): PublicationJobView[];
+    resources?(ids: string[]): Promise<CampaignProductResources[]>;
 }) {
     const sameSpace = (id: string) => { if (repository.space() !== id) throw new Error('空间已变化'); };
-    async function planningContext(id: string) {
+    async function planningContext(id: string): Promise<CampaignPlanningContext> {
         const spaceId = repository.space(); const campaign = repository.get(CiId.parse(id));
         const opportunities = await Promise.all(campaign.opportunities.map(ref => intelligence.getOpportunity(ref.id)));
         sameSpace(spaceId);
+        const productIds = campaign.productId ? [campaign.productId] : [...new Set(opportunities.flatMap(detail => detail.evidence.filter(value => value.source.kind === 'product').map(value => value.source.id)))];
+        const resources = adapter.resources ? await adapter.resources(productIds) : []; sameSpace(spaceId);
         const targets = campaign.platforms.flatMap(platform => CreationCapabilitySchema.options.filter(capability => capability !== 'dream-story' && supportsCreation(platform, capability)).map(capability => ({ platform, capability })));
-        const context = { campaign, opportunities, supportedTargets: targets,
+        const context = { campaign, opportunities, resources, supportedTargets: targets,
             boundary: '只规划3–8条至少三种角色的候选，引用所选机会的真实证据ID。原文可定位不代表商品主张可信，保留规格差异、失效和样本限制。候选不会创建工程、生成媒体或发布。' };
         if (JSON.stringify(context).length > 60000) throw new Error('规划上下文超出60000字符，请缩小机会范围');
         return context;
@@ -66,5 +69,9 @@ export function createContentCampaignsService(repository: ContentCampaignsReposi
         }));
         sameSpace(spaceId); return { campaign, works };
     }
-    return { ...repository, planningContext, createWork, detail };
+    async function forWork(id: string) {
+        const spaceId = repository.space(); const work = await adapter.read(CiId.parse(id)); sameSpace(spaceId);
+        if (work.id !== id || work.spaceId !== spaceId) throw new Error('工程不属于当前空间'); return repository.forWork(id);
+    }
+    return { ...repository, forWork, planningContext, createWork, detail };
 }

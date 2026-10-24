@@ -114,7 +114,8 @@ test('deleted engineering is missing, exported history is separate from publicat
 });
 test('invalid grouped references roll back atomically; dependency ordering, capacity and started item edits cannot invalidate retained works', async t => {
     const f = await fixture(t); const before = f.repo.get(f.campaign.id);
-    assert.throws(() => f.repo.propose({ ...f.proposal, requestId: 'bad-group', expectedRevision: before.revision, items: f.candidates.map((item, index) => index === 2 ? { ...item, evidenceRefs: ['invented'] } : item) }), /引用/);
+    assert.throws(() => f.repo.propose({ ...f.proposal, requestId: 'duplicate-group', expectedRevision: before.revision }), /候选重复/);
+    assert.throws(() => f.repo.propose({ ...f.proposal, requestId: 'bad-group', expectedRevision: before.revision, items: f.candidates.map((item, index) => ({ ...item, title: item.title + '新组', ...(index === 2 ? { evidenceRefs: ['invented'] } : {}) })) }), /引用/);
     assert.equal(f.repo.get(before.id).revision, before.revision); assert.equal(f.repo.get(before.id).items.length, 3);
     let campaign = f.repo.updateItem({ id: before.id, requestId: 'dependency', expectedRevision: before.revision, itemId: before.items[2].id, item: CampaignCandidateSchema.strip().parse(before.items[2]), dependencies: [before.items[0].id] });
     assert.throws(() => f.repo.reorder({ id: campaign.id, requestId: 'invalid-order', expectedRevision: campaign.revision, itemIds: campaign.items.map(item => item.id).reverse() }), /依赖顺序/);

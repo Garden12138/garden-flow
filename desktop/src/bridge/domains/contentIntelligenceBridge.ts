@@ -5,6 +5,7 @@ import type { PreviewResearchSchema, ResearchStartSchema, ResearchCancelSchema, 
 import type { ManualPublicationLinkSchema, ExternalPublicationLinkSchema, MetricCsvPreviewSchema, MetricCsvImportSchema, MetricImportPreview, MetricObservation, PublicationLink, MetricWorkSummary, MetricComparison } from '../../../shared/contentExperiments';
 import type { CreateExperimentSchema, BindExperimentObservationsSchema, TransitionExperimentSchema, CreateExperimentTaskSchema, StartExperimentTaskSchema, CancelExperimentTaskSchema, ReviewExperimentTaskSchema, ExperimentWork, ContentExperiment, ContentExperimentDetail, ExperimentTask } from '../../../shared/contentExperimentPlans';
 import type { PreviewExperimentExplanationSchema, StartExperimentExplanationSchema, CancelExperimentExplanationSchema, ExplanationRun } from '../../../shared/experimentExplanation';
+import type { CreateCampaignSchema, AddCampaignItemSchema, ProposeCampaignItemsSchema, UpdateCampaignItemSchema, ReorderCampaignSchema, ConfirmCampaignSchema, ArchiveCampaignSchema, CreateCampaignWorkSchema, ContentCampaign, CampaignDetail, CampaignPlanningContext } from '../../../shared/contentCampaigns';
 import type {
     AddEvidenceSchema, CiListSchema, CiResult, ContentEvidence, CreateOpportunitySchema, CreateOpportunityWorkSchema,
     EvidenceSourceView, Opportunity, OpportunityDetail, SourceIdentity, SourceSnapshot, TransitionOpportunitySchema, WorkLink,
@@ -55,5 +56,17 @@ export function createContentIntelligenceBridge(core: BridgeCore) {
         cancelExperimentExplanation: (input: z.input<typeof CancelExperimentExplanationSchema>) => invoke<ExplanationRun>('ci:explanation-cancel', input),
         experimentExplanation: (id: string) => invoke<ExplanationRun>('ci:explanation-get', { id }),
         experimentExplanations: (id: string) => invoke<ExplanationRun[]>('ci:explanation-list', { id }),
+        campaigns: () => invoke<ContentCampaign[]>('ci:campaign-list', {}),
+        createCampaign: (input: z.input<typeof CreateCampaignSchema>) => invoke<ContentCampaign>('ci:campaign-create', input),
+        campaign: (id: string) => invoke<CampaignDetail>('ci:campaign-detail', { id }),
+        campaignContext: (id: string) => invoke<CampaignPlanningContext>('ci:campaign-context', { id }),
+        addCampaignItem: (input: z.input<typeof AddCampaignItemSchema>) => invoke<ContentCampaign>('ci:campaign-add', input),
+        proposeCampaignItems: (input: z.input<typeof ProposeCampaignItemsSchema>) => invoke<ContentCampaign>('ci:campaign-propose', input),
+        updateCampaignItem: (input: z.input<typeof UpdateCampaignItemSchema>) => invoke<ContentCampaign>('ci:campaign-update-item', input),
+        reorderCampaign: (input: z.input<typeof ReorderCampaignSchema>) => invoke<ContentCampaign>('ci:campaign-order', input),
+        confirmCampaign: (input: z.input<typeof ConfirmCampaignSchema>) => invoke<ContentCampaign>('ci:campaign-confirm', input),
+        archiveCampaign: (input: z.input<typeof ArchiveCampaignSchema>) => invoke<ContentCampaign>('ci:campaign-archive', input),
+        createCampaignWork: (input: z.input<typeof CreateCampaignWorkSchema>) => invoke<ContentCampaign>('ci:campaign-work', input),
+        campaignsForWork: (id: string) => invoke<ContentCampaign[]>('ci:campaign-work-context', { id }),
     } };
 }
