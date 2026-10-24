@@ -5,6 +5,7 @@ import { initializeContentIntelligence, createContentIntelligenceRepository, del
 import { initializeConsumerResearch, recoverConsumerResearch, createConsumerResearchRepository, deleteConsumerResearchSpace } from './core/content-intelligence/researchRepository';
 import { initializeContentMetrics, createContentMetricsRepository, deleteContentMetricsSpace } from './core/content-intelligence/metricsRepository';
 import { initializeContentExperiments, recoverContentExperimentTasks, createContentExperimentsRepository, deleteContentExperimentsSpace } from './core/content-intelligence/experimentsRepository';
+import { initializeExperimentExplanations, recoverExperimentExplanations, createExperimentExplanationRepository, deleteExperimentExplanationsSpace } from './core/content-intelligence/explanationRepository';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import path from 'path';
 import { app } from 'electron';
@@ -21,6 +22,7 @@ export const getContentIntelligenceRepository = () => createContentIntelligenceR
 export const getConsumerResearchRepository = () => createConsumerResearchRepository(db, () => getWorkspacePaths().activeSpaceId);
 export const getContentMetricsRepository = () => createContentMetricsRepository(db, () => getWorkspacePaths().activeSpaceId);
 export const getContentExperimentsRepository = () => createContentExperimentsRepository(db, () => getWorkspacePaths().activeSpaceId);
+export const getExperimentExplanationRepository = () => createExperimentExplanationRepository(db, () => getWorkspacePaths().activeSpaceId);
 
 const DEFAULT_SPACE_ID = 'default';
 const DEFAULT_SPACE_NAME = '默认空间';
@@ -813,6 +815,8 @@ recoverConsumerResearch(db);
 initializeContentMetrics(db);
 initializeContentExperiments(db);
 recoverContentExperimentTasks(db);
+initializeExperimentExplanations(db);
+recoverExperimentExplanations(db);
 
 // Default workspace directory
 export const getDefaultWorkspaceDir = () => {
@@ -1412,6 +1416,7 @@ export const deleteSpace = (id: string): { deletedActiveSpace: boolean; activeSp
   const deletedActiveSpace = activeSpaceId === normalizedId;
   db.transaction(() => {
     deleteContentExperimentsSpace(db, normalizedId);
+    deleteExperimentExplanationsSpace(db, normalizedId);
     deleteContentMetricsSpace(db, normalizedId);
     deleteConsumerResearchSpace(db, normalizedId);
     deleteContentIntelligenceSpace(db, normalizedId);

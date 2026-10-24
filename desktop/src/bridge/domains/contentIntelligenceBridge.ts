@@ -4,6 +4,7 @@ import type { CreationWorkspace } from '../../../shared/creationWorkspace';
 import type { PreviewResearchSchema, ResearchStartSchema, ResearchCancelSchema, ResearchRun, ResearchReference } from '../../../shared/consumerResearch';
 import type { ManualPublicationLinkSchema, ExternalPublicationLinkSchema, MetricCsvPreviewSchema, MetricCsvImportSchema, MetricImportPreview, MetricObservation, PublicationLink, MetricWorkSummary, MetricComparison } from '../../../shared/contentExperiments';
 import type { CreateExperimentSchema, BindExperimentObservationsSchema, TransitionExperimentSchema, CreateExperimentTaskSchema, StartExperimentTaskSchema, CancelExperimentTaskSchema, ReviewExperimentTaskSchema, ExperimentWork, ContentExperiment, ContentExperimentDetail, ExperimentTask } from '../../../shared/contentExperimentPlans';
+import type { PreviewExperimentExplanationSchema, StartExperimentExplanationSchema, CancelExperimentExplanationSchema, ExplanationRun } from '../../../shared/experimentExplanation';
 import type {
     AddEvidenceSchema, CiListSchema, CiResult, ContentEvidence, CreateOpportunitySchema, CreateOpportunityWorkSchema,
     EvidenceSourceView, Opportunity, OpportunityDetail, SourceIdentity, SourceSnapshot, TransitionOpportunitySchema, WorkLink,
@@ -49,5 +50,10 @@ export function createContentIntelligenceBridge(core: BridgeCore) {
         reviewExperimentTask: (input: z.input<typeof ReviewExperimentTaskSchema>) => invoke<ExperimentTask>('ci:experiment-task-review', input),
         cancelExperimentTask: (input: z.input<typeof CancelExperimentTaskSchema>) => invoke<ExperimentTask>('ci:experiment-task-cancel', input),
         experimentTasks: (input: { experimentId?: string; workspaceId?: string } = {}) => invoke<ExperimentTask[]>('ci:experiment-tasks', input),
+        previewExperimentExplanation: (input: z.input<typeof PreviewExperimentExplanationSchema>) => invoke<ExplanationRun>('ci:explanation-preview', input),
+        startExperimentExplanation: (input: z.input<typeof StartExperimentExplanationSchema>) => invoke<ExplanationRun>('ci:explanation-start', input),
+        cancelExperimentExplanation: (input: z.input<typeof CancelExperimentExplanationSchema>) => invoke<ExplanationRun>('ci:explanation-cancel', input),
+        experimentExplanation: (id: string) => invoke<ExplanationRun>('ci:explanation-get', { id }),
+        experimentExplanations: (id: string) => invoke<ExplanationRun[]>('ci:explanation-list', { id }),
     } };
 }

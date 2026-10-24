@@ -3,6 +3,7 @@ import type { CiResult } from '../../../shared/contentIntelligence';
 import type { MetricObservation, MetricWorkSummary, PublicationLink } from '../../../shared/contentExperiments';
 import { ExternalExperimentArmSchema, isExperimentWorkArm, type ContentExperiment, type ContentExperimentDetail, type ExperimentTask, type ExperimentWork, type ExperimentArm } from '../../../shared/contentExperimentPlans';
 import { dispatchAppIntent } from '../../features/app-shell/appIntent';
+import { ExperimentExplanationPanel } from './ExperimentExplanationPanel';
 
 const buttonClass = 'rounded border border-border px-3 py-2 text-xs disabled:opacity-40';
 const fieldClass = 'w-full rounded border border-border bg-surface-primary p-2 text-sm';
@@ -17,6 +18,7 @@ const armRef = (arm: ExperimentArm) => isExperimentWorkArm(arm) ? ref(arm) : { p
 const armLabel = (arm: ExperimentArm) => arm.title || (isExperimentWorkArm(arm) ? arm.workspaceId : arm.externalWorkId);
 
 export function ExperimentPlansPanel({ works, links, observations }: { works: MetricWorkSummary[]; links: PublicationLink[]; observations: MetricObservation[] }) {
+    const taskPlanning = useRef<HTMLDetailsElement>(null);
     const api = window.ipcRenderer.contentIntelligence;
     const [plans, setPlans] = useState<ContentExperiment[]>([]); const [selected, setSelected] = useState(''); const [detail, setDetail] = useState<ContentExperimentDetail | null>(null);
     const [form, setForm] = useState(emptyForm); const [preview, setPreview] = useState<{ baseline: ExperimentArm; variant: ExperimentArm } | null>(null); const [acknowledged, setAcknowledged] = useState(false);
@@ -121,11 +123,15 @@ export function ExperimentPlansPanel({ works, links, observations }: { works: Me
             <button className={buttonClass} disabled={busy || !baselineObservation || !variantObservation || experiment.status === 'archived'} onClick={bind}>确认绑定观测版本</button>
             {detail.observationRevisionsChanged && <p className="text-sm">观测已有修订，本报告仍引用原版本。重新选择并确认后才会更新报告。</p>}
             <div aria-label="实验观察报告" className="rounded border border-border p-3 text-sm">{detail.comparison ? <><p>{detail.comparison.comparable ? `观察差值 ${detail.comparison.difference}；相对变化 ${detail.comparison.relativeChange === null ? 'N/A' : (detail.comparison.relativeChange * 100).toFixed(2) + '%'}` : `不足以判断：${detail.comparison.reasons.join('；')}`}</p><p>干扰因素：{detail.comparison.confounders.join('；') || '未提供，不代表不存在'}</p><p>历史观察不能证明因果。</p></> : <p>尚未绑定观测，没有表现结论。</p>}</div>
+            <ExperimentExplanationPanel key={experiment.id} detail={detail} onSuggestion={suggestion => {
+                setChange({ kind: suggestion.kind!, name: suggestion.name || '', before: suggestion.before || '', after: suggestion.after || '', rationale: suggestion.rationale || '', preserve: suggestion.preserve?.join('\n') || '' });
+                setTaskPreview(null); if (taskPlanning.current) taskPlanning.current.open = true;
+            }} />
             <div className="flex gap-2">{(experiment.status === 'archived' ? ['collecting'] : ['completed', 'archived']).filter(to => to !== experiment.status).map(to => <button key={to} className={buttonClass} disabled={busy} onClick={() => void act(async token => {
                 const input = { id: experiment.id, expectedRevision: experiment.revision, to: to as 'collecting' | 'completed' | 'archived' };
                 data(await api.transitionExperiment({ ...input, requestId: requestId('transition', input) })); await load(token);
             })}>{to === 'archived' ? '归档实验' : to === 'completed' ? '结束本轮，保留不足结论' : '重新打开实验'}</button>)}</div>
-            {experiment.status !== 'archived' && <details><summary className="cursor-pointer text-sm">规划下一轮单变量编辑</summary><form className="mt-3 space-y-3" onSubmit={event => {
+            {experiment.status !== 'archived' && <details ref={taskPlanning}><summary className="cursor-pointer text-sm">规划下一轮单变量编辑</summary><form className="mt-3 space-y-3" onSubmit={event => {
                 event.preventDefault(); void act(async token => {
                     if (!taskPreview || differentSource && !differentSourceAck) return;
                     const input = { experimentId: experiment.id, expectedRevision: experiment.revision, sourceRole, source: ref(taskPreview), change: { ...change, preserve: lines(change.preserve) }, ...(differentSource ? { differentSourceAcknowledged: true as const } : {}) };

@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { ipcMain } from 'electron';
 import { z } from 'zod';
-import { getContentIntelligenceRepository, getConsumerResearchRepository, getContentMetricsRepository, getContentExperimentsRepository, getSettings, getWorkspacePaths, runInWorkspaceSpace } from '../db';
+import { getContentIntelligenceRepository, getConsumerResearchRepository, getContentMetricsRepository, getContentExperimentsRepository, getExperimentExplanationRepository, getSettings, getWorkspacePaths, runInWorkspaceSpace } from '../db';
 import { CiId } from '../../shared/contentIntelligence';
 import { createBrandWorkspaceStore } from './brandWorkspaceStore';
 import { getAllKnowledgeItems } from './knowledgeLoader';
@@ -14,6 +14,8 @@ import { requestWanderCompletion } from './wanderService';
 import { createContentMetricsService } from './content-intelligence/metricsService';
 import { listPublicationJobs } from './unifiedPublisherService';
 import { createContentExperimentsService } from './content-intelligence/experimentsService';
+import { createExperimentExplanationService } from './content-intelligence/explanationService';
+import { createExperimentExplanationModel } from './content-intelligence/explanationModel';
 
 export function registerContentIntelligenceIpc(): void {
     const sources = createCiSourceAdapter({
@@ -26,6 +28,7 @@ export function registerContentIntelligenceIpc(): void {
     const metrics = getContentMetricsRepository();
     const metricService = createContentMetricsService(metrics, { readWork: readCreationWorkspace, jobs: listPublicationJobs, readNativeRevision: async id => (await inspectCreationWorkspace(id)).nativeRevision });
     const experiments = createContentExperimentsService(getContentExperimentsRepository(), { inspect: inspectCreationWorkspace, fork: forkCreationWorkspace, idForRequest: creationWorkspaceIdForRequest });
+    const explanations = createExperimentExplanationService(getExperimentExplanationRepository(), createExperimentExplanationModel(() => (getSettings() || {}) as Record<string, unknown>, requestWanderCompletion));
     const id = (input: unknown) => z.object({ id: CiId }).strict().parse(input).id;
     const handle = (channel: string, operation: (input: unknown) => unknown) => ipcMain.handle(channel, async (_event, input) => {
         const spaceId = getWorkspacePaths().activeSpaceId;
@@ -81,4 +84,9 @@ export function registerContentIntelligenceIpc(): void {
         const request = z.object({ experimentId: CiId.optional(), workspaceId: CiId.optional() }).strict().parse(input);
         return experiments.tasks(request.experimentId, request.workspaceId);
     });
+    handle('ci:explanation-preview', explanations.preview);
+    handle('ci:explanation-start', explanations.start);
+    handle('ci:explanation-cancel', explanations.cancel);
+    handle('ci:explanation-get', input => explanations.get(id(input)));
+    handle('ci:explanation-list', input => explanations.list(id(input)));
 }
