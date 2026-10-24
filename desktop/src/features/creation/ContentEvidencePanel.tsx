@@ -17,6 +17,7 @@ export function OpportunityEvidence({ detail }: { detail: OpportunityDetail }) {
     const [view, setView] = useState<EvidenceSourceView | null>(null); const [error, setError] = useState(''); const epoch = useRef(0);
     useEffect(() => { epoch.current++; setView(null); setError(''); return () => { epoch.current++; }; }, [detail.opportunity.id]);
     return <div className="space-y-2 text-xs">
+        {detail.inheritedFromWorkspaceId && <p>继承自来源工程 {detail.inheritedFromWorkspaceId} 的历史依据。副本内容须单独复核。</p>}
         {!detail.evidence.length && <p>用户假设，尚无消费者证据。</p>}
         {detail.evidence.map(evidence => <div key={evidence.id} className="space-y-1 rounded border border-border p-3">
             <p>{detail.opportunity.evidence.find(ref => ref.id === evidence.id)?.relation === 'contradicts' ? '反例' : detail.opportunity.evidence.find(ref => ref.id === evidence.id)?.relation === 'context' ? '背景' : '支持'} · {evidenceLabels[evidence.validity]} · {evidence.source.namespace}</p>

@@ -52,6 +52,22 @@ test('created work survives link failure and can be recovered after source/decis
     assert.equal(repo.getOpportunity(accepted.id).revision, 3);
 });
 
+test('guarded experiment descendants retain scoped historical evidence without claiming their new content was verified', async t => {
+    const { h, repo, service, sources, input, evidence } = await fixture(t);
+    const first = await service.createWork(input); const snapshot = await h.api.inspectCreationWorkspace(first.workspace.id);
+    const copy = await h.api.forkCreationWorkspace(first.workspace.id, { platform: first.workspace.platform, capability: first.workspace.capability, requestId: 'evidence-descendant' },
+        { expectedRevision: first.workspace.revision, expectedDraftEpoch: first.workspace.draftEpoch, contentVersion: snapshot.contentVersion });
+    const inherited = await service.workEvidence(copy.id); assert.equal(inherited[0].evidence[0].id, evidence.id);
+    assert.equal(inherited[0].inheritedFromWorkspaceId, first.workspace.id); assert.equal(repo.linksForWork(copy.id).length, 0);
+    const malicious = (mode: 'cycle' | 'foreign') => createContentIntelligenceService(repo, sources, { start: h.api.startCreationWorkspace, read: async id => {
+        const work = await h.api.readCreationWorkspace(id);
+        return mode === 'cycle' ? { ...work, sourceId: id } : id === first.workspace.id ? { ...work, spaceId: 'b' } : work;
+    } });
+    await assert.rejects(malicious('cycle').workEvidence(copy.id), /循环/);
+    await assert.rejects(malicious('foreign').workEvidence(copy.id), /当前空间/);
+    h.state.spaceId = 'b'; await assert.rejects(service.workEvidence(copy.id));
+});
+
 test('stale sources, forged excerpts, unknown product selection and unsupported targets cannot create works', async t => {
     const { service, sources, source, input, h } = await fixture(t);
     await assert.rejects(service.addEvidence({ source: source.source, version: source.version, locator: { key: 'fake', start: 0, end: 2 }, excerpt: '造假' }), /原文/);
@@ -67,7 +83,7 @@ test('IPC handler and typed bridge channels match, are registered, and never acc
     const main = await fs.readFile(new URL('../electron/core/contentIntelligenceIpc.ts', import.meta.url), 'utf8');
     const bridge = await fs.readFile(new URL('../src/bridge/domains/contentIntelligenceBridge.ts', import.meta.url), 'utf8');
     const channels = (value: string) => [...new Set([...value.matchAll(/['"]ci:([a-z-]+)['"]/g)].map(match => match[1]))].sort();
-    assert.equal(channels(main).length, 25); assert.deepEqual(channels(main), channels(bridge));
+    assert.equal(channels(main).length, 36); assert.deepEqual(channels(main), channels(bridge));
     assert.ok(main.includes('runInWorkspaceSpace(spaceId'));
     const startup = await fs.readFile(new URL('../electron/appMain.ts', import.meta.url), 'utf8'); assert.ok(startup.includes('registerContentIntelligenceIpc();'));
 });

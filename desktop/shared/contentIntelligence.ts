@@ -98,6 +98,6 @@ export type ContentEvidence = z.infer<typeof ContentEvidenceSchema>;
 export type Opportunity = z.infer<typeof OpportunitySchema>;
 export type OpportunityStatus = z.infer<typeof OpportunityStatusSchema>;
 export type WorkLink = z.infer<typeof WorkLinkSchema>;
-export interface OpportunityDetail { opportunity: Opportunity; evidence: ContentEvidence[]; }
+export interface OpportunityDetail { opportunity: Opportunity; evidence: ContentEvidence[]; inheritedFromWorkspaceId?: string; }
 export interface EvidenceSourceView { evidence: ContentEvidence; snapshot: SourceSnapshot; current?: SourceSnapshot; }
 export type CiResult<T> = { success: true; data: T } | { success: false; error: string };

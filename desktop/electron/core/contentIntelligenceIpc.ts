@@ -1,11 +1,11 @@
 import path from 'node:path';
 import { ipcMain } from 'electron';
 import { z } from 'zod';
-import { getContentIntelligenceRepository, getConsumerResearchRepository, getContentMetricsRepository, getSettings, getWorkspacePaths, runInWorkspaceSpace } from '../db';
+import { getContentIntelligenceRepository, getConsumerResearchRepository, getContentMetricsRepository, getContentExperimentsRepository, getSettings, getWorkspacePaths, runInWorkspaceSpace } from '../db';
 import { CiId } from '../../shared/contentIntelligence';
 import { createBrandWorkspaceStore } from './brandWorkspaceStore';
 import { getAllKnowledgeItems } from './knowledgeLoader';
-import { startCreationWorkspace, readCreationWorkspace, listCreationWorkspaceSummaries, inspectCreationWorkspace } from './creationWorkspaceStore';
+import { startCreationWorkspace, readCreationWorkspace, listCreationWorkspaceSummaries, inspectCreationWorkspace, forkCreationWorkspace, creationWorkspaceIdForRequest } from './creationWorkspaceStore';
 import { createCiSourceAdapter } from './content-intelligence/sourceAdapters';
 import { createContentIntelligenceService } from './content-intelligence/service';
 import { createConsumerResearchService } from './content-intelligence/researchService';
@@ -13,6 +13,7 @@ import { createConsumerResearchModel } from './content-intelligence/researchMode
 import { requestWanderCompletion } from './wanderService';
 import { createContentMetricsService } from './content-intelligence/metricsService';
 import { listPublicationJobs } from './unifiedPublisherService';
+import { createContentExperimentsService } from './content-intelligence/experimentsService';
 
 export function registerContentIntelligenceIpc(): void {
     const sources = createCiSourceAdapter({
@@ -24,6 +25,7 @@ export function registerContentIntelligenceIpc(): void {
         createConsumerResearchModel(() => (getSettings() || {}) as Record<string, unknown>, requestWanderCompletion));
     const metrics = getContentMetricsRepository();
     const metricService = createContentMetricsService(metrics, { readWork: readCreationWorkspace, jobs: listPublicationJobs, readNativeRevision: async id => (await inspectCreationWorkspace(id)).nativeRevision });
+    const experiments = createContentExperimentsService(getContentExperimentsRepository(), { inspect: inspectCreationWorkspace, fork: forkCreationWorkspace, idForRequest: creationWorkspaceIdForRequest });
     const id = (input: unknown) => z.object({ id: CiId }).strict().parse(input).id;
     const handle = (channel: string, operation: (input: unknown) => unknown) => ipcMain.handle(channel, async (_event, input) => {
         const spaceId = getWorkspacePaths().activeSpaceId;
@@ -63,5 +65,19 @@ export function registerContentIntelligenceIpc(): void {
     handle('ci:metric-compare', input => {
         const request = z.object({ baselineId: CiId, variantId: CiId, baselineRevision: z.number().int().positive(), variantRevision: z.number().int().positive() }).strict().parse(input);
         return metricService.compare(request.baselineId, request.variantId, request.baselineRevision, request.variantRevision);
+    });
+    handle('ci:experiment-inspect', input => experiments.inspect(id(input)));
+    handle('ci:experiment-create', experiments.create);
+    handle('ci:experiment-list', input => { z.object({}).strict().parse(input); return experiments.list(); });
+    handle('ci:experiment-detail', input => experiments.detail(id(input)));
+    handle('ci:experiment-bind', experiments.bind);
+    handle('ci:experiment-transition', experiments.transition);
+    handle('ci:experiment-task-create', experiments.createTask);
+    handle('ci:experiment-task-start', experiments.startTask);
+    handle('ci:experiment-task-review', experiments.reviewTask);
+    handle('ci:experiment-task-cancel', experiments.cancelTask);
+    handle('ci:experiment-tasks', input => {
+        const request = z.object({ experimentId: CiId.optional(), workspaceId: CiId.optional() }).strict().parse(input);
+        return experiments.tasks(request.experimentId, request.workspaceId);
     });
 }

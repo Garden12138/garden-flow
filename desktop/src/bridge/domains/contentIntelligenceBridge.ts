@@ -3,6 +3,7 @@ import type { BridgeCore } from '../types';
 import type { CreationWorkspace } from '../../../shared/creationWorkspace';
 import type { PreviewResearchSchema, ResearchStartSchema, ResearchCancelSchema, ResearchRun, ResearchReference } from '../../../shared/consumerResearch';
 import type { ManualPublicationLinkSchema, MetricCsvPreviewSchema, MetricCsvImportSchema, MetricImportPreview, MetricObservation, PublicationLink, MetricWorkSummary, MetricComparison } from '../../../shared/contentExperiments';
+import type { CreateExperimentSchema, BindExperimentObservationsSchema, TransitionExperimentSchema, CreateExperimentTaskSchema, StartExperimentTaskSchema, CancelExperimentTaskSchema, ReviewExperimentTaskSchema, ExperimentWork, ContentExperiment, ContentExperimentDetail, ExperimentTask } from '../../../shared/contentExperimentPlans';
 import type {
     AddEvidenceSchema, CiListSchema, CiResult, ContentEvidence, CreateOpportunitySchema, CreateOpportunityWorkSchema,
     EvidenceSourceView, Opportunity, OpportunityDetail, SourceIdentity, SourceSnapshot, TransitionOpportunitySchema, WorkLink,
@@ -36,5 +37,16 @@ export function createContentIntelligenceBridge(core: BridgeCore) {
         metrics: () => invoke<MetricObservation[]>('ci:metric-list', {}),
         metricHistory: (id: string) => invoke<MetricObservation[]>('ci:metric-history', { id }),
         compareMetrics: (baselineId: string, variantId: string, baselineRevision: number, variantRevision: number) => invoke<MetricComparison>('ci:metric-compare', { baselineId, variantId, baselineRevision, variantRevision }),
+        inspectExperimentWork: (id: string) => invoke<ExperimentWork>('ci:experiment-inspect', { id }),
+        createExperiment: (input: z.input<typeof CreateExperimentSchema>) => invoke<ContentExperiment>('ci:experiment-create', input),
+        experiments: () => invoke<ContentExperiment[]>('ci:experiment-list', {}),
+        experiment: (id: string) => invoke<ContentExperimentDetail>('ci:experiment-detail', { id }),
+        bindExperiment: (input: z.input<typeof BindExperimentObservationsSchema>) => invoke<ContentExperiment>('ci:experiment-bind', input),
+        transitionExperiment: (input: z.input<typeof TransitionExperimentSchema>) => invoke<ContentExperiment>('ci:experiment-transition', input),
+        createExperimentTask: (input: z.input<typeof CreateExperimentTaskSchema>) => invoke<ExperimentTask>('ci:experiment-task-create', input),
+        startExperimentTask: (input: z.input<typeof StartExperimentTaskSchema>) => invoke<ExperimentTask>('ci:experiment-task-start', input),
+        reviewExperimentTask: (input: z.input<typeof ReviewExperimentTaskSchema>) => invoke<ExperimentTask>('ci:experiment-task-review', input),
+        cancelExperimentTask: (input: z.input<typeof CancelExperimentTaskSchema>) => invoke<ExperimentTask>('ci:experiment-task-cancel', input),
+        experimentTasks: (input: { experimentId?: string; workspaceId?: string } = {}) => invoke<ExperimentTask[]>('ci:experiment-tasks', input),
     } };
 }

@@ -83,9 +83,18 @@ export function createContentIntelligenceService(repository: ContentIntelligence
         try { return await task; } finally { if (locks.get(key) === task) locks.delete(key); }
     }
     async function workEvidence(workspaceId: string) {
-        const spaceId = repository.space(); const workspace = await creation.read(CiId.parse(workspaceId)); assertSpace(spaceId);
-        if (workspace.spaceId !== spaceId) throw new Error('作品不属于当前空间');
-        return Promise.all(repository.linksForWork(workspaceId).map(link => getOpportunity(link.opportunityId)));
+        const spaceId = repository.space(); const originalId = CiId.parse(workspaceId);
+        const visited = new Set<string>(); const found = new Map<string, OpportunityDetail>(); let currentId: string | undefined = originalId;
+        while (currentId) {
+            if (visited.has(currentId) || visited.size >= 32) throw new Error('工程来源链存在循环或超出读取范围，请人工复核');
+            visited.add(currentId); const workspace = await creation.read(CiId.parse(currentId)); assertSpace(spaceId);
+            if (workspace.id !== currentId || workspace.spaceId !== spaceId) throw new Error('来源工程不属于当前空间');
+            for (const link of repository.linksForWork(currentId)) {
+                if (!found.has(link.opportunityId)) found.set(link.opportunityId, { ...await getOpportunity(link.opportunityId), ...(currentId !== originalId ? { inheritedFromWorkspaceId: currentId } : {}) });
+            }
+            currentId = workspace.sourceId;
+        }
+        assertSpace(spaceId); return [...found.values()];
     }
     return { listSources: sources.list, readSource: sources.read, addEvidence, getOpportunity, evidenceSource, createWork, workEvidence,
         createOpportunity: repository.createOpportunity, listOpportunities: repository.listOpportunities, transitionOpportunity: repository.transitionOpportunity };
