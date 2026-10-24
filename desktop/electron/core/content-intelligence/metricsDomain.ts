@@ -65,6 +65,10 @@ export function compareMetricObservations(baseline: MetricObservation, variant: 
     if (a.publicationLinkId !== baseLink.id || b.publicationLinkId !== variantLink.id) reasons.push('观测与发布关联不匹配');
     if (baseLink.platform !== variantLink.platform) reasons.push('平台不同');
     if (baseLink.accountAlias !== variantLink.accountAlias) reasons.push('账号别名不同');
+    if (!baseLink.workspaceId || !variantLink.workspaceId) {
+        if (!baseLink.externalContentKind || baseLink.externalContentKind === 'unknown' || !variantLink.externalContentKind || variantLink.externalContentKind === 'unknown') reasons.push('历史作品的内容形式与口径尚未核对');
+        else if (baseLink.externalContentKind !== variantLink.externalContentKind) reasons.push('历史作品的内容形式不同，指标口径需单独核对');
+    }
     if (baseLink.id === variantLink.id || baseLink.externalWorkId === variantLink.externalWorkId) reasons.push('须为两个不同作品');
     if (ciDigest(a.metric) !== ciDigest(b.metric)) reasons.push('指标定义或单位不同');
     if (a.observedAt === undefined || b.observedAt === undefined) reasons.push('缺少观测时间，无法确认窗口已结束');

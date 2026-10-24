@@ -34,16 +34,27 @@ export const MetricInputSchema = z.object({
     if (value.metric.unit === 'ratio' && value.value > 1) context.addIssue({ code: 'custom', message: '比例须在 0–1 之间' });
 });
 export const PublicationLinkSchema = z.object({
-    id: CiId, spaceId: WorkspaceSpaceIdSchema, workspaceId: CiId, workspaceRevision: CiId,
+    id: CiId, spaceId: WorkspaceSpaceIdSchema, workspaceId: CiId.optional(), workspaceRevision: CiId.optional(),
+    title: z.string().trim().min(1).max(200).optional(), externalContentKind: z.enum(['video', 'image-set', 'unknown']).optional(),
     platform: PublicationPlatformSchema, accountAlias: z.string().trim().min(1).max(100),
     externalWorkId: CiId.optional(), url: z.string().url().max(2000).optional(),
     origin: z.enum(['manual', 'submission', 'receipt']), status: z.enum(['declared-published', 'submitted', 'published']),
     sourceNote: Text, jobId: CiId.optional(), nativeRevision: z.string().min(1).max(240).optional(),
     contentDigest: CiDigest.optional(), observedAt: Timestamp, createdAt: Timestamp,
-}).strict();
+}).strict().superRefine((value, context) => {
+    if (Boolean(value.workspaceId) !== Boolean(value.workspaceRevision)) context.addIssue({ code: 'custom', message: '工程及其版本须同时提供' });
+    if (!value.workspaceId && (value.origin !== 'manual' || value.status !== 'declared-published' || !value.externalWorkId || value.nativeRevision || value.contentDigest || value.jobId)) {
+        context.addIssue({ code: 'custom', message: '历史外部作品只能保留人工声明，不能伪造工程或回执证明' });
+    }
+});
 export const ManualPublicationLinkSchema = z.object({
     requestId: CiId, workspaceId: CiId, expectedRevision: CiId, platform: PublicationPlatformSchema,
     accountAlias: z.string().trim().min(1).max(100), externalWorkId: CiId,
+    url: z.string().url().max(2000).optional(), sourceNote: Text, observedAt: Timestamp,
+}).strict();
+export const ExternalPublicationLinkSchema = z.object({
+    requestId: CiId, platform: PublicationPlatformSchema, accountAlias: z.string().trim().min(1).max(100), externalWorkId: CiId,
+    title: z.string().trim().min(1).max(200), contentKind: z.enum(['video', 'image-set', 'unknown']),
     url: z.string().url().max(2000).optional(), sourceNote: Text, observedAt: Timestamp,
 }).strict();
 export const MetricObservationSchema = z.object({

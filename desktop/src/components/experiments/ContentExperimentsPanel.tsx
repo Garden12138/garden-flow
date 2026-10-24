@@ -12,6 +12,7 @@ function data<T>(result: CiResult<T>): T { if (result.success === false) throw n
 export function ContentExperimentsPanel() {
     const [works, setWorks] = useState<MetricWorkSummary[]>([]); const [links, setLinks] = useState<PublicationLink[]>([]); const [observations, setObservations] = useState<MetricObservation[]>([]);
     const [workId, setWorkId] = useState(''); const [alias, setAlias] = useState(''); const [externalId, setExternalId] = useState(''); const [url, setUrl] = useState(''); const [sourceNote, setSourceNote] = useState('');
+    const [externalTitle, setExternalTitle] = useState(''); const [externalPlatform, setExternalPlatform] = useState<PublicationLink['platform']>('xiaohongshu'); const [externalKind, setExternalKind] = useState<'video' | 'image-set' | 'unknown'>('unknown');
     const [csv, setCsv] = useState(''); const [mapping, setMapping] = useState(initialMapping); const [preview, setPreview] = useState<MetricImportPreview | null>(null);
     const [confirmed, setConfirmed] = useState(false); const [revise, setRevise] = useState(false); const [history, setHistory] = useState<MetricObservation[]>([]);
     const [baseline, setBaseline] = useState(''); const [variant, setVariant] = useState(''); const [comparison, setComparison] = useState<MetricComparison | null>(null);
@@ -27,6 +28,7 @@ export function ContentExperimentsPanel() {
         const clear = () => {
             const token = ++epoch.current; locked.current = false; importRequest.current = undefined;
             setWorks([]); setLinks([]); setObservations([]); setWorkId(''); setAlias(''); setExternalId(''); setUrl(''); setSourceNote(''); setCsv(''); setMapping(initialMapping()); setPreview(null); setConfirmed(false); setRevise(false); setHistory([]); setBaseline(''); setVariant(''); setComparison(null); setError(''); setMessage(''); setBusy(false); setShowPlans(false);
+            setExternalTitle(''); setExternalPlatform('xiaohongshu'); setExternalKind('unknown');
             void load(token).catch(reason => { if (token === epoch.current) setError(String(reason)); });
         };
         clear(); window.ipcRenderer.spaces.onChanged(clear);
@@ -64,8 +66,24 @@ export function ContentExperimentsPanel() {
                 <label className="text-xs">人工核实来源与限制<input aria-label="发布关联来源说明" required maxLength={2000} className={fieldClass} value={sourceNote} disabled={busy} onChange={event => setSourceNote(event.target.value)} /></label>
                 <button className={buttonClass} disabled={busy || !work}>保存人工发布关联</button>
             </form></details>
+            <details><summary className="cursor-pointer text-sm">记录历史作品链接（未关联原工程）</summary><form className="mt-3 grid gap-3 md:grid-cols-2" onSubmit={event => {
+                event.preventDefault(); void act(async token => {
+                    data(await api.attachExternalPublication({ requestId: crypto.randomUUID(), platform: externalPlatform, accountAlias: alias, externalWorkId: externalId,
+                        title: externalTitle, contentKind: externalKind, ...(url.trim() ? { url: url.trim() } : {}), sourceNote, observedAt: Date.now() }));
+                    await load(token); if (token === epoch.current) setMessage('已记录历史作品的人工声明，未虚构原工程或发布版本。可继续导入此作品的真实观测。');
+                });
+            }}><p className="text-xs md:col-span-2">适用于只有后台统计或作品链接、找不到原工程的历史作品。只记录来源声明与观测，不自动新建工程或认定可信回执。</p>
+                <label className="text-xs">平台<select aria-label="历史作品平台" className={fieldClass} disabled={busy} value={externalPlatform} onChange={event => setExternalPlatform(event.target.value as typeof externalPlatform)}><option value="xiaohongshu">小红书</option><option value="douyin">抖音</option><option value="tiktok">TikTok</option></select></label>
+                <label className="text-xs">内容形式<select aria-label="历史作品内容形式" className={fieldClass} disabled={busy} value={externalKind} onChange={event => setExternalKind(event.target.value as typeof externalKind)}><option value="unknown">未知</option><option value="video">视频</option><option value="image-set">图文或套图</option></select></label>
+                <label className="text-xs">作品标题<input aria-label="历史作品标题" required maxLength={200} className={fieldClass} disabled={busy} value={externalTitle} onChange={event => setExternalTitle(event.target.value)} /></label>
+                <label className="text-xs">脱敏账号别名<input aria-label="历史作品账号别名" required maxLength={100} className={fieldClass} disabled={busy} value={alias} onChange={event => setAlias(event.target.value)} /></label>
+                <label className="text-xs">平台作品 ID<input aria-label="历史平台作品ID" required maxLength={160} className={fieldClass} disabled={busy} value={externalId} onChange={event => setExternalId(event.target.value)} /></label>
+                <label className="text-xs">作品网址（可空）<input aria-label="历史作品网址" type="url" className={fieldClass} disabled={busy} value={url} onChange={event => setUrl(event.target.value)} /></label>
+                <label className="text-xs md:col-span-2">真实来源、原工程和版本缺失等限制<textarea aria-label="历史作品来源说明" required maxLength={2000} className={fieldClass} disabled={busy} value={sourceNote} onChange={event => setSourceNote(event.target.value)} /></label>
+                <button className={buttonClass} disabled={busy}>保存历史作品链接</button>
+            </form></details>
             {!links.length && <p className="text-sm text-text-secondary">还没有发布结果关联。导出成功不会自动计为已发布。</p>}
-            <div className="max-h-72 space-y-2 overflow-y-auto">{links.map(link => <article key={link.id} className="rounded border border-border p-3 text-xs"><p>{link.platform} · {link.accountAlias} · 作品 {link.externalWorkId || '尚无可信作品 ID'}</p><p>{link.origin === 'manual' ? '人工声明，未由程序核实发布' : link.origin === 'receipt' ? '可信作品回执' : '已提交，审核结果未知'} · {link.sourceNote}</p><p className="break-all select-text">发布关联 ID：{link.id}</p><p>工程 {link.workspaceId} · 关联时版本 {link.workspaceRevision} {link.nativeRevision ? `· ${link.origin === 'manual' ? '声明关联时原生版本' : '发布快照版本'} ${link.nativeRevision}` : ''}</p></article>)}</div>
+            <div className="max-h-72 space-y-2 overflow-y-auto">{links.map(link => <article key={link.id} className="rounded border border-border p-3 text-xs"><p>{link.platform} · {link.accountAlias} · 作品 {link.externalWorkId || '尚无可信作品 ID'} {link.title || ''}</p><p>{link.origin === 'manual' ? '人工声明，未由程序核实发布' : link.origin === 'receipt' ? '可信作品回执' : '已提交，审核结果未知'} · {link.sourceNote}</p><p className="break-all select-text">发布关联 ID：{link.id}</p>{link.workspaceId ? <p>工程 {link.workspaceId} · 关联时版本 {link.workspaceRevision} {link.nativeRevision ? `· ${link.origin === 'manual' ? '声明关联时原生版本' : '发布快照版本'} ${link.nativeRevision}` : ''}</p> : <p>历史作品，尚未关联原工程；发布工程版本未知。</p>}</article>)}</div>
         </section>
         <section className="space-y-3 rounded border border-border p-4"><h2 className="font-semibold">CSV 观测导入</h2><p className="text-xs">每行一条指标。count 为整数；seconds 为秒；ratio 为 0–1。窗口使用带偏移的 ISO 时间，账号与平台取自发布关联。累计值需在口径中注明；不能冒充窗口新增值。</p>
             <div className="flex flex-wrap gap-3"><button className={buttonClass} disabled={busy} onClick={() => { setCsv(MetricCsvFields.join(',') + '\n'); invalidate(); }}>填入空白模板标题</button><label className={buttonClass}>选择本地 CSV<input aria-label="选择指标CSV" className="ml-2 max-w-56" type="file" accept=".csv,text/csv" disabled={busy} onChange={event => { const file = event.target.files?.[0]; if (!file) return; void act(async token => { if (file.size > 1000000) throw new Error('CSV 文件超过 1 MB'); const text = await file.text(); if (token === epoch.current) { setCsv(text); invalidate(); } }); }} /></label></div>

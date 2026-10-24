@@ -56,6 +56,7 @@ export function registerContentIntelligenceIpc(): void {
     handle('ci:research-cancel', research.cancel);
     handle('ci:metric-works', input => { z.object({}).strict().parse(input); return listCreationWorkspaceSummaries(); });
     handle('ci:publication-manual', metricService.attachManual);
+    handle('ci:publication-external', metricService.attachExternal);
     handle('ci:publication-sync', input => metricService.syncWork(id(input)));
     handle('ci:publication-list', input => { z.object({}).strict().parse(input); return metrics.publications(); });
     handle('ci:metric-preview', metrics.preview);

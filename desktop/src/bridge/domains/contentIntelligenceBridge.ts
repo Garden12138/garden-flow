@@ -2,7 +2,7 @@ import type { z } from 'zod';
 import type { BridgeCore } from '../types';
 import type { CreationWorkspace } from '../../../shared/creationWorkspace';
 import type { PreviewResearchSchema, ResearchStartSchema, ResearchCancelSchema, ResearchRun, ResearchReference } from '../../../shared/consumerResearch';
-import type { ManualPublicationLinkSchema, MetricCsvPreviewSchema, MetricCsvImportSchema, MetricImportPreview, MetricObservation, PublicationLink, MetricWorkSummary, MetricComparison } from '../../../shared/contentExperiments';
+import type { ManualPublicationLinkSchema, ExternalPublicationLinkSchema, MetricCsvPreviewSchema, MetricCsvImportSchema, MetricImportPreview, MetricObservation, PublicationLink, MetricWorkSummary, MetricComparison } from '../../../shared/contentExperiments';
 import type { CreateExperimentSchema, BindExperimentObservationsSchema, TransitionExperimentSchema, CreateExperimentTaskSchema, StartExperimentTaskSchema, CancelExperimentTaskSchema, ReviewExperimentTaskSchema, ExperimentWork, ContentExperiment, ContentExperimentDetail, ExperimentTask } from '../../../shared/contentExperimentPlans';
 import type {
     AddEvidenceSchema, CiListSchema, CiResult, ContentEvidence, CreateOpportunitySchema, CreateOpportunityWorkSchema,
@@ -30,6 +30,7 @@ export function createContentIntelligenceBridge(core: BridgeCore) {
         cancelResearch: (input: z.input<typeof ResearchCancelSchema>) => invoke<ResearchRun>('ci:research-cancel', input),
         metricWorks: () => invoke<MetricWorkSummary[]>('ci:metric-works', {}),
         attachPublication: (input: z.input<typeof ManualPublicationLinkSchema>) => invoke<PublicationLink>('ci:publication-manual', input),
+        attachExternalPublication: (input: z.input<typeof ExternalPublicationLinkSchema>) => invoke<PublicationLink>('ci:publication-external', input),
         syncPublication: (id: string) => invoke<PublicationLink[]>('ci:publication-sync', { id }),
         publications: () => invoke<PublicationLink[]>('ci:publication-list', {}),
         previewMetrics: (input: z.input<typeof MetricCsvPreviewSchema>) => invoke<MetricImportPreview>('ci:metric-preview', input),

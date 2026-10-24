@@ -31,6 +31,12 @@ export function createContentMetricsRepository(db: CiDatabase, currentSpace: () 
     const decode = <T>(schema: z.ZodType<T, z.ZodTypeDef, any>, row: any): T => {
         if (!row) throw new Error('记录不存在或不属于当前空间'); return schema.parse(JSON.parse(row.document_json));
     };
+    function completedRequest<T>(operation: string, requestId: string, input: unknown): { result: T } | null {
+        const previous = db.prepare('SELECT digest, result_json FROM ci_requests WHERE space_id = ? AND operation = ? AND request_id = ?').get(space(), operation, CiId.parse(requestId));
+        if (!previous) return null;
+        if (previous.digest !== ciDigest(input)) throw new Error('同一请求不能用于不同内容');
+        return { result: JSON.parse(previous.result_json) as T };
+    }
     function request<T>(operation: string, requestId: string, input: unknown, execute: () => T): T {
         const spaceId = space(); CiId.parse(requestId); const digest = ciDigest(input);
         return ciTransaction(db, () => {
@@ -45,17 +51,23 @@ export function createContentMetricsRepository(db: CiDatabase, currentSpace: () 
     }
     // Only the service calls this after validating the native work and/or a captured publication job.
     function recordPublication(input: Omit<PublicationLink, 'id' | 'spaceId' | 'createdAt'>): PublicationLink {
-        const spaceId = space(); const parsed = PublicationLinkSchema.omit({ id: true, spaceId: true, createdAt: true }).parse(input);
-        const id = 'pub_' + ciDigest([spaceId, parsed.workspaceId, parsed.workspaceRevision, parsed.platform, parsed.accountAlias, parsed.externalWorkId, parsed.jobId, parsed.origin, parsed.status]);
+        const spaceId = space(); const { id: _id, spaceId: _space, createdAt: _createdAt, ...parsed } = PublicationLinkSchema.parse({ ...input, id: 'validation', spaceId, createdAt: 0 });
+        const identity = [spaceId, parsed.workspaceId, parsed.workspaceRevision, parsed.platform, parsed.accountAlias, parsed.externalWorkId, parsed.jobId, parsed.origin, parsed.status];
+        let id = 'pub_' + ciDigest(identity);
+        let previous = db.prepare('SELECT document_json FROM ci_publication_links WHERE space_id = ? AND id = ?').get(spaceId, id);
+        // Keep legacy IDs stable. A later native edit with the same workspace revision gets an independent immutable link.
+        if (previous && parsed.nativeRevision && decode(PublicationLinkSchema, previous).nativeRevision !== parsed.nativeRevision) {
+            id = 'pub_' + ciDigest([...identity, parsed.nativeRevision]);
+            previous = db.prepare('SELECT document_json FROM ci_publication_links WHERE space_id = ? AND id = ?').get(spaceId, id);
+        }
         const value = PublicationLinkSchema.parse({ ...parsed, id, spaceId, createdAt: Date.now() });
-        const previous = db.prepare('SELECT document_json FROM ci_publication_links WHERE space_id = ? AND id = ?').get(spaceId, id);
         if (previous) {
             const old = decode(PublicationLinkSchema, previous);
             // Do not silently replace a manual citation, receipt or captured version.
             if (ciDigest({ ...old, createdAt: 0, observedAt: 0 }) !== ciDigest({ ...value, createdAt: 0, observedAt: 0 })) throw new Error('发布关联内容冲突，请保留原始记录并核对');
             return old;
         }
-        db.prepare('INSERT INTO ci_publication_links VALUES (?, ?, ?, ?)').run(spaceId, id, value.workspaceId, JSON.stringify(value)); return value;
+        db.prepare('INSERT INTO ci_publication_links VALUES (?, ?, ?, ?)').run(spaceId, id, value.workspaceId ?? '', JSON.stringify(value)); return value;
     }
     function publications(workspaceId?: string): PublicationLink[] {
         if (workspaceId !== undefined) CiId.parse(workspaceId);
@@ -117,6 +129,6 @@ export function createContentMetricsRepository(db: CiDatabase, currentSpace: () 
             return { changed, duplicates: next.rows.filter(row => row.status === 'duplicate').length, importDigest };
         });
     }
-    return { space, request, publication, publications, recordPublication, observation, observations, history, preview, importCsv };
+    return { space, request, completedRequest, publication, publications, recordPublication, observation, observations, history, preview, importCsv };
 }
 export type ContentMetricsRepository = ReturnType<typeof createContentMetricsRepository>;

@@ -1,4 +1,4 @@
-import { ManualPublicationLinkSchema, type PublicationLink } from '../../../shared/contentExperiments.ts';
+import { ManualPublicationLinkSchema, ExternalPublicationLinkSchema, type PublicationLink } from '../../../shared/contentExperiments.ts';
 import type { PublicationJobView } from '../../../shared/publication.ts';
 import type { CreationWorkspace } from '../../../shared/creationWorkspace.ts';
 import { CiId } from '../../../shared/contentIntelligence.ts';
@@ -38,8 +38,19 @@ export function createContentMetricsService(repository: ContentMetricsRepository
     readWork(id: string): Promise<CreationWorkspace>; jobs(): PublicationJobView[];
     readNativeRevision?(id: string): Promise<string | undefined>;
 }) {
+    function attachExternal(input: unknown) {
+        const request = ExternalPublicationLinkSchema.parse(input);
+        const canonical = request.url ? canonicalPublicationUrl(request.platform, request.url) : null;
+        if (request.url && (!canonical || canonical.externalWorkId !== request.externalWorkId)) throw new Error('作品网址与平台作品 ID 不一致');
+        return repository.request('publication.external', request.requestId, request, () => repository.recordPublication({
+            platform: request.platform, accountAlias: request.accountAlias, externalWorkId: request.externalWorkId,
+            ...(canonical ? { url: canonical.url } : {}), title: request.title, externalContentKind: request.contentKind,
+            origin: 'manual', status: 'declared-published', sourceNote: request.sourceNote, observedAt: request.observedAt,
+        }));
+    }
     async function attachManual(input: unknown) {
         const request = ManualPublicationLinkSchema.parse(input); const spaceId = repository.space();
+        const previous = repository.completedRequest<PublicationLink>('publication.manual', request.requestId, request); if (previous) return previous.result;
         const work = await adapter.readWork(request.workspaceId);
         if (repository.space() !== spaceId || work.spaceId !== spaceId) throw new Error('空间已变化');
         if (work.revision !== request.expectedRevision || work.platform !== request.platform) throw new Error('工程版本或平台已变化');
@@ -70,5 +81,5 @@ export function createContentMetricsService(repository: ContentMetricsRepository
         if (baselineRevision !== undefined && baselineRevision !== baseline.revision || variantRevision !== undefined && variantRevision !== variant.revision) throw new Error('观测已修订，请刷新后比较');
         return compareMetricObservations(baseline, variant, repository.publication(baseline.input.publicationLinkId), repository.publication(variant.input.publicationLinkId));
     }
-    return { attachManual, syncWork, compare };
+    return { attachManual, attachExternal, syncWork, compare };
 }

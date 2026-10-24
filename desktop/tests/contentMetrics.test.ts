@@ -4,7 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { MetricCsvFields, MetricInputSchema, MetricWindowSchema, ManualPublicationLinkSchema, type MetricInput, type PublicationLink, type MetricObservation } from '../shared/contentExperiments.ts';
+import { MetricCsvFields, MetricInputSchema, MetricWindowSchema, ManualPublicationLinkSchema, PublicationLinkSchema, ExternalPublicationLinkSchema, type MetricInput, type PublicationLink, type MetricObservation } from '../shared/contentExperiments.ts';
 import { ciDigest, initializeContentIntelligence } from '../electron/core/content-intelligence/repository.ts';
 import { initializeContentMetrics, createContentMetricsRepository, deleteContentMetricsSpace } from '../electron/core/content-intelligence/metricsRepository.ts';
 import { parseMetricCsv, readMetricCsv, compareMetricObservations, metricCsvTemplate } from '../electron/core/content-intelligence/metricsDomain.ts';
@@ -163,10 +163,56 @@ test('manual publication links retain explicit provenance and cannot forge trust
     const request = { requestId: 'manual', workspaceId: work.id, expectedRevision: work.revision, platform: 'tiktok', accountAlias: '脱敏测试账号', externalWorkId: '123', url: 'https://www.tiktok.com/@synthetic/video/123', sourceNote: '合成测试用户声明', observedAt: start };
     const result = await service.attachManual(request); assert.equal(result.origin, 'manual'); assert.equal(result.status, 'declared-published'); assert.deepEqual(await service.attachManual(request), result);
     await assert.rejects(service.attachManual({ ...request, origin: 'receipt' }));
-    await assert.rejects(service.attachManual({ ...request, url: 'https://www.tiktok.com/@synthetic/video/124' }), /不一致/);
-    await assert.rejects(service.attachManual({ ...request, expectedRevision: 'old' }), /版本/);
+    await assert.rejects(service.attachManual({ ...request, requestId: 'manual-wrong-url', url: 'https://www.tiktok.com/@synthetic/video/124' }), /不一致/);
+    await assert.rejects(service.attachManual({ ...request, requestId: 'manual-stale-version', expectedRevision: 'old' }), /版本/);
     const synced = await service.syncWork(work.id); assert.equal(synced.length, 2); assert.equal((await service.syncWork(work.id)).length, 2);
     const editedService = createContentMetricsService(h.repo, { readWork: async () => ({ ...work, revision: 'changed-after-publication' }), jobs: () => [job] });
     const afterEdit = await editedService.syncWork(work.id); assert.equal(afterEdit.length, 2); assert.equal(afterEdit.find(link => link.origin === 'receipt')?.workspaceRevision, 'revision');
     h.switch('中文空间'); await assert.rejects(service.attachManual(request), /空间/); await assert.rejects(service.syncWork(work.id), /空间/);
+});
+
+test('historical external links import real-shaped observations without inventing a workspace or touching a native editor', t => {
+    const h = fixture(t); let nativeReads = 0;
+    const service = createContentMetricsService(h.repo, { readWork: async () => { nativeReads++; throw new Error('must not read a fabricated work'); }, jobs: () => [] });
+    const request = { requestId: 'external', platform: 'xiaohongshu', accountAlias: '脱敏测试账号', externalWorkId: 'abcdef123456',
+        title: '合成历史作品', contentKind: 'video', url: 'https://www.xiaohongshu.com/explore/abcdef123456?xsec_token=private-test-token', sourceNote: '合成外部作品声明，原工程不可用', observedAt: start };
+    const first = service.attachExternal(request); assert.equal(first.workspaceId, undefined); assert.equal(first.workspaceRevision, undefined); assert.equal(first.nativeRevision, undefined);
+    assert.equal(first.origin, 'manual'); assert.equal(first.url, 'https://www.xiaohongshu.com/explore/abcdef123456'); assert.deepEqual(service.attachExternal(request), first); assert.equal(nativeReads, 0);
+    assert.equal(h.repo.publications().length, 1); assert.equal(h.repo.publications('work-one').length, 0);
+    const imported = importRows(h.repo, [input(first.id)]); assert.equal(imported.changed.length, 1);
+    assert.equal(h.db.prepare('SELECT id FROM legacy_work').get()!.id, 'unchanged');
+    assert.throws(() => service.attachExternal({ ...request, title: 'changed' }), /同一请求/);
+    for (const extra of [{ workspaceId: 'fabricated' }, { spaceId: 'other' }, { origin: 'receipt' }, { nativeRevision: 'fake' }]) assert.equal(ExternalPublicationLinkSchema.safeParse({ ...request, ...extra }).success, false);
+    for (const extra of [{ origin: 'receipt', status: 'published' }, { nativeRevision: 'fake' }, { workspaceId: 'missing-revision' }, { jobId: 'fake' }]) assert.equal(PublicationLinkSchema.safeParse({ ...first, ...extra }).success, false);
+    assert.throws(() => service.attachExternal({ ...request, requestId: 'url-mismatch', externalWorkId: 'different' }), /不一致/);
+    h.switch('中文空间'); assert.equal(h.repo.publications().length, 0); assert.throws(() => h.repo.publication(first.id), /当前空间/);
+    const scoped = service.attachExternal(request); assert.notEqual(scoped.id, first.id); assert.equal(scoped.spaceId, '中文空间');
+});
+test('external observation comparisons retain unknown or differing format limits even when dates and numeric units match', t => {
+    const h = fixture(t); const service = createContentMetricsService(h.repo, { readWork: async () => work, jobs: () => [] });
+    const request = { requestId: 'external-a', platform: 'xiaohongshu', accountAlias: '脱敏测试账号', externalWorkId: 'abcdef111', title: '合成历史作品', contentKind: 'video', sourceNote: '合成外部作品声明', observedAt: start };
+    const first = service.attachExternal(request); const second = service.attachExternal({ ...request, requestId: 'external-b', externalWorkId: 'abcdef222' });
+    const imported = importRows(h.repo, [input(first.id, 100), input(second.id, 150)]).changed;
+    assert.equal(compareMetricObservations(imported[0], imported[1], first, second).relativeChange, .5);
+    for (const externalContentKind of ['unknown', 'image-set'] as const) {
+        const compared = compareMetricObservations(imported[0], imported[1], first, { ...second, externalContentKind });
+        assert.equal(compared.interpretation, 'insufficient'); assert.equal(compared.relativeChange, null); assert.ok(compared.reasons.some(value => value.includes('形式')));
+    }
+});
+test('manual links distinguish native versions with unchanged workspace revisions and preserve legacy identities on replay', async t => {
+    const h = fixture(t); let nativeRevision = 'native-one';
+    const service = createContentMetricsService(h.repo, { readWork: async () => work, jobs: () => [job], readNativeRevision: async () => nativeRevision });
+    const request = { requestId: 'old-native', workspaceId: work.id, expectedRevision: work.revision, platform: work.platform, accountAlias: '脱敏测试账号', externalWorkId: '123', sourceNote: '合成人工版本声明', observedAt: start };
+    const first = await service.attachManual(request);
+    const legacyId = 'pub_' + ciDigest(['a', work.id, work.revision, work.platform, request.accountAlias, '123', undefined, 'manual', 'declared-published']);
+    assert.equal(first.id, legacyId);
+    nativeRevision = 'native-two'; const second = await service.attachManual({ ...request, requestId: 'new-native' });
+    assert.notEqual(first.id, second.id); assert.equal(h.repo.publication(first.id).nativeRevision, 'native-one');
+    assert.equal(second.nativeRevision, 'native-two'); assert.deepEqual(await service.attachManual(request), first);
+    assert.deepEqual(await service.attachManual({ ...request, requestId: 'new-native' }), second);
+    const noLongerAvailable = createContentMetricsService(h.repo, { readWork: async () => { throw new Error('later source unavailable'); }, jobs: () => [] });
+    assert.deepEqual(await noLongerAvailable.attachManual(request), first);
+    await assert.rejects(noLongerAvailable.attachManual({ ...request, sourceNote: 'same request changed' }), /同一请求/);
+    assert.equal((await service.syncWork(work.id)).length, 3); assert.equal((await service.syncWork(work.id)).length, 3);
+    assert.throws(() => h.repo.recordPublication({ ...linkInput(work.id, '123'), workspaceRevision: work.revision, accountAlias: request.accountAlias, nativeRevision: 'native-two', sourceNote: 'different provenance' }), /冲突/);
 });
