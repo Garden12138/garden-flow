@@ -7,6 +7,7 @@ import { initializeContentMetrics, createContentMetricsRepository, deleteContent
 import { initializeContentExperiments, recoverContentExperimentTasks, createContentExperimentsRepository, deleteContentExperimentsSpace } from './core/content-intelligence/experimentsRepository';
 import { initializeExperimentExplanations, recoverExperimentExplanations, createExperimentExplanationRepository, deleteExperimentExplanationsSpace } from './core/content-intelligence/explanationRepository';
 import { initializeContentCampaigns, recoverContentCampaigns, createContentCampaignsRepository, deleteContentCampaignsSpace } from './core/content-intelligence/campaignsRepository';
+import { initializeSourceMaintenance, createSourceMaintenanceRepository, deleteSourceMaintenanceSpace } from './core/content-intelligence/maintenanceRepository';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import path from 'path';
 import { app } from 'electron';
@@ -25,6 +26,7 @@ export const getContentMetricsRepository = () => createContentMetricsRepository(
 export const getContentExperimentsRepository = () => createContentExperimentsRepository(db, () => getWorkspacePaths().activeSpaceId);
 export const getExperimentExplanationRepository = () => createExperimentExplanationRepository(db, () => getWorkspacePaths().activeSpaceId);
 export const getContentCampaignsRepository = () => createContentCampaignsRepository(db, () => getWorkspacePaths().activeSpaceId);
+export const getSourceMaintenanceRepository = () => createSourceMaintenanceRepository(db, () => getWorkspacePaths().activeSpaceId);
 
 const DEFAULT_SPACE_ID = 'default';
 const DEFAULT_SPACE_NAME = '默认空间';
@@ -821,6 +823,7 @@ initializeExperimentExplanations(db);
 recoverExperimentExplanations(db);
 initializeContentCampaigns(db);
 recoverContentCampaigns(db);
+initializeSourceMaintenance(db);
 
 // Default workspace directory
 export const getDefaultWorkspaceDir = () => {
@@ -1422,6 +1425,7 @@ export const deleteSpace = (id: string): { deletedActiveSpace: boolean; activeSp
     deleteContentExperimentsSpace(db, normalizedId);
     deleteExperimentExplanationsSpace(db, normalizedId);
     deleteContentCampaignsSpace(db, normalizedId);
+    deleteSourceMaintenanceSpace(db, normalizedId);
     deleteContentMetricsSpace(db, normalizedId);
     deleteConsumerResearchSpace(db, normalizedId);
     deleteContentIntelligenceSpace(db, normalizedId);

@@ -5,7 +5,7 @@ import { CreationCapabilitySchema } from './creationWorkspace.ts';
 import { ProductPlatformSchema } from './productCreationTarget.ts';
 
 export const CheckSourceMaintenanceSchema = z.object({ requestId: CiId, source: SourceIdentitySchema, previousVersion: CiDigest }).strict();
-export const MaintenanceSourcesQuerySchema = z.object({ afterRowId: z.number().int().positive().optional(), limit: z.number().int().min(1).max(100).default(50) }).strict();
+export const MaintenanceSourcesQuerySchema = z.object({ afterRowId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(), limit: z.number().int().min(1).max(100).default(50) }).strict();
 export const SourceFieldChangeSchema = z.object({
     kind: z.enum(['segment', 'metadata']), key: z.string().min(1).max(300), change: z.enum(['added', 'removed', 'changed']),
     previous: z.string().max(100000).nullable(), current: z.string().max(100000).nullable(),
@@ -21,9 +21,14 @@ export const MaintenanceScanCoverageSchema = z.object({
     scannedWorkspaces: z.number().int().nonnegative(), excludedWorkspaces: z.number().int().nonnegative(),
     completeWithinScope: z.boolean(), unversionedSameProductWorkspaces: z.number().int().nonnegative(),
     legacyUnregisteredProjects: z.literal('not-enumerated'),
-}).strict();
+}).strict().superRefine((value, context) => {
+    if (value.scannedWorkspaces + value.excludedWorkspaces !== value.totalWorkspaceRecords) context.addIssue({ code: 'custom', message: '扫描记录总数不一致' });
+    if (value.completeWithinScope !== (value.excludedWorkspaces === 0)) context.addIssue({ code: 'custom', message: '扫描完整性与排除数不一致' });
+    if (value.unversionedSameProductWorkspaces > value.scannedWorkspaces) context.addIssue({ code: 'custom', message: '未知版本工程数超出扫描范围' });
+});
 export const SourceMaintenanceImpactSchema = z.object({
     id: CiId, kind: z.enum(['evidence', 'opportunity', 'workspace']), targetId: CiId, title: z.string().max(500), versionDigest: CiDigest,
+    reviewState: z.literal('needs_review').default('needs_review'),
     reason: z.enum(['source-version', 'linked-opportunity', 'direct-work', 'inherited-work']),
     evidenceIds: z.array(CiId).max(100), opportunityIds: z.array(CiId).max(100),
     viaWorkspaceId: CiId.optional(), availability: z.enum(['available', 'missing', 'unreadable']).optional(),
@@ -60,5 +65,5 @@ export interface MaintenanceDetail {
     decisions: MaintenanceDecision[]; pending: number;
 }
 export interface MaintenanceCheckResult { changed: boolean; detail: MaintenanceDetail | null; source: SourceIdentity; previousVersion: string; currentVersion?: string; currentAvailability: 'available' | 'missing'; }
-export interface MaintenanceSourceOption { rowId: number; source: SourceIdentity; version: string; title: string; capturedAt?: number; }
+export interface MaintenanceSourceOption { rowId: number; source: SourceIdentity; version: string; title: string; capturedAt?: number; evidenceCount: number; }
 export interface MaintenanceReportSummary { id: string; source: SourceIdentity; sourceTitle: string; previousVersion: string; currentVersion?: string; createdAt: number; impacts: number; }
