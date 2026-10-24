@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { CiResult } from '../../../shared/contentIntelligence';
 import { MetricCsvFields, type MetricImportPreview, type MetricObservation, type PublicationLink, type MetricWorkSummary, type MetricComparison } from '../../../shared/contentExperiments';
 import { dispatchAppIntent } from '../../features/app-shell/appIntent';
+import { ExperimentPlansPanel } from './ExperimentPlansPanel';
 
 const buttonClass = 'rounded border border-border px-3 py-2 text-xs disabled:opacity-40';
 const fieldClass = 'w-full rounded border border-border bg-surface-primary p-2 text-sm';
@@ -15,6 +16,7 @@ export function ContentExperimentsPanel() {
     const [confirmed, setConfirmed] = useState(false); const [revise, setRevise] = useState(false); const [history, setHistory] = useState<MetricObservation[]>([]);
     const [baseline, setBaseline] = useState(''); const [variant, setVariant] = useState(''); const [comparison, setComparison] = useState<MetricComparison | null>(null);
     const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [message, setMessage] = useState('');
+    const [showPlans, setShowPlans] = useState(false);
     const epoch = useRef(0); const locked = useRef(false); const importRequest = useRef<{ digest: string; id: string }>();
     const api = window.ipcRenderer.contentIntelligence;
     const load = async (token: number) => {
@@ -24,7 +26,7 @@ export function ContentExperimentsPanel() {
     useEffect(() => {
         const clear = () => {
             const token = ++epoch.current; locked.current = false; importRequest.current = undefined;
-            setWorks([]); setLinks([]); setObservations([]); setWorkId(''); setAlias(''); setExternalId(''); setUrl(''); setSourceNote(''); setCsv(''); setMapping(initialMapping()); setPreview(null); setConfirmed(false); setRevise(false); setHistory([]); setBaseline(''); setVariant(''); setComparison(null); setError(''); setMessage(''); setBusy(false);
+            setWorks([]); setLinks([]); setObservations([]); setWorkId(''); setAlias(''); setExternalId(''); setUrl(''); setSourceNote(''); setCsv(''); setMapping(initialMapping()); setPreview(null); setConfirmed(false); setRevise(false); setHistory([]); setBaseline(''); setVariant(''); setComparison(null); setError(''); setMessage(''); setBusy(false); setShowPlans(false);
             void load(token).catch(reason => { if (token === epoch.current) setError(String(reason)); });
         };
         clear(); window.ipcRenderer.spaces.onChanged(clear);
@@ -44,6 +46,8 @@ export function ContentExperimentsPanel() {
     return <section aria-label="内容观测与实验" className="space-y-5 p-6">
         <div className="flex items-start justify-between gap-3"><div><h1 className="text-xl font-semibold">内容观测与实验</h1><p className="mt-2 text-sm text-text-secondary">使用已有发布记录或明确标注的手工关联，再导入真实观测。没有数据时保持空态；观察差异不能证明因果。</p></div><button className={buttonClass} disabled={busy} onClick={() => void act(load)}>刷新</button></div>
         {error && <p role="alert" className="rounded border border-red-400 p-3 text-sm">{error}</p>}{message && <p role="status" className="rounded border border-border p-3 text-sm">{message}</p>}
+        <button type="button" className={buttonClass} disabled={busy} aria-expanded={showPlans} onClick={() => setShowPlans(!showPlans)}>{showPlans ? '收起实验规划' : '规划实验与下一轮'}</button>
+        {showPlans && <ExperimentPlansPanel works={works} links={links} observations={observations} />}
         <section className="space-y-3 rounded border border-border p-4"><h2 className="font-semibold">工程与发布结果</h2>
             <select aria-label="观测工程" className={fieldClass} disabled={busy} value={workId} onChange={event => setWorkId(event.target.value)}><option value="">选择当前空间的已有工程</option>{works.map(item => <option key={item.id} value={item.id}>{item.title} · {item.platform} · {item.id}</option>)}</select>
             <div className="flex flex-wrap gap-2"><button className={buttonClass} disabled={busy || !work} onClick={() => void act(async token => { await api.syncPublication(workId).then(data); await load(token); if (token === epoch.current) setMessage('已读取本工程的现有提交与可信回执。没有记录时可手工补充。'); })}>读取已有发布关联</button><button className={buttonClass} disabled={!work || busy} onClick={() => dispatchAppIntent({ type: 'creation.open', workspaceId: workId })}>打开工程</button></div>
@@ -61,7 +65,7 @@ export function ContentExperimentsPanel() {
                 <button className={buttonClass} disabled={busy || !work}>保存人工发布关联</button>
             </form></details>
             {!links.length && <p className="text-sm text-text-secondary">还没有发布结果关联。导出成功不会自动计为已发布。</p>}
-            <div className="max-h-72 space-y-2 overflow-y-auto">{links.map(link => <article key={link.id} className="rounded border border-border p-3 text-xs"><p>{link.platform} · {link.accountAlias} · 作品 {link.externalWorkId || '尚无可信作品 ID'}</p><p>{link.origin === 'manual' ? '人工声明，未由程序核实发布' : link.origin === 'receipt' ? '可信作品回执' : '已提交，审核结果未知'} · {link.sourceNote}</p><p className="break-all select-text">发布关联 ID：{link.id}</p><p>工程 {link.workspaceId} · 关联时版本 {link.workspaceRevision} {link.nativeRevision ? `· 发布快照版本 ${link.nativeRevision}` : ''}</p></article>)}</div>
+            <div className="max-h-72 space-y-2 overflow-y-auto">{links.map(link => <article key={link.id} className="rounded border border-border p-3 text-xs"><p>{link.platform} · {link.accountAlias} · 作品 {link.externalWorkId || '尚无可信作品 ID'}</p><p>{link.origin === 'manual' ? '人工声明，未由程序核实发布' : link.origin === 'receipt' ? '可信作品回执' : '已提交，审核结果未知'} · {link.sourceNote}</p><p className="break-all select-text">发布关联 ID：{link.id}</p><p>工程 {link.workspaceId} · 关联时版本 {link.workspaceRevision} {link.nativeRevision ? `· ${link.origin === 'manual' ? '声明关联时原生版本' : '发布快照版本'} ${link.nativeRevision}` : ''}</p></article>)}</div>
         </section>
         <section className="space-y-3 rounded border border-border p-4"><h2 className="font-semibold">CSV 观测导入</h2><p className="text-xs">每行一条指标。count 为整数；seconds 为秒；ratio 为 0–1。窗口使用带偏移的 ISO 时间，账号与平台取自发布关联。累计值需在口径中注明；不能冒充窗口新增值。</p>
             <div className="flex flex-wrap gap-3"><button className={buttonClass} disabled={busy} onClick={() => { setCsv(MetricCsvFields.join(',') + '\n'); invalidate(); }}>填入空白模板标题</button><label className={buttonClass}>选择本地 CSV<input aria-label="选择指标CSV" className="ml-2 max-w-56" type="file" accept=".csv,text/csv" disabled={busy} onChange={event => { const file = event.target.files?.[0]; if (!file) return; void act(async token => { if (file.size > 1000000) throw new Error('CSV 文件超过 1 MB'); const text = await file.text(); if (token === epoch.current) { setCsv(text); invalidate(); } }); }} /></label></div>
