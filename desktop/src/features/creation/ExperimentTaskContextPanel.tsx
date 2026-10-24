@@ -22,6 +22,7 @@ export function ExperimentTaskContextPanel({ workspaceId }: { workspaceId: strin
                 <p><strong>{task.change.name}</strong> · {task.workspaceId === workspaceId ? '下一轮副本' : '任务来源'} · {task.state === 'ready_to_edit' ? '副本已创建，待人工编辑' : task.state === 'needs_review' ? '复制结果待复核' : task.state === 'copying' ? '正在创建副本' : task.state === 'cancelled' ? '已取消任务，保留工程' : '待确认创建副本'}</p>
                 <p className="whitespace-pre-wrap break-words">修改前：{task.change.before}</p><p className="whitespace-pre-wrap break-words">计划修改为：{task.change.after}</p>
                 <p>依据假设：{task.basis.hypothesis}</p><p>修改理由：{task.change.rationale}</p>
+                {task.basis.sourceDiffersFromArm && <p>此工程是另行选定的下一轮起点，未被认定为历史已发布原件。历史观测不证明此工程的表现。</p>}
                 <p>保持：{task.change.preserve.join('；')}</p>
                 <p>指标口径：{task.basis.metric.definition}（{task.basis.metric.unit}）</p>
                 {task.basis.limitations.map((value, index) => <p key={index}>限制：{value}</p>)}

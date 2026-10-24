@@ -75,6 +75,32 @@ test('unfinished windows remain insufficient even after binding or explicitly cl
     h.repo.transition({ id: bound.id, requestId: 'close-insufficient', expectedRevision: bound.revision, to: 'completed' });
     assert.equal(h.repo.detail(bound.id).comparison?.interpretation, 'insufficient');
 });
+test('external experiment arms freeze actual post identity without an engineering fiction and require an acknowledged independent task source', t => {
+    const h = fixture(t);
+    const links = ['image-set', 'video'].map((externalContentKind, index) => h.metrics.recordPublication({ platform: 'xiaohongshu', accountAlias: 'synthetic-owner', externalWorkId: 'external-' + index,
+        title: '合成历史作品', externalContentKind: externalContentKind as 'video' | 'image-set', origin: 'manual', status: 'declared-published', sourceNote: '合成历史声明，原工程未关联', observedAt: 1 }));
+    const request = { ...plan, requestId: 'external-plan', baseline: { publicationLinkId: links[0].id }, variant: { publicationLinkId: links[1].id }, variable: { ...plan.variable, kind: 'format' } };
+    const [a, b] = links.map(link => h.repo.externalArm(link.id));
+    assert.throws(() => h.repo.create({ ...request, variable: plan.variable }, a, b), /内容形式不同/);
+    assert.throws(() => h.repo.create(request, { ...a, title: 'forged metadata' }, b), /来源不一致/);
+    const experiment = h.repo.create(request, a, b); assert.equal(experiment.baseline.engineering, 'unlinked'); assert.equal(experiment.baseline.workspaceId, undefined);
+    assert.equal(h.repo.create(request, null, null).id, experiment.id);
+    const rows = links.map((link, index) => [link.id, metric.key, metric.definition, metric.unit, index ? 5 : 2, '2026-10-15', '2026-10-24', 'unknown', 'calendar', '', '', '不同内容形式，未知推广', '合成日期观测', '2026-10-24T01:00:00Z'].join(','));
+    const payload = { csv: MetricCsvFields.join(',') + '\n' + rows.join('\n'), mapping: Object.fromEntries(MetricCsvFields.map(key => [key, key])) };
+    const preview = h.metrics.preview(payload); h.metrics.importCsv({ ...payload, requestId: 'external-observations', previewDigest: preview.digest, confirmed: true, reviseConflicts: false });
+    const observations = links.map(link => h.metrics.observations().find(value => value.input.publicationLinkId === link.id)!);
+    const refs = { baseline: { id: observations[0].id, revision: 1 }, variant: { id: observations[1].id, revision: 1 } };
+    assert.throws(() => h.repo.bind({ id: experiment.id, requestId: 'reversed-external', expectedRevision: 1, observations: { baseline: refs.variant, variant: refs.baseline } }), /历史作品/);
+    const bound = h.repo.bind({ id: experiment.id, requestId: 'external-bind', expectedRevision: 1, observations: refs });
+    const report = h.repo.detail(bound.id).comparison!; assert.equal(report.relativeChange, null); assert.equal(report.interpretation, 'insufficient'); assert.ok(report.reasons.some(value => value.includes('对应证明')));
+    const taskInput = { ...taskRequest(bound), requestId: 'external-next' };
+    assert.throws(() => h.repo.createTask(taskInput, baseline, target), /另选起点/);
+    const task = h.repo.createTask({ ...taskInput, differentSourceAcknowledged: true }, baseline, target);
+    assert.equal(task.basis.sourceDiffersFromArm, true); assert.equal(task.differentSourceAcknowledged, true); assert.equal(task.basis.observations?.baseline.id, refs.baseline.id);
+    assert.equal(ExperimentTaskSchema.safeParse({ ...task, differentSourceAcknowledged: undefined }).success, false);
+    assert.equal(h.metrics.publication(links[0].id).workspaceId, undefined);
+    h.switch('中文空间'); assert.throws(() => h.repo.externalArm(links[0].id), /当前空间/);
+});
 test('native-only edits cannot reuse historical publication metrics; unknown versions and different formats remain insufficient', t => {
     const h = fixture(t); const refs = observations(h.metrics);
     const updated = { ...baseline, nativeRevision: 'native-two', contentVersion: 'd'.repeat(64) };

@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { initializeContentIntelligence } from '../electron/core/content-intelligence/repository.ts';
-import { initializeContentMetrics } from '../electron/core/content-intelligence/metricsRepository.ts';
+import { initializeContentMetrics, createContentMetricsRepository } from '../electron/core/content-intelligence/metricsRepository.ts';
 import { initializeContentExperiments, createContentExperimentsRepository, recoverContentExperimentTasks } from '../electron/core/content-intelligence/experimentsRepository.ts';
 import { createContentExperimentsService } from '../electron/core/content-intelligence/experimentsService.ts';
 import { productVideoHarness } from './helpers/productVideoHarness.ts';
@@ -99,4 +99,19 @@ test('all service reads and task actions reject a different space, including lat
     f.h.state.spaceId = 'default';
     const service = createContentExperimentsService(f.repo, { ...f.adapter, inspect: async id => { const result = await f.adapter.inspect(id); f.h.state.spaceId = '中文空间'; return result; } });
     await assert.rejects(service.inspect(f.first.id), /空间已变化/); assert.deepEqual(f.service.list(), []);
+});
+test('a historical observation plan can copy an explicitly chosen available engineering source without claiming it was the published original', async t => {
+    const f = await fixture(t); const metrics = createContentMetricsRepository(f.db, () => f.h.state.spaceId);
+    const links = ['image-set', 'video'].map((externalContentKind, index) => metrics.recordPublication({ platform: 'xiaohongshu', accountAlias: 'synthetic-owner', externalWorkId: 'external-' + index,
+        title: '合成历史作品', externalContentKind: externalContentKind as 'video' | 'image-set', origin: 'manual', status: 'declared-published', sourceNote: '合成历史来源，原工程未关联', observedAt: 1 }));
+    const experiment = await f.service.create({ ...f.request, requestId: 'external-plan', baseline: { publicationLinkId: links[0].id }, variant: { publicationLinkId: links[1].id }, variable: { ...f.request.variable, kind: 'format' } });
+    const source = await f.service.inspect(f.first.id); const input = { ...f.taskRequest, requestId: 'external-task', experimentId: experiment.id, source: reference(source) };
+    await assert.rejects(f.service.createTask(input), /另选起点/); assert.equal(f.copies(), 0);
+    const task = await f.service.createTask({ ...input, differentSourceAcknowledged: true });
+    const result = await f.service.startTask({ id: task.id, expectedRevision: task.revision, confirmed: true });
+    assert.equal(result.state, 'ready_to_edit'); assert.equal(result.basis.sourceDiffersFromArm, true); assert.equal(result.completionOrigin, 'guarded-copy');
+    assert.equal((await f.h.api.readCreationWorkspace(result.workspaceId)).sourceId, f.first.id);
+    assert.equal(metrics.publication(links[0].id).workspaceId, undefined); assert.equal(metrics.publication(links[1].id).workspaceId, undefined);
+    assert.equal((await f.h.api.listCreationWorkspaceSummaries()).length, 3); assert.equal(f.copies(), 1);
+    assert.equal(f.h.state.imageCalls + f.h.state.ttsCalls + f.h.state.localizationCalls, 0);
 });

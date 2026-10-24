@@ -4,7 +4,7 @@ import { CiId } from '../../../shared/contentIntelligence.ts';
 import {
     ContentExperimentSchema, CreateExperimentSchema, ExperimentWorkSchema, BindExperimentObservationsSchema,
     TransitionExperimentSchema, CreateExperimentTaskSchema, ExperimentTaskSchema, StartExperimentTaskSchema, CancelExperimentTaskSchema,
-    type ContentExperiment, type ExperimentWork, type ExperimentTask, type ContentExperimentDetail,
+    ExperimentArmInputSchema, ExperimentArmSchema, ExternalExperimentArmSchema, type ExperimentArm, type ContentExperiment, type ExperimentWork, type ExperimentTask, type ContentExperimentDetail,
 } from '../../../shared/contentExperimentPlans.ts';
 import { ciDigest, ciTransaction, type CiDatabase } from './repository.ts';
 import { createContentMetricsRepository } from './metricsRepository.ts';
@@ -67,6 +67,18 @@ export function createContentExperimentsRepository(db: CiDatabase, currentSpace:
     function assertWork(expected: { workspaceId: string; revision: string; draftEpoch: number; contentVersion: string }, actual: ExperimentWork) {
         if (['workspaceId', 'revision', 'draftEpoch', 'contentVersion'].some(key => expected[key as keyof typeof expected] !== actual[key as keyof ExperimentWork])) throw new Error('工程内容或版本已变化，请重新预览');
     }
+    function externalArm(publicationLinkId: string) {
+        const publication = metrics.publication(publicationLinkId);
+        if (publication.workspaceId || !publication.externalWorkId) throw new Error('请选择明确未关联原工程的历史作品');
+        return ExternalExperimentArmSchema.parse({ publicationLinkId: publication.id, platform: publication.platform, title: publication.title || publication.externalWorkId,
+            externalWorkId: publication.externalWorkId, accountAlias: publication.accountAlias, contentKind: publication.externalContentKind || 'unknown', engineering: 'unlinked', sourceNote: publication.sourceNote });
+    }
+    function assertArm(expected: z.infer<typeof ExperimentArmInputSchema>, actual: ExperimentArm) {
+        if ('workspaceId' in expected && 'workspaceId' in actual) assertWork(expected, actual);
+        else if ('publicationLinkId' in expected && 'publicationLinkId' in actual) {
+            if (expected.publicationLinkId !== actual.publicationLinkId || ciDigest(actual) !== ciDigest(externalArm(expected.publicationLinkId))) throw new Error('历史作品来源不一致');
+        } else throw new Error('实验对象类型已变化，请重新预览');
+    }
     function writeExperiment(value: ContentExperiment): ContentExperiment {
         const next = ContentExperimentSchema.parse({ ...value, revision: value.revision + 1, updatedAt: Date.now() });
         const result = db.prepare('UPDATE ci_experiments SET revision = ?, status = ?, document_json = ? WHERE space_id = ? AND id = ? AND revision = ?')
@@ -82,10 +94,11 @@ export function createContentExperimentsRepository(db: CiDatabase, currentSpace:
     function create(input: unknown, baselineInput: unknown, variantInput: unknown): ContentExperiment {
         const request = CreateExperimentSchema.parse(input);
         const result = metrics.request('experiment.create', request.requestId, request, () => {
-            const baseline = ExperimentWorkSchema.parse(baselineInput); const variant = ExperimentWorkSchema.parse(variantInput);
-            assertWork(request.baseline, baseline); assertWork(request.variant, variant);
+            const baseline = ExperimentArmSchema.parse(baselineInput); const variant = ExperimentArmSchema.parse(variantInput);
+            assertArm(request.baseline, baseline); assertArm(request.variant, variant);
             if (baseline.platform !== variant.platform) throw new Error('实验须保持工程平台一致');
-            if (baseline.capability !== variant.capability && request.variable.kind !== 'format') throw new Error('内容形式不同，须明确以内容形式作为待研究变量');
+            if (request.variable.kind !== 'format' && ('workspaceId' in baseline && 'workspaceId' in variant ? baseline.capability !== variant.capability
+                : 'contentKind' in baseline && 'contentKind' in variant && baseline.contentKind !== 'unknown' && variant.contentKind !== 'unknown' && baseline.contentKind !== variant.contentKind)) throw new Error('内容形式不同，须明确以内容形式作为待研究变量');
             const now = Date.now(); const value = ContentExperimentSchema.parse({ ...request, version: 1, id: randomUUID(), spaceId: space(), revision: 1, status: 'draft', baseline, variant, createdAt: now, updatedAt: now });
             db.prepare('INSERT INTO ci_experiments VALUES (?, ?, ?, ?, ?)').run(value.spaceId, value.id, value.revision, value.status, JSON.stringify(value)); return value;
         });
@@ -102,8 +115,9 @@ export function createContentExperimentsRepository(db: CiDatabase, currentSpace:
                 const ref = request.observations[role]; const observation = metrics.observation(ref.id);
                 if (observation.revision !== ref.revision) throw new Error('观测已修订，请刷新后绑定');
                 const publication = metrics.publication(observation.input.publicationLinkId);
-                if (publication.workspaceId !== value[role].workspaceId || publication.platform !== value[role].platform) throw new Error('观测不属于对应实验工程');
-                if (publication.workspaceRevision !== value[role].revision || publication.nativeRevision && value[role].nativeRevision && publication.nativeRevision !== value[role].nativeRevision) throw new Error('发布关联与实验冻结工程版本不一致，请核对历史版本');
+                const arm = value[role];
+                if (publication.platform !== arm.platform || ('workspaceId' in arm ? publication.workspaceId !== arm.workspaceId : publication.id !== arm.publicationLinkId)) throw new Error('观测不属于对应实验工程或历史作品');
+                if ('workspaceId' in arm && (publication.workspaceRevision !== arm.revision || publication.nativeRevision && arm.nativeRevision && publication.nativeRevision !== arm.nativeRevision)) throw new Error('发布关联与实验冻结工程版本不一致，请核对历史版本');
                 if (ciDigest(observation.input.metric) !== ciDigest(value.metric)) throw new Error('观测口径与实验指标不一致');
             }
             return writeExperiment({ ...value, status: 'collecting', observations: request.observations });
@@ -132,9 +146,10 @@ export function createContentExperimentsRepository(db: CiDatabase, currentSpace:
             comparison = compareMetricObservations(a, b, metrics.publication(a.input.publicationLinkId), metrics.publication(b.input.publicationLinkId));
             const versionUnknown = (['baseline', 'variant'] as const).some((role, index) => {
                 const publication = metrics.publication((index ? b : a).input.publicationLinkId);
-                return !publication.nativeRevision || !value[role].nativeRevision;
+                const arm = value[role]; return !('workspaceId' in arm) || !publication.nativeRevision || !arm.nativeRevision;
             });
-            const reasons = [...comparison.reasons, ...(versionUnknown ? ['发布内容与冻结工程的原生版本缺少对应证明'] : []), ...(value.baseline.capability !== value.variant.capability ? ['内容形式不同，平台分发和观看口径可能不同，当前不足以判断效果'] : [])];
+            const differentForms = 'workspaceId' in value.baseline && 'workspaceId' in value.variant && value.baseline.capability !== value.variant.capability;
+            const reasons = [...comparison.reasons, ...(versionUnknown ? ['发布内容与冻结工程的原生版本缺少对应证明'] : []), ...(differentForms ? ['内容形式不同，平台分发和观看口径可能不同，当前不足以判断效果'] : [])];
             if (reasons.length) comparison = { ...comparison, reasons, comparable: false, difference: null, relativeChange: null, interpretation: 'insufficient' };
             observationRevisionsChanged = metrics.observation(a.id).revision !== a.revision || metrics.observation(b.id).revision !== b.revision;
         }
@@ -149,13 +164,14 @@ export function createContentExperimentsRepository(db: CiDatabase, currentSpace:
             const value = experiment(request.experimentId);
             if (value.revision !== request.expectedRevision || value.status === 'archived') throw new Error('实验已变化或归档，请重新核对');
             const source = ExperimentWorkSchema.parse(sourceInput); assertWork(request.source, source);
-            if (source.workspaceId !== value[request.sourceRole].workspaceId || source.platform !== value[request.sourceRole].platform || source.capability !== value[request.sourceRole].capability) throw new Error('任务来源与实验工程不一致');
+            const arm = value[request.sourceRole]; const sourceDiffersFromArm = !('workspaceId' in arm) || source.workspaceId !== arm.workspaceId || source.capability !== arm.capability;
+            if (source.platform !== arm.platform || sourceDiffersFromArm && !request.differentSourceAcknowledged) throw new Error('任务来源与实验工程不一致，另选起点须明确确认');
             z.string().regex(/^creation_[a-f0-9]{40}$/).parse(targetWorkspaceId);
             const identity = taskIdentity(request.requestId); const now = Date.now();
             const { expectedRevision: _expectedRevision, ...fields } = request;
             const next = ExperimentTaskSchema.parse({ ...fields, id: identity.id, creationRequestId: identity.creationRequestId, version: 1, spaceId: space(), revision: 1,
                 experimentRevision: value.revision, source, targetWorkspaceId, state: 'ready',
-                basis: { hypothesis: value.hypothesis, metric: value.metric, observations: value.observations, limitations: value.limitations }, createdAt: now, updatedAt: now });
+                basis: { hypothesis: value.hypothesis, metric: value.metric, observations: value.observations, limitations: value.limitations, sourceDiffersFromArm }, createdAt: now, updatedAt: now });
             db.prepare('INSERT INTO ci_experiment_tasks VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(next.spaceId, next.id, next.experimentId, next.revision, next.state, next.source.workspaceId, next.targetWorkspaceId, null, JSON.stringify(next)); return next;
         });
         return task(result.id);
@@ -192,6 +208,6 @@ export function createContentExperimentsRepository(db: CiDatabase, currentSpace:
             return writeTask({ ...value, state: 'cancelled' });
         });
     }
-    return { space, previousExperiment, previousTask, experiment, task, create, list, bind, transition, detail, tasks, taskIdentity, createTask, claimTask, markReview, finishTask, cancelTask };
+    return { space, externalArm, previousExperiment, previousTask, experiment, task, create, list, bind, transition, detail, tasks, taskIdentity, createTask, claimTask, markReview, finishTask, cancelTask };
 }
 export type ContentExperimentsRepository = ReturnType<typeof createContentExperimentsRepository>;

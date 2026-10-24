@@ -28,7 +28,7 @@ export function createContentExperimentsService(repository: ContentExperimentsRe
     async function create(input: unknown) {
         const request = CreateExperimentSchema.parse(input); const spaceId = repository.space();
         const previous = repository.previousExperiment(request); if (previous) return previous;
-        const [baseline, variant] = await Promise.all([inspect(request.baseline.workspaceId), inspect(request.variant.workspaceId)]);
+        const [baseline, variant] = await Promise.all([request.baseline, request.variant].map(arm => 'workspaceId' in arm ? inspect(arm.workspaceId) : repository.externalArm(arm.publicationLinkId)));
         sameSpace(spaceId); return repository.create(request, baseline, variant);
     }
     async function createTask(input: unknown) {
@@ -36,7 +36,8 @@ export function createContentExperimentsService(repository: ContentExperimentsRe
         const previous = repository.previousTask(request); if (previous) return previous;
         // Read the scoped experiment before any filesystem access; renderer IDs never supply authority.
         const experiment = repository.experiment(request.experimentId);
-        if (request.source.workspaceId !== experiment[request.sourceRole].workspaceId) throw new Error('任务来源与实验工程不一致');
+        const arm = experiment[request.sourceRole];
+        if ((!('workspaceId' in arm) || request.source.workspaceId !== arm.workspaceId) && !request.differentSourceAcknowledged) throw new Error('任务来源与实验工程不一致，另选起点须明确确认');
         const source = await inspect(request.source.workspaceId); sameSpace(spaceId);
         const identity = repository.taskIdentity(request.requestId);
         return repository.createTask(request, source, adapter.idForRequest(spaceId, identity.creationRequestId));
