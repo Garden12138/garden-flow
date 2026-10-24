@@ -48,7 +48,7 @@ export function readMetricCsv(input: unknown) {
             const alignment = get('alignment');
             const value = MetricInputSchema.parse({ publicationLinkId: get('publicationLinkId'),
                 metric: { key: get('metric'), definition: get('definition'), unit: get('unit') }, value: csvNumber(get('value')),
-                window: { startAt: csvTime(get('start')), endAt: csvTime(get('end')), timeZone: get('timeZone'), alignment,
+                window: { ...(get('timeZone') === 'unknown' ? { startDate: get('start'), endDate: get('end') } : { startAt: csvTime(get('start')), endAt: csvTime(get('end')) }), timeZone: get('timeZone'), alignment,
                     ...(get('ageStartHours') ? { ageStartMs: csvNumber(get('ageStartHours')) * 3600000 } : {}),
                     ...(get('ageEndHours') ? { ageEndMs: csvNumber(get('ageEndHours')) * 3600000 } : {}) },
                 confounders: get('confounders') ? get('confounders').split('|') : [], sourceNote: get('sourceNote'),
@@ -71,10 +71,13 @@ export function compareMetricObservations(baseline: MetricObservation, variant: 
     }
     if (baseLink.id === variantLink.id || baseLink.externalWorkId === variantLink.externalWorkId) reasons.push('须为两个不同作品');
     if (ciDigest(a.metric) !== ciDigest(b.metric)) reasons.push('指标定义或单位不同');
+    if (a.window.timeZone === 'unknown' || b.window.timeZone === 'unknown') reasons.push('时间区未知，无法确认绝对观察窗口');
+    if (a.window.timeZone !== 'unknown' && (a.window.startAt === undefined || a.window.endAt === undefined)
+        || b.window.timeZone !== 'unknown' && (b.window.startAt === undefined || b.window.endAt === undefined)) reasons.push('观察窗口缺少绝对起止时间');
     if (a.observedAt === undefined || b.observedAt === undefined) reasons.push('缺少观测时间，无法确认窗口已结束');
-    else if (a.observedAt < a.window.endAt || b.observedAt < b.window.endAt) reasons.push('至少一组观测的窗口尚未结束');
+    else if (a.window.endAt !== undefined && a.observedAt < a.window.endAt || b.window.endAt !== undefined && b.observedAt < b.window.endAt) reasons.push('至少一组观测的窗口尚未结束');
     if (a.window.timeZone !== b.window.timeZone || a.window.alignment !== b.window.alignment) reasons.push('窗口时间区或对齐方式不同');
-    if (a.window.alignment === 'calendar' ? a.window.startAt !== b.window.startAt || a.window.endAt !== b.window.endAt
+    if (a.window.alignment === 'calendar' ? a.window.startAt !== b.window.startAt || a.window.endAt !== b.window.endAt || a.window.startDate !== b.window.startDate || a.window.endDate !== b.window.endDate
         : a.window.ageStartMs !== b.window.ageStartMs || a.window.ageEndMs !== b.window.ageEndMs) reasons.push('观察窗口不可比');
     const comparable = !reasons.length;
     const relative = a.value === 0 ? null : (b.value - a.value) / a.value;

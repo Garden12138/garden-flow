@@ -25,6 +25,7 @@ publicationLinkId,metric,definition,unit,value,start,end,timeZone,alignment,ageS
 - `metric`：稳定的指标键，如 `likes`。`definition`：完整口径，需注明累计值或窗口新增值，以及数据来自哪里。
 - `unit`：`count` 为非负整数，`seconds` 为非负秒数，`ratio` 为 0–1 的比例。
 - `start`、`end`：带偏移的 ISO 时间，如 `2026-10-01T00:00:00+08:00`。`timeZone` 使用 `Asia/Shanghai`、`UTC` 等时间区名称。
+- 来源只注明日历日期、没有时间区时，`timeZone` 填 `unknown`，`alignment` 填 `calendar`，`start`、`end` 使用 `YYYY-MM-DD`，结束日期不包含在窗口内。程序原样保存日期，不填造绝对时间，也不计算效果差异。不要凭平台语言推断时间区。
 - `alignment`：`calendar` 比较同一日历窗口；`post-age` 比较发布后相同的时龄窗口。后者必须填写 `ageStartHours`、`ageEndHours`，且时长与起止时间一致；前者留空。
 - `confounders`：推广、付费流量、发布时间等干扰因素，用 `|` 分隔，可空。未提供不代表不存在。
 - `sourceNote`：真实观测来源和限制，必填。不要把没有窗口依据的公开累计数描述为窗口新增数。

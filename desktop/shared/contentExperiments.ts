@@ -9,20 +9,36 @@ const Text = z.string().trim().min(1).max(2000);
 export const MetricTimeZoneSchema = z.string().max(80).refine(value => {
     try { new Intl.DateTimeFormat('en', { timeZone: value }); return true; } catch { return false; }
 }, '时间区无效');
+const CalendarDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
+    const parsed = Date.parse(value + 'T00:00:00Z'); return Number.isFinite(parsed) && new Date(parsed).toISOString().slice(0, 10) === value;
+}, '日历日期无效');
 export const MetricWindowSchema = z.object({
-    startAt: Timestamp, endAt: Timestamp, timeZone: MetricTimeZoneSchema,
+    startAt: Timestamp.optional(), endAt: Timestamp.optional(), startDate: CalendarDate.optional(), endDate: CalendarDate.optional(),
+    timeZone: z.union([z.literal('unknown'), MetricTimeZoneSchema]),
     alignment: z.enum(['calendar', 'post-age']),
     ageStartMs: z.number().int().nonnegative().max(8640000000000000).optional(),
     ageEndMs: z.number().int().positive().max(8640000000000000).optional(),
 }).strict().superRefine((value, context) => {
-    if (value.endAt <= value.startAt) context.addIssue({ code: 'custom', message: '观察窗口结束时间须晚于开始时间' });
+    if (value.timeZone === 'unknown') {
+        if (!value.startDate || !value.endDate || value.endDate <= value.startDate || value.startAt !== undefined || value.endAt !== undefined
+            || value.alignment !== 'calendar' || value.ageStartMs !== undefined || value.ageEndMs !== undefined) {
+            context.addIssue({ code: 'custom', message: '未知时间区仅保留日历日期，结束日不含，不能声明绝对时间或发布后时龄' });
+        }
+        return;
+    }
+    if (value.startDate !== undefined || value.endDate !== undefined) context.addIssue({ code: 'custom', message: '已知时间区须使用明确的绝对起止时间' });
+    if (value.startAt === undefined || value.endAt === undefined || value.endAt <= value.startAt) context.addIssue({ code: 'custom', message: '观察窗口结束时间须晚于开始时间' });
     if (value.alignment === 'post-age') {
         if (value.ageStartMs === undefined || value.ageEndMs === undefined || value.ageEndMs <= value.ageStartMs
-            || value.ageEndMs - value.ageStartMs !== value.endAt - value.startAt) {
+            || value.endAt === undefined || value.startAt === undefined || value.ageEndMs - value.ageStartMs !== value.endAt - value.startAt) {
             context.addIssue({ code: 'custom', message: '发布后时龄须与观察窗口时长一致' });
         }
     } else if (value.ageStartMs !== undefined || value.ageEndMs !== undefined) context.addIssue({ code: 'custom', message: '日历窗口不能含发布后时龄' });
 });
+export function metricWindowLabel(window: z.infer<typeof MetricWindowSchema>): string {
+    return window.timeZone === 'unknown' ? `${window.startDate} → ${window.endDate}（结束日不含）· 时间区未知，不能比较`
+        : `${new Date(window.startAt!).toISOString()} → ${new Date(window.endAt!).toISOString()} · ${window.timeZone} · ${window.alignment}`;
+}
 export const MetricDefinitionSchema = z.object({ key: CiId, definition: Text, unit: z.enum(['count', 'seconds', 'ratio']) }).strict();
 export const MetricInputSchema = z.object({
     publicationLinkId: CiId, metric: MetricDefinitionSchema, window: MetricWindowSchema,

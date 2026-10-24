@@ -4,7 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { MetricCsvFields, MetricInputSchema, MetricWindowSchema, ManualPublicationLinkSchema, PublicationLinkSchema, ExternalPublicationLinkSchema, type MetricInput, type PublicationLink, type MetricObservation } from '../shared/contentExperiments.ts';
+import { MetricCsvFields, MetricInputSchema, MetricWindowSchema, metricWindowLabel, ManualPublicationLinkSchema, PublicationLinkSchema, ExternalPublicationLinkSchema, type MetricInput, type PublicationLink, type MetricObservation } from '../shared/contentExperiments.ts';
 import { ciDigest, initializeContentIntelligence } from '../electron/core/content-intelligence/repository.ts';
 import { initializeContentMetrics, createContentMetricsRepository, deleteContentMetricsSpace } from '../electron/core/content-intelligence/metricsRepository.ts';
 import { parseMetricCsv, readMetricCsv, compareMetricObservations, metricCsvTemplate } from '../electron/core/content-intelligence/metricsDomain.ts';
@@ -17,7 +17,7 @@ const start = Date.parse('2026-10-01T00:00:00Z');
 const input = (id = 'pub-one', value = 10): MetricInput => ({ publicationLinkId: id, metric: { key: 'likes', unit: 'count', definition: '观察窗口内新增点赞次数，平台后台导出' },
     value, window: { startAt: start, endAt: start + 86400000, timeZone: 'Asia/Shanghai', alignment: 'calendar' }, observedAt: start + 86400000, confounders: [], sourceNote: '合成测试观测，不是真实业绩' });
 const csv = (items: MetricInput[]) => metricCsvTemplate + items.map(value => [value.publicationLinkId, value.metric.key, value.metric.definition, value.metric.unit, value.value,
-    new Date(value.window.startAt).toISOString(), new Date(value.window.endAt).toISOString(), value.window.timeZone, value.window.alignment,
+    value.window.timeZone === 'unknown' ? value.window.startDate : new Date(value.window.startAt).toISOString(), value.window.timeZone === 'unknown' ? value.window.endDate : new Date(value.window.endAt).toISOString(), value.window.timeZone, value.window.alignment,
     value.window.ageStartMs === undefined ? '' : value.window.ageStartMs / 3600000, value.window.ageEndMs === undefined ? '' : value.window.ageEndMs / 3600000,
     value.confounders.join('|'), value.sourceNote, value.observedAt === undefined ? '' : new Date(value.observedAt).toISOString()].map(cell => '"' + String(cell).replaceAll('"', '""') + '"').join(',')).join('\r\n');
 const linkInput = (workspaceId = 'work-one', externalWorkId = '100') => ({ workspaceId, workspaceRevision: 'rev-one', platform: 'tiktok' as const,
@@ -198,6 +198,21 @@ test('external observation comparisons retain unknown or differing format limits
         const compared = compareMetricObservations(imported[0], imported[1], first, { ...second, externalContentKind });
         assert.equal(compared.interpretation, 'insufficient'); assert.equal(compared.relativeChange, null); assert.ok(compared.reasons.some(value => value.includes('形式')));
     }
+});
+test('unknown timezone imports preserve original calendar labels with no invented instants and never calculate an effect', t => {
+    const h = fixture(t); const window = { startDate: '2026-10-15', endDate: '2026-10-24', timeZone: 'unknown', alignment: 'calendar' as const };
+    assert.deepEqual(MetricWindowSchema.parse(window), window); assert.ok(metricWindowLabel(window).includes('时间区未知'));
+    for (const value of [{ ...window, startAt: start }, { ...window, endAt: start }, { ...window, timeZone: 'UTC' }, { ...window, startDate: '2026-02-31' }, { ...window, endDate: window.startDate }, { ...window, alignment: 'post-age' }, { ...window, ageStartMs: 0 }]) assert.equal(MetricWindowSchema.safeParse(value).success, false);
+    const links = [h.repo.recordPublication(linkInput()), h.repo.recordPublication(linkInput('work-two', '101'))];
+    const rows = links.map((link, index) => ({ ...input(link.id, index ? 44 : 50), window }));
+    const parsed = readMetricCsv({ csv: csv(rows), mapping }); assert.ok(parsed.rows.every(row => !row.error));
+    const imported = importRows(h.repo, rows).changed;
+    assert.equal(imported[0].input.window.startAt, undefined); assert.equal(imported[0].input.window.endAt, undefined);
+    assert.deepEqual(h.repo.observation(imported[0].id).input.window, window);
+    const comparison = compareMetricObservations(imported[0], imported[1], links[0], links[1]);
+    assert.equal(comparison.comparable, false); assert.equal(comparison.difference, null); assert.equal(comparison.relativeChange, null);
+    assert.ok(comparison.reasons.some(value => value.includes('时间区未知')));
+    assert.equal(importRows(h.repo, rows, 'date-label-duplicate').changed.length, 0);
 });
 test('manual links distinguish native versions with unchanged workspace revisions and preserve legacy identities on replay', async t => {
     const h = fixture(t); let nativeRevision = 'native-one';
