@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { ipcMain } from 'electron';
 import { z } from 'zod';
-import { getContentIntelligenceRepository, getConsumerResearchRepository, getContentMetricsRepository, getContentExperimentsRepository, getExperimentExplanationRepository, getSettings, getWorkspacePaths, runInWorkspaceSpace } from '../db';
+import { getContentIntelligenceRepository, getConsumerResearchRepository, getContentMetricsRepository, getContentExperimentsRepository, getExperimentExplanationRepository, getSourceMaintenanceRepository, getSettings, getWorkspacePaths, runInWorkspaceSpace } from '../db';
 import { CiId } from '../../shared/contentIntelligence';
 import { createBrandWorkspaceStore } from './brandWorkspaceStore';
 import { getAllKnowledgeItems } from './knowledgeLoader';
@@ -17,6 +17,8 @@ import { createContentExperimentsService } from './content-intelligence/experime
 import { createExperimentExplanationService } from './content-intelligence/explanationService';
 import { createExperimentExplanationModel } from './content-intelligence/explanationModel';
 import { createLocalContentCampaignsService } from './content-intelligence/campaignsRuntime';
+import { createSourceMaintenanceService } from './content-intelligence/maintenanceService';
+import { scanCreationWorkspaceReferences } from './creationWorkspaceMaintenance';
 
 export function registerContentIntelligenceIpc(): void {
     const sources = createCiSourceAdapter({
@@ -31,6 +33,10 @@ export function registerContentIntelligenceIpc(): void {
     const experiments = createContentExperimentsService(getContentExperimentsRepository(), { inspect: inspectCreationWorkspace, fork: forkCreationWorkspace, idForRequest: creationWorkspaceIdForRequest });
     const explanations = createExperimentExplanationService(getExperimentExplanationRepository(), createExperimentExplanationModel(() => (getSettings() || {}) as Record<string, unknown>, requestWanderCompletion));
     const campaigns = createLocalContentCampaignsService();
+    const maintenance = createSourceMaintenanceService(getSourceMaintenanceRepository(), sources, {
+        scan: () => scanCreationWorkspaceReferences(path.join(getWorkspacePaths().gardenflow, 'creation-workspaces'), getWorkspacePaths().activeSpaceId),
+        inspect: inspectCreationWorkspace,
+    });
     const id = (input: unknown) => z.object({ id: CiId }).strict().parse(input).id;
     const handle = (channel: string, operation: (input: unknown) => unknown) => ipcMain.handle(channel, async (_event, input) => {
         const spaceId = getWorkspacePaths().activeSpaceId;
@@ -103,4 +109,13 @@ export function registerContentIntelligenceIpc(): void {
     handle('ci:campaign-archive', campaigns.archive);
     handle('ci:campaign-work', campaigns.createWork);
     handle('ci:campaign-work-context', input => campaigns.forWork(id(input)));
+    handle('ci:maintenance-sources', maintenance.sources);
+    handle('ci:maintenance-check', maintenance.check);
+    handle('ci:maintenance-list', input => { z.object({}).strict().parse(input); return maintenance.list(); });
+    handle('ci:maintenance-detail', input => maintenance.get(id(input)));
+    handle('ci:maintenance-decide', maintenance.decide);
+    handle('ci:maintenance-history', input => {
+        const request = z.object({ reportId: CiId, impactId: CiId }).strict().parse(input);
+        return maintenance.history(request.reportId, request.impactId);
+    });
 }

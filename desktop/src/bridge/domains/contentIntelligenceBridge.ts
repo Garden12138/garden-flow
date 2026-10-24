@@ -6,6 +6,7 @@ import type { ManualPublicationLinkSchema, ExternalPublicationLinkSchema, Metric
 import type { CreateExperimentSchema, BindExperimentObservationsSchema, TransitionExperimentSchema, CreateExperimentTaskSchema, StartExperimentTaskSchema, CancelExperimentTaskSchema, ReviewExperimentTaskSchema, ExperimentWork, ContentExperiment, ContentExperimentDetail, ExperimentTask } from '../../../shared/contentExperimentPlans';
 import type { PreviewExperimentExplanationSchema, StartExperimentExplanationSchema, CancelExperimentExplanationSchema, ExplanationRun } from '../../../shared/experimentExplanation';
 import type { CreateCampaignSchema, AddCampaignItemSchema, ProposeCampaignItemsSchema, UpdateCampaignItemSchema, ReorderCampaignSchema, ConfirmCampaignSchema, ArchiveCampaignSchema, CreateCampaignWorkSchema, ContentCampaign, CampaignDetail, CampaignPlanningContext } from '../../../shared/contentCampaigns';
+import type { MaintenanceSourcesQuerySchema, CheckSourceMaintenanceSchema, RecordMaintenanceDecisionSchema, MaintenanceSourceOption, MaintenanceReportSummary, MaintenanceCheckResult, MaintenanceDetail, MaintenanceDecision } from '../../../shared/sourceMaintenance';
 import type {
     AddEvidenceSchema, CiListSchema, CiResult, ContentEvidence, CreateOpportunitySchema, CreateOpportunityWorkSchema,
     EvidenceSourceView, Opportunity, OpportunityDetail, SourceIdentity, SourceSnapshot, TransitionOpportunitySchema, WorkLink,
@@ -68,5 +69,11 @@ export function createContentIntelligenceBridge(core: BridgeCore) {
         archiveCampaign: (input: z.input<typeof ArchiveCampaignSchema>) => invoke<ContentCampaign>('ci:campaign-archive', input),
         createCampaignWork: (input: z.input<typeof CreateCampaignWorkSchema>) => invoke<ContentCampaign>('ci:campaign-work', input),
         campaignsForWork: (id: string) => invoke<ContentCampaign[]>('ci:campaign-work-context', { id }),
+        maintenanceSources: (input: z.input<typeof MaintenanceSourcesQuerySchema> = {}) => invoke<{ items: MaintenanceSourceOption[]; nextRowId?: number }>('ci:maintenance-sources', input),
+        checkMaintenance: (input: z.input<typeof CheckSourceMaintenanceSchema>) => invoke<MaintenanceCheckResult>('ci:maintenance-check', input),
+        maintenanceReports: () => invoke<MaintenanceReportSummary[]>('ci:maintenance-list', {}),
+        maintenanceDetail: (id: string) => invoke<MaintenanceDetail>('ci:maintenance-detail', { id }),
+        decideMaintenance: (input: z.input<typeof RecordMaintenanceDecisionSchema>) => invoke<MaintenanceDecision>('ci:maintenance-decide', input),
+        maintenanceHistory: (reportId: string, impactId: string) => invoke<MaintenanceDecision[]>('ci:maintenance-history', { reportId, impactId }),
     } };
 }

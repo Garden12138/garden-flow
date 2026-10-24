@@ -4,6 +4,7 @@ import { presetConfig } from '../../shared/noteCards';
 import { readCreationSource } from './creationSources';
 import { createProductTargetVariant } from './productWorkVersionService';
 import fs from 'node:fs/promises';
+import { constants } from 'node:fs';
 import path from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
@@ -39,8 +40,13 @@ async function persist(value: CreationWorkspace): Promise<CreationWorkspace> {
     events.emit('changed', value); return value;
 }
 export async function readCreationWorkspace(id: string): Promise<CreationWorkspace> {
-    const value = JSON.parse(await fs.readFile(file(id), 'utf8')) as CreationWorkspace;
-    if (value.version !== 1 || value.id !== id || value.spaceId !== getWorkspacePaths().activeSpaceId) throw new Error('作品不属于当前空间');
+    const handle = await fs.open(file(id), constants.O_RDONLY | constants.O_NOFOLLOW);
+    let value: CreationWorkspace;
+    try {
+        if (!(await handle.stat()).isFile()) throw new Error('作品索引不是普通文件');
+        value = JSON.parse(await handle.readFile('utf8')) as CreationWorkspace;
+    } finally { await handle.close(); }
+    if (value.version !== 1 || value.id !== id || value.spaceId !== getWorkspacePaths().activeSpaceId) throw Object.assign(new Error('作品不属于当前空间'), { code: 'WORKSPACE_SCOPE_MISMATCH' });
     CreationStartSchema.parse({ platform: value.platform, capability: value.capability }); // Validate the stored platform/capability without trusting file contents.
     return value;
 }
