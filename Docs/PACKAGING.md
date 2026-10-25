@@ -22,6 +22,12 @@ pnpm build
 
 产物位于 `desktop/release/`。根命令调用桌面端的当前平台无签名构建，不会自动创建 GitHub Release。
 
+macOS 本地构建在 `identity: null` 时使用不需要证书的 ad-hoc 签名，重新封装应用资源，并执行严格的递归签名校验；失败会中止打包。它不提供 Developer ID 身份或 Apple 公证。显式配置签名证书时继续使用原有签名流程，Windows/Linux 不执行此步骤。安装后可核对：
+
+```bash
+codesign --verify --deep --strict /path/to/GardenFlow.app
+```
+
 用于复现正式发行产物的单平台命令：
 
 ```bash

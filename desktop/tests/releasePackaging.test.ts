@@ -2,8 +2,37 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
+import vm from 'node:vm';
+import { createRequire } from 'node:module';
 
 const repositoryRoot = path.resolve(import.meta.dirname, '../..');
+
+async function localSignHarness(failAt = 0) {
+    const calls: Array<{ command: string; args: string[] }> = [];
+    const source = await fs.readFile(path.join(repositoryRoot, 'desktop/scripts/after-pack-local-sign.cjs'), 'utf8');
+    const exports: Record<string, any> = {}; const realRequire = createRequire(import.meta.url);
+    vm.runInNewContext(source, { exports, process: { platform: 'darwin', stdout: { write() {} } }, require: (id: string) => id === 'node:child_process' ? {
+        execFile: (command: string, args: string[], callback: (error?: Error) => void) => { calls.push({ command, args: [...args] }); callback(calls.length === failAt ? new Error('synthetic signing failure') : undefined); },
+    } : realRequire(id) });
+    const context = (platform: string, identity: string | null) => ({ electronPlatformName: platform, appOutDir: '/tmp/local package', packager: { platformSpecificBuildOptions: { identity }, appInfo: { productFilename: 'GardenFlow' } } });
+    return { sign: exports.default, calls, context };
+}
+
+test('local macOS signing never selects a certificate or runs for another platform, and preserves literal paths', async () => {
+    const packageConfig = await readDesktopPackage(); assert.equal(packageConfig.build.afterPack, 'scripts/after-pack-local-sign.cjs');
+    const h = await localSignHarness();
+    await h.sign(h.context('win32', null)); await h.sign(h.context('linux', null)); await h.sign(h.context('darwin', 'Developer ID Application: explicit'));
+    assert.equal(h.calls.length, 0);
+    await h.sign(h.context('darwin', null)); assert.equal(h.calls.length, 2);
+    assert.equal(h.calls[0].command, 'codesign'); assert.equal(h.calls[0].args[h.calls[0].args.indexOf('--sign') + 1], '-');
+    assert.equal(h.calls[0].args.at(-1), '/tmp/local package/GardenFlow.app'); assert.ok(h.calls[1].args.includes('--verify')); assert.ok(h.calls[1].args.includes('--strict'));
+});
+
+test('signing or verification errors fail packaging instead of emitting a successful local installer', async () => {
+    for (const failAt of [1, 2]) { const h = await localSignHarness(failAt); await assert.rejects(h.sign(h.context('darwin', null)), /signing failure/); assert.equal(h.calls.length, failAt); }
+    const h = await localSignHarness(); const context = h.context('darwin', null); context.packager.appInfo.productFilename = '../existing-app';
+    await assert.rejects(h.sign(context), /application name/); assert.equal(h.calls.length, 0);
+});
 
 async function readDesktopPackage(): Promise<Record<string, any>> {
     return JSON.parse(await fs.readFile(path.join(repositoryRoot, 'desktop/package.json'), 'utf8'));

@@ -49,6 +49,7 @@
     "sync:brand": "node ../scripts/sync-brand.cjs"
   },
   "build": {
+    "afterPack": "scripts/after-pack-local-sign.cjs",
     "productName": "GardenFlow",
     "artifactName": "GardenFlow-${version}-${arch}.${ext}",
     "appId": "com.gardenflow.app",
