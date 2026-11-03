@@ -1,9 +1,9 @@
 import { ReactNode, useCallback, useEffect, useState } from 'react';
-import { Settings as SettingsIcon, Folder, Dices, Pencil, ChevronDown, Sun, Moon, AlertCircle, Bell, Clock3, Edit, BookOpenText, Trash2, Box, Sparkles, Plus } from 'lucide-react';
-import { clsx } from 'clsx';
+import { Home, Search, Plus, BookOpenText, Palette, Send, BarChart3, Library, Clock3, Settings, ChevronDown, Pencil, Trash2, X, ArrowLeft, Menu, Bell, Sun, Moon } from 'lucide-react';
 import type { ImmersiveMode, ViewType } from '../features/app-shell/types';
+import { APP_SECTIONS, type AppRoute, type AppSection } from '../features/app-shell/routes';
 import { NotificationCenterDrawer } from './NotificationCenterDrawer';
-import { useI18n, type I18nKey } from '../i18n';
+import { useI18n } from '../i18n';
 import { selectNotificationUnreadCount, useNotificationStore } from '../notifications/store';
 import { AppGlobalSearchOverlay } from '../features/app-shell/AppGlobalSearchOverlay';
 import { AppSpaceRenameDialog } from '../features/app-shell/AppSpaceRenameDialog';
@@ -12,572 +12,84 @@ import { AppUpdateNoticeModal } from '../features/app-shell/AppUpdateNoticeModal
 import { dispatchAppIntent } from '../features/app-shell/appIntent';
 import { useAppUpdateNotice } from '../features/app-shell/useAppUpdateNotice';
 import { useGlobalKnowledgeSearch } from '../features/app-shell/useGlobalKnowledgeSearch';
-import { useLayoutSidebar } from '../features/app-shell/useLayoutSidebar';
 import { useLayoutSpaces } from '../features/app-shell/useLayoutSpaces';
 import { useLayoutTheme } from '../features/app-shell/useLayoutTheme';
-import { flowStageForView, WORKBENCH_NAVIGATION, type WorkbenchNavigationItem } from '../features/workbench/navigation';
 
 interface LayoutProps {
-  children: ReactNode;
-  creationActive?: boolean;
-  currentView: ViewType;
-  onNavigate: (view: ViewType) => void;
-  immersiveMode?: ImmersiveMode;
-  hideGlobalSidebar?: boolean;
-  globalNotice?: string | null;
-  globalSidebarContent?: ReactNode;
-  activeModalView?: ViewType;
-  renderTitleBarContent?: (context: { currentView: ViewType }) => ReactNode;
-  renderTitleBarActions?: (context: { currentView: ViewType }) => ReactNode;
+    children: ReactNode;
+    route: AppRoute;
+    creationActive?: boolean;
+    currentView: ViewType;
+    onNavigate: (view: ViewType) => void;
+    immersiveMode?: ImmersiveMode;
+    hideGlobalSidebar?: boolean;
+    globalNotice?: string | null;
+    globalSidebarContent?: ReactNode;
+    activeModalView?: ViewType;
+    renderTitleBarContent?: (context: { currentView: ViewType }) => ReactNode;
+    renderTitleBarActions?: (context: { currentView: ViewType }) => ReactNode;
 }
-
-type SidebarNavItem = WorkbenchNavigationItem & {
-  labelKey: I18nKey;
-  icon: typeof Sparkles;
-};
-
-const NAV_ICONS: Record<WorkbenchNavigationItem['key'], typeof Sparkles> = {
-  workbench: Sparkles,
-  collect: BookOpenText,
-  ideate: Dices,
-  compose: Edit,
-  produce: Pencil,
-  assets: Folder,
-  media: Box,
-  schedule: Clock3,
-};
-
-const NAV_ITEMS: SidebarNavItem[] = WORKBENCH_NAVIGATION.map((item) => ({
-  ...item,
-  labelKey: item.labelKey,
-  icon: NAV_ICONS[item.key],
-}));
-
-const STAGE_INDEX: Partial<Record<ViewType, string>> = {
-  home: 'TODAY',
-  knowledge: '01 · COLLECT',
-  wander: '02 · IDEATE',
-  gardenflow: '03 · COMPOSE',
-  'generation-studio': '04 · PRODUCE',
-  subjects: 'LIBRARY',
-  'media-library': 'LIBRARY',
-  automation: '05 · SCHEDULE',
-  settings: 'SYSTEM',
-  approval: 'REVIEW',
-};
-
-const STAGE_SUMMARY_KEYS: Partial<Record<ViewType, I18nKey>> = {
-  home: 'workbench.stage.home.summary',
-  knowledge: 'workbench.stage.collect.summary',
-  wander: 'workbench.stage.ideate.summary',
-  gardenflow: 'workbench.stage.compose.summary',
-  'generation-studio': 'workbench.stage.produce.summary',
-  subjects: 'workbench.stage.assets.summary',
-  'media-library': 'workbench.stage.media.summary',
-  automation: 'workbench.stage.schedule.summary',
-};
-export function Layout({ children, creationActive = false, currentView, onNavigate, immersiveMode = false, hideGlobalSidebar = false, globalNotice = null, globalSidebarContent, activeModalView, renderTitleBarContent, renderTitleBarActions }: LayoutProps) {
-  const { t } = useI18n();
-  const [createMenuOpen, setCreateMenuOpen] = useState(false);
-  const notificationDrawerOpen = useNotificationStore((state) => state.drawerOpen);
-  const toggleNotificationDrawer = useNotificationStore((state) => state.toggleDrawer);
-  const unreadNotificationCount = useNotificationStore(selectNotificationUnreadCount);
-  const isFixedViewportView = false;
-  const titleBarPlatform = getAppTitleBarPlatform();
-  const usesAppTitleBar = titleBarPlatform !== null;
-  const hasGlobalSidebar = !immersiveMode && !hideGlobalSidebar;
-  const { themeMode, setManualThemeMode } = useLayoutTheme(immersiveMode);
-  const titleBarContent = renderTitleBarContent?.({ currentView }) ?? null;
-  const titleBarActions = renderTitleBarActions?.({ currentView }) ?? null;
-  const {
-    isSidebarCollapsed,
-    sidebarWidth,
-    isSidebarAnimating,
-    sidebarVisualCollapsed,
-    toggleSidebarCollapsed,
-    startSidebarResize,
-  } = useLayoutSidebar(undefined, creationActive);
-  const {
-    spaces,
-    activeSpaceId,
-    activeSpaceName,
-    isSwitchingSpace,
-    isSpaceMenuOpen,
-    setIsSpaceMenuOpen,
-    hoveredSpaceId,
-    setHoveredSpaceId,
-    isSpaceDialogOpen,
-    spaceDialogMode,
-    spaceDialogName,
-    setSpaceDialogName,
-    isSpaceDialogSubmitting,
-    deletingSpaceId,
-    spaceMenuRef,
-    handleSwitchSpace,
-    openCreateSpaceDialog,
-    openRenameSpaceDialog,
-    handleDeleteSpace,
-    closeSpaceDialog,
-    submitSpaceDialog,
-  } = useLayoutSpaces(sidebarVisualCollapsed);
-  const {
-    updateNotice,
-    updatePublishedDateLabel,
-    installState,
-    isInstallingUpdate,
-    installUpdate,
-    closeUpdateNotice,
-  } = useAppUpdateNotice(t('layout.openDownloadFailed'));
-  const {
-    globalSearchInputRef,
-    globalSearchQuery,
-    setGlobalSearchQuery,
-    globalSearchResults,
-    isGlobalSearchLoading,
-    isGlobalSearchVisible,
-    isGlobalSearchClosing,
-    openGlobalSearch,
-    closeGlobalSearch,
-    submitGlobalSearch,
-    navigateToGlobalSearch,
-  } = useGlobalKnowledgeSearch(onNavigate);
-  const visibleView = activeModalView || currentView;
-  const activeNavigationItem = NAV_ITEMS.find((item) => item.view === visibleView) || null;
-  const activeNavigationIndex = activeNavigationItem ? NAV_ITEMS.indexOf(activeNavigationItem) : -1;
-  const nextNavigationItem = activeNavigationIndex >= 0 && activeNavigationIndex < NAV_ITEMS.length - 1
-    ? NAV_ITEMS[activeNavigationIndex + 1]
-    : null;
-  const activeStageTitle = activeNavigationItem
-    ? t(activeNavigationItem.labelKey)
-    : visibleView === 'settings'
-      ? t('nav.settings')
-      : visibleView === 'approval'
-        ? '审批'
-        : 'GardenFlow';
-  const activeStageIndex = STAGE_INDEX[visibleView] || 'WORKSPACE';
-  const activeStageSummaryKey = STAGE_SUMMARY_KEYS[visibleView];
-  const activeStageSummary = activeStageSummaryKey ? t(activeStageSummaryKey) : '';
-  const visibleGlobalSidebarContent = sidebarVisualCollapsed ? null : globalSidebarContent;
-
-  useEffect(() => {
-    const handleWorkbenchShortcut = (event: KeyboardEvent) => {
-      const key = event.key.toLowerCase();
-      const hasCommandModifier = (event.metaKey || event.ctrlKey) && !event.altKey;
-      if (hasCommandModifier && key === 'k') {
-        event.preventDefault();
-        openGlobalSearch();
-        return;
-      }
-      if (hasCommandModifier && key === 'n') {
-        event.preventDefault();
-        setCreateMenuOpen((open) => !open);
-        return;
-      }
-      if (event.key === 'Escape') {
-        setCreateMenuOpen(false);
-      }
-    };
-    window.addEventListener('keydown', handleWorkbenchShortcut, true);
-    return () => window.removeEventListener('keydown', handleWorkbenchShortcut, true);
-  }, [openGlobalSearch]);
-
-  const handleCreateAction = useCallback((action: 'chat' | 'material' | 'manuscript' | 'media' | 'automation') => {
-    setCreateMenuOpen(false);
-    if (action === 'chat') {
-      dispatchAppIntent({ type: 'gardenflow.open', action: 'new' });
-      return;
-    }
-    if (action === 'material') {
-      dispatchAppIntent({ type: 'flow.open', stage: 'collect' });
-      return;
-    }
-    if (action === 'manuscript') {
-      dispatchAppIntent({
-        type: 'flow.open',
-        stage: 'compose',
-        handoff: {
-          kind: 'chat-draft',
-          message: {
-            content: '从一份新的创作简报开始。',
-            displayContent: '从一份新的创作简报开始。',
-            sessionRouting: 'new',
-            deliveryMode: 'draft',
-          },
-        },
-      });
-      return;
-    }
-    if (action === 'media') {
-      dispatchAppIntent({
-        type: 'generation.open',
-        intent: { mode: 'image', source: 'standalone' },
-      });
-      return;
-    }
-    dispatchAppIntent({ type: 'flow.open', stage: 'schedule' });
-  }, []);
-
-  const handleSidebarNavigate = useCallback((item: SidebarNavItem) => {
-    onNavigate(item.view);
-  }, [onNavigate]);
-
-  const renderSidebarNavItem = (item: SidebarNavItem) => {
-    const { key, view, stage, labelKey, icon: Icon } = item;
-    const label = t(labelKey);
-    const isActive = currentView === view || activeModalView === view;
-    return (
-      <button
-        key={key}
-        type="button"
-        data-guide-id={`nav-${key}`}
-        data-flow-stage={stage}
-        data-active={isActive ? 'true' : 'false'}
-        onClick={() => handleSidebarNavigate(item)}
-        title={label}
-        aria-label={label}
-        className={clsx(
-          'app-sidebar-nav-item relative w-full rounded-xl transition-all font-normal inline-flex items-center',
-          'app-sidebar-nav-item--collapsed justify-center',
-          isActive ? 'app-sidebar-nav-item--active shadow-none' : 'app-sidebar-nav-item--plain'
-        )}
-      >
-        <Icon className="app-sidebar-nav-icon shrink-0" strokeWidth={1.65} />
-        <span className="app-sidebar-nav-label app-sidebar-nav-label--collapsed">
-          {label}
-        </span>
-      </button>
-    );
-  };
-
-  return (
-    <div
-      data-current-view={visibleView}
-      data-flow-stage={flowStageForView(visibleView) || undefined}
-      className={clsx(
-        'app-layout-shell relative flex h-screen w-full overflow-hidden text-text-primary',
-        hasGlobalSidebar && 'app-layout-shell--layered',
-        immersiveMode === 'dark' ? 'bg-[#0f0f0f]' : 'bg-background'
-      )}
-    >
-      <AppTitleBar
-        immersiveMode={immersiveMode}
-        enabled={usesAppTitleBar}
-        platform={titleBarPlatform}
-        content={titleBarContent}
-        stageIndex={activeStageIndex}
-        stageTitle={activeStageTitle}
-        activeSpaceName={activeSpaceName}
-        isSidebarCollapsed={isSidebarCollapsed}
-        toggleSidebarCollapsed={toggleSidebarCollapsed}
-        openGlobalSearch={openGlobalSearch}
-        openRunningTasks={() => onNavigate('generation-studio')}
-        createMenuOpen={createMenuOpen}
-        toggleCreateMenu={() => setCreateMenuOpen((open) => !open)}
-        notificationDrawerOpen={notificationDrawerOpen}
-        unreadNotificationCount={unreadNotificationCount}
-        toggleNotificationDrawer={toggleNotificationDrawer}
-        themeMode={themeMode}
-        setManualThemeMode={setManualThemeMode}
-        extraActions={titleBarActions}
-      />
-
-      {createMenuOpen && (
-        <>
-          <div
-            className="fixed inset-0 z-[68]"
-            aria-hidden="true"
-            onMouseDown={() => setCreateMenuOpen(false)}
-          />
-          <div
-            className={clsx(
-              'workbench-create-menu fixed right-4 z-[69] w-[252px] overflow-hidden',
-              usesAppTitleBar ? 'top-[calc(var(--app-titlebar-height)+0.5rem)]' : 'top-3'
-            )}
-            role="menu"
-            aria-label={t('workbench.create')}
-            data-no-window-drag
-          >
-            <div className="workbench-create-menu__header">
-              <span>{t('workbench.create')}</span>
-              <kbd>⌘N</kbd>
+const icons: Record<AppSection, typeof Home> = { home: Home, research: Search, create: Palette, publish: Send, review: BarChart3, library: Library, automation: Clock3, settings: Settings };
+export function Layout({ children, route, creationActive = false, currentView, onNavigate, immersiveMode = false, globalNotice, globalSidebarContent, renderTitleBarContent, renderTitleBarActions }: LayoutProps) {
+    const { t } = useI18n();
+    const [mobileNavOpen, setMobileNavOpen] = useState(false);
+    const [historyOpen, setHistoryOpen] = useState(false);
+    const notificationDrawerOpen = useNotificationStore(state => state.drawerOpen);
+    const toggleNotificationDrawer = useNotificationStore(state => state.toggleDrawer);
+    const unreadNotificationCount = useNotificationStore(selectNotificationUnreadCount);
+    const titleBarPlatform = getAppTitleBarPlatform();
+    const usesAppTitleBar = titleBarPlatform !== null;
+    const { themeMode, setManualThemeMode } = useLayoutTheme(immersiveMode);
+    const { spaces, activeSpaceId, activeSpaceName, isSwitchingSpace, isSpaceMenuOpen, setIsSpaceMenuOpen, isSpaceDialogOpen, spaceDialogMode, spaceDialogName, setSpaceDialogName, isSpaceDialogSubmitting, deletingSpaceId, spaceMenuRef, handleSwitchSpace, openCreateSpaceDialog, openRenameSpaceDialog, handleDeleteSpace, closeSpaceDialog, submitSpaceDialog } = useLayoutSpaces(false);
+    const { updateNotice, updatePublishedDateLabel, installState, isInstallingUpdate, installUpdate, closeUpdateNotice } = useAppUpdateNotice(t('layout.openDownloadFailed'));
+    const { globalSearchInputRef, globalSearchQuery, setGlobalSearchQuery, globalSearchResults, isGlobalSearchLoading, isGlobalSearchVisible, isGlobalSearchClosing, openGlobalSearch, closeGlobalSearch, submitGlobalSearch, navigateToGlobalSearch } = useGlobalKnowledgeSearch(onNavigate);
+    const section = APP_SECTIONS.find(item => item.id === route.section)!;
+    const page = section.pages.find(item => item.route.page === route.page)!;
+    const openCreate = useCallback(() => dispatchAppIntent({ type: 'creation.choose' }), []);
+    const navigate = (next: AppRoute) => { setMobileNavOpen(false); setHistoryOpen(false); dispatchAppIntent({ type: 'route.open', route: next }); };
+    useEffect(() => {
+        const keydown = (event: KeyboardEvent) => {
+            if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'n') { event.preventDefault(); openCreate(); }
+            if (event.key === 'Escape') { setMobileNavOpen(false); setHistoryOpen(false); setIsSpaceMenuOpen(false); }
+        };
+        window.addEventListener('keydown', keydown);
+        return () => window.removeEventListener('keydown', keydown);
+    }, [openCreate, setIsSpaceMenuOpen]);
+    useEffect(() => { document.getElementById('workspace-main')?.focus({ preventScroll: true }); }, [route.section, route.page, route.entityId]);
+    const navGroup = (utility: boolean) => APP_SECTIONS.filter(item => ['automation', 'settings'].includes(item.id) === utility).map(item => {
+        const Icon = icons[item.id]; const active = route.section === item.id;
+        return <div key={item.id} className="workspace-nav-group">
+            <button type="button" data-guide-id={`nav-${item.id}`} aria-current={active ? 'page' : undefined} aria-expanded={active} className={`workspace-nav-item ${active ? 'is-active' : ''}`} onClick={() => navigate(item.pages[0].route)}><Icon size={18} strokeWidth={1.7} /><span>{item.label}</span>{active && <ChevronDown size={14} className="ml-auto" />}</button>
+            {active && <div className="workspace-subnav">{item.pages.map(child => <button key={child.route.page} type="button" aria-current={route.page === child.route.page ? 'page' : undefined} className={route.page === child.route.page ? 'is-active' : ''} onClick={() => navigate(child.route)}>{child.label}</button>)}</div>}
+        </div>;
+    });
+    return (<div data-current-view={currentView} data-section={route.section} data-editor-active={creationActive} className={`workspace-shell ${usesAppTitleBar ? 'has-titlebar' : ''} ${creationActive || immersiveMode ? 'is-editor' : ''}`}>
+        <AppTitleBar immersiveMode={immersiveMode} enabled={usesAppTitleBar} platform={titleBarPlatform}
+            content={creationActive ? <button onClick={() => navigate({ section: 'create', page: 'works' })} className="workspace-back-button"><ArrowLeft size={15} />我的作品</button> : renderTitleBarContent?.({ currentView }) || null}
+            stageIndex="" stageTitle={creationActive ? '创作 / 作品编辑' : `${section.label} / ${page.label}`} activeSpaceName={activeSpaceName}
+            isSidebarCollapsed={!mobileNavOpen} toggleSidebarCollapsed={() => setMobileNavOpen(value => !value)}
+            openGlobalSearch={openGlobalSearch} openRunningTasks={() => navigate({ section: 'automation', page: 'runs' })}
+            createMenuOpen={false} toggleCreateMenu={openCreate} notificationDrawerOpen={notificationDrawerOpen}
+            unreadNotificationCount={unreadNotificationCount} toggleNotificationDrawer={toggleNotificationDrawer}
+            themeMode={themeMode} setManualThemeMode={setManualThemeMode} extraActions={renderTitleBarActions?.({ currentView }) || null} />
+        {!usesAppTitleBar && <header className="workspace-web-toolbar"><button className="workspace-icon-button" aria-label="打开导航" onClick={() => setMobileNavOpen(value => !value)}><Menu size={18} /></button>{creationActive ? <button onClick={() => navigate({ section: 'create', page: 'works' })} className="workspace-back-button"><ArrowLeft size={16} />我的作品</button> : <span>{section.label} / {page.label}</span>}<div className="ml-auto flex gap-2"><button className="workspace-icon-button" aria-label="搜索资料" onClick={openGlobalSearch}><Search size={18} /></button><button className="workspace-icon-button" aria-label="运行记录" onClick={() => navigate({ section: 'automation', page: 'runs' })}><Clock3 size={18} /></button><button className="workspace-icon-button" aria-label="通知" onClick={toggleNotificationDrawer}><Bell size={18} /></button><button className="workspace-icon-button" aria-label="切换主题" onClick={() => setManualThemeMode(value => value === 'dark' ? 'light' : 'dark')}>{themeMode === 'dark' ? <Sun size={18} /> : <Moon size={18} />}</button><button className="workspace-primary-button" onClick={openCreate}><Plus size={16} />新建</button></div></header>}
+        {mobileNavOpen && <button className="workspace-nav-backdrop" aria-label="关闭导航" onClick={() => setMobileNavOpen(false)} />}
+        <aside className={`workspace-sidebar ${mobileNavOpen ? 'is-open' : ''}`}>
+            <div className="workspace-brand"><img src="/branding/app-icon.png" alt="" /><strong>GardenFlow</strong><button className="workspace-icon-button workspace-mobile-close" aria-label="关闭导航" onClick={() => setMobileNavOpen(false)}><X size={16} /></button></div>
+            <div className="workspace-space" ref={spaceMenuRef}>
+                <button className="workspace-space-trigger" disabled={isSwitchingSpace} aria-expanded={isSpaceMenuOpen} onClick={() => setIsSpaceMenuOpen(value => !value)}><span className="workspace-space-avatar">{activeSpaceName.slice(0, 1)}</span><span className="truncate">{activeSpaceName}</span><ChevronDown size={14} /></button>
+                {isSpaceMenuOpen && <div className="workspace-space-menu">{spaces.map(space => <div key={space.id} className="flex items-center"><button className="min-w-0 flex-1 truncate text-left" aria-current={space.id === activeSpaceId ? 'true' : undefined} onClick={() => void handleSwitchSpace(space.id)}>{space.name}</button><button aria-label={`重命名空间 ${space.name}`} onClick={() => openRenameSpaceDialog(space)}><Pencil size={13} /></button>{space.id !== 'default' && <button aria-label={`删除空间 ${space.name}`} disabled={deletingSpaceId === space.id} onClick={() => void handleDeleteSpace(space)}><Trash2 size={13} /></button>}</div>)}<button onClick={openCreateSpaceDialog}><Plus size={14} />创建空间</button></div>}
             </div>
-            {([
-              ['chat', Edit, 'workbench.create.newChat'],
-              ['material', BookOpenText, 'workbench.create.importMaterial'],
-              ['manuscript', Pencil, 'workbench.create.newManuscript'],
-              ['media', Box, 'workbench.create.mediaGeneration'],
-              ['automation', Clock3, 'workbench.create.automation'],
-            ] as const).map(([action, Icon, labelKey]) => (
-              <button
-                key={action}
-                type="button"
-                role="menuitem"
-                onClick={() => handleCreateAction(action)}
-                className="workbench-create-menu__item"
-              >
-                <Icon className="h-4 w-4" strokeWidth={1.7} />
-                <span>{t(labelKey)}</span>
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-
-      {globalNotice && (
-        <div
-          className={clsx(
-            'pointer-events-none absolute left-1/2 z-[80] -translate-x-1/2',
-            usesAppTitleBar ? 'top-[calc(var(--app-titlebar-height)+0.75rem)]' : 'top-3'
-          )}
-        >
-          <div className="inline-flex items-center gap-2 rounded-full border border-red-200/80 bg-red-50/96 px-4 py-2 text-[12px] font-medium text-red-700 shadow-[0_12px_30px_-18px_rgba(220,38,38,0.55)] backdrop-blur">
-            <AlertCircle className="h-3.5 w-3.5 shrink-0" strokeWidth={1.9} />
-            <span className="whitespace-nowrap">{globalNotice}</span>
-          </div>
-        </div>
-      )}
-
-      {/* Sidebar */}
-      {hasGlobalSidebar && (
-        <aside
-          className={clsx(
-            'app-sidebar-shell bg-surface-secondary/85 border-r border-border flex shrink-0 overflow-hidden',
-            usesAppTitleBar && 'pt-[var(--app-titlebar-height)]',
-            isSidebarAnimating && 'app-sidebar-shell--animating',
-            sidebarVisualCollapsed ? 'app-sidebar-shell--collapsed' : 'app-sidebar-shell--expanded'
-          )}
-          style={!sidebarVisualCollapsed ? { '--app-sidebar-expanded-width': `${sidebarWidth}px` } as React.CSSProperties : undefined}
-        >
-          <nav className="app-sidebar-nav workbench-flow-rail">
-            <div className="workbench-flow-rail__brand" aria-label="GardenFlow">GF</div>
-            <div className="workbench-flow-rail__stages">
-              {NAV_ITEMS.map(renderSidebarNavItem)}
-            </div>
-            <div className="workbench-flow-rail__tools">
-              <button
-                type="button"
-                onClick={() => setCreateMenuOpen(true)}
-                className="workbench-flow-rail__tool"
-                title={t('workbench.create')}
-                aria-label={t('workbench.create')}
-              >
-                <Plus className="h-[17px] w-[17px]" strokeWidth={1.8} />
-              </button>
-              <button
-                type="button"
-                onClick={() => onNavigate('settings')}
-                className={clsx('workbench-flow-rail__tool', visibleView === 'settings' && 'is-active')}
-                title={t('nav.settings')}
-                aria-label={t('nav.settings')}
-              >
-                <SettingsIcon className="h-[17px] w-[17px]" strokeWidth={1.75} />
-              </button>
-            </div>
-          </nav>
-
-          {!sidebarVisualCollapsed && (
-            <div className="workbench-context-shelf min-w-0 flex-1 flex flex-col overflow-hidden">
-              <div className="workbench-context-shelf__heading">
-                <div className="workbench-context-shelf__eyebrow">{activeStageIndex}</div>
-                <h2>{activeStageTitle}</h2>
-                {activeStageSummary && <p>{activeStageSummary}</p>}
-              </div>
-
-              {visibleGlobalSidebarContent ? (
-                <div className="workbench-context-shelf__content min-h-0 flex-1 overflow-hidden flex flex-col">
-                  {visibleGlobalSidebarContent}
-                </div>
-              ) : (
-                <div className="workbench-context-shelf__guide min-h-0 flex-1 overflow-auto">
-                  <div className="workbench-context-shelf__note">
-                    <span>EDITORIAL NOTE</span>
-                    <p>{activeStageSummary || '在一个空间里组织素材、创作与发布计划。'}</p>
-                  </div>
-                  {nextNavigationItem && (
-                    <button
-                      type="button"
-                      className="workbench-context-shelf__next"
-                      onClick={() => onNavigate(nextNavigationItem.view)}
-                    >
-                      <span>下一阶段</span>
-                      <strong>{t(nextNavigationItem.labelKey)}</strong>
-                      <ChevronDown className="h-4 w-4 -rotate-90" strokeWidth={1.7} />
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {/* Footer */}
-              <div className="workbench-context-shelf__footer border-t border-border px-4 py-2">
-                <div
-                  className={clsx(
-                    'app-sidebar-footer-meta flex w-full items-center gap-2 text-[11px] text-text-tertiary/90 whitespace-nowrap',
-                    isSpaceMenuOpen && 'relative z-[140]'
-                  )}
-                >
-                  {!usesAppTitleBar && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={toggleNotificationDrawer}
-                        className="relative h-5 w-5 rounded-md border border-border bg-surface-primary text-text-secondary hover:text-text-primary hover:bg-surface-secondary transition-colors inline-flex items-center justify-center shrink-0"
-                        title={notificationDrawerOpen ? t('layout.closeNotificationCenter') : t('layout.openNotificationCenter')}
-                        aria-label={notificationDrawerOpen ? t('layout.closeNotificationCenter') : t('layout.openNotificationCenter')}
-                      >
-                        <Bell className="w-[11px] h-[11px]" strokeWidth={1.75} />
-                        {unreadNotificationCount > 0 && (
-                          <span className="absolute -right-1.5 -top-1.5 min-w-[14px] h-[14px] rounded-full bg-accent-primary px-1 text-[9px] leading-[14px] text-white">
-                            {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
-                          </span>
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setManualThemeMode((prev) => prev === 'dark' ? 'light' : 'dark')}
-                        className="h-5 w-5 rounded-md border border-border bg-surface-primary text-text-secondary hover:text-text-primary hover:bg-surface-secondary transition-colors inline-flex items-center justify-center shrink-0"
-                        title={themeMode === 'dark' ? t('layout.switchToLight') : t('layout.switchToDark')}
-                        aria-label={themeMode === 'dark' ? t('layout.switchToLight') : t('layout.switchToDark')}
-                      >
-                        {themeMode === 'dark'
-                          ? <Sun className="w-[11px] h-[11px]" strokeWidth={1.75} />
-                          : <Moon className="w-[11px] h-[11px]" strokeWidth={1.75} />}
-                      </button>
-                    </>
-                  )}
-                  <div ref={spaceMenuRef} className="relative min-w-0 flex-1">
-                    <button
-                      type="button"
-                      onClick={() => setIsSpaceMenuOpen((prev) => !prev)}
-                      disabled={isSwitchingSpace}
-                      className="h-7 w-full px-2.5 text-[12px] flex items-center justify-between gap-1 rounded-lg border border-border bg-surface-primary text-text-primary disabled:opacity-50"
-                    >
-                      <span className="min-w-0 truncate">{activeSpaceName}</span>
-                      <ChevronDown className={clsx('w-[13px] h-[13px] shrink-0 text-text-tertiary transition-transform', isSpaceMenuOpen && 'rotate-180')} strokeWidth={1.75} />
-                    </button>
-
-                    {isSpaceMenuOpen && (
-                      <div
-                        className="app-space-menu absolute right-0 bottom-full z-[1] mb-1.5 w-full min-w-[172px] overflow-hidden rounded-lg border border-border shadow-lg"
-                      >
-                        <div className="max-h-44 overflow-y-auto">
-                          {spaces.length === 0 ? (
-                            <div className="h-9 px-2.5 text-[12px] text-text-tertiary flex items-center">
-                              {t('layout.noSpace')}
-                            </div>
-                          ) : (
-                            spaces.map((space) => {
-                              const isActive = space.id === activeSpaceId;
-                              const showEdit = hoveredSpaceId === space.id;
-                              const canDelete = space.id !== 'default';
-                              const isDeleting = deletingSpaceId === space.id;
-                              return (
-                                <div
-                                  key={space.id}
-                                  className={clsx(
-                                    'h-9 px-2.5 flex items-center gap-1.5',
-                                    isActive ? 'bg-accent-primary/10' : 'hover:bg-surface-secondary'
-                                  )}
-                                  onMouseEnter={() => setHoveredSpaceId(space.id)}
-                                  onMouseLeave={() => setHoveredSpaceId((prev) => (prev === space.id ? null : prev))}
-                                >
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      void handleSwitchSpace(space.id);
-                                    }}
-                                    className={clsx('flex-1 text-left text-[12px] truncate', isActive ? 'text-accent-primary' : 'text-text-primary')}
-                                  >
-                                    {space.name}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onMouseDown={(event) => {
-                                      event.preventDefault();
-                                      event.stopPropagation();
-                                      openRenameSpaceDialog(space);
-                                    }}
-                                    className={clsx(
-                                      'w-5 h-5 inline-flex items-center justify-center rounded-md text-text-secondary hover:text-text-primary hover:bg-surface-primary transition-opacity',
-                                      showEdit ? 'opacity-100' : 'opacity-0 pointer-events-none'
-                                    )}
-                                    title={t('layout.renameSpace')}
-                                  >
-                                    <Pencil className="w-[12px] h-[12px]" strokeWidth={1.75} />
-                                  </button>
-                                  {canDelete && (
-                                    <button
-                                      type="button"
-                                      disabled={isDeleting}
-                                      onMouseDown={(event) => {
-                                        event.preventDefault();
-                                        event.stopPropagation();
-                                        void handleDeleteSpace(space);
-                                      }}
-                                      className={clsx(
-                                        'w-5 h-5 inline-flex items-center justify-center rounded-md text-text-secondary hover:text-red-500 hover:bg-surface-primary disabled:opacity-50 transition-opacity',
-                                        showEdit ? 'opacity-100' : 'opacity-0 pointer-events-none'
-                                      )}
-                                      title={t('layout.deleteSpace')}
-                                    >
-                                      <Trash2 className="w-[12px] h-[12px]" strokeWidth={1.75} />
-                                    </button>
-                                  )}
-                                </div>
-                              );
-                            })
-                          )}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            openCreateSpaceDialog();
-                          }}
-                          className="h-9 w-full border-t border-border px-2.5 text-[12px] text-accent-primary hover:bg-surface-secondary flex items-center gap-1.5"
-                        >
-                          <span className="text-[15px] leading-none">+</span>
-                          <span className="truncate">{t('layout.createSpace')}</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {!sidebarVisualCollapsed && (
-            <div
-              className="app-sidebar-resize-handle"
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="调整侧边栏宽度"
-              title="调整侧边栏宽度"
-              data-no-window-drag
-              onPointerDown={startSidebarResize}
-            />
-          )}
+            <button className="workspace-primary-button workspace-new-button" onClick={openCreate}><Plus size={16} />开始创作<kbd>⌘N</kbd></button>
+            <nav aria-label="主要导航" className="workspace-navigation">{navGroup(false)}<div className="workspace-utility-nav">{navGroup(true)}</div></nav>
+            <div className="workspace-sidebar-footer"><span className="workspace-status-dot" />本地工作空间</div>
         </aside>
-      )}
-
-      {/* Main Content */}
-      <main
-        className={clsx(
-          'app-main-shell flex-1 flex flex-col min-w-0 relative',
-          hasGlobalSidebar && 'app-main-shell--layered'
-        )}
-      >
-        {/* Content */}
-        <div
-          className={clsx(
-            'flex-1',
-            usesAppTitleBar && 'pt-[var(--app-titlebar-height)]',
-            isFixedViewportView ? 'min-h-0 flex flex-col overflow-hidden' : 'overflow-auto'
-          )}
-        >
-          {children}
-        </div>
-      </main>
-
+        <main className="workspace-main" id="workspace-main" tabIndex={-1}>
+            {globalNotice && <div role="status" className="workspace-notice">{globalNotice}</div>}
+            {currentView === 'gardenflow' && !creationActive && <div className="workspace-assistant-toolbar"><button className="workspace-secondary-button" onClick={() => setHistoryOpen(value => !value)}>会话与稿件</button><button className="workspace-secondary-button" onClick={() => navigate({ section: 'settings', page: 'members' })}>管理成员</button><button className="workspace-secondary-button" onClick={() => navigate({ section: 'settings', page: 'skills' })}>管理技能</button></div>}
+            {children}
+        </main>
+        {historyOpen && globalSidebarContent && <div className="workspace-history-drawer"><header className="flex items-center justify-between p-4"><strong>会话与稿件</strong><button aria-label="关闭会话与稿件" className="workspace-icon-button" onClick={() => setHistoryOpen(false)}><X size={18} /></button></header><div className="min-h-0 flex-1 overflow-auto">{globalSidebarContent}</div></div>}
       {isSpaceDialogOpen && (
         <AppSpaceRenameDialog
           name={spaceDialogName}

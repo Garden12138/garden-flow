@@ -488,10 +488,10 @@ export function Advisors({
                                 setEditingAdvisor(null);
                                 setIsModalOpen(true);
                             }}
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-accent-primary text-white hover:opacity-90"
+                            className="workspace-primary-button"
                             aria-label="创建成员"
                         >
-                            <Plus className="h-4 w-4" />
+                            <Plus className="h-4 w-4" />添加成员
                         </button>
                     </div>
                     <div className="space-y-2">

@@ -60,6 +60,8 @@ const KNOWLEDGE_SORT_OPTIONS = [
 ];
 
 interface KnowledgeProps {
+    openItemId?: string;
+    openItemKind?: 'redbook-note' | 'youtube-video' | 'document-source';
     isEmbedded?: boolean;
     isActive?: boolean;
     onNavigateToGardenFlow?: (message: PendingChatMessage) => void;
@@ -92,7 +94,7 @@ function ObsidianIcon({ className }: { className?: string }) {
 
 
 
-export function Knowledge({ onNavigateToGardenFlow, isEmbedded = false, isActive = true, onTitleBarContentChange, referenceContent }: KnowledgeProps) {
+export function Knowledge({ onNavigateToGardenFlow, isEmbedded = false, isActive = true, onTitleBarContentChange, referenceContent, openItemId, openItemKind = 'redbook-note' }: KnowledgeProps) {
     const [isLinkCaptureOpen, setIsLinkCaptureOpen] = useState(false);
     const [notes, setNotes] = useState<Note[]>([]);
     const [youtubeVideos, setYoutubeVideos] = useState<YouTubeVideo[]>([]);
@@ -649,6 +651,18 @@ export function Knowledge({ onNavigateToGardenFlow, isEmbedded = false, isActive
             return null;
         }
     }, []);
+
+    useEffect(() => {
+        if (!openItemId) return;
+        let active = true;
+        void loadKnowledgeDetail(openItemId, openItemKind).then(detail => {
+            if (!active || !detail) return;
+            if (openItemKind === 'youtube-video') setSelectedVideo(detail as unknown as YouTubeVideo);
+            else if (openItemKind === 'document-source') setSelectedDocumentSource(detail as unknown as DocumentKnowledgeSource);
+            else setSelectedNote(detail as unknown as Note);
+        });
+        return () => { active = false; loadDetailRequestRef.current++; };
+    }, [openItemId, openItemKind, loadKnowledgeDetail]);
 
     const openNoteDetail = useCallback(async (note: Note) => {
         setSelectedNote(note);
@@ -2119,7 +2133,7 @@ export function Knowledge({ onNavigateToGardenFlow, isEmbedded = false, isActive
                                 {isVisualIndexEnabled ? '开启 · 会产生额外消耗' : '关闭 · 默认不消耗'}
                             </span>
                         </div>
-                        <p className="mt-1 text-[11px] font-medium leading-5 text-text-tertiary">
+                        <p className="mt-1 text-[12px] font-medium leading-5 text-text-tertiary">
                             开启后会调用视觉模型自动分析知识库图片、PDF 页面截图和图文素材，让 AI 能搜索和引用图片里的内容；这会产生额外 AI 消耗。
                         </p>
                     </div>

@@ -1,3 +1,5 @@
+import { useDialogFocus } from '../features/workbench/useDialogFocus';
+import { WorkspaceMore } from '../features/workbench/WorkspaceGuidance';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Check, ExternalLink, Loader2, PlayCircle, RefreshCw, Settings2, X } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -78,6 +80,7 @@ export function BuiltinAutomationSection({ isActive = true, onOpenSession }: Bui
     const [checkingId, setCheckingId] = useState('');
     const [busyId, setBusyId] = useState('');
     const [configTaskId, setConfigTaskId] = useState('');
+    const configDialogRef = useDialogFocus(() => setConfigTaskId(''), Boolean(configTaskId));
     const [draft, setDraft] = useState<Record<string, string>>({});
     const [draftTime, setDraftTime] = useState('');
     const loadRequestRef = useRef(0);
@@ -255,8 +258,8 @@ export function BuiltinAutomationSection({ isActive = true, onOpenSession }: Bui
     }
 
     return (
-        <section className="automation-section" aria-label="内置自动化任务">
-            <div className="automation-section-title">内置任务</div>
+        <details className="workspace-task-panel automation-section" aria-label="内置自动化任务">
+            <summary>内置任务模板 · 采集与发布</summary>
             <div className="mt-4 flex flex-col gap-3">
                 {loading && tasks.length === 0 && (
                     <div className="automation-state">
@@ -288,7 +291,7 @@ export function BuiltinAutomationSection({ isActive = true, onOpenSession }: Bui
                                             </span>
                                         )}
                                     </div>
-                                    <p className="mt-1 text-xs leading-5 text-text-tertiary">{task.description}</p>
+                                    <details className="mt-2 text-xs text-text-secondary"><summary className="cursor-pointer">执行范围与要求</summary><p className="mt-2 leading-relaxed">{task.description}</p></details>
                                     <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-tertiary">
                                         {task.triggerKind === 'schedule' ? (
                                             <>
@@ -340,7 +343,7 @@ export function BuiltinAutomationSection({ isActive = true, onOpenSession }: Bui
                                     <button
                                         type="button"
                                         onClick={() => openConfig(task)}
-                                        className="flex items-center gap-1.5 rounded-md border border-border/70 px-2.5 py-1 text-xs text-text-secondary transition-colors hover:bg-surface-secondary hover:text-text-primary"
+                                        className="workspace-secondary-button"
                                     >
                                         <Settings2 className="h-3.5 w-3.5" />
                                         <span>配置</span>
@@ -350,20 +353,21 @@ export function BuiltinAutomationSection({ isActive = true, onOpenSession }: Bui
                                     type="button"
                                     onClick={() => void refreshReadiness(task.id)}
                                     disabled={checkingId === task.id}
-                                    className="flex items-center gap-1.5 rounded-md border border-border/70 px-2.5 py-1 text-xs text-text-secondary transition-colors hover:bg-surface-secondary hover:text-text-primary disabled:opacity-50"
+                                    className="workspace-secondary-button"
                                 >
                                     {checkingId === task.id
                                         ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                         : <RefreshCw className="h-3.5 w-3.5" />}
                                     <span>检查就绪状态</span>
                                 </button>
+                                {task.triggerKind === 'schedule' && <WorkspaceMore label={`${task.name}更多操作`}>
                                 {task.triggerKind === 'schedule' && (
                                     <button
                                         type="button"
                                         onClick={() => void runNow(task)}
                                         disabled={executing || platformBlocked}
                                         title="立即执行一轮，不改变定时开关"
-                                        className="flex items-center gap-1.5 rounded-md border border-border/70 px-2.5 py-1 text-xs text-text-secondary transition-colors hover:bg-surface-secondary hover:text-text-primary disabled:opacity-50"
+                                        className="workspace-secondary-button"
                                     >
                                         {executing
                                             ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -371,6 +375,7 @@ export function BuiltinAutomationSection({ isActive = true, onOpenSession }: Bui
                                         <span>{executing ? '正在执行' : '立即运行'}</span>
                                     </button>
                                 )}
+                                </WorkspaceMore>}
                                 {task.documentationUrl && (
                                     <a
                                         href={task.documentationUrl}
@@ -428,7 +433,7 @@ export function BuiltinAutomationSection({ isActive = true, onOpenSession }: Bui
 
             {configTask && (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-6">
-                    <div className="w-full max-w-[520px] rounded-2xl border border-border/70 bg-background p-5 shadow-2xl">
+                    <section ref={configDialogRef} role="dialog" aria-modal="true" aria-label="配置内置任务" className="w-full max-w-[520px] rounded-2xl border border-border/70 bg-background p-5 shadow-2xl">
                         <div className="mb-4 flex items-center justify-between">
                             <span className="text-sm font-medium text-text-primary">{configTask.name} · 配置</span>
                             <button
@@ -506,9 +511,9 @@ export function BuiltinAutomationSection({ isActive = true, onOpenSession }: Bui
                                 保存
                             </button>
                         </div>
-                    </div>
+                    </section>
                 </div>
             )}
-        </section>
+        </details>
     );
 }

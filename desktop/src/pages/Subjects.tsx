@@ -1127,6 +1127,8 @@ function createEmptyBrandDraft(brand?: BrandWorkspaceBrand, assets?: BrandWorksp
 }
 
 interface SubjectsProps {
+    openProductId?: string;
+    scope?: 'products' | 'characters';
     isActive?: boolean;
     onReturnHome?: () => void;
     onClose?: () => void;
@@ -1134,7 +1136,7 @@ interface SubjectsProps {
     referencePicker?: Pick<GenerationAssetPickerRequest, 'mediaKind' | 'maxCount' | 'allowedExtensions' | 'onSelect'>;
 }
 
-export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'page', referencePicker }: SubjectsProps) {
+export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'page', referencePicker, scope, openProductId }: SubjectsProps) {
     const isModalVariant = variant === 'modal';
     const [selectedReferences, setSelectedReferences] = useState<GenerationAssetReference[]>([]);
     const [categories, setCategories] = useState<SubjectCategory[]>([]);
@@ -1144,7 +1146,7 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
     const [mediaAssets, setMediaAssets] = useState<MediaAsset[]>([]);
     const [mediaNextCursor, setMediaNextCursor] = useState<string | null>(null);
     const [isLoadingMoreMedia, setIsLoadingMoreMedia] = useState(false);
-    const [libraryTab, setLibraryTab] = useState<AssetLibraryTab>('media');
+    const [libraryTab, setLibraryTab] = useState<AssetLibraryTab>(scope ? 'assets' : 'media');
     const [loading, setLoading] = useState(true);
     const [working, setWorking] = useState(false);
     const [error, setError] = useState('');
@@ -1495,11 +1497,11 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
     const categoryNameMap = useMemo(() => new Map(categories.map((item) => [item.id, item.name])), [categories]);
     useEffect(() => {
         if (hasAppliedInitialCategoryRef.current) return;
-        const brandCategory = categories.find((item) => item.name.trim() === '品牌');
+        const brandCategory = categories.find((item) => item.name.trim() === (scope === 'characters' ? '角色' : '品牌'));
         if (!brandCategory) return;
         hasAppliedInitialCategoryRef.current = true;
         setCategoryFilter(brandCategory.id);
-    }, [categories]);
+    }, [categories, scope]);
     const subjectCategoryName = useCallback((subject: SubjectRecord) => (
         categoryNameMap.get(subject.categoryId || '')?.trim() || ''
     ), [categoryNameMap]);
@@ -1792,6 +1794,14 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
         setSelectedDetailPlatformId(productBundle.sourceSnapshots?.[0]?.platform || '');
         setError('');
     }, []);
+
+    useEffect(() => {
+        if (!openProductId) return;
+        for (const bundle of brandWorkspaceBrands) {
+            const product = bundle.products.find(value => value.product.id === openProductId);
+            if (product) { openProductDetailPage(bundle.brand, product); return; }
+        }
+    }, [openProductId, brandWorkspaceBrands, openProductDetailPage]);
 
     const closeProductDetailPage = useCallback(() => {
         setProductDetailContext(null);
@@ -2726,7 +2736,7 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
     ], [categories, draft.categoryId]);
     const selectedDraftCategory = draftCategoryOptions.find((item) => item.id === draft.categoryId) || draftCategoryOptions[0];
     const SelectedDraftCategoryIcon = selectedDraftCategory.icon;
-    const activeLibraryTab = libraryTab;
+    const activeLibraryTab = scope ? 'assets' : libraryTab;
     const showAssetControls = activeLibraryTab === 'assets';
 
     if (productDetailContext && activeDetailBrandBundle && activeDetailProductBundle) {
@@ -2988,7 +2998,7 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
                             <ArrowLeft className="h-4 w-4" />
                         </button>
                     )}
-                    <h1 className={clsx('leading-none font-semibold tracking-[0.01em] text-[rgb(var(--color-text-primary))]', isModalVariant ? 'text-[20px]' : 'text-[26px]')}>资产库</h1>
+                    <h1 className={clsx('leading-none font-semibold tracking-[0.01em] text-[rgb(var(--color-text-primary))]', isModalVariant ? 'text-[20px]' : 'text-[26px]')}>{scope === 'products' ? '商品与品牌' : scope === 'characters' ? '角色与声音' : '资源选择'}</h1>
                     {referencePicker && (
                         <div className="flex items-center gap-2">
                             <span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-700">
@@ -3072,7 +3082,7 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
                     {([
                         { id: 'media' as const, label: '媒体', icon: Clapperboard, count: mediaAssets.length },
                         { id: 'assets' as const, label: '资产', icon: Package, count: assetLibraryCount },
-                    ]).filter((item) => referencePicker?.mediaKind !== 'audio' || item.id === 'media').map((item) => {
+                    ]).filter((item) => !scope && (referencePicker?.mediaKind !== 'audio' || item.id === 'media')).map((item) => {
                         const Icon = item.icon;
                         const active = activeLibraryTab === item.id;
                         return (
@@ -3096,7 +3106,7 @@ export function Subjects({ isActive = true, onReturnHome, onClose, variant = 'pa
             {showAssetControls && (
             <div className={clsx('flex min-h-[48px] items-end border-b border-[rgb(var(--color-border))]', isModalVariant ? 'mx-5' : 'mx-8')}>
                 <div className="flex min-w-0 flex-1 items-end gap-6 overflow-x-auto no-scrollbar">
-                    {categoryTabs.map((item) => {
+                    {categoryTabs.filter(item => !scope || (scope === 'products' ? ['品牌', '商品'].includes(item.label) : !['品牌', '商品'].includes(item.label))).map((item) => {
                         const active = categoryFilter === item.id;
                         const Icon = item.icon;
                         return (

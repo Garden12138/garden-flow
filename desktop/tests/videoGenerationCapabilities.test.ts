@@ -5,7 +5,7 @@ import {
     getVideoModelCapabilities,
     resolveVideoModelRoute,
 } from '../shared/videoGenerationCapabilities.ts';
-import { resolveVideoProvider } from '../shared/videoProvider.ts';
+import { buildLocalH3VideoRequest, buildMiniMaxVideoCreateUrl, buildMiniMaxVideoQueryUrl, resolveVideoProvider } from '../shared/videoProvider.ts';
 import {
     buildNewApiVideoCreateUrl,
     buildNewApiVideoQueryUrl,
@@ -14,6 +14,34 @@ import {
 } from '../shared/newApiVideo.ts';
 
 const newApiEndpoint = 'https://video.example.com/v1';
+
+test('local MiniMax-H3 keeps its own route and request format despite sharing the cloud model ID', () => {
+    const endpoint = 'http://h3.lan:18889/proxy/v2';
+    const model = 'MiniMax-H3';
+    const settings = {
+        active_video_provider_id: 'local',
+        video_providers_json: [
+            { id: 'cloud', preset: 'minimax', endpoint: 'https://api.minimaxi.com', apiKey: 'cloud-key', model },
+            { id: 'local', preset: 'minimax-h3-local', endpoint, apiKey: 'local-key', model },
+        ],
+    };
+    const route = resolveVideoModelRoute(settings, model);
+    assert.equal(route?.provider.id, 'local');
+    assert.deepEqual(route?.capabilities.resolutions, ['608x352']);
+    assert.deepEqual(route?.capabilities.durationSeconds, [5]);
+    assert.deepEqual(route?.capabilities.aspectRatios, ['16:9']);
+    assert.equal(route?.capabilities.maxReferenceImages, 1);
+    assert.equal(route?.capabilities.supportsReferenceAudio, false);
+    assert.equal(resolveVideoModelRoute({ ...settings, active_video_provider_id: 'cloud' }, model)?.provider.id, 'cloud');
+    assert.equal(buildMiniMaxVideoCreateUrl(endpoint), 'http://h3.lan:18889/proxy/v2/video_generation');
+    assert.equal(buildMiniMaxVideoQueryUrl(endpoint, 'task/1'), 'http://h3.lan:18889/proxy/v2/query/video_generation/task%2F1');
+    const text = { type: 'text', text: 'Move the camera' };
+    const first = { type: 'image_url', role: 'first_frame', image_url: { url: 'first' } };
+    const last = { type: 'image_url', role: 'last_frame', image_url: { url: 'last' } };
+    assert.deepEqual(buildLocalH3VideoRequest(text.text, []), { model, content: [text], resolution: '768P', duration: 5, ratio: '16:9' });
+    assert.deepEqual(buildLocalH3VideoRequest(text.text, ['first']), { model, content: [text, first], resolution: '768P', duration: 5, ratio: 'adaptive' });
+    assert.deepEqual(buildLocalH3VideoRequest(text.text, ['first', 'last']), { model, content: [text, first, last], resolution: '768P', duration: 5, ratio: 'adaptive' });
+});
 
 test('direct upstream providers are resolved from explicit presets', () => {
     assert.equal(resolveVideoProvider('https://custom.example/v1', 'wan2.1', 'aliyun-bailian'), 'aliyun-bailian');

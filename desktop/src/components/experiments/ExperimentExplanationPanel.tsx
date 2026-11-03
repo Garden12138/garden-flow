@@ -4,7 +4,7 @@ import type { ExplanationRun, ExperimentExplanationProposal } from '../../../sha
 import type { CiResult } from '../../../shared/contentIntelligence';
 import { dispatchAppIntent } from '../../features/app-shell/appIntent';
 
-const buttonClass = 'rounded border border-border px-3 py-2 text-xs disabled:opacity-40';
+const buttonClass = 'workspace-secondary-button';
 const labels = { queued: '待确认', running: '解释中', succeeded: '已形成待复核提议', failed: '失败，不会自动重试', cancelled: '已取消', interrupted: '已中断，不会自动重试' };
 function data<T>(result: CiResult<T>): T { if (result.success === false) throw new Error(result.error); return result.data; }
 export function ExperimentExplanationPanel({ detail, onSuggestion }: { detail: ContentExperimentDetail; onSuggestion: (change: ExperimentExplanationProposal['suggestions'][number]) => void }) {

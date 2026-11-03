@@ -2,12 +2,99 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import test from 'node:test';
 import { getImageProviderAdapter } from '../electron/core/imageProviderAdapters.ts';
+import { resolveConfiguredImageRoute } from '../electron/core/aiModelRouteResolver.ts';
 import { buildCoverGeneratePayload, buildImageSubmitPayload } from '../src/features/media-generation/submitPayload.ts';
 
 const ONE_PIXEL_PNG_BASE64 =
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
 
 (globalThis as typeof globalThis & { require: NodeRequire }).require = createRequire(import.meta.url);
+
+test('the selected image source determines the endpoint, credential and protocol together', () => {
+    const source = {
+        id: 'image-studio',
+        presetId: 'openai',
+        baseURL: 'http://images.lan:8001/v1',
+        apiKey: 'studio-key',
+        model: 'qwen-image-2.1-turbo',
+    };
+    const settings = {
+        image_provider: 'dashscope',
+        image_provider_template: 'dashscope-wan-native',
+        image_endpoint: 'https://dashscope.example',
+        image_api_key: 'old-cloud-key',
+        ai_sources_json: [source],
+        ai_model_routes_json: { image: { mode: 'custom', sourceId: source.id, model: source.model } },
+    };
+    assert.deepEqual(resolveConfiguredImageRoute(settings), {
+        endpoint: source.baseURL,
+        apiKey: source.apiKey,
+        model: source.model,
+        provider: 'openai-compatible',
+        providerTemplate: 'openai-images',
+    });
+    source.presetId = 'qwen-image-studio';
+    assert.equal(resolveConfiguredImageRoute(settings)?.providerTemplate, 'qwen-image-studio');
+    source.apiKey = '';
+    assert.throws(() => resolveConfiguredImageRoute(settings), /图片服务密钥/);
+    assert.equal(resolveConfiguredImageRoute({ ...settings, ai_model_routes_json: undefined }), null);
+});
+
+test('Qwen Image Studio sends one PNG per request and uploads the original image and mask as multipart', async (t) => {
+    const endpoint = 'http://image.lan:18321/studio/v1';
+    const image = `data:image/png;base64,${ONE_PIXEL_PNG_BASE64}`;
+    const request = {
+        prompt: 'Change the color', model: 'qwen-image-2.1-turbo', endpoint, apiKey: 'image-key',
+        provider: 'qwen-image-studio', providerTemplate: 'qwen-image-studio' as const,
+    };
+    const postSizes: string[] = [];
+    let allow1024 = false;
+    let healthChecks = 0;
+    let rejectPost = false;
+    t.mock.method(globalThis, 'fetch', async (input: URL, init: RequestInit) => {
+        if (input.pathname === '/studio/health') {
+            healthChecks++;
+            assert.equal(init.headers, undefined);
+            return Response.json({ allowed_sizes: allow1024 ? ['768x768', '1024x1024'] : ['768x768'] });
+        }
+        assert.equal(input.host, 'image.lan:18321');
+        assert.equal(new Headers(init.headers).get('authorization'), 'Bearer image-key');
+        assert.equal(init.method, 'POST');
+        if (input.pathname === '/studio/v1/images/edits') {
+            assert.ok(init.body instanceof FormData);
+            assert.equal(init.body.get('n'), '1');
+            for (const name of ['image', 'mask']) {
+                const file = init.body.get(name);
+                assert.ok(file instanceof Blob);
+                assert.equal(file.type, 'image/png');
+                assert.equal(Buffer.from(await file.arrayBuffer()).toString('base64'), ONE_PIXEL_PNG_BASE64);
+            }
+            postSizes.push(String(init.body.get('size')));
+        } else {
+            assert.equal(input.pathname, '/studio/v1/images/generations');
+            const body = JSON.parse(String(init.body));
+            assert.deepEqual(body, { model: request.model, prompt: request.prompt, size: body.size, n: 1, output_format: 'png', response_format: 'b64_json' });
+            postSizes.push(body.size);
+        }
+        return rejectPost
+            ? Response.json({ error: { message: 'queue unavailable' } }, { status: 503 })
+            : Response.json({ data: [{ b64_json: ONE_PIXEL_PNG_BASE64 }] });
+    });
+    const adapter = getImageProviderAdapter(request.providerTemplate);
+    const generated = await adapter.generate({ ...request, count: 2, size: '1024x1024', quality: 'high', aspectRatio: '16:9' });
+    assert.deepEqual(generated.map((output) => output.size), ['768x768', '768x768']);
+    assert.equal(healthChecks, 0);
+    await adapter.generate({ ...request, size: '1024x1024' });
+    allow1024 = true;
+    const [edit] = await adapter.generate({ ...request, size: '1024x1024', referenceImages: [image], mask: image });
+    assert.equal(edit.size, '1024x1024');
+    assert.equal(healthChecks, 2);
+    await assert.rejects(adapter.generate({ ...request, referenceImages: [image, image] }), /一张原图/);
+    assert.deepEqual(postSizes, ['768x768', '768x768', '768x768', '1024x1024']);
+    rejectPost = true;
+    await assert.rejects(adapter.generate(request), /503.*queue unavailable/);
+    assert.equal(postSizes.length, 5);
+});
 
 test('Qwen reference generation sends one MIME data URL request with the selected count and dimensions', async () => {
     const originalFetch = globalThis.fetch;

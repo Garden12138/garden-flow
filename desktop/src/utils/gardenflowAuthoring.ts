@@ -1,3 +1,5 @@
+import type { VideoResolution } from '../../shared/videoGenerationCapabilities';
+
 export type AuthoringPlatform = 'xiaohongshu' | 'wechat_official_account';
 export type AuthoringTaskType = 'direct_write' | 'expand_from_xhs';
 export type AuthoringSourceMode = 'manual' | 'knowledge' | 'manuscript' | 'product';
@@ -57,7 +59,7 @@ export interface AuthoringTaskHints {
             count?: number;
             durationSeconds?: number;
             aspectRatio?: string;
-            resolution?: '720p' | '1080p';
+            resolution?: VideoResolution;
             generateAudio?: boolean;
             model?: string;
             projectId?: string;

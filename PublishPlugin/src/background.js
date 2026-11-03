@@ -1217,6 +1217,7 @@ async function handleDesktopRequest(message) {
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === 'desktop:open') { void connectNative().then(() => sendRequest('desktop.open', { destination: 'publication' })).then(sendResponse).catch(error => sendResponse({ success: false, error: messageError(error).message })); return true; }
   if (message?.type !== 'publisher.status') return undefined;
   void connectNative().then(() => message.platform === 'douyin'
     ? douyinStatus(nativeConnected)

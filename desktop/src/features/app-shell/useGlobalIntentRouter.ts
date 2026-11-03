@@ -1,3 +1,4 @@
+import { isAppRoute, type AppRoute } from './routes';
 import { useEffect } from 'react';
 import { GARDENFLOW_NAVIGATE_EVENT } from '../../notifications/types';
 import type { AppNavigateEventDetail, GenerationIntent, GardenFlowNavigationAction, PendingChatMessage, SettingsNavigationTarget, ViewType } from './types';
@@ -32,6 +33,7 @@ function normalizeNavigateIntent(detail: AppNavigateEventDetail | null | undefin
 
 type UseGlobalIntentRouterParams = {
   navigateToView: (view: ViewType) => void;
+  navigateToRoute: (route: AppRoute) => void;
   setCurrentView: (view: ViewType) => void;
   setActiveManuscriptEditorFile: (value: string | null) => void;
   setActiveVideoProjectId: (value: string | null) => void;
@@ -44,6 +46,7 @@ type UseGlobalIntentRouterParams = {
 
 export function useGlobalIntentRouter({
   navigateToView,
+  navigateToRoute,
   setCurrentView,
   setActiveManuscriptEditorFile,
   setActiveVideoProjectId,
@@ -57,6 +60,7 @@ export function useGlobalIntentRouter({
     const handleNavigate = (event: Event) => {
       const intent = normalizeNavigateIntent((event as CustomEvent<AppNavigateEventDetail>).detail);
       if (!intent) return;
+      if (intent.type === 'route.open' && isAppRoute(intent.route)) { navigateToRoute(intent.route); return; }
       if (intent.type === 'dream-story.new') {
         void window.ipcRenderer.dreamStory.create().then(result => {
           if (!result.success || !result.project) throw new Error(result.error || '创建梦境失败');
@@ -86,7 +90,7 @@ export function useGlobalIntentRouter({
           aiModelSubTab: intent.aiModelSubTab,
           nonce: Date.now(),
         });
-        navigateToView('settings');
+        navigateToRoute({ section: 'settings', page: intent.tab === 'ai' ? 'ai' : intent.tab === 'platforms' || intent.tab === 'tools' ? 'connections' : 'general' });
         return;
       }
 
@@ -168,6 +172,7 @@ export function useGlobalIntentRouter({
     };
   }, [
     navigateToView,
+  navigateToRoute,
     navigateToGardenFlow,
     setActiveManuscriptEditorFile,
     setActiveVideoProjectId,

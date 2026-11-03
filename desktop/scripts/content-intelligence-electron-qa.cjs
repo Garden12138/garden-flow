@@ -72,8 +72,8 @@ async function run() {
  const select = (label, value) => js('var field=document.querySelector(' + JSON.stringify('select[aria-label="' + label + '"]') + ');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,"value").set.call(field,' + JSON.stringify(value) + ');field.dispatchEvent(new Event("change",{bubbles:true}));true');
  const navigate = intent => js('window.dispatchEvent(new CustomEvent("gardenflow:navigate",{detail:' + JSON.stringify(intent) + '}));true');
  if (!state.workspaceId) {
-  await navigate({ type: 'view.open', view: 'wander' });
-  await poll(() => js('Array.from(document.querySelectorAll("button")).some(button=>button.textContent.trim()==="消费者机会")'), 'Wander opportunity tab'); await click('消费者机会');
+  await navigate({ type: 'route.open', route: { section: 'research', page: 'opportunities' } });
+  await poll(() => js('Boolean(document.querySelector("[aria-label=消费者机会]"))'), 'opportunity page');
   const source = (await invoke('sources'))[0]; const segment = source.segments.find(segment => segment.kind === 'comment'); assert.ok(segment?.text);
   const quote = segment.text.slice(0, 500);
   if(researchMode) {
@@ -93,7 +93,9 @@ async function run() {
    await poll(()=>js('Array.from(document.querySelectorAll("button")).some(button=>button.querySelector("h3")?.textContent==="本地协议验收候选")'),'analysis opportunity in current UI');
    await js('Array.from(document.querySelectorAll("button")).find(button=>button.querySelector("h3")?.textContent==="本地协议验收候选").click();true');
   } else {
+  await js('document.querySelector("summary[aria-label=更多机会操作]").click();true');
   await click('手动新建机会'); await poll(() => js('document.querySelector("select[aria-label=证据来源]")?.options.length > 1'), 'real captured source option');
+  await js('document.querySelector(".opportunity-disclosure > summary").click();true');
   const fields = ['评论依据验收机会', '复核本次评论中实际提及的使用问题', '仅本次已采集评论样本', '以原始评论为研究线索，制作说明稿；商品主张需另行核实'];
   for (let index=0; index<fields.length; index++) await js('var field=document.querySelectorAll("form input")[' + index + '];Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(field,' + JSON.stringify(fields[index]) + ');field.dispatchEvent(new Event("input",{bubbles:true}));true');
   await select('证据来源', '0'); await select('原文片段', segment.key);
@@ -101,12 +103,14 @@ async function run() {
   await click('绑定这条原文'); await poll(() => js('document.body.innerText.includes("已绑定 1 条证据")'), 'server-verified quote');
   await click('保存机会'); await poll(async () => (await invoke('list')).items.length === 1, 'persisted opportunity');
   }
-  await poll(()=>js('Array.from(document.querySelectorAll("button")).some(button=>button.textContent.trim()==="采纳")'),'adoption control');
-  await click('采纳'); await poll(async () => (await invoke('list')).items[0].status === 'accepted', 'explicit adoption');
+  await poll(()=>js('Boolean(document.querySelector("[aria-label=机会详情]"))'),'opportunity detail');
   await click('打开原始来源与定位'); await poll(() => js('Boolean(document.querySelector("[aria-label=原始来源快照]"))'), 'original local quote locator');
   window.setSize(1440, 940); await pause(300); await fs.writeFile(path.join(root,'opportunity-private.png'),(await window.webContents.capturePage()).toPNG());
-  const opportunity = (await invoke('list')).items[0];
-  await click('确认目标并基于此创作'); await poll(() => js('Boolean(document.querySelector("[data-creation-workbench]"))'), 'existing real authoring workbench');
+  assert.equal((await invoke('list')).items[0].status,'proposed');
+  await click('基于此创作'); await poll(()=>js('Boolean(document.querySelector("[aria-labelledby=opportunity-creation-title]"))'),'creation confirmation');
+  assert.equal((await invoke('list')).items[0].status,'proposed');
+  await click('采纳并创建作品'); await poll(() => js('Boolean(document.querySelector("[data-creation-workbench]"))'), 'existing real authoring workbench');
+  const opportunity = (await invoke('list')).items[0]; assert.equal(opportunity.status,'accepted');
   // Locate the persisted link through the server-created work files, never through a fake UI ID.
   const creationRoot = path.join(seed.getWorkspacePaths().gardenflow,'creation-workspaces');
   const records = await Promise.all((await fs.readdir(creationRoot)).filter(name=>name.endsWith('.json')).map(async name=>JSON.parse(await fs.readFile(path.join(creationRoot,name),'utf8'))));
@@ -116,6 +120,7 @@ async function run() {
   await fs.writeFile(statePath,JSON.stringify(state));
  }
  await navigate({type:'creation.open',workspaceId:state.workspaceId}); await poll(() => js('Boolean(document.querySelector("[data-creation-workbench]"))'), 'reopened real work');
+ await js('Array.from(document.querySelectorAll("button")).find(button=>button.textContent.trim()==="依据"||button.textContent.trim()==="创作上下文")?.click();true');
  await click('创作依据 ▾'); await poll(() => js('document.body.innerText.includes(' + JSON.stringify(state.quote) + ')'), 'reverse evidence after reopen');
  const sourceView = await invoke('evidenceSource',state.evidenceId); assert.equal(sourceView.evidence.excerpt,state.quote); assert.equal(sourceView.evidence.validity,'verified');
  for(const width of [960,1440]) { window.setSize(width,940); await pause(250); await fs.writeFile(path.join(root,'work-evidence-'+width+'-private.png'),(await window.webContents.capturePage()).toPNG()); }
@@ -125,6 +130,7 @@ async function run() {
  await navigate({type:'creation.open',workspaceId:state.oldWorkId}); await poll(() => js('Boolean(document.querySelector("[data-creation-workbench]"))'), 'legacy work unchanged');
  assert.equal((await seed.readCreationWorkspace(state.oldWorkId)).revision,state.oldWorkRevision);
  await navigate({type:'creation.open',workspaceId:state.workspaceId}); await poll(() => js('Boolean(document.querySelector("[data-creation-workbench]"))'), 'evidence work before switch');
+ await js('Array.from(document.querySelectorAll("button")).find(button=>button.textContent.trim()==="依据"||button.textContent.trim()==="创作上下文")?.click();true');
  await click('创作依据 ▾'); await poll(() => js('document.body.innerText.includes(' + JSON.stringify(state.quote) + ')'), 'evidence visible before switch');
  const other = await api('return window.ipcRenderer.spaces.create("内容证据隔离验收")'); assert.ok(other.success);
  await api('return window.ipcRenderer.spaces.switch(' + JSON.stringify(other.space.id) + ')');

@@ -147,3 +147,20 @@ node desktop/scripts/dream-story-reference-qa.cjs /private/tmp/gardenflow-previo
 ```
 
 验证前序整图字节与哈希一致、只引用一份、固定基准未变、完整指令在预算内且无生成任务。`dreamStoryReferences.test.ts` 与 `dreamImagePromptBudget.test.ts` 覆盖选择变化使旧调用卡失效、锁定／旧格式保护和分享提示词排除。
+
+## 界面导航与作品目录
+
+桌面导航、旧入口映射、作品目录去重、CSV 关联及编辑器辅助面板的针对性回归：
+
+```sh
+pnpm --dir desktop exec node --test tests/workspaceRoutes.test.ts tests/workCatalog.test.ts tests/workspaceUi.test.ts
+pnpm --dir desktop exec node --test tests/consumerOpportunityGuidanceUi.test.ts tests/contentIntelligenceUi.test.ts
+pnpm --dir desktop exec node --test tests/workspaceGuidanceUi.test.ts tests/contentCampaignsUi.test.ts tests/contentMetricsUi.test.ts tests/sourceMaintenanceUi.test.ts
+pnpm --dir PublishPlugin test
+```
+
+完整检查仍使用 `pnpm check` 和 `pnpm test`。浏览器桥测试需要允许创建本机 socket。Electron 交接验证继续使用本页的隔离验证脚本；观测与实验页面分别位于“复盘 → 作品表现”和“复盘 → 内容实验”，模型、媒体生成及真实平台提交需另行验证。
+
+消费者机会的界面回归覆盖首次使用指南、筛选空态、可选证据与原文自动填入、创作取消后的焦点恢复、失效依据引导，以及采纳成功但创建失败后的幂等重试。
+
+共享引导回归覆盖新建内容组的表单定位、作品表现的分步展开与慢响应时保留用户展开选择、可选采样与资料入口，以及无历史引用时的来源复核空态；确认后写入、模型调用和空间隔离继续由原业务回归测试覆盖。

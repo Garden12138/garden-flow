@@ -44,6 +44,14 @@ const elements = {
 };
 
 let context = null;
+let savedDestination = null;
+document.getElementById('open-desktop')?.addEventListener('click', async () => {
+  try {
+    const health = context?.health?.health || {};
+    const result = await sendMessage({ type: 'desktop:open', destination: savedDestination?.destination || 'materials', ...(savedDestination?.entityKind ? { entityKind: savedDestination.entityKind } : {}), ...(savedDestination?.entityId ? { entityId: savedDestination.entityId } : {}), ...(savedDestination?.spaceId || health.captureSpaceId ? { spaceId: savedDestination?.spaceId || health.captureSpaceId } : {}) });
+    if (result?.success === false) throw new Error(result.error || '打开失败');
+  } catch (error) { renderCaptureStatus(error instanceof Error ? error.message : String(error), 'error'); }
+});
 let refreshing = false;
 let capturePendingAction = '';
 let captureFeedback = null;
@@ -241,6 +249,8 @@ async function refreshContext() {
 
 function renderContext(nextContext) {
   const health = nextContext?.health || {};
+  const space = document.getElementById('capture-space');
+  if (space) space.textContent = health.health?.captureSpaceName || (health.health?.captureSpaceId ? '当前桌面空间' : '连接桌面端后显示');
   renderConnection(health, nextContext?.browserControl || {});
   renderPageIdentity(resolvePageIdentity(nextContext));
   renderCaptureActions(nextContext);
@@ -656,6 +666,7 @@ async function runCaptureAction(action) {
     if (response?.preview && response?.product) {
       jdProductPreview = response.product;
     }
+    if (!response?.preview) savedDestination = { destination: ['jd-product', 'product'].includes(response?.mode) ? 'products' : 'materials', entityId: response?.noteId || response?.productId || '', entityKind: response?.mode === 'youtube' || response?.mode === 'youtube-video' ? 'youtube-video' : 'redbook-note', spaceId: response?.captureSpaceId || context?.health?.health?.captureSpaceId };
     captureFeedback = {
       status: response?.preview && response?.product ? productPreviewFeedback(response.product).status : response?.capture?.status === 'partial' ? 'warning' : 'success',
       message: summarizeActionResponse(response, meta.done),

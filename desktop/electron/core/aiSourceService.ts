@@ -1,9 +1,10 @@
-import { normalizeApiBaseUrl, safeUrlJoin } from './urlUtils';
+import { xcliModels } from './xcliGateway.ts';
+import { normalizeApiBaseUrl, safeUrlJoin } from './urlUtils.ts';
 import {
   hasModelCapability,
   inferModelCapabilities,
   type ModelCapability,
-} from '../../shared/modelCapabilities';
+} from '../../shared/modelCapabilities.ts';
 
 export type AiProtocol = 'openai' | 'anthropic' | 'gemini';
 
@@ -18,6 +19,8 @@ export interface AiSourceConnectionInput {
 export interface AiModelInfo {
   id: string;
   capabilities?: ModelCapability[];
+  inputCapabilities?: string[];
+  xcli?: import('./xcliGateway.ts').XcliModel['xcli'];
 }
 
 export interface AiConnectionTestResult {
@@ -338,6 +341,18 @@ const fetchGeminiModels = async (baseURL: string, apiKey: string): Promise<AiMod
 };
 
 export async function fetchModelsForAiSource(input: AiSourceConnectionInput): Promise<{ protocol: AiProtocol; models: AiModelInfo[] }> {
+  if (input.presetId === 'xcli') {
+    const models = await xcliModels(input.baseURL, input.apiKey);
+    return { protocol: 'openai', models: models.map((model) => ({
+      id: model.id, xcli: model.xcli,
+      capabilities: [
+        ...(model.xcli.capabilities.includes('text.generate') ? ['chat' as const] : []),
+        ...(model.xcli.validated && model.xcli.capabilities.includes('image.generate') ? ['image' as const] : []),
+        ...(model.xcli.validated && model.xcli.capabilities.includes('embeddings') ? ['embedding' as const] : []),
+      ],
+      inputCapabilities: model.xcli.validated && model.xcli.capabilities.includes('vision.analyze') ? ['image'] : [],
+    })).filter((model) => input.purpose !== 'image' || model.capabilities.includes('image')) };
+  }
   const protocol = detectAiProtocol(input);
   const baseURL = normalizeApiBaseUrl(input.baseURL);
   const apiKey = String(input.apiKey || '').trim();

@@ -4,6 +4,7 @@ import {
     type MediaJobQueueMode,
     type MediaJobProjection,
 } from '../media-jobs/types';
+import { normalizeVideoResolution, type VideoResolution } from '../../../shared/videoGenerationCapabilities';
 import { resolveAssetUrl } from '../../utils/pathManager';
 
 export type StudioMode = 'image' | 'video' | 'audio' | 'cover' | 'digital-human';
@@ -59,7 +60,7 @@ export type VideoGenerationRequest = {
     projectId: string;
     model: string;
     aspectRatio: '16:9' | '9:16';
-    resolution: '720p' | '1080p';
+    resolution: VideoResolution;
     durationSeconds: number;
     generateAudio: boolean;
     generationMode: VideoGenerationMode;
@@ -400,27 +401,6 @@ function emptyDeletedFeedState(): DeletedFeedState {
     return { entryIds: [], jobIds: [], clientRequestIds: [], agentSessionIds: [], agentContextIds: [] };
 }
 
-function serializeFeedEntries(entries: FeedEntry[]): string {
-    return JSON.stringify(
-        entries.slice(-FEED_STORAGE_MAX_ENTRIES).map((entry) => {
-            if (!isGenerationFeedEntry(entry)) {
-                return entry;
-            }
-            return {
-                ...entry,
-                jobRequest: undefined,
-                request: {
-                    ...entry.request,
-                    referenceItems: [],
-                    referenceAudios: entry.request.type === 'video' ? [] : undefined,
-                    firstClip: entry.request.type === 'video' ? null : undefined,
-                    drivingAudio: entry.request.type === 'video' ? null : undefined,
-                },
-            };
-        }),
-    );
-}
-
 export function normalizeReferenceItems(value: unknown): ReferenceItem[] {
     if (!Array.isArray(value)) return [];
     return value
@@ -539,7 +519,7 @@ export function normalizeGenerationRequest(value: unknown): GenerationRequest | 
 
     if (resolvedType === 'video') {
         const aspectRatio = String(record.aspectRatio || '16:9').trim();
-        const resolution = String(record.resolution || '720p').trim() === '1080p' ? '1080p' : '720p';
+        const resolution = normalizeVideoResolution(record.resolution);
         const generationMode = (() => {
             const rawMode = String(record.generationMode || record.videoMode || record.mode || '').trim();
             if (rawMode === 'reference-guided' || rawMode === 'first-last-frame' || rawMode === 'continuation' || rawMode === 'text-to-video') {
@@ -753,7 +733,10 @@ export function sortFeedEntries(entries: FeedEntry[]): FeedEntry[] {
 export function persistFeedEntries(entries: FeedEntry[]): void {
     if (typeof window === 'undefined') return;
     try {
-        window.localStorage.setItem(FEED_STORAGE_KEY, serializeFeedEntries(sortFeedEntries(entries)));
+        // Generation tasks are restored by the media job subscription. A draft
+        // submission without a job ID cannot be resumed after a reload.
+        const sessions = sortFeedEntries(entries.filter(isAgentSessionFeedEntry)).slice(-FEED_STORAGE_MAX_ENTRIES);
+        window.localStorage.setItem(FEED_STORAGE_KEY, JSON.stringify(sessions));
     } catch {
         // ignore persistence errors
     }
@@ -773,13 +756,10 @@ export function readPersistedFeedEntries(): FeedEntry[] {
         const deleted = readDeletedFeedState();
         return parsed
             .slice(-FEED_STORAGE_MAX_ENTRIES)
+            .filter((item) => item?.kind === 'agent-session')
             .map(normalizeFeedEntryRecord)
             .filter((item): item is FeedEntry => Boolean(item))
             .filter((item) => !isFeedEntryDeleted(item, deleted))
-            .filter((item) => (
-                !isGenerationFeedEntry(item)
-                || (item.status === 'running' && !item.jobId)
-            ))
             .sort((a, b) => {
                 const timeDelta = feedTime(a.createdAt) - feedTime(b.createdAt);
                 if (timeDelta !== 0) return timeDelta;
@@ -964,7 +944,7 @@ export function requestFromJobProjection(job: MediaJobProjection): GenerationReq
             projectId: projectId || '',
             model: model || '',
             aspectRatio: aspectRatio === '9:16' ? '9:16' : '16:9',
-            resolution: resolution === '1080p' ? '1080p' : '720p',
+            resolution: normalizeVideoResolution(resolution),
             durationSeconds: numberField(request, ['durationSeconds', 'duration_seconds', 'duration'], 8),
             generateAudio: Boolean(request.generateAudio),
             generationMode: normalizedMode,
@@ -1027,47 +1007,6 @@ export function feedEntryFromJobProjection(job: MediaJobProjection): GenerationF
         assets: assetsFromJobProjection(job),
     };
     return applyJobProjectionToFeedEntry(base, job) as GenerationFeedEntry;
-}
-
-export function isSamePendingGenerationRequest(entry: FeedEntry, jobEntry: GenerationFeedEntry): boolean {
-    if (!isGenerationFeedEntry(entry) || entry.jobId || entry.status !== 'running') return false;
-    if (entry.request.type !== jobEntry.request.type) return false;
-    if (entry.request.prompt.trim() !== jobEntry.request.prompt.trim()) return false;
-    return Math.abs(entry.createdAt - jobEntry.createdAt) < 120_000;
-}
-
-function pendingGenerationMatchScore(entry: FeedEntry, jobEntry: GenerationFeedEntry): number {
-    if (!isGenerationFeedEntry(entry) || entry.jobId || entry.status !== 'running') return Number.POSITIVE_INFINITY;
-    if (entry.request.type !== jobEntry.request.type) return Number.POSITIVE_INFINITY;
-
-    const timeDelta = feedTime(jobEntry.createdAt) - feedTime(entry.createdAt);
-    if (!Number.isFinite(timeDelta) || timeDelta < -5_000 || timeDelta > 15 * 60_000) {
-        return Number.POSITIVE_INFINITY;
-    }
-
-    const pendingPrompt = entry.request.prompt.trim();
-    const jobPrompt = jobEntry.request.prompt.trim();
-    if (pendingPrompt && jobPrompt && pendingPrompt === jobPrompt) {
-        return timeDelta;
-    }
-
-    // Agent mode may turn the user's short request into a longer executable prompt.
-    // In that flow the optimistic placeholder still represents the first matching
-    // media job of the same kind created immediately after the user sends.
-    return timeDelta + 120_000;
-}
-
-function findPendingGenerationIndex(entries: FeedEntry[], jobEntry: GenerationFeedEntry): number {
-    let bestIndex = -1;
-    let bestScore = Number.POSITIVE_INFINITY;
-    entries.forEach((entry, index) => {
-        const score = pendingGenerationMatchScore(entry, jobEntry);
-        if (score < bestScore) {
-            bestScore = score;
-            bestIndex = index;
-        }
-    });
-    return bestIndex;
 }
 
 export function errorMessageFromJobProjection(job: MediaJobProjection): string {
@@ -1157,7 +1096,10 @@ export function mergeMediaJobsIntoFeedEntries(
 
         const jobEntry = feedEntryFromJobProjection(job);
         if (!jobEntry) continue;
-        const pendingIndex = findPendingGenerationIndex(next, jobEntry);
+        const clientRequestId = clientRequestIdFromJob(job);
+        const pendingIndex = clientRequestId ? next.findIndex((entry) => (
+            isGenerationFeedEntry(entry) && !entry.jobId && entry.status === 'running' && entry.id === clientRequestId
+        )) : -1;
         if (pendingIndex >= 0) {
             next[pendingIndex] = applyJobProjectionToFeedEntry({
                 ...(next[pendingIndex] as GenerationFeedEntry),

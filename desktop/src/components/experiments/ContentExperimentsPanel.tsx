@@ -1,18 +1,24 @@
+import { bindMetricCsvToPublication } from '../../../shared/metricCsv';
 import { useEffect, useRef, useState } from 'react';
 import type { CiResult } from '../../../shared/contentIntelligence';
 import { MetricCsvFields, metricWindowLabel, type MetricImportPreview, type MetricObservation, type PublicationLink, type MetricWorkSummary, type MetricComparison } from '../../../shared/contentExperiments';
+import { WorkspaceGuide, WorkspaceHelp, openWorkspaceForm } from '../../features/workbench/WorkspaceGuidance';
 import { dispatchAppIntent } from '../../features/app-shell/appIntent';
 import { ExperimentPlansPanel } from './ExperimentPlansPanel';
 
-const buttonClass = 'rounded border border-border px-3 py-2 text-xs disabled:opacity-40';
-const fieldClass = 'w-full rounded border border-border bg-surface-primary p-2 text-sm';
+const buttonClass = 'workspace-secondary-button';
+const fieldClass = 'workspace-field';
 const labels: Record<typeof MetricCsvFields[number], string> = { publicationLinkId: '发布关联 ID', metric: '指标键', definition: '指标口径', unit: '单位 count/seconds/ratio', value: '数值', start: '窗口开始（ISO 含偏移）', end: '窗口结束（ISO 含偏移）', timeZone: '时间区（如 Asia/Shanghai）', alignment: '对齐 calendar/post-age', ageStartHours: '发布后开始小时（可空）', ageEndHours: '发布后结束小时（可空）', confounders: '干扰因素（用 | 分隔，可空）', sourceNote: '数据来源说明', observedAt: '实际观测时间（旧文件可留空映射，不能比较）' };
 const initialMapping = () => Object.fromEntries(MetricCsvFields.map(key => [key, key])) as Record<typeof MetricCsvFields[number], string>;
 function data<T>(result: CiResult<T>): T { if (result.success === false) throw new Error(result.error); return result.data; }
-export function ContentExperimentsPanel() {
+export function ContentExperimentsPanel({ mode = 'all' }: { mode?: 'all' | 'observations' | 'experiments' } = {}) {
+    const publicationPanel = useRef<HTMLDetailsElement>(null);
+    const importPanel = useRef<HTMLDetailsElement>(null);
+    const initialPanels = useRef(true);
     const [works, setWorks] = useState<MetricWorkSummary[]>([]); const [links, setLinks] = useState<PublicationLink[]>([]); const [observations, setObservations] = useState<MetricObservation[]>([]);
     const [workId, setWorkId] = useState(''); const [alias, setAlias] = useState(''); const [externalId, setExternalId] = useState(''); const [url, setUrl] = useState(''); const [sourceNote, setSourceNote] = useState('');
     const [externalTitle, setExternalTitle] = useState(''); const [externalPlatform, setExternalPlatform] = useState<PublicationLink['platform']>('xiaohongshu'); const [externalKind, setExternalKind] = useState<'video' | 'image-set' | 'unknown'>('unknown');
+    const [importPublicationId, setImportPublicationId] = useState('');
     const [csv, setCsv] = useState(''); const [mapping, setMapping] = useState(initialMapping); const [preview, setPreview] = useState<MetricImportPreview | null>(null);
     const [confirmed, setConfirmed] = useState(false); const [revise, setRevise] = useState(false); const [history, setHistory] = useState<MetricObservation[]>([]);
     const [baseline, setBaseline] = useState(''); const [variant, setVariant] = useState(''); const [comparison, setComparison] = useState<MetricComparison | null>(null);
@@ -22,12 +28,22 @@ export function ContentExperimentsPanel() {
     const api = window.ipcRenderer.contentIntelligence;
     const load = async (token: number) => {
         const values = await Promise.all([api.metricWorks(), api.publications(), api.metrics()]);
-        if (token !== epoch.current) return; setWorks(data(values[0])); setLinks(data(values[1])); setObservations(data(values[2]));
+        if (token !== epoch.current) return;
+        const loadedLinks = data(values[1]); const loadedObservations = data(values[2]);
+        setWorks(data(values[0])); setLinks(loadedLinks); setObservations(loadedObservations);
+        if (initialPanels.current) {
+            initialPanels.current = false;
+            const panel = !loadedLinks.length ? publicationPanel.current : !loadedObservations.length ? importPanel.current : null;
+            if (panel) panel.open = true;
+        }
     };
     useEffect(() => {
         const clear = () => {
             const token = ++epoch.current; locked.current = false; importRequest.current = undefined;
-            setWorks([]); setLinks([]); setObservations([]); setWorkId(''); setAlias(''); setExternalId(''); setUrl(''); setSourceNote(''); setCsv(''); setMapping(initialMapping()); setPreview(null); setConfirmed(false); setRevise(false); setHistory([]); setBaseline(''); setVariant(''); setComparison(null); setError(''); setMessage(''); setBusy(false); setShowPlans(false);
+            initialPanels.current = true;
+            if (publicationPanel.current) publicationPanel.current.open = false;
+            if (importPanel.current) importPanel.current.open = false;
+            setImportPublicationId(''); setWorks([]); setLinks([]); setObservations([]); setWorkId(''); setAlias(''); setExternalId(''); setUrl(''); setSourceNote(''); setCsv(''); setMapping(initialMapping()); setPreview(null); setConfirmed(false); setRevise(false); setHistory([]); setBaseline(''); setVariant(''); setComparison(null); setError(''); setMessage(''); setBusy(false); setShowPlans(false);
             setExternalTitle(''); setExternalPlatform('xiaohongshu'); setExternalKind('unknown');
             void load(token).catch(reason => { if (token === epoch.current) setError(String(reason)); });
         };
@@ -40,18 +56,21 @@ export function ContentExperimentsPanel() {
         finally { if (token === epoch.current) { locked.current = false; setBusy(false); } }
     };
     const invalidate = () => { setPreview(null); setConfirmed(false); setRevise(false); importRequest.current = undefined; };
+    const importCsv = () => importPublicationId ? bindMetricCsvToPublication(csv, mapping.publicationLinkId, importPublicationId) : csv;
     const work = works.find(value => value.id === workId);
     const observationLabel = (observation: MetricObservation) => {
         const link = links.find(value => value.id === observation.input.publicationLinkId);
         return `${link?.platform || '来源不可用'} · ${link?.accountAlias || ''} · ${link?.externalWorkId || ''} · ${observation.input.metric.key} = ${observation.input.value} · v${observation.revision}`;
     };
-    return <section aria-label="内容观测与实验" className="space-y-5 p-6">
-        <div className="flex items-start justify-between gap-3"><div><h1 className="text-xl font-semibold">内容观测与实验</h1><p className="mt-2 text-sm text-text-secondary">使用已有发布记录或明确标注的手工关联，再导入真实观测。没有数据时保持空态；观察差异不能证明因果。</p></div><button className={buttonClass} disabled={busy} onClick={() => void act(load)}>刷新</button></div>
+    if (mode === 'experiments') return <section className="workspace-page"><header className="workspace-page-header"><div><p className="workspace-eyebrow">复盘</p><h1>内容实验</h1><p>明确假设与修改变量，用观测决定下一轮。</p></div></header>{error && <p role="alert" className="workspace-error">{error}<button onClick={() => void act(load)}>重试</button></p>}<ExperimentPlansPanel works={works} links={links} observations={observations} /></section>;
+    return <section aria-label="内容观测与实验" className="workspace-page space-y-5">
+        <header className="workspace-page-header"><div><p className="workspace-eyebrow">复盘</p><h1>{mode === 'observations' ? '作品表现' : '内容观测与实验'}</h1><p>把真实发布结果与作品关联，为下一轮创作积累依据。</p></div><div className="flex flex-wrap gap-2"><button className="workspace-primary-button" disabled={busy} onClick={() => openWorkspaceForm(links.length ? importPanel : publicationPanel)}>{links.length ? '导入观测' : '关联已发布作品'}</button><button className={buttonClass} disabled={busy} onClick={() => void act(load)}>刷新</button></div></header>
+        {!observations.length ? <WorkspaceGuide title="从真实数据看作品表现" description="先确认是哪件发布作品，再导入后台导出的数据。不会把导出成功当作已发布，也不会自动抓取平台数据。" steps={[{ title: '关联发布作品', description: '读取已有回执，或手工记录你核实过的作品链接。' }, { title: '导入真实观测', description: '选择 CSV，匹配作品和字段，核对预览后保存。' }, { title: '比较与下一轮', description: '使用相同口径和时间窗口比较，保留限制与干扰因素。' }]} /> : <WorkspaceHelp><WorkspaceGuide title="如何补充和比较表现数据" description="每次导入保留来源和时间口径，历史版本可回看。" steps={[{ title: '选择发布作品', description: '按作品名称与账号匹配，系统保存内部关联。' }, { title: '核对导入预览', description: '重复数据会跳过，冲突需要明确确认。' }, { title: '比较可比观测', description: '无法比较时会说明原因，观察差异不代表因果。' }]} /></WorkspaceHelp>}
         {error && <p role="alert" className="rounded border border-red-400 p-3 text-sm">{error}</p>}{message && <p role="status" className="rounded border border-border p-3 text-sm">{message}</p>}
-        <button type="button" className={buttonClass} disabled={busy} aria-expanded={showPlans} onClick={() => setShowPlans(!showPlans)}>{showPlans ? '收起实验规划' : '规划实验与下一轮'}</button>
+        {mode === 'all' && <button type="button" className={buttonClass} disabled={busy} aria-expanded={showPlans} onClick={() => setShowPlans(!showPlans)}>{showPlans ? '收起实验规划' : '规划实验与下一轮'}</button>}
         {showPlans && <ExperimentPlansPanel works={works} links={links} observations={observations} />}
-        <section className="space-y-3 rounded border border-border p-4"><h2 className="font-semibold">工程与发布结果</h2>
-            <select aria-label="观测工程" className={fieldClass} disabled={busy} value={workId} onChange={event => setWorkId(event.target.value)}><option value="">选择当前空间的已有工程</option>{works.map(item => <option key={item.id} value={item.id}>{item.title} · {item.platform} · {item.id}</option>)}</select>
+        <details ref={publicationPanel} className="workspace-task-panel space-y-3"><summary>作品与发布关联</summary>
+            <select aria-label="观测工程" className={fieldClass} disabled={busy} value={workId} onChange={event => setWorkId(event.target.value)}><option value="">选择当前空间的已有工程</option>{works.map(item => <option key={item.id} value={item.id}>{item.title} · {item.platform}</option>)}</select>
             <div className="flex flex-wrap gap-2"><button className={buttonClass} disabled={busy || !work} onClick={() => void act(async token => { await api.syncPublication(workId).then(data); await load(token); if (token === epoch.current) setMessage('已读取本工程的现有提交与可信回执。没有记录时可手工补充。'); })}>读取已有发布关联</button><button className={buttonClass} disabled={!work || busy} onClick={() => dispatchAppIntent({ type: 'creation.open', workspaceId: workId })}>打开工程</button></div>
             <details><summary className="cursor-pointer text-sm">手工补充已发布作品（来源标为人工声明）</summary><form className="mt-3 grid gap-3 md:grid-cols-2" onSubmit={event => {
                 event.preventDefault(); if (!work) return;
@@ -83,13 +102,14 @@ export function ContentExperimentsPanel() {
                 <button className={buttonClass} disabled={busy}>保存历史作品链接</button>
             </form></details>
             {!links.length && <p className="text-sm text-text-secondary">还没有发布结果关联。导出成功不会自动计为已发布。</p>}
-            <div className="max-h-72 space-y-2 overflow-y-auto">{links.map(link => <article key={link.id} className="rounded border border-border p-3 text-xs"><p>{link.platform} · {link.accountAlias} · 作品 {link.externalWorkId || '尚无可信作品 ID'} {link.title || ''}</p><p>{link.origin === 'manual' ? '人工声明，未由程序核实发布' : link.origin === 'receipt' ? '可信作品回执' : '已提交，审核结果未知'} · {link.sourceNote}</p><p className="break-all select-text">发布关联 ID：{link.id}</p>{link.workspaceId ? <p>工程 {link.workspaceId} · 关联时版本 {link.workspaceRevision} {link.nativeRevision ? `· ${link.origin === 'manual' ? '声明关联时原生版本' : '发布快照版本'} ${link.nativeRevision}` : ''}</p> : <p>历史作品，尚未关联原工程；发布工程版本未知。</p>}</article>)}</div>
-        </section>
-        <section className="space-y-3 rounded border border-border p-4"><h2 className="font-semibold">CSV 观测导入</h2><p className="text-xs">每行一条指标。count 为整数；seconds 为秒；ratio 为 0–1。窗口使用带偏移的 ISO 时间；来源仅有日期、时间区未知时，填 timeZone=unknown、alignment=calendar，起止填 YYYY-MM-DD（结束日不含），保留原日期且不能计算差异。账号与平台取自发布关联。累计值需在口径中注明；不能冒充窗口新增值。</p>
+            <div className="max-h-72 space-y-2 overflow-y-auto">{links.map(link => <article key={link.id} className="rounded border border-border p-3 text-xs"><p>{link.platform} · {link.accountAlias} · 作品 {link.externalWorkId || '尚无可信作品 ID'} {link.title || ''}</p><p>{link.origin === 'manual' ? '人工声明，未由程序核实发布' : link.origin === 'receipt' ? '可信作品回执' : '已提交，审核结果未知'} · {link.sourceNote}</p><details><summary className="cursor-pointer">关联与版本记录</summary><p className="break-all select-text">发布关联 ID：{link.id}</p>{link.workspaceId ? <p>工程 {link.workspaceId} · 关联时版本 {link.workspaceRevision} {link.nativeRevision ? `· ${link.origin === 'manual' ? '声明关联时原生版本' : '发布快照版本'} ${link.nativeRevision}` : ''}</p> : <p>历史作品，尚未关联原工程；发布工程版本未知。</p>}</details></article>)}</div>
+        </details>
+        <details ref={importPanel} className="workspace-task-panel space-y-3"><summary>导入观测</summary><ol className="research-stepper" aria-label="观测导入步骤">{['选择文件', '匹配作品与字段', '预览确认'].map((label, index) => <li key={label} aria-current={(preview ? 2 : csv ? 1 : 0) === index ? 'step' : undefined}><span>{index + 1}</span>{label}</li>)}</ol><details className="opportunity-disclosure"><summary>CSV 格式与时间口径说明</summary><p className="text-xs">每行一条指标。count 为整数；seconds 为秒；ratio 为 0–1。窗口使用带偏移的 ISO 时间；来源仅有日期、时间区未知时，填 timeZone=unknown、alignment=calendar，起止填 YYYY-MM-DD（结束日不含），保留原日期且不能计算差异。账号与平台取自发布关联。累计值需在口径中注明；不能冒充窗口新增值。</p></details>
             <div className="flex flex-wrap gap-3"><button className={buttonClass} disabled={busy} onClick={() => { setCsv(MetricCsvFields.join(',') + '\n'); invalidate(); }}>填入空白模板标题</button><label className={buttonClass}>选择本地 CSV<input aria-label="选择指标CSV" className="ml-2 max-w-56" type="file" accept=".csv,text/csv" disabled={busy} onChange={event => { const file = event.target.files?.[0]; if (!file) return; void act(async token => { if (file.size > 1000000) throw new Error('CSV 文件超过 1 MB'); const text = await file.text(); if (token === epoch.current) { setCsv(text); invalidate(); } }); }} /></label></div>
-            <textarea aria-label="指标CSV内容" className={`${fieldClass} min-h-32 font-mono text-xs`} maxLength={1000000} value={csv} disabled={busy} onChange={event => { setCsv(event.target.value); invalidate(); }} />
+            <label className="block text-xs">为未关联的行选择发布作品<select aria-label="导入观测的发布作品" className={fieldClass} disabled={busy} value={importPublicationId} onChange={event => { setImportPublicationId(event.target.value); invalidate(); }}><option value="">使用文件中的发布关联；也可在这里指定作品</option>{links.map(link => <option key={link.id} value={link.id}>{link.title || works.find(work => work.id === link.workspaceId)?.title || link.externalWorkId || '已提交作品'} · {link.platform} · {link.accountAlias}</option>)}</select></label><p className="text-xs text-text-tertiary">选择作品后自动补充空白关联，已有逐行关联保持原样。多作品文件可保留各行关联并逐行核对预览。</p>
+            <details className="opportunity-disclosure"><summary>查看或粘贴 CSV 内容</summary><textarea aria-label="指标CSV内容" className={`${fieldClass} min-h-32 font-mono text-xs`} maxLength={1000000} value={csv} disabled={busy} onChange={event => { setCsv(event.target.value); invalidate(); }} /></details>
             <details><summary className="cursor-pointer text-sm">字段映射（填写 CSV 中的列名）</summary><div className="mt-3 grid gap-2 md:grid-cols-3">{MetricCsvFields.map(field => <label key={field} className="text-xs">{labels[field]}<input aria-label={`映射 ${field}`} className={fieldClass} disabled={busy} value={mapping[field]} onChange={event => { setMapping({ ...mapping, [field]: event.target.value }); invalidate(); }} /></label>)}</div></details>
-            <button className={buttonClass} disabled={busy || !csv.trim()} onClick={() => void act(async token => { const result = data(await api.previewMetrics({ csv, mapping })); if (token === epoch.current) { setPreview(result); setConfirmed(false); setRevise(false); } })}>预览观测导入</button>
+            <button className="workspace-primary-button" disabled={busy || !csv.trim()} onClick={() => void act(async token => { const result = data(await api.previewMetrics({ csv: importCsv(), mapping })); if (token === epoch.current) { setPreview(result); setConfirmed(false); setRevise(false); } })}>预览观测导入</button>
             {preview && <div aria-label="观测导入预览" className="space-y-3"><p className="text-sm">共 {preview.rows.length} 行：新增 {preview.rows.filter(row => row.status === 'new').length}；重复 {preview.rows.filter(row => row.status === 'duplicate').length}；冲突 {preview.rows.filter(row => row.status === 'conflict').length}；错误 {preview.rows.filter(row => row.status === 'error').length}。</p>
                 <div className="max-h-64 space-y-2 overflow-y-auto">{preview.rows.map(row => {
                     const linked = links.find(link => link.id === row.input?.publicationLinkId);
@@ -101,19 +121,19 @@ export function ContentExperimentsPanel() {
                 })}</div>
                 {preview.rows.some(row => row.status === 'conflict') && <label className="flex gap-2 text-xs"><input aria-label="确认修订观测冲突" type="checkbox" checked={revise} disabled={busy} onChange={event => setRevise(event.target.checked)} />确认修订冲突值，保留全部旧版本供审计。</label>}
                 <label className="flex gap-2 text-xs"><input aria-label="确认导入观测" type="checkbox" checked={confirmed} disabled={busy} onChange={event => setConfirmed(event.target.checked)} />已核对上述数据来源、口径和窗口，确认写入当前空间。</label>
-                <button className={buttonClass} disabled={busy || !confirmed || !preview.rows.length || preview.rows.some(row => row.status === 'error') || (preview.rows.some(row => row.status === 'conflict') && !revise)} onClick={() => void act(async token => {
+                <button className="workspace-primary-button" disabled={busy || !confirmed || !preview.rows.length || preview.rows.some(row => row.status === 'error') || (preview.rows.some(row => row.status === 'conflict') && !revise)} onClick={() => void act(async token => {
                     if (importRequest.current?.digest !== preview.digest) importRequest.current = { digest: preview.digest, id: crypto.randomUUID() };
-                    const result = data(await api.importMetrics({ csv, mapping, requestId: importRequest.current.id, previewDigest: preview.digest, confirmed: true, reviseConflicts: revise }));
+                    const result = data(await api.importMetrics({ csv: importCsv(), mapping, requestId: importRequest.current.id, previewDigest: preview.digest, confirmed: true, reviseConflicts: revise }));
                     await load(token); if (token === epoch.current) { invalidate(); setComparison(null); setHistory([]); setMessage(`已写入 ${result.changed.length} 条观测版本，跳过 ${result.duplicates} 条重复。`); }
                 })}>确认导入观测</button>
             </div>}
-        </section>
-        <section className="space-y-3 rounded border border-border p-4"><h2 className="font-semibold">观测比较与审计</h2>
+        </details>
+        <details className="workspace-task-panel space-y-3"><summary>比较观测与查看历史</summary>
             {!observations.length && <p className="text-sm">还没有观测，暂无表现结论。</p>}
             <div className="grid gap-3 md:grid-cols-2">{(['baseline', 'variant'] as const).map(role => <label key={role} className="text-xs">{role === 'baseline' ? '对照观测' : '变体观测'}<select aria-label={role === 'baseline' ? '对照观测' : '变体观测'} disabled={busy} className={fieldClass} value={role === 'baseline' ? baseline : variant} onChange={event => { (role === 'baseline' ? setBaseline : setVariant)(event.target.value); setComparison(null); setHistory([]); }}><option value="">选择已有观测</option>{observations.map(value => <option key={value.id} value={value.id}>{observationLabel(value)}</option>)}</select></label>)}</div>
             <div className="flex gap-2"><button className={buttonClass} disabled={busy || !baseline || !variant} onClick={() => void act(async token => { const result = data(await api.compareMetrics(baseline, variant, observations.find(value => value.id === baseline)!.revision, observations.find(value => value.id === variant)!.revision)); if (token === epoch.current) setComparison(result); })}>计算观察差异</button><button className={buttonClass} disabled={busy || !baseline} onClick={() => void act(async token => { const result = data(await api.metricHistory(baseline)); if (token === epoch.current) setHistory(result); })}>查看对照审计版本</button></div>
             {comparison && <div aria-label="观测比较结果" className="rounded border border-border p-3 text-sm"><p>{comparison.comparable ? `对照 ${comparison.baseline} / 变体 ${comparison.variant}；观察差值：${comparison.difference}；相对变化：${comparison.relativeChange === null ? 'N/A（分母为零或数值超界）' : (comparison.relativeChange * 100).toFixed(2) + '%'}` : '不足以判断：' + comparison.reasons.join('；')}</p><p>上述为观察比较，不代表单一变量导致变化。</p><p>已记录干扰因素：{comparison.confounders.join('；') || '未提供，不代表不存在。请核对付费流量、推广和发布时间。'}</p></div>}
             {history.length > 0 && <div aria-label="观测审计历史" className="max-h-56 space-y-2 overflow-y-auto">{history.map(value => <article key={value.revision} className="break-words rounded border border-border p-2 text-xs"><p>v{value.revision} · {value.input.value} {value.input.metric.unit} · {value.input.metric.definition}</p><p>{metricWindowLabel(value.input.window)}</p><p>观测于 {value.input.observedAt === undefined ? '未知' : new Date(value.input.observedAt).toISOString()} · 导入于 {new Date(value.recordedAt).toISOString()}</p><p>{value.input.sourceNote} · 干扰因素 {value.input.confounders.join('；') || '未提供'} · 文件摘要 {value.importDigest.slice(0, 16)}</p></article>)}</div>}
-        </section>
+        </details>
     </section>;
 }

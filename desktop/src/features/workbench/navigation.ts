@@ -30,14 +30,17 @@ export const WORKBENCH_NAVIGATION: readonly WorkbenchNavigationItem[] = [
 export const FLOW_STAGE_VIEW_MAP: Readonly<Record<FlowStage, ViewType>> = {
   home: 'home',
   collect: 'knowledge',
-  ideate: 'wander',
-  compose: 'gardenflow',
+  ideate: 'opportunities',
+  compose: 'works',
   produce: 'generation-studio',
   library: 'subjects',
   schedule: 'automation',
 };
 
 export const WORKBENCH_LEGAL_VIEWS: readonly ViewType[] = [
+  'opportunities', 'consumer-research', 'source-maintenance', 'works', 'campaigns',
+  'publication', 'publication-history', 'publication-connections', 'observations', 'experiments',
+  'characters', 'automation-history', 'members',
   'home',
   'skills',
   'knowledge',

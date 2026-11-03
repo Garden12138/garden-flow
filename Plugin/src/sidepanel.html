@@ -18,12 +18,13 @@
         </div>
       </div>
       <div class="topbar-actions">
-        <button id="export-diagnostics" class="icon-btn" title="导出本地诊断" aria-label="导出本地诊断">⇩</button>
-        <button id="open-settings" class="icon-btn" title="打开设置页" aria-label="设置">⚙</button>
-        <button id="refresh" class="icon-btn" title="刷新当前页面状态" aria-label="刷新">↻</button>
+        <button id="export-diagnostics" class="icon-btn" title="导出本地诊断" aria-label="导出本地诊断">↓</button>
+        <button id="open-settings" class="icon-btn" title="打开设置页" aria-label="设置">设置</button>
+        <button id="refresh" class="icon-btn" title="刷新当前页面状态" aria-label="刷新">刷新</button>
       </div>
     </header>
 
+    <section class="target-space"><span>保存位置</span><strong id="capture-space">正在读取桌面空间…</strong><button id="open-desktop" type="button">在桌面查看</button></section>
     <section class="section page-recognition" aria-live="polite">
       <div id="platform-logo" class="platform-logo platform-gardenflow">
         <img id="platform-icon" class="platform-icon" src="icons/icon48.png" alt="GardenFlow 图标">
@@ -86,7 +87,7 @@
       </div>
     </section>
 
-    <section class="section task-panel">
+    <details class="section task-panel"><summary>任务队列</summary>
       <div class="section-row">
         <div class="section-title">任务队列</div>
         <div id="task-queue-badge" class="task-badge">空闲</div>
@@ -98,9 +99,9 @@
         <button id="task-queue-resume" type="button" class="hidden">继续</button>
         <button id="task-queue-cancel" type="button">停止任务</button>
       </div>
-    </section>
+    </details>
 
-    <section class="section task-log-panel">
+    <details class="section task-log-panel"><summary>执行记录</summary>
       <div class="section-row">
         <div class="section-title">执行日志</div>
         <div id="task-log-badge" class="log-badge">最近记录</div>
@@ -108,7 +109,7 @@
       <div id="task-log-list" class="task-log-list">
         <div class="log-empty">暂无执行日志</div>
       </div>
-    </section>
+    </details>
 
   </main>
   <script src="sidepanel.js"></script>

@@ -1,6 +1,7 @@
+import type { VideoResolution } from '../../../shared/videoGenerationCapabilities';
 import type { AuthoringTaskHints } from '../../utils/gardenflowAuthoring';
 
-export type ViewType = 'home' | 'skills' | 'knowledge' | 'settings' | 'archives' | 'wander' | 'gardenflow' | 'media-library' | 'cover-studio' | 'generation-studio' | 'subjects' | 'automation' | 'approval';
+export type ViewType = 'opportunities' | 'consumer-research' | 'source-maintenance' | 'works' | 'campaigns' | 'publication' | 'publication-history' | 'publication-connections' | 'observations' | 'experiments' | 'characters' | 'automation-history' | 'members' | 'home' | 'skills' | 'knowledge' | 'settings' | 'archives' | 'wander' | 'gardenflow' | 'media-library' | 'cover-studio' | 'generation-studio' | 'subjects' | 'automation' | 'approval';
 export type ImmersiveMode = false | 'theme' | 'dark';
 export type TeamSection = 'team-workbench' | 'members';
 export type FlowStage = 'home' | 'collect' | 'ideate' | 'compose' | 'produce' | 'library' | 'schedule';
@@ -18,6 +19,8 @@ export type GardenFlowNavigationAction = {
 };
 
 export type AppIntent =
+  | { type: 'route.open'; route: import('./routes').AppRoute }
+  | { type: 'creation.choose' }
   | ({ type: 'creation.start' } & import('zod').z.input<typeof import('../../../shared/creationWorkspace').CreationStartSchema>)
   | { type: 'creation.prepare'; platform?: import('../../../shared/productCreationTarget').ProductPlatform; capability: import('../../../shared/creationWorkspace').CreationCapability; presetId?: import('../../../shared/noteCards').CreationPreset; sourceInputs?: Array<{ kind: 'attachment' | 'knowledge' | 'manuscript'; path: string; sourceId?: string; itemId?: string; name?: string }>; productId?: string; sourceSessionId?: string; brief?: string }
   | { type: 'creation.open'; workspaceId: string }
@@ -201,7 +204,7 @@ export interface GenerationIntent {
   };
   preset?: {
     aspectRatio?: string;
-    resolution?: '720p' | '1080p';
+    resolution?: VideoResolution;
     durationSeconds?: number;
     videoGenerationMode?: 'text-to-video' | 'reference-guided' | 'first-last-frame' | 'continuation';
   };

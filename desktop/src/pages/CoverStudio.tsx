@@ -121,6 +121,7 @@ const DEFAULT_PROMPT_SWITCHES: CoverPromptSwitches = {
 
 const IMAGE_PROVIDER_TEMPLATE_VALUES: Set<string> = new Set([
     'openai-images',
+    'qwen-image-studio',
     'openai-chat-completions-image',
     'gemini-openai-images',
     'gemini-imagen-native',

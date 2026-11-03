@@ -1,3 +1,4 @@
+import { useDialogFocus } from '../../features/workbench/useDialogFocus';
 import { resolveAssetUrl } from '../../utils/pathManager';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2, X } from 'lucide-react';
@@ -17,13 +18,14 @@ export function publicationStatusLabel(job: PublicationJobView): string {
     if (job.status === 'blocked') return '上传或提交前检查失败';
     return job.phase === 'awaiting-submit' ? '已上传，待最终确认' : job.phase === 'legacy' ? '旧任务，需重新准备' : '待允许上传';
 }
-const button = 'rounded-lg border border-border px-3 py-2 text-xs disabled:opacity-40';
+const button = 'workspace-secondary-button';
 export function PublicationPanel({ source, initialJob, origin = 'manual', promptId, onClose }: { source?: PublicationSource; initialJob?: PublicationJobView; origin?: 'manual' | 'completion'; promptId?: string; onClose: () => void }) {
     const editor = useProductEditorContext();
     const [snapshot, setSnapshot] = useState<PublicationSnapshot | null>(initialJob?.context?.snapshot || null);
     const [job, setJob] = useState<PublicationJobView | null>(initialJob || null);
     const [statuses, setStatuses] = useState<PublicationBrowserState[]>([]);
     const [busy, setBusy] = useState(''); const [error, setError] = useState(''); const [acknowledged, setAcknowledged] = useState(false);
+    const dialogRef = useDialogFocus(onClose);
     const [coverAcknowledged, setCoverAcknowledged] = useState(false);
     const coverPreview = useRef<HTMLVideoElement>(null);
     const refresh = useCallback(async () => {
@@ -63,9 +65,10 @@ export function PublicationPanel({ source, initialJob, origin = 'manual', prompt
     const canAct = job?.publishStatus === 'not_submitted' && ['awaiting_confirmation', 'blocked'].includes(job.status) && job.phase !== 'legacy';
     const canSubmit = job?.phase === 'awaiting-submit' && (job.platform !== 'tiktok' || job.status === 'awaiting_confirmation') && (job.platform !== 'xiaohongshu' || Boolean(job.context?.uploadReview?.pageSettings?.visibilityLabel && job.context.uploadReview.pageSettings.scheduled === false));
     return <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 p-6" data-publication-panel="">
-        <section role="dialog" aria-label="准备发布" className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-border bg-surface-primary p-5 text-text-primary shadow-xl">
+        <section ref={dialogRef} role="dialog" aria-modal="true" aria-label="准备发布" className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-border bg-surface-primary p-5 text-text-primary shadow-xl">
             <header className="flex items-center justify-between"><h2 className="font-semibold">{platform ? publicationPlatformLabel[platform] : ''} · 准备发布</h2><button type="button" onClick={onClose} aria-label="关闭发布面板"><X className="h-5 w-5" /></button></header>
             <p className="mt-3 text-xs text-text-tertiary">{snapshot?.target && `${snapshot.target.spec.width}×${snapshot.target.spec.height} · ${snapshot.target.spec.aspectRatio} · ${snapshot.target.language} · ${snapshot.target.market}`}</p>
+            <ol className="research-stepper" aria-label="发布步骤">{['准备', '上传核对', '最终提交', '查看结果'].map((label, index) => <li key={label} aria-current={(job?.publishStatus && job.publishStatus !== 'not_submitted' ? 3 : canSubmit ? 2 : job ? 1 : 0) === index ? 'step' : undefined}><span>{index + 1}</span>{label}</li>)}</ol>
             <p className="my-3 text-xs text-text-tertiary">先上传到目标账号页面供核对；回读通过后，再单独确认最终发布。</p>
             <div className="space-y-2 rounded-xl border border-border p-3 text-xs"><div className="flex justify-between"><strong>真实账号与发布浏览器</strong><button className={button} disabled={Boolean(busy)} onClick={() => void refresh().catch(reason => setError(String(reason)))}>刷新状态</button></div>
                 {status?.instances.map(instance => <div className="flex justify-between gap-3" key={instance.extensionInstanceId}><span>{instance.browser} · {instance.accountLabel || '账号未识别'} · {instance.pageState || '未知'}{!instance.connected && ' · 未连接'}<br /><span className="text-text-tertiary">{instance.detail || instance.accountId}</span></span><button className={button} disabled={!instance.connected || Boolean(busy)} onClick={async () => { const result = await window.ipcRenderer.publication.bind({ platform: platform!, extensionInstanceId: instance.extensionInstanceId }); if (!result.success) setError(result.error || '绑定失败'); else await refresh(); }}>{status.boundExtensionInstanceId === instance.extensionInstanceId ? '已绑定' : '绑定此浏览器'}</button></div>)}

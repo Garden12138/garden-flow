@@ -3,24 +3,26 @@ import { CAMPAIGN_ROLE_LABELS, CampaignCandidateSchema, type ContentCampaign, ty
 import { CREATION_CAPABILITY_LABELS, CreationCapabilitySchema, supportsCreation, type CreationCapability } from '../../../shared/creationWorkspace';
 import { PRODUCT_PLATFORM_LABELS, type ProductPlatform } from '../../../shared/productCreationTarget';
 import type { CiResult, Opportunity, SourceSnapshot } from '../../../shared/contentIntelligence';
+import { WorkspaceGuide, WorkspaceMore, openWorkspaceForm } from '../../features/workbench/WorkspaceGuidance';
 import { dispatchAppIntent } from '../../features/app-shell/appIntent';
 
-const buttonClass = 'rounded border border-border px-3 py-2 text-xs disabled:opacity-40';
-const fieldClass = 'w-full rounded border border-border bg-surface-primary p-2 text-sm';
+const buttonClass = 'workspace-secondary-button';
+const fieldClass = 'workspace-field';
 const lines = (text: string) => text.split('\n').map(value => value.trim()).filter(Boolean);
 const data = <T,>(result: CiResult<T>): T => { if (result.success === false) throw new Error(result.error); return result.data; };
 const capabilities = (platform: string) => CreationCapabilitySchema.options.filter(value => value !== 'dream-story' && supportsCreation(platform, value));
 const emptyItem = (platform: ProductPlatform = 'xiaohongshu') => ({ role: 'awareness' as CampaignItem['role'], title: '', why: '', opportunityId: '', evidenceRefs: [] as string[], platform, capability: capabilities(platform)[0] as CreationCapability, assetNeeds: '', dependencies: [] as string[] });
 const emptyCampaign = () => ({ title: '', goal: '', audience: '', productId: '', platforms: ['xiaohongshu'] as ProductPlatform[], opportunityIds: [] as string[], limitations: '' });
 
-export function ContentCampaignsPanel() {
+export function ContentCampaignsPanel({ opportunityId }: { opportunityId?: string } = {}) {
     const api = window.ipcRenderer.contentIntelligence;
     const [campaigns, setCampaigns] = useState<ContentCampaign[]>([]); const [opportunities, setOpportunities] = useState<Opportunity[]>([]); const [products, setProducts] = useState<SourceSnapshot[]>([]);
     const [selected, setSelected] = useState(''); const selectedRef = useRef(''); const [detail, setDetail] = useState<CampaignDetail | null>(null); const [context, setContext] = useState<CampaignPlanningContext | null>(null);
-    const [form, setForm] = useState(emptyCampaign); const [itemForm, setItemForm] = useState(emptyItem); const [editing, setEditing] = useState('');
+    const [form, setForm] = useState(() => ({ ...emptyCampaign(), opportunityIds: opportunityId ? [opportunityId] : [] })); const [itemForm, setItemForm] = useState(emptyItem); const [editing, setEditing] = useState('');
     const [listAck, setListAck] = useState(false); const [itemAck, setItemAck] = useState<Record<string, boolean>>({}); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
     const epoch = useRef(0); const locked = useRef(false); const requests = useRef(new Map<string, string>());
     const itemEditor = useRef<HTMLDetailsElement>(null);
+    const createForm = useRef<HTMLDetailsElement>(null);
     const requestId = (operation: string, input: unknown) => { const key = operation + JSON.stringify(input); let id = requests.current.get(key); if (!id) { id = crypto.randomUUID(); requests.current.set(key, id); } return id; };
     const campaign = detail?.campaign;
     async function load(token: number, id = selectedRef.current) {
@@ -29,7 +31,7 @@ export function ContentCampaignsPanel() {
         if (id) { const value = data(await api.campaign(id)); if (token === epoch.current && selectedRef.current === id) setDetail(value); }
     }
     useEffect(() => {
-        const clear = () => { epoch.current++; locked.current = false; selectedRef.current = ''; requests.current.clear(); setSelected(''); setCampaigns([]); setOpportunities([]); setProducts([]); setDetail(null); setContext(null); setForm(emptyCampaign()); setItemForm(emptyItem()); setEditing(''); setListAck(false); setItemAck({}); setError(''); setBusy(false);
+        const clear = () => { epoch.current++; locked.current = false; selectedRef.current = ''; requests.current.clear(); setSelected(''); setCampaigns([]); setOpportunities([]); setProducts([]); setDetail(null); setContext(null); setForm({ ...emptyCampaign(), opportunityIds: opportunityId ? [opportunityId] : [] }); setItemForm(emptyItem()); setEditing(''); setListAck(false); setItemAck({}); setError(''); setBusy(false);
             const token = epoch.current; void load(token).catch(reason => { if (token === epoch.current) setError(String(reason)); }); };
         clear(); window.ipcRenderer.spaces.onChanged(clear); return () => { epoch.current++; window.ipcRenderer.spaces.offChanged(clear); };
     }, []);
@@ -48,28 +50,31 @@ export function ContentCampaignsPanel() {
     });
     const itemOpportunity = context?.opportunities.find(value => value.opportunity.id === itemForm.opportunityId);
     const changeOpportunity = (id: string) => { const detail = context?.opportunities.find(value => value.opportunity.id === id); setItemForm({ ...itemForm, opportunityId: id, evidenceRefs: detail?.evidence.slice(0, 20).map(value => value.id) || [] }); };
-    return <section aria-label="成组内容" className="space-y-5 p-6">
-        <div className="flex justify-between gap-3"><div><h1 className="text-xl font-semibold">成组内容</h1><p className="mt-2 text-sm text-text-secondary">围绕一个目标规划不同职责的内容。先核对整组，再逐项确认进入现有编辑工程；媒体生成与发布各自确认。</p></div><button className={buttonClass} disabled={busy} onClick={() => void act(load)}>刷新内容组</button></div>
+    return <section aria-label="成组内容" className="workspace-page space-y-5">
+        <header className="workspace-page-header"><div><p className="workspace-eyebrow">创作</p><h1>成组内容</h1><p>围绕一个目标安排多件作品，逐项进入创作。</p></div><div className="flex items-center gap-2"><button className={opportunities.length ? 'workspace-primary-button' : buttonClass} disabled={busy} onClick={() => openWorkspaceForm(createForm)}>新建内容组</button><WorkspaceMore><button disabled={busy} onClick={() => void act(load)}>刷新内容组</button></WorkspaceMore></div></header>
+        {!campaigns.length && !campaign && <WorkspaceGuide title="让几件作品一起完成一个目标" description="例如围绕一件商品，安排问题解答、使用示范和购买顾虑等不同内容。先规划整组，再逐项创作。" steps={[{ title: '选好方向', description: '从已采纳的消费者机会开始，保留依据。' }, { title: '安排内容职责', description: '为每件作品确定角度、形式与先后关系。' }, { title: '确认后逐项创作', description: '核对整组计划，每次进入一件作品的编辑器。' }]}>{!opportunities.length && <button className="workspace-primary-button" onClick={() => dispatchAppIntent({ type: 'route.open', route: { section: 'research', page: 'opportunities' } })}>先选择内容机会</button>}</WorkspaceGuide>}
         {error && <p role="alert" className="rounded border border-red-400 p-3 text-sm">{error}</p>}
-        <details><summary className="cursor-pointer">建立内容组</summary><form className="mt-3 space-y-3 rounded border border-border p-4" onSubmit={event => { event.preventDefault(); void act(async token => {
+        <details ref={createForm} className="workspace-task-panel" open={opportunityId ? true : undefined}><summary className="cursor-pointer">建立内容组</summary><form className="mt-3 space-y-3 rounded border border-border p-4" onSubmit={event => { event.preventDefault(); void act(async token => {
             const refs = form.opportunityIds.map(id => { const opportunity = opportunities.find(value => value.id === id)!; return { id, revision: opportunity.revision }; });
             const input = { title: form.title, goal: form.goal, audience: form.audience, ...(form.productId ? { productId: form.productId } : {}), platforms: form.platforms, opportunities: refs, limitations: lines(form.limitations) };
-            const saved = data(await api.createCampaign({ ...input, requestId: requestId('create', input) })); if (token === epoch.current) setItemForm(emptyItem(saved.platforms[0])); await update(token, saved);
+            const saved = data(await api.createCampaign({ ...input, requestId: requestId('create', input) })); if (token === epoch.current) { setItemForm(emptyItem(saved.platforms[0])); if (createForm.current) createForm.current.open = false; } await update(token, saved);
         }); }}>
             <div className="grid gap-3 md:grid-cols-3">{(['title', 'goal', 'audience'] as const).map(key => <label key={key} className="text-xs">{({ title: '内容组名称', goal: '本组目标', audience: '目标读者' })[key]}<textarea aria-label={`内容组${key}`} required maxLength={key === 'title' ? 200 : 2000} disabled={busy} className={fieldClass} value={form[key]} onChange={event => setForm({ ...form, [key]: event.target.value })} /></label>)}</div>
             <label className="block text-xs">目标商品<select aria-label="内容组商品" disabled={busy} className={fieldClass} value={form.productId} onChange={event => setForm({ ...form, productId: event.target.value })}><option value="">沿用各机会对应的商品</option>{products.map(product => <option key={product.source.id} value={product.source.id}>{product.title}</option>)}</select></label>
             <div className="flex flex-wrap gap-4 text-xs">{(['xiaohongshu', 'douyin', 'tiktok'] as const).map(platform => <label key={platform}><input type="checkbox" aria-label={`内容组平台${platform}`} disabled={busy} checked={form.platforms.includes(platform)} onChange={event => setForm({ ...form, platforms: event.target.checked ? [...form.platforms, platform] : form.platforms.filter(value => value !== platform) })} /> {PRODUCT_PLATFORM_LABELS[platform]}</label>)}</div>
-            <fieldset className="space-y-2 text-xs"><legend>选择已采纳机会（最近100条）</legend>{!opportunities.length && <p>先在灵感页核对证据并采纳机会。</p>}{opportunities.map(opportunity => <label key={opportunity.id} className="flex gap-2"><input type="checkbox" aria-label={`内容组机会 ${opportunity.id}`} disabled={busy || !form.opportunityIds.includes(opportunity.id) && form.opportunityIds.length >= 10} checked={form.opportunityIds.includes(opportunity.id)} onChange={event => setForm({ ...form, opportunityIds: event.target.checked ? [...form.opportunityIds, opportunity.id] : form.opportunityIds.filter(id => id !== opportunity.id) })} />{opportunity.title} · v{opportunity.revision}</label>)}</fieldset>
+            <fieldset className="space-y-2 text-xs"><legend>选择已采纳机会（最近100条）</legend>{!opportunities.length && <p>先在消费者机会页核对依据并采纳方向。</p>}{opportunities.map(opportunity => <label key={opportunity.id} className="flex gap-2"><input type="checkbox" aria-label={`内容组机会 ${opportunity.id}`} disabled={busy || !form.opportunityIds.includes(opportunity.id) && form.opportunityIds.length >= 10} checked={form.opportunityIds.includes(opportunity.id)} onChange={event => setForm({ ...form, opportunityIds: event.target.checked ? [...form.opportunityIds, opportunity.id] : form.opportunityIds.filter(id => id !== opportunity.id) })} />{opportunity.title} · v{opportunity.revision}</label>)}</fieldset>
             <label className="block text-xs">限制（每行一项）<textarea aria-label="内容组限制" className={fieldClass} disabled={busy} value={form.limitations} onChange={event => setForm({ ...form, limitations: event.target.value })} /></label>
-            <button className={buttonClass} disabled={busy || !form.opportunityIds.length || !form.platforms.length}>保存内容组</button>
+            <button className="workspace-primary-button" disabled={busy || !form.opportunityIds.length || !form.platforms.length}>保存内容组</button>
         </form></details>
         {!campaigns.length && <p className="text-sm">还没有内容组；没有自动生成的作品或业绩。</p>}
-        <select aria-label="选择内容组" className={fieldClass} disabled={busy} value={selected} onChange={event => choose(event.target.value)}><option value="">选择已保存内容组</option>{campaigns.map(value => <option key={value.id} value={value.id}>{value.title} · {value.status === 'archived' ? '已归档' : '进行中'}</option>)}</select>
+        {!campaign && <div className="workspace-plan-gallery">{campaigns.map(value => <button key={value.id} className="workspace-plan-card" disabled={busy} onClick={() => choose(value.id)}><span>{value.status === 'archived' ? '已归档' : '进行中'} · {value.items.length} 项内容</span><h2>{value.title}</h2><p>{value.goal}</p><small>{value.items.filter(item => item.state === 'linked').length} 项已建立工程</small></button>)}</div>}
+        {campaign && <button className={buttonClass} onClick={() => choose('')}>← 返回内容组列表</button>}
+        {campaigns.length > 1 && <details className="opportunity-disclosure"><summary>切换内容组</summary><select aria-label="选择内容组" className={fieldClass} disabled={busy} value={selected} onChange={event => choose(event.target.value)}><option value="">选择已保存内容组</option>{campaigns.map(value => <option key={value.id} value={value.id}>{value.title} · {value.status === 'archived' ? '已归档' : '进行中'}</option>)}</select></details>}
         {campaign && <div aria-label="内容组详情" className="space-y-4 rounded border border-border p-4">
             <div className="space-y-1 text-sm"><strong>{campaign.title}</strong><p>目标：{campaign.goal}</p><p>读者：{campaign.audience} · 平台：{campaign.platforms.map(platform => PRODUCT_PLATFORM_LABELS[platform]).join(' / ')}</p>{campaign.limitations.map((text, index) => <p key={index}>限制：{text}</p>)}</div>
             <div className="flex flex-wrap gap-2"><button className={buttonClass} disabled={busy} onClick={() => void act(async token => { const value = data(await api.campaignContext(campaign.id)); if (token === epoch.current) setContext(value); })}>核对规划依据</button>
-                <button className={buttonClass} disabled={busy || campaign.status === 'archived'} onClick={() => dispatchAppIntent({ type: 'flow.open', stage: 'compose', handoff: { kind: 'chat-draft', message: { deliveryMode: 'draft', sessionRouting: 'new', content: `请为内容组 ${campaign.id} 规划候选。先用 campaign_read 读取当前空间真实范围、证据有效性和支持的目标，再用 campaign_propose 保存3–8条至少三种角色的候选。保留规格差异、未知项和样本限制，模型建议不作为已验证事实。不创建工程、不生成媒体、不上传或发布。保存后由我在计划页核对整组并逐项确认。` } } })}>去对话规划（先填草稿）</button>
-                <button className={buttonClass} disabled={busy} onClick={() => mutate('archive')}>{campaign.status === 'archived' ? '恢复内容组' : '归档内容组，保留工程'}</button></div>
+                <button className={buttonClass} disabled={busy || campaign.status === 'archived'} onClick={() => dispatchAppIntent({ type: 'flow.open', stage: 'compose', handoff: { kind: 'chat-draft', message: { deliveryMode: 'draft', sessionRouting: 'new', content: `请为内容组 ${campaign.id} 规划候选。先用 campaign_read 读取当前空间真实范围、证据有效性和支持的目标，再用 campaign_propose 保存3–8条至少三种角色的候选。保留规格差异、未知项和样本限制，模型建议不作为已验证事实。不创建工程、不生成媒体、不上传或发布。保存后由我在创作区核对整组并逐项确认。` } } })}>去对话规划（先填草稿）</button>
+                <WorkspaceMore label="内容组更多操作"><button disabled={busy} onClick={() => mutate('archive')}>{campaign.status === 'archived' ? '恢复内容组' : '归档内容组，保留工程'}</button></WorkspaceMore></div>
             {context && <details open><summary className="cursor-pointer text-sm">已读取的机会与资料（需复核）</summary><div aria-label="内容组依据" className="mt-2 max-h-64 space-y-2 overflow-auto text-xs">{context.opportunities.map(value => <article key={value.opportunity.id} className="rounded border border-border p-2"><p>{value.opportunity.title} · v{value.opportunity.revision}</p>{value.evidence.map(evidence => <p key={evidence.id} className="break-words">{evidence.validity === 'verified' ? '可定位原文' : evidence.validity === 'stale' ? '来源已变化' : '来源缺失'}：{evidence.excerpt}</p>)}</article>)}{context.resources.map(resource => <p key={resource.id}>{resource.name} · 目录素材 {resource.catalogAssetCount} 项，未核对文件可用性{resource.partial ? '；上下文为部分资料' : ''}</p>)}<p>可定位不代表主张可信；素材需求为估计，模型观点仍需核实。</p></div></details>}
             {campaign.status === 'active' && <details ref={itemEditor}><summary className="cursor-pointer text-sm">手工添加或修改未创建条目</summary><form className="mt-3 space-y-3" onSubmit={event => { event.preventDefault(); void act(async token => {
                 const opportunity = campaign.opportunities.find(ref => ref.id === itemForm.opportunityId); if (!opportunity) throw new Error('请选择本组机会');

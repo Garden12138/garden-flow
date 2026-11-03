@@ -1,3 +1,4 @@
+import { normalizeVideoResolution } from '../../shared/videoGenerationCapabilities';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -653,6 +654,7 @@ export class MediaGenerationJobRegistry extends EventEmitter {
           title: optionalText(request.title),
           generationMode: optionalText(request.generationMode),
           referenceImages: Array.isArray(request.referenceImages) ? request.referenceImages as string[] : [],
+          mask: optionalText(request.mask),
           count: numberValue(request.count, 1),
           size: optionalText(request.size),
           quality: optionalText(request.quality),
@@ -684,7 +686,7 @@ export class MediaGenerationJobRegistry extends EventEmitter {
           aspectRatio: optionalText(request.aspectRatio),
           count: numberValue(request.count, 1),
           durationSeconds: numberValue(request.durationSeconds, 8),
-          resolution: optionalText(request.resolution) === '1080p' ? '1080p' : '720p',
+          resolution: normalizeVideoResolution(request.resolution),
           generateAudio: Boolean(request.generateAudio),
           generationMode: ['text-to-video', 'reference-guided', 'first-last-frame', 'continuation'].includes(text(request.generationMode))
             ? text(request.generationMode) as 'text-to-video' | 'reference-guided' | 'first-last-frame' | 'continuation'

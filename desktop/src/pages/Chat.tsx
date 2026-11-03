@@ -5138,6 +5138,7 @@ export function Chat({
     isEmptySession &&
     !pendingMessage &&
     !isProcessing &&
+    !confirmRequest &&
     !showComposer &&
     !showWelcomeHeader &&
     !showWelcomeShortcuts &&
@@ -5269,6 +5270,16 @@ export function Chat({
     );
   };
 
+  const toolConfirmation = confirmRequest && (
+    <ToolConfirmDialog
+      request={confirmRequest}
+      onConfirm={handleConfirmTool}
+      onCancel={handleCancelTool}
+      onReplan={(callId) => { void retryProductVideo(callId); }}
+      isResolving={resolvingConfirmationCallId === confirmRequest.callId}
+    />
+  );
+
   const renderComposer = (
     source: 'empty' | 'composer',
     variant: 'empty' | 'main',
@@ -5285,13 +5296,7 @@ export function Chat({
         onApprove={handleApproveCliEscalation}
         onDeny={handleDenyCliEscalation}
       />
-      <ToolConfirmDialog
-        request={confirmRequest}
-        onConfirm={handleConfirmTool}
-        onCancel={handleCancelTool}
-        onReplan={(callId) => { void retryProductVideo(callId); }}
-        isResolving={resolvingConfirmationCallId === confirmRequest?.callId}
-      />
+      {toolConfirmation}
       <ChatComposer
         ref={composerRef}
         theme={composerTheme}
@@ -5599,7 +5604,7 @@ export function Chat({
                         showCancelWhenBusy: false,
                       })}
                     </div>
-                  ) : null}
+                  ) : toolConfirmation}
                 </div>
                 {/* 放置在最底部的动态按钮区 - 使用绝对定位以不干扰居中布局 */}
                 <div className="absolute bottom-10 left-0 right-0 flex justify-center pointer-events-none">
@@ -5783,7 +5788,13 @@ export function Chat({
                     )}
                   </div>
                 </div>
-                ) : null}
+                ) : toolConfirmation && (
+                  <div className={clsx('shrink-0', inputAreaShellClass, splitOuterPaddingClass)}>
+                    <div className={clsx('mx-auto', composerMaxWidthClass, contentWidthClass)}>
+                      {toolConfirmation}
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </div>

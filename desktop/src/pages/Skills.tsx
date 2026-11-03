@@ -182,10 +182,11 @@ export function Skills({ isActive = true }: { isActive?: boolean }) {
                         </button>
                         <button
                             onClick={handleOpenCreateModal}
-                            className="p-1.5 text-text-tertiary hover:text-accent-primary hover:bg-surface-primary rounded transition-colors"
+                            className="workspace-primary-button"
                             title="创建新技能"
+                            aria-label="创建新技能"
                         >
-                            <Plus className="w-4 h-4" />
+                            <Plus className="w-4 h-4" />新建
                         </button>
                     </div>
                 </div>

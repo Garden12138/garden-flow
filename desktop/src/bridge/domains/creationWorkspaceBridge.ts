@@ -5,7 +5,7 @@ import type { CreationCapability } from '../../../shared/creationWorkspace';
 export interface CreationResponse { success: boolean; error?: string; workspace?: CreationWorkspace; }
 export function createCreationWorkspaceBridge(core: BridgeCore) {
     const invoke = (channel: string, payload: unknown) => core.invokeChannel(channel, payload) as Promise<CreationResponse>;
-    return { creationWorkspace: {
+    return { workCatalog: { onOpenRoute: (listener: (event: unknown, route: unknown) => void) => core.on('workspace:open-route', listener), offOpenRoute: (listener: (event: unknown, route: unknown) => void) => core.off('workspace:open-route', listener), list: () => core.invokeChannel('work-catalog:list', {}) as Promise<import('../../../shared/workCatalog').WorkCatalogResult> }, creationWorkspace: {
         start: (selection: import('zod').z.input<typeof import('../../../shared/creationWorkspace').CreationStartSchema>) => invoke('creation-workspace:start', selection),
         read: (workspaceId: string) => invoke('creation-workspace:read', { workspaceId }),
         save: (input: CreationTurn & { draft: CreationDraft }) => invoke('creation-workspace:save', input),

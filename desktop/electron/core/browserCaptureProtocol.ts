@@ -22,6 +22,7 @@ export const BROWSER_CAPTURE_MAX_FRAME_BYTES = 16 * 1024 * 1024;
 
 export const BROWSER_CAPTURE_ALLOWED_METHODS = new Set([
     'desktop.health',
+    'desktop.open',
     'extension.register',
     'knowledge.ingestEntry',
     'knowledge.ingestXhsEntryV2',

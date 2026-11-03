@@ -188,16 +188,17 @@ export function ProductImageSetPane({ target, chat, actions }: { target: ChatMes
         return asset ? resolveAssetUrl(`${snapshot?.projectPath || projectPath}/${asset.relativePath}`) : '';
     };
 
-    const editorPane = <div className="h-full overflow-y-auto p-3">            <nav aria-label="套图页面" className="mb-4 flex gap-2 overflow-x-auto border-b border-border pb-3">
+    const pageNavigation = <nav aria-label="套图页面" className="flex flex-col gap-3 p-2">
                 {set.pages.map((item, index) => {
                     const slot = snapshot?.document.mediaSlots.find((value) => value.id === productImageSlotId(item));
-                    return <button key={item.id} onClick={() => setActiveId(item.id)} className={`w-20 shrink-0 rounded-lg border p-1.5 text-left ${page.id === item.id ? 'border-accent-primary' : 'border-border'}`}>
+                    return <button key={item.id} onClick={() => setActiveId(item.id)} className={`w-full shrink-0 rounded-lg border p-1.5 text-left ${page.id === item.id ? 'border-accent-primary' : 'border-border'}`}>
                         <img src={slot?.status === 'ready' && !dirty ? resolveAssetUrl(slot.previewUrl) : assetUrl(item.backgroundAssetId || item.productAssetIds[0])} alt={item.title} className="aspect-[3/4] w-full rounded object-contain bg-surface-secondary" />
                         <span className="mt-1 block truncate text-[10px]">{index + 1} · {item.role === 'cover' ? '封面' : item.title}</span>
                     </button>;
                 })}
                 <button className={`${button} w-full`} disabled={Boolean(busy) || set.pages.length >= 20} onClick={addPage}><Plus className="h-3 w-3" />加页</button>
-            </nav>                    <div className="my-3 flex flex-wrap gap-2">
+            </nav>;
+    const editorPane = <div className="h-full overflow-y-auto p-3">                                <div className="my-3 flex flex-wrap gap-2">
                         <button className={button} disabled={Boolean(busy)} onClick={() => void exportImages('png')}>导出本页</button>
                         <button className={button} disabled={Boolean(busy)} onClick={() => void exportImages('directory')}>导出图片目录</button>
                         <button className={button} disabled={Boolean(busy) || activeIndex < 2} onClick={() => reorder(-1)} aria-label="页面上移"><ArrowUp className="h-3.5 w-3.5" /></button>
@@ -242,7 +243,7 @@ export function ProductImageSetPane({ target, chat, actions }: { target: ChatMes
                         }} /> : <div className="flex h-full items-center justify-center text-xs text-text-tertiary">正在生成预览…</div>}
                     </div>
 <h2 className="font-semibold">{draft?.finalTitle}</h2><p className="whitespace-pre-wrap text-sm">{draft?.body}</p></div>;
-    return <div className="relative h-full min-h-0">{chat ? <CreationWorkbench adapter={{ id: projectPath, changeToken: snapshot?.version, title: draft?.finalTitle || '未命名商品套图', subtitle: '小红书 · 商品套图', status: dirty ? '正在保存…' : '已保存', flush: async () => { await save(); if (dirtyRef.current) throw new Error('当前输入尚未保存'); }, chat, editor: editorPane, preview: previewPane, actions: <>{actions}
+    return <div className="relative h-full min-h-0">{chat ? <CreationWorkbench adapter={{ id: projectPath, changeToken: snapshot?.version, title: draft?.finalTitle || '未命名商品套图', subtitle: '小红书 · 商品套图', status: dirty ? '正在保存…' : '已保存', flush: async () => { await save(); if (dirtyRef.current) throw new Error('当前输入尚未保存'); }, chat, navigation: pageNavigation, editor: editorPane, preview: previewPane, actions: <>{actions}
             <div className="mr-auto"><h2 className="text-sm font-semibold">商品套图 · {set.pages.length} 张</h2><p className="text-[11px] text-text-tertiary">{productImageSpec(set).aspectRatio} · {productImageSpec(set).width}×{productImageSpec(set).height} PNG · 应用发布上限 18 张 · {dirty ? '有未保存修改' : `版本 ${snapshot?.version || ''}`}</p></div>
             <button className={button} disabled={Boolean(busy)} onClick={() => dirty ? setRefreshConfirm(true) : void refresh()}><RefreshCw className="h-3.5 w-3.5" />刷新</button>
             <button className={button} disabled={Boolean(busy) || !dirty} onClick={() => void perform('save', async () => { await save(); setMessage('已保存'); })}><Save className="h-3.5 w-3.5" />保存</button>

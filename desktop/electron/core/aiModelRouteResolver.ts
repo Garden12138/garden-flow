@@ -1,3 +1,4 @@
+import { xcliEndpoint } from './xcliGateway.ts';
 import { parseAiModelRoutesValue } from '../../src/features/settings/modelRouteValue.ts';
 import {
   getModelInputCapabilities,
@@ -6,6 +7,8 @@ import {
 } from '../../shared/modelCapabilities.ts';
 import { resolveModelScopeFromContextType, resolveScopedModelName } from './modelScopeSettings.ts';
 import { normalizeApiBaseUrl } from './urlUtils.ts';
+import { QWEN_IMAGE_STUDIO } from '../../shared/qwenImageStudio.ts';
+import { imageRoutingForPreset } from '../../shared/imageSourceRouting.ts';
 
 export type AiRouteScope = 'chat' | 'wander' | 'knowledge' | 'gardenflow';
 
@@ -118,6 +121,11 @@ export function resolveLlmInputCapabilities(
   settings: Record<string, unknown>,
   connection: LlmConnection,
 ): ModelInputCapability[] {
+  const source = findConnectionSource(settings, connection);
+  if (source?.presetId === 'xcli') {
+    const model = Array.isArray(source.modelsMeta) ? source.modelsMeta.find((item: any) => item?.id === connection.modelName) as any : null;
+    return model?.xcli?.validated === true && model.xcli.capabilities?.includes('vision.analyze') ? ['image'] : [];
+  }
   const explicit = explicitModelInputCapabilities(
     findConnectionSource(settings, connection),
     connection.modelName,
@@ -165,7 +173,7 @@ export function resolveSettingsLlm(
     || (scope === 'chat' ? text(settings.default_ai_source_id) : ''),
   );
   const source = findSource(sources, sourceId);
-  if (!source) {
+  if (!source || source.presetId === QWEN_IMAGE_STUDIO) {
     return null;
   }
 
@@ -183,6 +191,10 @@ export function resolveSettingsLlm(
       scope === 'chat' ? 'default' : scope,
       text(settings.model_name || settings.openaiModel) || 'gpt-4o',
     );
+  if (source.presetId === 'xcli') {
+    xcliEndpoint(text(source.baseURL || source.baseUrl));
+    if (!apiKey || apiKey === 'local') throw new Error('xcli requires an independent application Token');
+  }
   let resolvedApiKey = apiKey;
   try {
     const hostname = new URL(baseURL).hostname.toLowerCase();
@@ -223,4 +235,47 @@ export function resolveVisionCapablePlanningLlm(
   // advertises image support. The caller should surface an actionable model
   // capability error and let the user choose a visual model explicitly.
   return null;
+}
+
+export function isXcliConnection(settings: Record<string, unknown>, baseURL: string): boolean {
+  return parseAiSources(settings).some((source) => source.presetId === 'xcli'
+    && normalizeApiBaseUrl(text(source.baseURL || source.baseUrl), '') === baseURL);
+}
+
+export function resolveConfiguredImageRoute(settings: Record<string, unknown>, requestedModel?: string) {
+  const route = parseAiModelRoutesValue(settings.ai_model_routes_json).image as Record<string, unknown> | undefined;
+  const sources = parseAiSources(settings);
+  const selectedSource = route?.mode !== 'disabled' ? findSource(sources, text(route?.sourceId || route?.source_id)) : null;
+  const selectedModel = text(route?.model || route?.modelName || selectedSource?.model);
+  const requested = text(requestedModel);
+  const requestedQwenSource = requested && requested !== selectedModel
+    ? sources.find((source) => source.presetId === QWEN_IMAGE_STUDIO && (
+      text(source.model) === requested || (Array.isArray(source.models) && source.models.includes(requested))
+    ))
+    : null;
+  const source = requestedQwenSource || selectedSource;
+  const preset = text(source?.presetId);
+  if (!source || !preset) return null;
+  const routing = imageRoutingForPreset(preset);
+  if (preset === 'xcli') {
+    const xcli = resolveXcliImageRoute(settings);
+    return xcli ? { ...xcli, ...routing } : null;
+  }
+  const endpoint = normalizeApiBaseUrl(text(source.baseURL || source.baseUrl));
+  const model = requested || selectedModel;
+  const apiKey = text(source.apiKey || source.key);
+  if (!endpoint || !model) throw new Error('请在设置中补齐图片供应商的地址和模型。');
+  if (!apiKey && preset === QWEN_IMAGE_STUDIO) throw new Error('请在设置中填写 Qwen Image Studio 的图片服务密钥。');
+  return { endpoint, apiKey, model, ...routing };
+}
+
+export function resolveXcliImageRoute(settings: Record<string, unknown>): { endpoint: string; apiKey: string; model: string } | null {
+  const route = parseAiModelRoutesValue(settings.ai_model_routes_json).image as Record<string, unknown> | undefined;
+  if (!route || route.mode === 'disabled') return null;
+  const source = findSource(parseAiSources(settings), text(route.sourceId));
+  if (source?.presetId !== 'xcli') return null;
+  const apiKey = text(source.apiKey);
+  const model = text(route.model || source.model);
+  if (!apiKey || apiKey === 'local' || !model) throw new Error('Configure an xcli image alias and independent Token');
+  return { endpoint: xcliEndpoint(text(source.baseURL)), apiKey, model };
 }

@@ -9,6 +9,8 @@ import { Type, getModel, type Model } from '@mariozechner/pi-ai';
 import { getSettings } from '../db';
 import { resolveChatMaxTokens } from '../core/chatTokenConfig';
 import { normalizeApiBaseUrl } from '../core/urlUtils';
+import { isXcliConnection } from '../core/aiModelRouteResolver';
+import { xcliModels, requireXcliCapabilities } from '../core/xcliGateway';
 
 // ========== 类型定义 ==========
 
@@ -156,7 +158,10 @@ class AgentManager {
         thinkingLevel: 'low',
       },
       convertToLlm: (messages) => this.convertMessages(messages),
-      transformContext: async (messages) => messages,
+      transformContext: async (messages) => {
+        if (isXcliConnection(settings, baseURL)) requireXcliCapabilities(await xcliModels(baseURL, apiKey), modelName, ['text.generate', 'text.stream', ...(tools.length ? ['tool_calls'] : [])]);
+        return messages;
+      },
       getApiKey: async () => apiKey,
     });
 

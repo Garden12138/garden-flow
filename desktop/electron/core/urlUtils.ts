@@ -9,6 +9,19 @@ const TERMINAL_API_SUFFIXES = [
 
 const trimTrailingSlashes = (value: string): string => value.replace(/\/+$/, '');
 
+export function parseMediaProviderEndpoint(endpoint: string): URL {
+    let url: URL;
+    try {
+        url = new URL(endpoint);
+    } catch {
+        throw new Error('媒体服务地址无效，请填写包含 http:// 或 https:// 的完整地址。');
+    }
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
+        throw new Error('媒体服务地址必须为 HTTP(S) URL，且不能包含账号、密码、查询参数或片段。');
+    }
+    return url;
+}
+
 export const normalizeApiBaseUrl = (value: string, fallback = ''): string => {
     const raw = String(value || '').trim() || String(fallback || '').trim();
     if (!raw) {

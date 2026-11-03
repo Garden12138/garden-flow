@@ -1065,7 +1065,11 @@ export const parseAiSources = (raw: string | undefined): AiSourceConfig[] => {
         const model = String(item.model || item.modelName || '');
         const rawId = String(item.id || '');
         const name = String(item.name || findAiPresetById(presetId)?.label || '供应商');
-        const modelsMeta = normalizeAiModelDescriptors(
+        const modelsMeta = presetId === 'xcli' ? (Array.isArray(item.modelsMeta) ? item.modelsMeta : []).filter((value: any) => typeof value?.id === 'string' && Array.isArray(value.xcli?.capabilities)).map((value: any) => {
+          const caps = value.xcli.capabilities;
+          const validated = value.xcli.validated === true;
+          return { id: value.id, capabilities: [...(caps.includes('text.generate') ? ['chat'] : []), ...(validated && caps.includes('image.generate') ? ['image'] : []), ...(validated && caps.includes('embeddings') ? ['embedding'] : [])], inputCapabilities: validated && caps.includes('vision.analyze') ? ['image'] : [], xcli: { capabilities: caps.filter((cap: unknown) => typeof cap === 'string'), validated, inference_location: ['local', 'remote'].includes(value.xcli.inference_location) ? value.xcli.inference_location : 'unknown' } };
+        }) : normalizeAiModelDescriptors(
           Array.isArray(item.modelsMeta)
             ? item.modelsMeta.map((value) => (value && typeof value === 'object' ? value as {
                 id?: string;

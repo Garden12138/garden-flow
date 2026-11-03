@@ -52,6 +52,7 @@ const pluginTheme = {
 };
 const pluginCss = `/* Generated from branding/visual-theme.json; run pnpm sync:brand. */\n:root {\n${Object.entries(pluginTheme).map(([key, value]) => `  --gf-${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}: ${value};`).join('\n')}\n}\n`;
 fs.writeFileSync(path.join(root, 'Plugin/src/brand-theme.generated.css'), pluginCss);
+fs.writeFileSync(path.join(root, 'PublishPlugin/src/brand-theme.generated.css'), pluginCss);
 fs.writeFileSync(
     path.join(root, 'Plugin/src/brandTheme.generated.js'),
     `// Generated from branding/visual-theme.json; run pnpm sync:brand.\nexport const GARDENFLOW_THEME = Object.freeze(${JSON.stringify(pluginTheme, null, 2)});\nexport const GARDENFLOW_ICON_32_DATA_URL = 'data:image/png;base64,${fs.readFileSync(path.join(root, 'Plugin/src/icons/icon32.png')).toString('base64')}';\n`,

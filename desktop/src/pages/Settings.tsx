@@ -1,3 +1,5 @@
+import { WorkspaceGuide } from '../features/workbench/WorkspaceGuidance';
+import { dispatchAppIntent } from '../features/app-shell/appIntent';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
@@ -15,6 +17,9 @@ import {
   Video,
 } from 'lucide-react';
 import clsx from 'clsx';
+import { QWEN_IMAGE_STUDIO } from '../../shared/qwenImageStudio';
+import { imageRoutingForPreset } from '../../shared/imageSourceRouting';
+import { MINIMAX_VIDEO_MODEL, type VideoProviderPreset } from '../../shared/videoProvider';
 import { XhsPublisherSettings } from './settings/XhsPublisherSettings';
 import {
   AI_SOURCE_PRESETS,
@@ -31,8 +36,6 @@ import {
 } from '../features/settings/settingsModel';
 
 type SettingsView = 'general' | 'ai' | 'media' | 'privacy';
-type VideoProviderPreset = 'aliyun-bailian' | 'minimax' | 'new-api-aliyun' | 'new-api-minimax' | 'custom';
-
 type VideoProviderConfig = {
   id: string;
   name: string;
@@ -57,9 +60,10 @@ const ROUTE_LABELS: Record<AiModelRouteScope, string> = {
   voiceClone: '音色克隆',
 };
 
-const VIDEO_PRESETS: Array<{ id: VideoProviderPreset; label: string; endpoint: string }> = [
+const VIDEO_PRESETS: Array<{ id: VideoProviderPreset; label: string; endpoint: string; model?: string }> = [
   { id: 'aliyun-bailian', label: '阿里云百炼', endpoint: 'https://dashscope.aliyuncs.com/api/v1' },
   { id: 'minimax', label: 'MiniMax', endpoint: 'https://api.minimaxi.com/v1' },
+  { id: 'minimax-h3-local', label: 'MiniMax-H3 Native V2（内网）', endpoint: 'http://localhost:8089', model: MINIMAX_VIDEO_MODEL },
   { id: 'new-api-aliyun', label: 'New API · 阿里云上游', endpoint: '' },
   { id: 'new-api-minimax', label: 'New API · MiniMax 上游', endpoint: '' },
   { id: 'custom', label: '自定义兼容接口', endpoint: '' },
@@ -93,7 +97,7 @@ function isLocalEndpoint(endpoint: string): boolean {
 }
 
 function sourceReady(source: AiSourceConfig): boolean {
-  return Boolean(source.baseURL.trim() && source.model.trim() && (source.apiKey.trim() || isLocalEndpoint(source.baseURL)));
+  return Boolean(source.baseURL.trim() && source.model.trim() && (source.apiKey.trim() || (source.presetId !== 'xcli' && source.presetId !== QWEN_IMAGE_STUDIO && isLocalEndpoint(source.baseURL))));
 }
 
 function SectionCard({ title, description, children }: {
@@ -117,14 +121,18 @@ export function Settings({
   onOpenGardenFlowOnboarding,
   navigationTarget,
   onReturn,
+  routePage,
 }: {
+  routePage?: string;
   isActive?: boolean;
   onOpenGardenFlowOnboarding?: () => void;
   gardenflowOnboardingVersion?: number;
   navigationTarget?: SettingsNavigationTarget | null;
   onReturn?: () => void;
 }) {
+  const [search, setSearch] = useState('');
   const [view, setView] = useState<SettingsView>('ai');
+  useEffect(() => { if (routePage) setView(routePage === 'ai' ? 'ai' : routePage === 'privacy' || routePage === 'connections' ? 'privacy' : 'general'); }, [routePage]);
   const [rawSettings, setRawSettings] = useState<Record<string, unknown>>({});
   const [sources, setSources] = useState<AiSourceConfig[]>([]);
   const [routes, setRoutes] = useState<AiModelRoutes>({ ...DEFAULT_AI_MODEL_ROUTES });
@@ -176,7 +184,7 @@ export function Settings({
 
   useEffect(() => {
     if (!navigationTarget?.tab) return;
-    setView(navigationTarget.tab === 'ai' ? 'ai' : 'general');
+    setView(navigationTarget.tab === 'ai' ? 'ai' : navigationTarget.tab === 'platforms' || navigationTarget.tab === 'tools' ? 'privacy' : 'general');
   }, [navigationTarget]);
 
   const readySources = useMemo(() => sources.filter(sourceReady), [sources]);
@@ -243,8 +251,8 @@ export function Settings({
       const normalizedRoutes = Object.fromEntries(
         Object.entries(routes).map(([scope, route]) => {
           const source = sanitizedSources.find((item) => item.id === route.sourceId);
-          const ready = source ? sourceReady(source) : false;
-          return [scope, ready && route.model.trim()
+          const ready = source && sourceReady(source) && (source.presetId !== QWEN_IMAGE_STUDIO || scope === 'image');
+          return [scope, route.mode !== 'disabled' && ready && route.model.trim()
             ? { mode: 'custom', sourceId: source!.id, model: route.model.trim() }
             : { mode: 'disabled', sourceId: '', model: '' }];
         }),
@@ -255,6 +263,7 @@ export function Settings({
       }
       const chatSource = sanitizedSources.find((source) => source.id === normalizedRoutes.chat.sourceId);
       const imageSource = sanitizedSources.find((source) => source.id === normalizedRoutes.image.sourceId);
+      const imageRouting = imageSource ? imageRoutingForPreset(imageSource.presetId) : null;
       const transcriptionSource = sanitizedSources.find((source) => source.id === normalizedRoutes.transcription.sourceId);
       const embeddingSource = sanitizedSources.find((source) => source.id === normalizedRoutes.embedding.sourceId);
       const payload = {
@@ -276,6 +285,8 @@ export function Settings({
         image_endpoint: imageSource?.baseURL || '',
         image_api_key: imageSource?.apiKey || '',
         image_model: normalizedRoutes.image.model || '',
+        image_provider: imageRouting?.provider ?? rawSettings.image_provider,
+        image_provider_template: imageRouting?.providerTemplate ?? rawSettings.image_provider_template,
         transcription_endpoint: transcriptionSource?.baseURL || '',
         transcription_key: transcriptionSource?.apiKey || '',
         transcription_model: normalizedRoutes.transcription.model || '',
@@ -335,7 +346,7 @@ export function Settings({
 
   return (
     <div className="flex h-full min-h-0 bg-surface-secondary/30">
-      <aside className="w-56 shrink-0 border-r border-border bg-surface-primary p-4">
+      <aside hidden={Boolean(routePage)} className="w-56 shrink-0 border-r border-border bg-surface-primary p-4">
         <div className="mb-5 flex items-center gap-2">
           {onReturn ? (
             <button type="button" onClick={onReturn} className="rounded-lg p-2 text-text-secondary hover:bg-surface-secondary" aria-label="返回">
@@ -368,8 +379,10 @@ export function Settings({
       <main className="min-w-0 flex-1 overflow-auto">
         <div className="mx-auto max-w-5xl space-y-5 p-6 pb-28">
           <header>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-accent-primary">GardenFlow Settings</div>
-            <h1 className="mt-1 text-2xl font-semibold text-text-primary">{navItems.find((item) => item.id === view)?.label}</h1>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-accent-primary">设置</div>
+            <h1 className="mt-1 text-2xl font-semibold text-text-primary">{routePage === 'connections' ? '连接' : routePage === 'ai' ? 'AI 服务' : navItems.find((item) => item.id === view)?.label}</h1>
+            <input aria-label="搜索设置" placeholder="搜索设置、模型、插件…" className={inputClass + ' mt-4 max-w-md'} value={search} onChange={event => setSearch(event.target.value)} />
+            {search && <div className="mt-2 space-y-1 rounded-lg border border-border p-2">{[{ label: '通用 工作空间 网络代理', page: 'general' as const }, { label: 'AI 服务 供应商 模型 API Key 视频 语音', page: 'ai' as const }, { label: '连接 浏览器 采集 发布 插件', page: 'connections' as const }, { label: '隐私 本地诊断 调试日志', page: 'privacy' as const }, { label: '技能 安装', page: 'skills' as const }, { label: '成员 角色 指令', page: 'members' as const }].filter(item => item.label.toLowerCase().includes(search.toLowerCase())).map(item => <button key={item.page} className="block rounded p-2 text-sm hover:bg-surface-secondary" onClick={() => { dispatchAppIntent({ type: 'route.open', route: { section: 'settings', page: item.page } }); setSearch(''); }}>{item.label}</button>)}</div>}
           </header>
 
           {view === 'general' ? (
@@ -398,6 +411,7 @@ export function Settings({
 
           {view === 'ai' ? (
             <>
+              {!sources.length && <WorkspaceGuide title="先配置你当前要用的 AI 能力" description="添加一个文本模型，就可以开始对话与写作。图片、视频和声音按需要再配置。" steps={[{ title: '添加供应商', description: '选择接口预设，填写地址、密钥和默认模型。' }, { title: '选择使用方式', description: '展开所需能力，选择供应商与模型，其余可以保持关闭。' }, { title: '保存后继续工作', description: '完成后回到研究或创作页面，不必一次配置全部服务。' }]}><button type="button" className="workspace-primary-button" onClick={addSource}>添加第一个供应商</button></WorkspaceGuide>}
               <SectionCard title="供应商" description="密钥仅保存在本机。支持 OpenAI、Anthropic、Gemini、本地服务以及任意兼容接口。">
                 {sources.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-border p-8 text-center">
@@ -417,6 +431,16 @@ export function Settings({
                           </div>
                           <button type="button" onClick={() => deleteSource(source.id)} className="rounded-lg p-2 text-text-tertiary hover:bg-red-500/10 hover:text-red-500" aria-label="删除供应商"><Trash2 className="h-4 w-4" /></button>
                         </div>
+                        {source.presetId === 'xcli' && <div className="mb-3 text-xs text-text-secondary">
+                          本机网关不等于本机推理；上游位置与能力以 xcli 目录为准。文本和图片请分别选择模型别名。
+                          <button type="button" className="ml-2 underline" onClick={async () => {
+                            try {
+                              const models = await window.ipcRenderer.fetchModels({ ...source, purpose: 'chat' });
+                              updateSource(source.id, { models: models.map((model) => model.id), modelsMeta: models });
+                              setMessage('xcli 目录已读取（未调用模型）：' + models.map((model: any) => `${model.id} / ${model.xcli?.inference_location || 'unknown'}`).join('；'));
+                            } catch { setMessage('无法读取 xcli 目录，请检查服务、独立 Token 与端口'); }
+                          }}>检查模型目录</button>
+                        </div>}
                         <div className="grid gap-3 md:grid-cols-2">
                           <label><span className={labelClass}>预设</span>
                             <select
@@ -425,7 +449,7 @@ export function Settings({
                               onChange={(event) => {
                                 const preset = findAiPresetById(event.target.value);
                                 if (!preset) return;
-                                updateSource(source.id, { presetId: preset.id, name: preset.label, baseURL: preset.baseURL, protocol: preset.protocol });
+                                updateSource(source.id, { presetId: preset.id, name: preset.label, baseURL: preset.baseURL, protocol: preset.protocol, apiKey: '', models: [], modelsMeta: [], model: preset.defaultModel || (preset.id === 'xcli' ? 'xcli/text-default' : '') });
                               }}
                             >
                               {AI_SOURCE_PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
@@ -433,9 +457,10 @@ export function Settings({
                           </label>
                           <label><span className={labelClass}>名称</span><input className={inputClass} value={source.name} onChange={(event) => updateSource(source.id, { name: event.target.value })} /></label>
                           <label className="md:col-span-2"><span className={labelClass}>Endpoint</span><input className={inputClass} value={source.baseURL} onChange={(event) => updateSource(source.id, { baseURL: event.target.value })} placeholder="https://api.example.com/v1" /></label>
-                          <label><span className={labelClass}>API Key {isLocalEndpoint(source.baseURL) ? '（本地可留空）' : ''}</span><input type="password" className={inputClass} value={source.apiKey} onChange={(event) => updateSource(source.id, { apiKey: event.target.value })} /></label>
+                          <label><span className={labelClass}>API Key {source.presetId === 'xcli' ? '（独立应用 Token，必填）' : source.presetId === QWEN_IMAGE_STUDIO ? '（图片服务密钥，必填）' : isLocalEndpoint(source.baseURL) ? '（本地可留空）' : ''}</span><input type="password" className={inputClass} value={source.apiKey} onChange={(event) => updateSource(source.id, { apiKey: event.target.value })} /></label>
                           <label><span className={labelClass}>默认模型</span><input className={inputClass} value={source.model} onChange={(event) => updateSource(source.id, { model: event.target.value })} placeholder="例如 gpt-5-mini" /></label>
                         </div>
+                        {source.presetId === QWEN_IMAGE_STUDIO && <p className="mt-2 text-xs text-text-tertiary">将 localhost 和端口换成图片服务的实际地址，再到「能力路由」选择「图片生成」。默认输出 768×768，编辑支持一张原图。</p>}
                       </div>
                     ))}
                   </div>
@@ -448,14 +473,14 @@ export function Settings({
                   {(Object.keys(ROUTE_LABELS) as AiModelRouteScope[]).map((scope) => {
                     const route = routes[scope];
                     return (
-                      <div key={scope} className="grid items-center gap-2 rounded-lg border border-border/70 p-3 md:grid-cols-[120px_110px_1fr_1fr]">
-                        <div className="text-sm font-medium text-text-primary">{ROUTE_LABELS[scope]}</div>
-                        <select className={inputClass} value={route.mode} onChange={(event) => setRoutes((current) => ({ ...current, [scope]: { ...route, mode: event.target.value as 'custom' | 'disabled' } }))}>
+                      <details key={scope} className="workspace-configuration-row"><summary><span>{ROUTE_LABELS[scope]}</span><span>{route.mode === 'disabled' ? '未启用' : sources.find(source => source.id === route.sourceId)?.name || '待选择供应商'}</span></summary><div className="mt-4 grid items-center gap-3 md:grid-cols-[110px_1fr_1fr]">
+                        <select aria-label={`${ROUTE_LABELS[scope]}启用方式`} className={inputClass} value={route.mode} onChange={(event) => setRoutes((current) => ({ ...current, [scope]: { ...route, mode: event.target.value as 'custom' | 'disabled' } }))}>
                           <option value="disabled">关闭</option>
                           <option value="custom">自定义</option>
                         </select>
                         <select
                           className={inputClass}
+                          aria-label={`${ROUTE_LABELS[scope]}供应商`}
                           value={route.sourceId || ''}
                           disabled={route.mode === 'disabled'}
                           onChange={(event) => {
@@ -464,10 +489,10 @@ export function Settings({
                           }}
                         >
                           <option value="">选择供应商</option>
-                          {sources.map((source) => <option key={source.id} value={source.id}>{source.name}</option>)}
+                          {sources.filter((source) => scope === 'image' || source.presetId !== QWEN_IMAGE_STUDIO).map((source) => <option key={source.id} value={source.id}>{source.name}</option>)}
                         </select>
-                        <input className={inputClass} value={route.model || ''} disabled={route.mode === 'disabled'} onChange={(event) => setRoutes((current) => ({ ...current, [scope]: { ...route, model: event.target.value } }))} placeholder="模型 ID" />
-                      </div>
+                        <input aria-label={`${ROUTE_LABELS[scope]}模型`} className={inputClass} value={route.model || ''} disabled={route.mode === 'disabled'} onChange={(event) => setRoutes((current) => ({ ...current, [scope]: { ...route, model: event.target.value } }))} placeholder="模型 ID" />
+                      </div></details>
                     );
                   })}
                 </div>
@@ -475,7 +500,7 @@ export function Settings({
             </>
           ) : null}
 
-          {view === 'media' ? (
+          {view === 'media' || view === 'ai' ? (
             <SectionCard title="视频供应商" description="New API 配置必须显式选择上游类型，并填写 endpoint、key 和 model；不会根据 URL 或模型名猜测。">
               <label className="mb-4 flex items-center gap-2 text-sm text-text-primary"><input type="checkbox" checked={videoGenerationEnabled} onChange={(event) => setVideoGenerationEnabled(event.target.checked)} />启用视频生成</label>
               {!videoGenerationEnabled ? <p className="mb-4 text-xs leading-5 text-text-tertiary">视频生成已关闭，供应商配置会保留。商品视频默认使用原图动效，已有工程仍可编辑、预览和导出。</p> : null}
@@ -488,12 +513,13 @@ export function Settings({
                       <button type="button" onClick={() => { setVideoProviders((items) => items.filter((item) => item.id !== provider.id)); if (activeVideoProviderId === provider.id) setActiveVideoProviderId(''); }} className="rounded-lg p-2 text-text-tertiary hover:bg-red-500/10 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
                     </div>
                     <div className="grid gap-3 md:grid-cols-2">
-                      <label><span className={labelClass}>类型</span><select className={inputClass} value={provider.preset} onChange={(event) => { const preset = VIDEO_PRESETS.find((item) => item.id === event.target.value)!; updateVideoProvider(provider.id, { preset: preset.id, name: preset.label, endpoint: preset.endpoint }); }}>{VIDEO_PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}</select></label>
+                      <label><span className={labelClass}>类型</span><select className={inputClass} value={provider.preset} onChange={(event) => { const preset = VIDEO_PRESETS.find((item) => item.id === event.target.value)!; const switchingLocal = preset.id === 'minimax-h3-local' || provider.preset === 'minimax-h3-local'; updateVideoProvider(provider.id, { preset: preset.id, name: preset.label, endpoint: preset.endpoint, ...(switchingLocal ? { model: preset.model || '', apiKey: '' } : {}) }); }}>{VIDEO_PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}</select></label>
                       <label><span className={labelClass}>名称</span><input className={inputClass} value={provider.name} onChange={(event) => updateVideoProvider(provider.id, { name: event.target.value })} /></label>
                       <label className="md:col-span-2"><span className={labelClass}>Endpoint</span><input className={inputClass} value={provider.endpoint} onChange={(event) => updateVideoProvider(provider.id, { endpoint: event.target.value })} /></label>
                       <label><span className={labelClass}>API Key</span><input type="password" className={inputClass} value={provider.apiKey} onChange={(event) => updateVideoProvider(provider.id, { apiKey: event.target.value })} /></label>
-                      <label><span className={labelClass}>模型 ID</span><input className={inputClass} value={provider.model} onChange={(event) => updateVideoProvider(provider.id, { model: event.target.value })} /></label>
+                      <label><span className={labelClass}>模型 ID</span><input className={inputClass} value={provider.model} readOnly={provider.preset === 'minimax-h3-local'} onChange={(event) => updateVideoProvider(provider.id, { model: event.target.value })} /></label>
                     </div>
+                    {provider.preset === 'minimax-h3-local' && <p className="mt-2 text-xs text-text-tertiary">将 localhost 和端口换成 Native V2 接口的实际地址。当前固定输出 5 秒、608×352。</p>}
                   </div>
                 ))}
               </div>
@@ -503,7 +529,7 @@ export function Settings({
 
           {view === 'privacy' ? (
             <>
-              <SectionCard title="数据与隐私" description="内容、配置与诊断记录默认保存在本机。GardenFlow 不包含遥测或自动上传。">
+              <div hidden={routePage === 'connections'}><SectionCard title="数据与隐私" description="内容、配置与诊断记录默认保存在本机。GardenFlow 不包含遥测或自动上传。">
                 <div className="grid gap-3 text-sm text-text-secondary md:grid-cols-3">
                   {['无使用分析', '无官方账号', '无自动诊断上传'].map((text) => <div key={text} className="flex items-center gap-2 rounded-lg bg-surface-secondary/50 p-3"><Check className="h-4 w-4 text-emerald-500" />{text}</div>)}
                 </div>
@@ -515,7 +541,7 @@ export function Settings({
                   <button type="button" onClick={() => void window.ipcRenderer.logs.openDir()} className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm text-text-secondary hover:bg-surface-secondary"><FolderOpen className="h-4 w-4" />打开日志目录</button>
                 </div>
               </SectionCard>
-              <SectionCard title="浏览器插件" description="插件通过本机 Native Messaging 与桌面端通信。">
+              </div><div hidden={routePage === 'privacy'}><SectionCard title="浏览器插件" description="插件通过本机 Native Messaging 与桌面端通信。">
                 <div className="flex flex-wrap gap-2">
                   <button type="button" onClick={preparePlugin} className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm text-text-secondary hover:bg-surface-secondary"><RefreshCw className="h-4 w-4" />准备插件</button>
                   <button type="button" onClick={() => void window.ipcRenderer.browserPlugin.openDir()} className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm text-text-secondary hover:bg-surface-secondary"><FolderOpen className="h-4 w-4" />打开插件目录</button>
@@ -524,13 +550,13 @@ export function Settings({
               </SectionCard>
               <SectionCard title="小红书发布浏览器" description="选择已连接的独立发布插件，指定用于小红书发布的浏览器实例。">
                 <XhsPublisherSettings isActive={isActive} />
-              </SectionCard>
+              </SectionCard></div>
             </>
           ) : null}
         </div>
       </main>
 
-      <div className="fixed bottom-0 right-0 z-20 flex w-[calc(100%-14rem)] items-center justify-between border-t border-border bg-surface-primary/95 px-6 py-3 backdrop-blur">
+      <div className="workspace-settings-savebar absolute bottom-0 right-0 z-20 flex w-full items-center justify-between border-t border-border bg-surface-primary/95 px-6 py-3 backdrop-blur">
         <div className={clsx('text-xs', message === '设置已保存' ? 'text-emerald-600' : 'text-text-tertiary')}>{message || `${readySources.length} 个可用 AI 供应商${!videoGenerationEnabled ? ' · 视频生成已关闭' : selectedVideo ? ' · 1 个视频供应商已启用' : ''}`}</div>
         <button type="button" onClick={save} disabled={saving} className="inline-flex items-center gap-2 rounded-lg bg-accent-primary px-5 py-2 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-50">
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}

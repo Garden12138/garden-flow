@@ -1,22 +1,13 @@
 <!doctype html>
 <html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>GardenFlow 平台发布</title>
-  <link rel="stylesheet" href="popup.css">
-</head>
-<body>
-  <main>
-    <div class="mark" aria-hidden="true"></div>
-    <div>
-      <h1>GardenFlow 平台发布插件</h1>
-      <p id="status">正在连接 GardenFlow…</p>
-      <p id="tiktok-status">正在检查 TikTok 页面…</p>
-      <p id="douyin-status">正在检查抖音页面…</p>
-    </div>
-  </main>
-  <p class="hint">请打开已登录的平台创作者发布页。插件只会在桌面端确认后执行发布。</p>
-  <script src="popup.js"></script>
-</body>
-</html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>GardenFlow 发布连接</title><link rel="stylesheet" href="brand-theme.generated.css"><link rel="stylesheet" href="popup.css"></head>
+<body><main>
+<header class="publisher-header"><img src="icons/icon48.png" alt=""><div><p class="eyebrow">GardenFlow</p><h1>发布连接</h1></div><button id="refresh" aria-label="刷新连接">刷新</button></header>
+<p class="intro">在桌面选择作品，在这里核对平台是否就绪。</p>
+<section class="platform-list" aria-label="平台连接状态">
+<article><header><span class="platform-mark">小</span><h2>小红书</h2></header><p id="status" role="status">正在检查连接…</p></article>
+<article><header><span class="platform-mark">抖</span><h2>抖音</h2></header><p id="douyin-status" role="status">正在检查连接…</p><details><summary>页面核对详情</summary><pre id="douyin-diagnostics">尚未读取</pre></details></article>
+<article><header><span class="platform-mark">T</span><h2>TikTok</h2></header><p id="tiktok-status" role="status">正在检查连接…</p></article>
+</section>
+<button id="open-desktop" class="primary">打开桌面发布任务 <span aria-hidden="true">↗</span></button><p id="open-result" role="status"></p><p class="hint">打开并登录平台创作者发布页。上传与最终提交，均需在桌面明确确认。</p>
+</main><script src="popup.js"></script></body></html>

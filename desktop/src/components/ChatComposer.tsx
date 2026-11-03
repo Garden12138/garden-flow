@@ -38,6 +38,7 @@ import { enforceModelCapabilityPolicy, getForcedModelCapabilities, inferModelCap
 import { resolveAssetUrl } from '../utils/pathManager';
 import { isChatComposerTextEditable } from '../utils/chatComposerState';
 import { parseAiModelRoutesValue } from '../features/settings/modelRouteValue';
+import { QWEN_IMAGE_STUDIO } from '../../shared/qwenImageStudio';
 import { ChatComposerFrame, getChatComposerPalette, type ChatComposerTheme, type ChatComposerVariant } from './ChatComposerFrame';
 
 export interface UploadedFileAttachment {
@@ -815,6 +816,7 @@ export function buildChatModelOptions(settings?: ChatSettingsSnapshot | null): C
         if (!item || typeof item !== 'object') continue;
         const sourceId = String(item.id || '').trim();
         const presetId = String(item.presetId || item.preset_id || '').trim();
+        if (presetId === QWEN_IMAGE_STUDIO) continue;
         const sourceName = String(item.name || sourceId || '供应商').trim();
         const baseURL = String(item.baseURL || item.baseUrl || '').trim();
         const apiKey = String(item.apiKey || item.key || '').trim();

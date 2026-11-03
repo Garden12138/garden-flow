@@ -7,7 +7,7 @@
 | [首次创作](./FIRST_CREATION.md) / [English](./FIRST_CREATION_EN.md) | 导入公开资料、选择角度并保存第一篇介绍稿 |
 | [新用户场景使用手册](./USER_SCENARIO_GUIDE.md) / [Word](./USER_SCENARIO_GUIDE.docx) | 按实际任务体验全部主要入口，包含示例输入、完成标志、发布与复盘 |
 | [商品创作与发布](./PRODUCT_CREATION.md) | 平台选择、视频／套图工程、持续编辑、导出和两步发布 |
-| [三栏创作工作台](./CREATION_WORKBENCH.md) | 对话、作品编辑、效果预览与自动保存 |
+| [作品编辑工作台](./CREATION_WORKBENCH.md) | 对话、作品编辑、效果预览与自动保存 |
 | [图文创作入口与预设改造方案](./CREATION_PRESETS_DESIGN.md) | 已实施：统一入口、文章来源、可编辑卡片模板与本地图片交付 |
 | [梦境故事](./DREAM_STORY.md) | 私密记录、八幕故事、画面与声音、导出及 TikTok Studio 手动发布 |
 | [使用手册](./USER_MANUAL.md) | 空间、采集、知识、灵感、创作、生成、自动化和隐私 |
@@ -18,7 +18,7 @@
 | [本地开发与部署](./LOCAL_DEPLOYMENT.md) | 环境、源码运行、调试、配置和备份 |
 | [测试](./TESTING.md) | 自动检查、隔离应用验证和真实服务验证边界 |
 | [安装包构建与发布](./PACKAGING.md) | 无签名构建、tag 自动发行和平台产物 |
-| [自然编辑部界面规范](./NATURAL_NEWSROOM_UI.md) | 信息架构、视觉令牌、布局与交互原则 |
+| [作品优先界面规范](./NATURAL_NEWSROOM_UI.md) | 信息架构、视觉令牌、布局与交互原则 |
 
 模块文档：
 

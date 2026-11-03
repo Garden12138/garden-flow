@@ -247,6 +247,7 @@ test('real preparation and conversation recovery requires scoped authorization a
             module: entryModule, exports: entryModule.exports, console, process,
             __getFixtureMetadata: () => ({ contextType:'gardenflow',activeXhsNotePath:first.projectPath }),
             getSettings: () => ({}), getWorkspacePaths: () => state.paths,
+            isXcliConnection: () => false,
             resolveModelScopeFromContextType: () => 'gardenflow',
             normalizeApiBaseUrl: (url: string) => url, Instance: { init: () => {} },
             loadGardenFlowProfilePromptBundle: async () => null,

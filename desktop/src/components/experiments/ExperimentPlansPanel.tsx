@@ -2,11 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import type { CiResult } from '../../../shared/contentIntelligence';
 import type { MetricObservation, MetricWorkSummary, PublicationLink } from '../../../shared/contentExperiments';
 import { ExternalExperimentArmSchema, isExperimentWorkArm, type ContentExperiment, type ContentExperimentDetail, type ExperimentTask, type ExperimentWork, type ExperimentArm } from '../../../shared/contentExperimentPlans';
+import { WorkspaceGuide, openWorkspaceForm } from '../../features/workbench/WorkspaceGuidance';
 import { dispatchAppIntent } from '../../features/app-shell/appIntent';
 import { ExperimentExplanationPanel } from './ExperimentExplanationPanel';
 
-const buttonClass = 'rounded border border-border px-3 py-2 text-xs disabled:opacity-40';
-const fieldClass = 'w-full rounded border border-border bg-surface-primary p-2 text-sm';
+const buttonClass = 'workspace-secondary-button';
+const fieldClass = 'workspace-field';
 const kinds = { title: '标题', cover: '封面', opening: '开头', body: '正文', cta: '行动提示', timing: '发布安排', format: '内容形式', other: '其他明确变量' } as const;
 type Kind = keyof typeof kinds;
 const emptyForm = () => ({ title: '', hypothesis: '', baseline: '', variant: '', kind: 'title' as Kind, name: '', before: '', after: '', metricKey: '', definition: '', unit: 'count' as 'count' | 'seconds' | 'ratio', limitations: '' });
@@ -20,6 +21,7 @@ const armLabel = (arm: ExperimentArm) => arm.title || (isExperimentWorkArm(arm) 
 export function ExperimentPlansPanel({ works, links, observations }: { works: MetricWorkSummary[]; links: PublicationLink[]; observations: MetricObservation[] }) {
     const taskPlanning = useRef<HTMLDetailsElement>(null);
     const api = window.ipcRenderer.contentIntelligence;
+    const createForm = useRef<HTMLDetailsElement>(null);
     const [plans, setPlans] = useState<ContentExperiment[]>([]); const [selected, setSelected] = useState(''); const [detail, setDetail] = useState<ContentExperimentDetail | null>(null);
     const [form, setForm] = useState(emptyForm); const [preview, setPreview] = useState<{ baseline: ExperimentArm; variant: ExperimentArm } | null>(null); const [acknowledged, setAcknowledged] = useState(false);
     const [baselineObservation, setBaselineObservation] = useState(''); const [variantObservation, setVariantObservation] = useState('');
@@ -78,7 +80,7 @@ export function ExperimentPlansPanel({ works, links, observations }: { works: Me
             variable: { kind: form.kind, name: form.name, baselineTreatment: form.before, variantTreatment: form.after },
             metric: { key: form.metricKey, definition: form.definition, unit: form.unit }, limitations: lines(form.limitations), singleVariableAcknowledged: true as const };
         const saved = data(await api.createExperiment({ ...input, requestId: requestId('plan', input) }));
-        if (token !== epoch.current) return; setSelected(saved.id); setChange(emptyChange()); setSourceRole('baseline'); setTaskPreview(null); setAlternateSource(''); setDifferentSourceAck(false); await load(token, saved.id);
+        if (token !== epoch.current) return; if (createForm.current) createForm.current.open = false; setSelected(saved.id); setChange(emptyChange()); setSourceRole('baseline'); setTaskPreview(null); setAlternateSource(''); setDifferentSourceAck(false); await load(token, saved.id);
     });
     const bind = () => void act(async token => {
         if (!experiment) return;
@@ -96,11 +98,12 @@ export function ExperimentPlansPanel({ works, links, observations }: { works: Me
         }
         if (token !== epoch.current) return; setConfirmations({}); await load(token);
     });
-    return <section aria-label="假设与下一轮任务" className="space-y-4 rounded border border-border p-4">
-        <div className="flex items-center justify-between gap-3"><h2 className="font-semibold">假设与下一轮任务</h2><button className={buttonClass} disabled={busy} onClick={() => void act(load)}>刷新实验</button></div>
+    return <section aria-label="假设与下一轮任务" className="space-y-5">
+        <div className="flex items-center justify-between gap-3"><h2 className="font-semibold">实验与下一轮</h2><div className="flex flex-wrap gap-2"><button className="workspace-primary-button" disabled={busy} onClick={() => openWorkspaceForm(createForm)}>新建实验</button><button className={buttonClass} disabled={busy} onClick={() => void act(load)}>刷新实验</button></div></div>
         <p className="text-xs text-text-secondary">先记录可被观测推翻的假设，再选择已有工程和指标。下一轮只创建待人工编辑的副本，每项媒体生成和发布继续使用现有确认。</p>
         {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-        <details><summary className="cursor-pointer text-sm">建立实验假设</summary><form className="mt-3 space-y-3" onSubmit={event => { event.preventDefault(); savePlan(); }}>
+        {!plans.length && <WorkspaceGuide title="用一个明确变化，找到下一轮方向" description="先写下想验证的判断，再比较两件作品。已有观测时核对差异，没有可比数据时保留待验证状态。" steps={[{ title: '写出假设', description: '例如：更具体的标题，是否能提高点击？' }, { title: '明确比较对象', description: '选择对照和变体，只研究一项明确变化。' }, { title: '用观测改进', description: '核对同口径数据，记录限制，再创建下一轮编辑任务。' }]} />}
+        <details ref={createForm} className="workspace-task-panel"><summary className="cursor-pointer text-sm">建立实验假设</summary><form className="mt-3 space-y-3" onSubmit={event => { event.preventDefault(); savePlan(); }}>
             <div className="grid gap-3 md:grid-cols-2">{(['title', 'hypothesis'] as const).map(key => <label key={key} className="text-xs">{key === 'title' ? '实验名称' : '可验证假设'}<textarea aria-label={key === 'title' ? '实验名称' : '实验假设'} required maxLength={key === 'title' ? 200 : 2000} className={fieldClass} disabled={busy} value={form[key]} onChange={event => setForm({ ...form, [key]: event.target.value })} /></label>)}</div>
             <div className="grid gap-3 md:grid-cols-2">{(['baseline', 'variant'] as const).map(role => <label key={role} className="text-xs">{role === 'baseline' ? '对照工程或历史作品' : '变体工程或历史作品'}<select aria-label={role === 'baseline' ? '实验对照工程' : '实验变体工程'} required className={fieldClass} disabled={busy} value={form[role]} onChange={event => { setForm({ ...form, [role]: event.target.value }); setPreview(null); setAcknowledged(false); }}><option value="">选择当前空间的工程或未关联原工程的历史作品</option>{works.map(work => <option key={work.id} value={work.id}>{work.title} · {work.platform} · {work.capability} · {work.id}</option>)}{links.filter(link => !link.workspaceId).map(link => <option key={link.id} value={'publication:' + link.id}>历史作品 · {link.title || link.externalWorkId} · {link.platform} · 原工程未关联</option>)}</select></label>)}</div>
             <label className="block text-xs">待研究变量<select aria-label="实验变量类型" className={fieldClass} disabled={busy} value={form.kind} onChange={event => setForm({ ...form, kind: event.target.value as Kind })}>{Object.entries(kinds).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
@@ -113,10 +116,12 @@ export function ExperimentPlansPanel({ works, links, observations }: { works: Me
                 if (token === epoch.current) { setPreview({ baseline, variant }); setAcknowledged(false); }
             })}>预览实验工程版本</button>
             {preview && <div className="space-y-2 text-xs"><p>已读取对照 {armLabel(preview.baseline)} / 变体 {armLabel(preview.variant)}。保存时再次核对来源与版本，后续编辑不会改变这个历史快照。</p>{(!('workspaceId' in preview.baseline) || !('workspaceId' in preview.variant)) && <p>历史作品的原工程与发布版本未知，不能据此证明实施过单变量控制。</p>}<label className="flex gap-2"><input aria-label="确认实验假设范围" type="checkbox" disabled={busy} checked={acknowledged} onChange={event => setAcknowledged(event.target.checked)} />确认这是待验证的假设，已如实记录未控制因素，下一轮将选择一项明确变化。</label></div>}
-            <button className={buttonClass} disabled={busy || !preview || !acknowledged}>保存实验假设</button>
+            <button className="workspace-primary-button" disabled={busy || !preview || !acknowledged}>保存实验假设</button>
         </form></details>
         {!plans.length && <p className="text-sm">还没有实验假设，暂无实验结论。</p>}
-        <select aria-label="选择内容实验" className={fieldClass} disabled={busy} value={selected} onChange={event => selectPlan(event.target.value)}><option value="">选择已保存实验</option>{plans.map(value => <option key={value.id} value={value.id}>{value.title} · {value.status} · v{value.revision}</option>)}</select>
+        {!experiment && <div className="workspace-plan-gallery">{plans.map(value => <button key={value.id} className="workspace-plan-card" disabled={busy} onClick={() => selectPlan(value.id)}><span>{value.status === 'archived' ? '已归档' : value.status === 'completed' ? '本轮结束' : '观测中'}</span><h2>{value.title}</h2><p>{value.hypothesis}</p></button>)}</div>}
+        {experiment && <button className={buttonClass} onClick={() => selectPlan('')}>← 返回实验列表</button>}
+        {plans.length > 1 && <details className="opportunity-disclosure"><summary>切换内容实验</summary><select aria-label="选择内容实验" className={fieldClass} disabled={busy} value={selected} onChange={event => selectPlan(event.target.value)}><option value="">选择已保存实验</option>{plans.map(value => <option key={value.id} value={value.id}>{value.title} · {value.status} · v{value.revision}</option>)}</select></details>}
         {experiment && <div aria-label="实验详情" className="space-y-4">
             <div className="space-y-1 text-sm"><p><strong>{experiment.title}</strong> · v{experiment.revision}</p><p>假设：{experiment.hypothesis}</p><p>待研究变量：{experiment.variable.name}；对照「{experiment.variable.baselineTreatment}」，变体「{experiment.variable.variantTreatment}」</p><p>口径：{experiment.metric.definition}（{experiment.metric.unit}）</p>{experiment.limitations.map((value, index) => <p key={index}>限制：{value}</p>)}<p className="break-words text-xs">对照 {armLabel(experiment.baseline)} / 变体 {armLabel(experiment.variant)}。原工程或原生版本缺少对应证明时不生成表现结论。</p></div>
             <div className="grid gap-3 md:grid-cols-2">{(['baseline', 'variant'] as const).map(role => <label key={role} className="text-xs">{role === 'baseline' ? '绑定对照观测' : '绑定变体观测'}<select aria-label={role === 'baseline' ? '实验对照观测' : '实验变体观测'} className={fieldClass} disabled={busy || experiment.status === 'archived'} value={role === 'baseline' ? baselineObservation : variantObservation} onChange={event => (role === 'baseline' ? setBaselineObservation : setVariantObservation)(event.target.value)}><option value="">选择此对象的观测版本</option>{observationsFor(experiment[role]).map(value => <option key={value.id} value={value.id}>{observationLabel(value)} · {value.input.metric.definition}</option>)}</select></label>)}</div>

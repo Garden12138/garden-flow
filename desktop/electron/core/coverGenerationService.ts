@@ -1,4 +1,7 @@
 import { getSettings } from '../db';
+import { QWEN_IMAGE_STUDIO, QWEN_IMAGE_STUDIO_DEFAULT_SIZE } from '../../shared/qwenImageStudio';
+import { resolveDefaultImageEndpoint, resolveDefaultImageModel, resolveQwenImageApiKey } from './imageGenerationService';
+import { resolveConfiguredImageRoute } from './aiModelRouteResolver';
 import {
     getImageProviderAdapter,
     getImageProviderCapabilities,
@@ -44,58 +47,11 @@ export interface GenerateCoverResult {
     provider: string;
     providerTemplate: ImageProviderTemplate;
     model: string;
-    aspectRatio: '3:4';
+    aspectRatio: '3:4' | '1:1';
     size: string;
     quality: string;
     assets: CoverAsset[];
 }
-function resolveDefaultImageEndpoint(template: ImageProviderTemplate): string {
-    switch (template) {
-        case 'gemini-openai-images':
-            return 'https://generativelanguage.googleapis.com/v1beta/openai';
-        case 'gemini-imagen-native':
-        case 'gemini-generate-content':
-            return 'https://generativelanguage.googleapis.com/v1beta';
-        case 'dashscope-wan-native':
-            return 'https://dashscope.aliyuncs.com';
-        case 'ark-seedream-native':
-            return 'https://ark.cn-beijing.volces.com/api/v3';
-        case 'midjourney-proxy':
-            return 'http://127.0.0.1:8080';
-        case 'jimeng-openai-wrapper':
-        case 'jimeng-images':
-            return '';
-        case 'openai-chat-completions-image':
-        case 'openai-images':
-        default:
-            return 'https://api.openai.com/v1';
-    }
-}
-
-function resolveDefaultImageModel(template: ImageProviderTemplate): string {
-    switch (template) {
-        case 'gemini-openai-images':
-            return 'gemini-2.5-flash-image';
-        case 'gemini-imagen-native':
-            return 'imagen-4.0-generate-001';
-        case 'dashscope-wan-native':
-            return 'wan2.6-image';
-        case 'ark-seedream-native':
-            return 'doubao-seedream-4-0-250828';
-        case 'midjourney-proxy':
-            return 'midjourney';
-        case 'jimeng-openai-wrapper':
-        case 'jimeng-images':
-            return 'jimeng-5.0';
-        case 'gemini-generate-content':
-            return 'gemini-2.0-flash-preview-image-generation';
-        case 'openai-chat-completions-image':
-        case 'openai-images':
-        default:
-            return 'gpt-image-1';
-    }
-}
-
 function normalizeTitleItems(titles: CoverTitleInput[]): Array<{ type: string; text: string }> {
     return (Array.isArray(titles) ? titles : [])
         .map((item) => ({
@@ -266,6 +222,10 @@ export async function generateCoverAssets(input: GenerateCoverInput): Promise<Ge
     const { images: referenceImages, referenceMode } = normalizeReferenceImages(input);
 
     const settings = (getSettings() || {}) as Record<string, unknown>;
+    const route = !input.provider && !input.providerTemplate && !input.endpoint
+        ? resolveConfiguredImageRoute(settings, input.model)
+        : null;
+    if (route) input = { ...input, ...route };
     const provider = String(input.provider || settings.image_provider || 'openai-compatible').trim();
     const providerTemplate = normalizeImageProviderTemplate(
         String(input.providerTemplate || settings.image_provider_template || '').trim(),
@@ -284,12 +244,15 @@ export async function generateCoverAssets(input: GenerateCoverInput): Promise<Ge
             ''
         ).trim()
     );
-    const apiKey = String(input.apiKey || settings.image_api_key || settings.api_key || '').trim();
+    const isQwenStudio = providerTemplate === QWEN_IMAGE_STUDIO;
+    const apiKey = route ? route.apiKey
+        : isQwenStudio ? resolveQwenImageApiKey(input.apiKey, endpoint, settings)
+        : String(input.apiKey || settings.image_api_key || settings.api_key || '').trim();
     const model = String(input.model || settings.image_model || resolveDefaultImageModel(providerTemplate)).trim();
-    const quality = String(input.quality || settings.image_quality || 'medium').trim();
+    const quality = isQwenStudio ? 'auto' : String(input.quality || settings.image_quality || 'medium').trim();
     const count = Math.max(1, Math.min(4, Number(input.count) || 1));
-    const aspectRatio = '3:4' as const;
-    const size = '1024x1536';
+    const aspectRatio = isQwenStudio ? '1:1' : '3:4';
+    const size = isQwenStudio ? QWEN_IMAGE_STUDIO_DEFAULT_SIZE : '1024x1536';
 
     if (!endpoint) {
         throw new Error('Image endpoint is missing. Please configure it in Settings.');

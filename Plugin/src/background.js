@@ -437,6 +437,8 @@ async function handleMessage(message, sender) {
       return { success: false, error: 'GardenFlow 浏览器扩展通过桌面应用本地安装，不提供外部更新页。' };
     case 'sidepanel:open':
       return await openSidePanelForSender(sender);
+    case 'desktop:open':
+      return await requestNativeHost('desktop.open', { destination: message.destination, ...(message.entityKind ? { entityKind: message.entityKind } : {}), ...(message.entityId ? { entityId: message.entityId } : {}), ...(message.spaceId ? { spaceId: message.spaceId } : {}) });
     case 'sidepanel:get-context':
       return await getSidePanelContext(message?.tabId || tabId);
     case 'settings:get':

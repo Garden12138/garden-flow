@@ -195,3 +195,8 @@ h1 {
 .hidden {
   display: none;
 }
+body { background:var(--gf-paper); color:var(--gf-ink); font-family:'IBM Plex Sans','Noto Sans SC',sans-serif; }
+.panel { box-shadow:none; border:1px solid var(--gf-border); border-radius:12px; background:var(--gf-surface); }
+h1 { font-family:inherit; font-size:21px; line-height:1.5; }
+.btn-primary { background:var(--gf-iris); box-shadow:none; }
+#open-sidepanel { width:100%; min-height:36px; background:transparent; color:var(--gf-iris); border:1px solid var(--gf-border); border-radius:8px; font-size:12px; }

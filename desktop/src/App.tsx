@@ -1,3 +1,6 @@
+import { isAppRoute, type AppRoute } from './features/app-shell/routes';
+import { dispatchAppIntent } from './features/app-shell/appIntent';
+import { CreationChooser } from './features/creation/CreationChooser';
 import { CreationEntryDialog } from './features/creation/CreationEntryDialog';
 import { flushCreationBeforeNavigate } from './features/workbench/creationNavigation';
 import { CreationWorkspaceHost } from './features/creation/CreationWorkspaceHost';
@@ -24,6 +27,7 @@ import { ClipboardCapturePrompt } from './features/capture/ClipboardCapturePromp
 
 export type { FlowHandoff, FlowStage, GenerationIntent, ImmersiveMode, PendingChatMessage, TeamSection, ViewType } from './features/app-shell/types';
 
+const WorkspacePages = lazy(async () => ({ default: (await import('./pages/WorkspacePages')).WorkspacePages }));
 const HomePage = lazy(async () => ({ default: (await import('./pages/Home')).Home }));
 const SkillsPage = lazy(async () => ({ default: (await import('./pages/Skills')).Skills }));
 const KnowledgePage = lazy(async () => ({ default: (await import('./pages/Knowledge')).Knowledge }));
@@ -55,6 +59,8 @@ function AuthenticatedApp() {
   useEffect(() => { if (activeCreationWorkspaceId) window.localStorage.setItem('gardenflow:active-creation', activeCreationWorkspaceId); else window.localStorage.removeItem('gardenflow:active-creation'); }, [activeCreationWorkspaceId]);
   const {
     currentView,
+    route,
+    navigateToRoute,
     setCurrentView,
     immersiveMode,
     setImmersiveMode,
@@ -68,11 +74,21 @@ function AuthenticatedApp() {
     setViewPersistent,
     returnFromSettings,
   } = useViewNavigation();
+  useEffect(() => {
+    const open = (_event: unknown, target: unknown) => { if (isAppRoute(target)) dispatchAppIntent({ type: 'route.open', route: target }); };
+    window.ipcRenderer.workCatalog.onOpenRoute(open);
+    return () => window.ipcRenderer.workCatalog.offOpenRoute(open);
+  }, []);
+  const editorReturnRoute = useRef<AppRoute>({ section: 'create', page: 'works' });
+  const currentRouteRef = useRef(route); currentRouteRef.current = route;
+  const editorActiveRef = useRef(false); editorActiveRef.current = Boolean(activeCreationWorkspaceId || activeManuscriptEditorFile || activeVideoProjectId);
+  const returnToWorkList = useCallback(() => { void flushCreationBeforeNavigate().then(() => { setActiveCreationWorkspaceId(null); navigateToRoute(editorReturnRoute.current); }).catch(reason => { void import('./utils/appDialogs').then(({ appAlert }) => appAlert(String(reason))); }); }, [navigateToRoute]);
   const [gardenFlowGlobalSidebarContent, setGardenFlowGlobalSidebarContent] = useState<ReactNode>(null);
   const [gardenFlowTitleBarActions, setGardenFlowTitleBarActions] = useState<ReactNode>(null);
   const [wanderTitleBarContent, setWanderTitleBarContent] = useState<ReactNode>(null);
   const [knowledgeTitleBarContent, setKnowledgeTitleBarContent] = useState<ReactNode>(null);
   const [approvalTargetDocketId, setApprovalTargetDocketId] = useState('');
+  const [chooseCreation, setChooseCreation] = useState(false);
   const [creationEntry, setCreationEntry] = useState<Extract<AppIntent, { type: 'creation.prepare' }> | null>(null);
   const startingCreations = useRef(new Map<string, Promise<unknown>>());
   const [generationAssetPicker, setGenerationAssetPicker] = useState<GenerationAssetPickerRequest | null>(null);
@@ -80,7 +96,9 @@ function AuthenticatedApp() {
     let active = true;
     const handle = (event: Event) => {
       const intent = (event as CustomEvent<AppIntent>).detail;
-      if (intent?.type === 'creation.prepare') {
+      if (['creation.start', 'creation.open', 'manuscript.open', 'video-project.open', 'dream-story.new'].includes(intent?.type) && !editorActiveRef.current) editorReturnRoute.current = currentRouteRef.current;
+      if (intent?.type === 'creation.choose') { setChooseCreation(true);
+      } else if (intent?.type === 'creation.prepare') {
         setCreationEntry(intent);
       } else if (intent?.type === 'creation.start') {
         const key = JSON.stringify(intent); if (startingCreations.current.has(key)) return;
@@ -92,6 +110,7 @@ function AuthenticatedApp() {
         startingCreations.current.set(key, operation);
       } else if (intent?.type === 'creation.open') {
         setActiveManuscriptEditorFile(null); setActiveVideoProjectId(null); setActiveCreationWorkspaceId(intent.workspaceId); setCurrentView('gardenflow');
+      } else if (intent?.type === 'route.open') { setActiveCreationWorkspaceId(null);
       } else if (intent?.type === 'manuscript.open' || intent?.type === 'video-project.open' || intent?.type === 'dream-story.new' || (intent?.type === 'gardenflow.open' && intent.action)) setActiveCreationWorkspaceId(null);
     };
     window.addEventListener(GARDENFLOW_NAVIGATE_EVENT, handle);
@@ -175,6 +194,7 @@ function AuthenticatedApp() {
 
   useGlobalIntentRouter({
     navigateToView,
+    navigateToRoute,
     setCurrentView,
     setActiveManuscriptEditorFile,
     setActiveVideoProjectId,
@@ -200,11 +220,12 @@ function AuthenticatedApp() {
   return (
     <>
       <Layout
+        route={route}
         currentView={currentView}
         creationActive={isCreationWorkspaceActive || isVideoProjectActive || isManuscriptEditorActive}
         onNavigate={(view) => { void flushCreationBeforeNavigate().then(() => { setActiveCreationWorkspaceId(null); navigateToView(view); }).catch(reason => { void import('./utils/appDialogs').then(({ appAlert }) => appAlert(String(reason))); }); }}
         immersiveMode={effectiveImmersiveMode}
-        hideGlobalSidebar={currentView === 'settings'}
+        hideGlobalSidebar={false}
         globalSidebarContent={gardenFlowGlobalSidebarContent}
         activeModalView={subjectsModalOpen ? 'subjects' : undefined}
         renderTitleBarContent={({ currentView }) => {
@@ -243,6 +264,7 @@ function AuthenticatedApp() {
           </>
         )}
       >
+        {['opportunities', 'consumer-research', 'source-maintenance', 'works', 'campaigns', 'publication', 'publication-history', 'publication-connections', 'observations', 'experiments', 'characters', 'automation-history', 'members'].includes(currentView) && <Suspense fallback={<ViewLoadingFallback />}><WorkspacePages key={route.section + ':' + route.page} route={route} /></Suspense>}
         {shouldRenderView(mountedViews, currentView, persistentViews, 'home') && (
           <div className={currentView === 'home' ? 'h-full min-h-0 flex flex-col' : 'hidden'}>
             <Suspense fallback={currentView === 'home' ? <ViewLoadingFallback /> : null}>
@@ -271,17 +293,17 @@ function AuthenticatedApp() {
                 onNavigateToGardenFlow={navigateToGardenFlow}
                 onNavigateToGenerationStudio={navigateToGenerationStudio}
                 isActive={true}
-                onClose={closeManuscriptEditor}
+                onClose={returnToWorkList}
                 onImmersiveModeChange={setImmersiveMode}
               />
             </Suspense>
           </div>
         )}
-        {isCreationWorkspaceActive && activeCreationWorkspaceId && <CreationWorkspaceHost key={activeCreationWorkspaceId} workspaceId={activeCreationWorkspaceId} onClose={() => { void flushCreationBeforeNavigate().then(() => setActiveCreationWorkspaceId(null)); }} />}
+        {isCreationWorkspaceActive && activeCreationWorkspaceId && <CreationWorkspaceHost key={activeCreationWorkspaceId} workspaceId={activeCreationWorkspaceId} onClose={returnToWorkList} />}
         {isVideoProjectActive && activeVideoProjectId && (
           <div className="h-full min-h-0 flex flex-col overflow-hidden">
             <Suspense fallback={<ViewLoadingFallback />}>
-              <ProductVideoWorkbench projectId={activeVideoProjectId} onClose={() => { void flushCreationBeforeNavigate().then(() => setActiveVideoProjectId(null)); }} />
+              <ProductVideoWorkbench projectId={activeVideoProjectId} onClose={returnToWorkList} />
             </Suspense>
           </div>
         )}
@@ -298,6 +320,8 @@ function AuthenticatedApp() {
               <KnowledgePage
                 onNavigateToGardenFlow={navigateToGardenFlow}
                 isActive={currentView === 'knowledge'}
+                openItemId={route.section === 'library' ? route.entityId : undefined}
+                openItemKind={route.entityKind}
                 onTitleBarContentChange={setKnowledgeTitleBarContent}
               />
             </Suspense>
@@ -311,6 +335,7 @@ function AuthenticatedApp() {
                 onOpenGardenFlowOnboarding={openGardenFlowOnboarding}
                 gardenflowOnboardingVersion={gardenflowOnboardingVersion}
                 navigationTarget={settingsNavigationTarget}
+                routePage={route.section === 'settings' ? route.page : undefined}
                 onReturn={returnFromSettings}
               />
             </Suspense>
@@ -375,6 +400,8 @@ function AuthenticatedApp() {
               <SubjectsPage
                 isActive={currentView === 'subjects'}
                 variant="page"
+                scope="products"
+                openProductId={route.section === 'library' ? route.entityId : undefined}
               />
             </Suspense>
           </div>
@@ -425,6 +452,7 @@ function AuthenticatedApp() {
         )}
       </Layout>
       <ClipboardCapturePrompt />
+      {chooseCreation && <CreationChooser onClose={() => setChooseCreation(false)} />}
       {creationEntry && <CreationEntryDialog key={JSON.stringify(creationEntry)} intent={creationEntry} onClose={() => setCreationEntry(null)} />}
       {subjectsModalOpen && (
         <AppSubjectsModal close={closeAssetsModal}>

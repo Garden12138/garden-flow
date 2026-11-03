@@ -1,12 +1,20 @@
 import {
     isHappyHorseReferenceVideoModel,
+    MINIMAX_H3_LOCAL_RESOLUTION,
     resolveVideoProvider,
     type VideoProviderPreset,
     type VideoProviderKind,
 } from './videoProvider.ts';
 
 export type VideoGenerationMode = 'text-to-video' | 'reference-guided' | 'first-last-frame' | 'continuation';
-export type VideoResolution = '720p' | '1080p';
+export const VIDEO_RESOLUTIONS = ['720p', '1080p', MINIMAX_H3_LOCAL_RESOLUTION] as const;
+export type VideoResolution = typeof VIDEO_RESOLUTIONS[number];
+
+export function normalizeVideoResolution(value: unknown): VideoResolution {
+    const resolution = String(value || '').trim();
+    if (resolution === '1080p' || resolution === MINIMAX_H3_LOCAL_RESOLUTION) return resolution;
+    return '720p';
+}
 export type VideoAspectRatio = '16:9' | '9:16';
 
 export type VideoProviderConfig = {
@@ -87,7 +95,7 @@ export function parseVideoProviderConfigs(settings: Record<string, unknown>): Vi
         if (model && !models.includes(model)) models.push(model);
         const endpoint = String(record.endpoint || '').trim();
         const preset = String(record.preset || '').trim() as VideoProviderPreset;
-        if (!['aliyun-bailian', 'minimax', 'new-api-aliyun', 'new-api-minimax', 'custom'].includes(preset)) return [];
+        if (!['aliyun-bailian', 'minimax', 'minimax-h3-local', 'new-api-aliyun', 'new-api-minimax', 'custom'].includes(preset)) return [];
         const signature = `${endpoint}\n${models.join('\n')}`;
         if (!endpoint || models.length === 0 || seen.has(signature)) return [];
         seen.add(signature);
@@ -125,6 +133,23 @@ function integerRange(min: number, max: number): number[] {
 export function getVideoModelCapabilities(model: string, endpoint = '', preset?: VideoProviderPreset): VideoModelCapabilities {
     const normalizedModel = String(model || '').trim().toLowerCase();
     const providerKind = resolveVideoProvider(endpoint, model, preset);
+
+    if (providerKind === 'minimax-h3-local') {
+        return {
+            providerKind,
+            supportedModes: ['text-to-video', 'reference-guided', 'first-last-frame'],
+            aspectRatios: ['16:9'],
+            resolutions: [MINIMAX_H3_LOCAL_RESOLUTION],
+            durationSeconds: [5],
+            minReferenceImages: 1,
+            maxReferenceImages: 1,
+            supportsReferenceAudio: false,
+            maxReferenceAudios: 0,
+            referenceAudioFormats: [],
+            supportsGeneratedAudio: false,
+            summary: '内网 MiniMax-H3 · 5 秒 · 608×352 · 文生、单首帧与首尾帧',
+        };
+    }
 
     if (providerKind === 'new-api-aliyun' || providerKind === 'new-api-minimax') {
         const aliyun = providerKind === 'new-api-aliyun';

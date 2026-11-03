@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { VIDEO_RESOLUTIONS } from './videoGenerationCapabilities.ts';
 
 export const MEDIA_GENERATION_TOOL_NAMES = [
     'image_generate',
@@ -33,6 +34,7 @@ export const ImageGenerateParamsSchema = z.object({
     providerTemplate: z.string().min(1).optional(),
     generationMode: z.enum(['text-to-image', 'image-to-image', 'reference-guided']).optional(),
     referenceImages: z.array(z.string().min(1)).max(4).optional(),
+    mask: z.string().min(1).optional().describe('Optional mask file for editing one image with Qwen Image Studio.'),
     subjectIds: z.array(z.string().min(1)).max(4).optional(),
     subjectQuery: z.string().min(1).optional(),
     projectId: z.string().min(1).optional(),
@@ -54,13 +56,13 @@ export const VideoGenerateParamsSchema = z.object({
     prompt: z.string().min(1).optional().describe('Required for generate. generate-note reads the approved prompt from the note.'),
     generationMode: z.enum(['text-to-video', 'reference-guided', 'first-last-frame', 'continuation']).optional(),
     referenceImages: z.array(z.string().min(1)).max(9).optional().describe('Absolute paths or supported asset URLs. Paths returned by image_generate can be passed here directly.'),
-    referenceAudios: z.array(z.string().min(1)).max(3).optional().describe('Reference-audio paths or URLs for models that support multimodal reference input, such as MiniMax-H3.'),
+    referenceAudios: z.array(z.string().min(1)).max(3).optional().describe('Reference-audio paths or URLs for providers that support multimodal reference input, such as cloud MiniMax-H3.'),
     firstClip: z.string().min(1).optional(),
     drivingAudio: z.string().min(1).optional(),
     count: z.number().int().min(1).max(4).optional(),
     durationSeconds: z.number().min(1).max(300).optional(),
     aspectRatio: z.string().min(1).optional(),
-    resolution: z.enum(['720p', '1080p']).optional(),
+    resolution: z.enum(VIDEO_RESOLUTIONS).optional(),
     generateAudio: z.boolean().optional(),
     model: z.string().min(1).optional(),
     projectId: z.string().min(1).optional(),
@@ -129,7 +131,7 @@ export const GenerationToolConstraintsSchema = z.object({
         count: z.number().int().min(1).max(4).optional(),
         durationSeconds: z.number().min(1).max(300).optional(),
         aspectRatio: z.string().min(1).optional(),
-        resolution: z.enum(['720p', '1080p']).optional(),
+        resolution: z.enum(VIDEO_RESOLUTIONS).optional(),
         generateAudio: z.boolean().optional(),
         model: z.string().min(1).optional(),
         projectId: z.string().min(1).optional(),

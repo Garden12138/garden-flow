@@ -1,3 +1,4 @@
+import { routeForView, viewForRoute, isAppRoute, type AppRoute } from './routes';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ImmersiveMode, ViewType } from './types';
 import { normalizeRestoredWorkbenchView, WORKBENCH_LEGAL_VIEWS } from '../workbench/navigation';
@@ -54,7 +55,28 @@ function persistCurrentView(view: ViewType): void {
 }
 
 export function useViewNavigation() {
-  const [currentView, setCurrentView] = useState<ViewType>(readInitialView);
+  const [route, setRoute] = useState<AppRoute>(() => routeForView(readInitialView()));
+  const [currentView, setCurrentView] = useState<ViewType>(() => viewForRoute(route));
+  const [routeScope, setRouteScope] = useState('');
+  const navigated = useRef(false);
+  useEffect(() => {
+    let active = true;
+    void window.ipcRenderer.spaces.list().then(result => {
+      if (!active) return;
+      const scope = 'gardenflow:route:v2:' + (result.activeSpaceId || 'default');
+      try {
+        const saved: unknown = JSON.parse(window.localStorage.getItem(scope) || 'null');
+        if (isAppRoute(saved) && !navigated.current) { setRoute(saved); setCurrentView(viewForRoute(saved)); }
+      } catch { /* Invalid saved UI state falls back to a legal legacy route. */ }
+      setRouteScope(scope);
+    }).catch(error => console.warn('Failed to read navigation space:', error));
+    return () => { active = false; };
+  }, []);
+  useEffect(() => {
+    if (viewForRoute(route) !== currentView && !(currentView === 'cover-studio' && route.page === 'generation')) setRoute(routeForView(currentView));
+  }, [currentView, route]);
+  useEffect(() => { if (routeScope) window.localStorage.setItem(routeScope, JSON.stringify(route)); }, [route, routeScope]);
+
   const [immersiveMode, setImmersiveMode] = useState<ImmersiveMode>(false);
   const [activeManuscriptEditorFile, setActiveManuscriptEditorFile] = useState<string | null>(null);
   const [activeVideoProjectId, setActiveVideoProjectId] = useState<string | null>(null);
@@ -71,10 +93,18 @@ export function useViewNavigation() {
   }, [currentView]);
 
   const navigateToView = useCallback((view: ViewType) => {
+    navigated.current = true;
     setActiveManuscriptEditorFile(null);
     setActiveVideoProjectId(null);
     setImmersiveMode(false);
     setCurrentView(view);
+  }, []);
+
+  const navigateToRoute = useCallback((next: AppRoute) => {
+    if (!isAppRoute(next)) return;
+    navigated.current = true;
+    setActiveManuscriptEditorFile(null); setActiveVideoProjectId(null); setImmersiveMode(false);
+    setRoute(next); setCurrentView(viewForRoute(next));
   }, []);
 
   const setViewPersistent = useCallback((view: ViewType, persistent: boolean) => {
@@ -100,6 +130,8 @@ export function useViewNavigation() {
 
   return {
     currentView,
+    route,
+    navigateToRoute,
     setCurrentView,
     immersiveMode,
     setImmersiveMode,

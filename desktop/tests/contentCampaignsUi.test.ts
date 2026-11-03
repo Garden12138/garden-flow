@@ -31,7 +31,7 @@ test('campaign UI confirms the list and each item separately, locks double creat
         campaign: async () => ok({ campaign: value, works: [] }), confirmCampaign: async (input: any) => { assert.equal(input.confirmed, true); value = { ...value, revision: 2, confirmedPlanVersion: 1 }; return ok(value); },
         createCampaignWork: async (input: any) => { assert.equal(input.confirmed, true); assert.equal(input.itemId, 'item-0'); creates++; return pending; } });
     await act(async () => h.root.render(React.createElement(h.Component)));
-    await act(async () => { const select = h.dom.window.document.querySelector('[aria-label=选择内容组]') as HTMLSelectElement; select.value = 'group'; select.dispatchEvent(new h.dom.window.Event('change', { bubbles: true })); });
+    await act(async () => h.dom.window.document.querySelector<HTMLButtonElement>('.workspace-plan-card')!.click());
     assert.equal(h.button('确认当前内容列表').disabled, true); assert.equal(h.button('确认创建这一条').disabled, true); assert.equal(creates, 0);
     await act(async () => (h.dom.window.document.querySelector('[aria-label=确认成组内容列表]') as HTMLInputElement).click());
     await act(async () => h.button('确认当前内容列表').click()); assert.equal(h.button('确认创建这一条').disabled, true);
@@ -45,7 +45,7 @@ test('campaign planning opens a draft in the existing conversation without sendi
     const h = await fixture(t, { campaigns: async () => ok([campaign]), list: async () => ok({ items: [] }), sources: async () => ok([]), campaign: async () => ok({ campaign, works: [] }) });
     h.dom.window.addEventListener('gardenflow:navigate', event => { intent = (event as CustomEvent).detail; });
     await act(async () => h.root.render(React.createElement(h.Component)));
-    await act(async () => { const select = h.dom.window.document.querySelector('[aria-label=选择内容组]') as HTMLSelectElement; select.value = 'group'; select.dispatchEvent(new h.dom.window.Event('change', { bubbles: true })); });
+    await act(async () => h.dom.window.document.querySelector<HTMLButtonElement>('.workspace-plan-card')!.click());
     await act(async () => h.button('去对话规划（先填草稿）').click());
     assert.equal(intent.handoff.message.deliveryMode, 'draft'); assert.equal(intent.handoff.message.sessionRouting, 'new');
     assert.ok(intent.handoff.message.content.includes('campaign_read')); assert.ok(intent.handoff.message.content.includes('group')); assert.equal(intent.type, 'flow.open');

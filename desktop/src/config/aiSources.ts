@@ -1,10 +1,13 @@
 
+import { QWEN_IMAGE_STUDIO, QWEN_IMAGE_STUDIO_MODEL } from '../../shared/qwenImageStudio';
+
 export interface AiSourcePreset {
   id: string;
   label: string;
   baseURL: string;
   protocol: 'openai' | 'anthropic' | 'gemini';
   group?: 'general' | 'coding-plan';
+  defaultModel?: string;
 }
 
 export interface AiSourceConfig {
@@ -18,6 +21,7 @@ export interface AiSourceConfig {
     id: string;
     capabilities?: string[];
     inputCapabilities?: string[];
+    xcli?: { capabilities: string[]; validated: boolean; inference_location: string };
   }>;
   model: string;
   protocol?: 'openai' | 'anthropic' | 'gemini';
@@ -27,6 +31,8 @@ export const DEFAULT_AI_PRESET_ID = 'openai';
 
 // Presets aligned with common OpenAI-compatible providers (referencing AionUi design).
 export const AI_SOURCE_PRESETS: AiSourcePreset[] = [
+  { id: 'xcli', label: 'xcli Model Gateway', baseURL: 'http://127.0.0.1:18741/v1', protocol: 'openai' },
+  { id: QWEN_IMAGE_STUDIO, label: 'Qwen Image Studio（内网）', baseURL: 'http://localhost:8001/v1', protocol: 'openai', defaultModel: QWEN_IMAGE_STUDIO_MODEL },
   { id: 'openai', label: 'OpenAI', baseURL: 'https://api.openai.com/v1', protocol: 'openai' },
   { id: 'anthropic', label: 'Anthropic', baseURL: 'https://api.anthropic.com/v1', protocol: 'anthropic' },
   { id: 'gemini', label: 'Gemini', baseURL: 'https://generativelanguage.googleapis.com/v1beta', protocol: 'gemini' },

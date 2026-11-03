@@ -1,7 +1,8 @@
+import { useDialogFocus } from './useDialogFocus';
 import { registerCreationFlush } from './creationNavigation';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { PanelLeftClose, PanelRightClose, Pencil, Eye } from 'lucide-react';
-import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
+import { useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { CreationContext } from '../creation/CreationContext';
+import { SlidersHorizontal, MessageSquare, BookOpenText, X, PanelRightClose } from 'lucide-react';
 
 export interface CreationAdapter {
     id: string;
@@ -13,6 +14,8 @@ export interface CreationAdapter {
     chat: ReactNode;
     editor: ReactNode;
     preview: ReactNode;
+    navigation?: ReactNode;
+    timeline?: ReactNode;
     actions?: ReactNode;
     notice?: ReactNode;
     flush?: () => Promise<unknown>;
@@ -35,41 +38,42 @@ export function CreationWorkbench({ adapter }: { adapter: CreationAdapter }) {
         const timer = window.setTimeout(() => highlighted.forEach(control => control.classList.remove('ring-2', 'ring-accent-primary/40')), 2200);
         return () => { window.clearTimeout(timer); highlighted.forEach(control => control.classList.remove('ring-2', 'ring-accent-primary/40')); };
     }, [adapter.changeToken]);
+    const context = useContext(CreationContext);
     const [narrow, setNarrow] = useState(false);
-    const [tab, setTab] = useState<'editor' | 'preview'>('editor');
-    const [chatOpen, setChatOpen] = useState(true);
-    const [previewOpen, setPreviewOpen] = useState(true);
+    const [inspectorOpen, setInspectorOpen] = useState(true);
+    const [tab, setTab] = useState<'editor' | 'ai' | 'context'>('editor');
+    const inspectorRef = useDialogFocus(() => setInspectorOpen(false), narrow && inspectorOpen);
     useEffect(() => {
-        const measure = () => setNarrow(Math.min(root.current?.getBoundingClientRect().width || window.innerWidth, window.innerWidth) < 1000);
-        const observer = new ResizeObserver(measure);
-        measure(); if (root.current) observer.observe(root.current); window.addEventListener('resize', measure);
-        return () => { observer.disconnect(); window.removeEventListener('resize', measure); };
+        const measure = () => setNarrow((root.current?.getBoundingClientRect().width || window.innerWidth) < 1200);
+        const observer = new ResizeObserver(measure); measure(); if (root.current) observer.observe(root.current);
+        return () => observer.disconnect();
     }, []);
+    useEffect(() => { if (narrow) setInspectorOpen(false); }, [narrow]);
     useEffect(() => {
         if (!adapter.focusChatSignal) return;
-        setChatOpen(true);
+        setTab('ai'); setInspectorOpen(true);
         const frame = window.requestAnimationFrame(() => root.current?.querySelector<HTMLElement>('[aria-label="创作对话"] [contenteditable="true"]')?.focus());
         return () => window.cancelAnimationFrame(frame);
     }, [adapter.focusChatSignal]);
-    const pane = (name: string, content: ReactNode) => <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden" aria-label={name}>
-        <div className="flex h-10 shrink-0 items-center border-b border-border px-3 text-xs font-semibold text-text-secondary">{name}</div>
-        <div className="min-h-0 min-w-0 flex-1 overflow-hidden">{content}</div>
-    </section>;
-    return <div ref={root} data-creation-workbench={adapter.id} data-creation-narrow={narrow} className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-surface-primary text-text-primary">
-        <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2">
-            <div className="min-w-0 flex-1"><p className="text-[10px] tracking-wider text-text-tertiary">创作工作台</p><h1 className="truncate text-sm font-semibold">{adapter.title}</h1><p className="text-[11px] text-text-tertiary">{adapter.subtitle}{adapter.status ? ` · ${adapter.status}` : ''}</p></div>
-            <div className="flex flex-wrap items-center gap-2 text-xs">{adapter.actions}</div>
-            <button type="button" className="rounded p-2 hover:bg-surface-secondary" aria-label={chatOpen ? '收起创作对话' : '展开创作对话'} aria-pressed={chatOpen} onClick={() => setChatOpen(value => !value)}><PanelLeftClose className="h-4 w-4" /></button>
-            {narrow ? <button type="button" className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-xs" onClick={() => setTab(value => value === 'editor' ? 'preview' : 'editor')}>{tab === 'editor' ? <Eye className="h-3 w-3" /> : <Pencil className="h-3 w-3" />}{tab === 'editor' ? '查看预览' : '返回编辑'}</button> : <button type="button" className="rounded p-2 hover:bg-surface-secondary" aria-label={previewOpen ? '收起效果预览' : '展开效果预览'} aria-pressed={previewOpen} onClick={() => setPreviewOpen(value => !value)}><PanelRightClose className="h-4 w-4" /></button>}
+    const openTab = (value: typeof tab) => { setTab(value); setInspectorOpen(true); };
+    return <div ref={root} data-creation-workbench={adapter.id} data-creation-narrow={narrow} className="creation-canvas-shell">
+        <header className="creation-canvas-header">
+            <div className="min-w-0 flex-1"><h1>{adapter.title}</h1><p>{adapter.subtitle}<span className="creation-save-status">{adapter.status}</span></p></div>
+            <div className="creation-canvas-actions">{context?.versions && <details className="creation-version-menu"><summary>平台与版本</summary><div>{context.versions}</div></details>}{adapter.actions}</div>
+            <button type="button" className="workspace-icon-button" aria-label={inspectorOpen ? '收起辅助面板' : '展开辅助面板'} aria-expanded={inspectorOpen} onClick={() => setInspectorOpen(value => !value)}><PanelRightClose size={18} /></button>
         </header>
         {adapter.notice}
-        <PanelGroup direction="horizontal" autoSaveId="creation-workbench-panels-v1" className="min-h-0 flex-1">
-            {chatOpen && <><Panel id="chat" order={1} defaultSize={30} minSize={24}>{pane('创作对话', adapter.chat)}</Panel><PanelResizeHandle className="w-1 shrink-0 bg-border/50 transition-colors hover:bg-accent-primary/50" /></>}
-            <Panel id="editor" order={2} defaultSize={40} minSize={32}>
-                <div className={narrow && tab === 'preview' ? 'hidden' : 'h-full'}>{pane('作品编辑', adapter.editor)}</div>
-                {narrow && <div className={tab === 'preview' ? 'h-full' : 'hidden'}>{pane('效果预览', adapter.preview)}</div>}
-            </Panel>
-            {!narrow && previewOpen && <><PanelResizeHandle className="w-1 shrink-0 bg-border/50 transition-colors hover:bg-accent-primary/50" /><Panel id="preview" order={3} defaultSize={30} minSize={24}>{pane('效果预览', adapter.preview)}</Panel></>}
-        </PanelGroup>
+        <div className="creation-canvas-body">
+            {adapter.navigation && <nav aria-label="页面与镜头" className="creation-canvas-navigation">{adapter.navigation}</nav>}
+            <div className="creation-canvas-stage"><section aria-label="效果预览" className="creation-canvas-preview">{adapter.preview}</section>{adapter.timeline && <section aria-label="视频时间线" className="creation-canvas-timeline">{adapter.timeline}</section>}</div>
+            {narrow && inspectorOpen && <button className="creation-inspector-backdrop" aria-label="关闭辅助面板" onClick={() => setInspectorOpen(false)} />}
+            <aside ref={inspectorRef} role={narrow ? 'dialog' : 'complementary'} aria-modal={narrow && inspectorOpen ? true : undefined} className={`creation-inspector ${inspectorOpen ? 'is-open' : ''}`} aria-label="创作辅助面板" onKeyDown={event => { if (event.key === 'Escape' && narrow) { event.stopPropagation(); setInspectorOpen(false); } }}>
+                <div className="creation-inspector-tabs" role="tablist" aria-label="创作工具">{([{ id: 'editor', label: '属性', icon: SlidersHorizontal }, { id: 'ai', label: 'AI 助手', icon: MessageSquare }, ...(context ? [{ id: 'context', label: '创作上下文', icon: BookOpenText }] : [])] as const).map(({ id, label, icon: Icon }) => <button key={id} type="button" role="tab" aria-selected={tab === id} id={`creation-tab-${id}`} aria-controls={`creation-panel-${id}`} onClick={() => openTab(id as typeof tab)}><Icon size={15} />{label}</button>)}{narrow && <button aria-label="关闭辅助面板" onClick={() => setInspectorOpen(false)}><X size={16} /></button>}</div>
+                <section id="creation-panel-editor" role="tabpanel" aria-labelledby="creation-tab-editor" aria-label="作品编辑" hidden={tab !== 'editor'}>{adapter.editor}</section>
+                <section id="creation-panel-ai" role="tabpanel" aria-labelledby="creation-tab-ai" aria-label="创作对话" hidden={tab !== 'ai'}>{adapter.chat}</section>
+                {context && <section id="creation-panel-context" role="tabpanel" aria-labelledby="creation-tab-context" hidden={tab !== 'context'}>{context?.content}</section>}
+            </aside>
+            {narrow && !inspectorOpen && <div className="creation-floating-tools"><button onClick={() => openTab('editor')}><SlidersHorizontal size={16} />属性</button><button onClick={() => openTab('ai')}><MessageSquare size={16} />AI 助手</button>{context && <button onClick={() => openTab('context')}><BookOpenText size={16} />依据</button>}</div>}
+        </div>
     </div>;
 }

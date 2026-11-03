@@ -824,3 +824,24 @@ h1 {
   padding: 0 8px;
   font: inherit;
 }
+
+/* Shared workspace language: page, destination, capture, then secondary activity. */
+body { background:var(--gf-paper); color:var(--gf-ink); font-family:'IBM Plex Sans','Noto Sans SC',sans-serif; }
+.app { padding:18px; gap:16px; }
+.topbar { background:transparent; padding:0 0 14px; border-bottom:1px solid var(--gf-border); box-shadow:none; }
+.topbar h1 { font-family:inherit; font-size:18px; }
+.topbar-actions { display:flex; gap:5px; }
+.topbar-actions button { width:auto; min-width:32px; min-height:32px; font-size:10px; padding:5px; }
+.section { border:1px solid var(--gf-border); border-radius:12px; background:var(--gf-surface); box-shadow:none; }
+.target-space { display:flex; flex-wrap:wrap; align-items:center; gap:7px; font-size:11px; color:var(--gf-text-secondary); }
+.target-space strong { font-size:12px; color:var(--gf-ink); font-weight:500; }
+.target-space button { margin-left:auto; border:0; border-bottom:1px solid var(--gf-border); background:none; color:var(--gf-iris); font-size:11px; min-height:32px; cursor:pointer; }
+.page-recognition { padding:20px 16px; }
+.capture-action-panel { border-color:var(--gf-border); background:var(--gf-surface); }
+.capture-actions .primary { background:var(--gf-iris); border-color:var(--gf-iris); min-height:40px; box-shadow:none; }
+.task-panel>summary,.task-log-panel>summary { padding:14px; cursor:pointer; font-size:12px; font-weight:500; }
+.task-panel .section-row,.task-log-panel .section-row { display:none; }
+.task-panel[open],.task-log-panel[open] { padding-bottom:14px; }
+.task-panel>div,.task-log-panel>div { margin-left:14px; margin-right:14px; }
+button:focus-visible,summary:focus-visible { outline:2px solid var(--gf-iris); outline-offset:3px; }
+@media (prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; } }

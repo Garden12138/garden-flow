@@ -1,3 +1,6 @@
+import { normalizeModelCapabilities, normalizeModelInputCapabilities } from '../../../shared/modelCapabilities';
+import { QWEN_IMAGE_STUDIO } from '../../../shared/qwenImageStudio';
+import { imageRoutingForPreset } from '../../../shared/imageSourceRouting';
 import { findAiPresetById, inferPresetIdByEndpoint, type AiSourceConfig } from '../../config/aiSources';
 import { filterAiModelsByCapability, normalizeAiModelDescriptors, parseAiSources } from '../../pages/settings/shared';
 import { parseAiModelRoutesValue } from '../settings/modelRouteValue';
@@ -115,6 +118,10 @@ export function getAiSourceTypeLabel(source: AiSourceConfig): string {
 }
 
 export function getAiSourceModelDescriptors(source: AiSourceConfig) {
+    if (source.presetId === QWEN_IMAGE_STUDIO) return normalizeAiModelDescriptors(
+        [...(source.models || []), source.model].filter(Boolean).map((id) => ({ id, capabilities: ['image'] })),
+    );
+    if (source.presetId === 'xcli') return (source.modelsMeta || []).map((model) => ({ id: model.id, capabilities: normalizeModelCapabilities(model.capabilities || []), inputCapabilities: normalizeModelInputCapabilities(model.inputCapabilities) }));
     return normalizeAiModelDescriptors([
         ...(source.modelsMeta || []),
         ...(source.models || []).map((id) => ({ id })),
@@ -231,23 +238,6 @@ export function aiSourceToRouteOverride(source: AiSourceConfig | null | undefine
     };
 }
 
-function imageRoutingForSource(source: AiSourceConfig): Pick<ModelRouteOverride, 'provider' | 'providerTemplate'> {
-    const presetId = String(source.presetId || inferPresetIdByEndpoint(source.baseURL || '') || '').trim().toLowerCase();
-    if (presetId.includes('dashscope') || presetId.includes('qwen') || presetId === 'buts') {
-        return { provider: 'dashscope', providerTemplate: 'dashscope-wan-native' };
-    }
-    if (presetId.includes('jimeng')) {
-        return { provider: 'jimeng', providerTemplate: 'jimeng-openai-wrapper' };
-    }
-    if (presetId.includes('ark')) {
-        return { provider: 'ark-seedream', providerTemplate: 'ark-seedream-native' };
-    }
-    if (presetId.includes('gemini')) {
-        return { provider: 'gemini', providerTemplate: 'gemini-openai-images' };
-    }
-    return { provider: 'openai-compatible', providerTemplate: 'openai-images' };
-}
-
 export function resolveSelectedModelOverride(
     settings: SettingsShape,
     scope: 'image' | 'voiceTts',
@@ -279,7 +269,7 @@ export function resolveSelectedModelOverride(
 
     const routeOverride = aiSourceToRouteOverride(selectedSource);
     return scope === 'image'
-        ? { ...routeOverride, ...imageRoutingForSource(selectedSource) }
+        ? { ...routeOverride, ...imageRoutingForPreset(selectedSource.presetId || inferPresetIdByEndpoint(selectedSource.baseURL || '') || '') }
         : routeOverride;
 }
 

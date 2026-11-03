@@ -331,6 +331,8 @@ export async function preflightGenerationMediaPayload<T extends PayloadRecord>(
   }));
 
   await Promise.all(IMAGE_ARRAY_FIELDS.map(async (field) => {
+    // A mask and its original image must retain their matching dimensions.
+    if (field === 'referenceImages' && typeof payload.mask === 'string' && payload.mask.trim()) return;
     const value = next[field];
     if (!Array.isArray(value)) return;
     next[field] = await mapWithConcurrency(value, 2, (item) => preflightImageValue(item, options));

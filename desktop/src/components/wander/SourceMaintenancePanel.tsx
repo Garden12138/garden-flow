@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import type { CiResult, EvidenceSourceView, SourceSnapshot } from '../../../shared/contentIntelligence';
 import type { MaintenanceSourceOption, MaintenanceReportSummary, MaintenanceDetail, MaintenanceDecision } from '../../../shared/sourceMaintenance';
 import { EvidenceSource } from '../../features/creation/ContentEvidencePanel';
+import { WorkspaceGuide } from '../../features/workbench/WorkspaceGuidance';
 import { dispatchAppIntent } from '../../features/app-shell/appIntent';
 
-const buttonClass = 'rounded border border-border px-3 py-1.5 text-xs hover:bg-surface-secondary disabled:opacity-40';
-const inputClass = 'w-full rounded border border-border bg-surface-primary p-2 text-sm';
+const buttonClass = 'workspace-secondary-button';
+const inputClass = 'workspace-field';
 const actions = { 'keep-historical': '保留历史依据', 'collect-evidence': '计划补充证据', 'edit-manually': '计划手动修改' };
 const kinds = { evidence: '证据', opportunity: '机会', workspace: '工程' };
 const quoteLabels = { 'matches-current-location': '当前定位文字相同，来源版本仍已变化', 'differs-current-location': '当前定位文字不同或已不在本次采集片段中', 'source-unavailable': '当前来源不可用' };
@@ -47,10 +48,11 @@ export function SourceMaintenancePanel() {
     }
     const selectedSource = sources.find(source => String(source.rowId) === sourceId);
     const impact = detail?.report.impacts.find(item => item.id === impactId); const decision = detail?.decisions.find(item => item.impactId === impactId);
-    return <section aria-label="来源复核" className="mb-4 space-y-3 rounded border border-border p-4 text-sm">
-        <div><h3 className="font-semibold">来源变化与内容维护</h3><p className="mt-1 text-xs text-text-secondary">选择曾引用的来源版本，与当前空间已入库资料核对。检查只创建待复核清单；处理记录表示人工决定，实际修改请打开原工程完成。</p></div>
-        <div className="flex flex-wrap gap-2"><select aria-label="选择旧来源版本" disabled={busy} value={sourceId} onChange={event => setSourceId(event.target.value)} className={inputClass + ' min-w-0 flex-1'}><option value="">选择已保存的来源版本</option>{sources.map(source => <option key={source.rowId} value={source.rowId}>{source.title} · {source.source.namespace} · {source.version.slice(0, 12)} · {source.evidenceCount} 条引用</option>)}</select>
-            <button type="button" disabled={busy || !selectedSource} className={buttonClass} onClick={() => void act(async token => {
+    return <section aria-label="来源复核" className="workspace-task-panel mb-4 space-y-4 text-sm">
+        <div><h2 className="font-semibold">核对引用过的资料</h2><p className="mt-1 text-xs text-text-secondary">选择曾引用的来源版本，与当前空间已入库资料核对。检查只创建待复核清单；处理记录表示人工决定，实际修改请打开原工程完成。</p></div>
+        {!sources.length && !error && <WorkspaceGuide title="这里帮你找到需要更新的内容" description="资料被用于机会和作品后，可以对照新旧版本，查看哪些内容需要重新核对。" steps={[{ title: '引用资料', description: '先在消费者机会中绑定依据，保留原文和版本。' }, { title: '检查变化', description: '资料更新后，选择旧版本检查差异与受影响内容。' }, { title: '逐项处理', description: '打开关联作品，记录决定并完成必要修改。' }]}><button type="button" className="workspace-primary-button" onClick={() => dispatchAppIntent({ type: 'route.open', route: { section: 'research', page: 'opportunities' } })}>查看消费者机会</button></WorkspaceGuide>}
+        {sources.length > 0 && <div className="flex flex-wrap gap-2"><select aria-label="选择旧来源版本" disabled={busy} value={sourceId} onChange={event => setSourceId(event.target.value)} className={inputClass + ' min-w-0 flex-1'}><option value="">选择已保存的来源版本</option>{sources.map(source => <option key={source.rowId} value={source.rowId}>{source.title} · {source.source.namespace} · {source.version.slice(0, 12)} · {source.evidenceCount} 条引用</option>)}</select>
+            <button type="button" disabled={busy || !selectedSource} className="workspace-primary-button" onClick={() => void act(async token => {
                 if (!selectedSource) return; const input = { source: selectedSource.source, previousVersion: selectedSource.version };
                 const value = data(await window.ipcRenderer.contentIntelligence.checkMaintenance({ ...input, requestId: requestId('check', input) }));
                 if (token !== epoch.current) return; requests.current.delete('check');
@@ -59,7 +61,8 @@ export function SourceMaintenancePanel() {
             })}>检查当前入库版本</button>
             {next && <button type="button" disabled={busy} className={buttonClass} onClick={() => void act(async token => { const value = data(await window.ipcRenderer.contentIntelligence.maintenanceSources({ afterRowId: next })); if (token !== epoch.current) return; setSources(old => [...old, ...value.items.filter(item => !old.some(existing => existing.rowId === item.rowId))]); setNext(value.nextRowId); })}>更多旧版本</button>}
         </div>
-        <label className="block text-xs">最近 50 轮复核<select aria-label="选择复核记录" className={inputClass} disabled={busy} value={detail?.report.id || ''} onChange={event => { const id = event.target.value; if (!id) { setDetail(null); clearSelection(); return; } void act(async token => { const value = data(await window.ipcRenderer.contentIntelligence.maintenanceDetail(id)); if (token === epoch.current) show(value); }); }}><option value="">选择历史清单</option>{reports.map(report => <option key={report.id} value={report.id}>{report.sourceTitle} · {new Date(report.createdAt).toLocaleString()} · {report.impacts} 项</option>)}</select></label>
+        }
+        {reports.length > 0 && <label className="block text-xs">最近 50 轮复核<select aria-label="选择复核记录" className={inputClass} disabled={busy} value={detail?.report.id || ''} onChange={event => { const id = event.target.value; if (!id) { setDetail(null); clearSelection(); return; } void act(async token => { const value = data(await window.ipcRenderer.contentIntelligence.maintenanceDetail(id)); if (token === epoch.current) show(value); }); }}><option value="">选择历史清单</option>{reports.map(report => <option key={report.id} value={report.id}>{report.sourceTitle} · {new Date(report.createdAt).toLocaleString()} · {report.impacts} 项</option>)}</select></label>}
         {error && <p role="alert" className="text-red-600">{error}</p>}{message && <p role="status">{message}</p>}
         {detail && <div className="space-y-3" aria-label="来源复核清单">
             <p className="text-xs">冻结检查：{new Date(detail.report.createdAt).toLocaleString()} · 待记录决定 {detail.pending} / {detail.report.impacts.length} 项。历史清单保持原样，需核对后续变化时请再次检查。</p>

@@ -1,6 +1,4 @@
-import { PublicationManagement } from '../components/publication/PublicationManagement';
-import { ContentExperimentsPanel } from '../components/experiments/ContentExperimentsPanel';
-import { ContentCampaignsPanel } from '../components/campaigns/ContentCampaignsPanel';
+import { WorkspaceGuide, WorkspaceHelp } from '../features/workbench/WorkspaceGuidance';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Check, ChevronDown, Clock3, Loader2, MoreHorizontal, PauseCircle, Pencil, Play, PlayCircle, Plus, Trash2 } from 'lucide-react';
 import {
@@ -162,7 +160,6 @@ function confirmedTaskId(value: unknown, fallbackTaskId: string): string {
 }
 
 export function Automation({ isActive = true, onOpenGardenFlowSession }: AutomationProps) {
-  const [managementTab, setManagementTab] = useState<'automation' | 'publication' | 'experiments' | 'campaigns'>('automation');
   const [items, setItems] = useState<GardenFlowTaskListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -686,8 +683,6 @@ export function Automation({ isActive = true, onOpenGardenFlowSession }: Automat
 
   return (
     <div className="workbench-schedule automation-page h-full min-h-0 overflow-auto">
-      <nav aria-label="计划分区" className="flex flex-wrap gap-3 border-b border-border px-6 py-3"><button onClick={() => setManagementTab('automation')} className="rounded border px-3 py-2 text-xs">自动化</button><button onClick={() => setManagementTab('publication')} className="rounded border px-3 py-2 text-xs">发布</button><button onClick={() => setManagementTab('experiments')} className="rounded border px-3 py-2 text-xs">观测与实验</button><button onClick={() => setManagementTab('campaigns')} className="rounded border px-3 py-2 text-xs">成组内容</button></nav>
-      {managementTab === 'campaigns' ? <ContentCampaignsPanel /> : managementTab === 'experiments' ? <ContentExperimentsPanel /> : managementTab === 'publication' ? <PublicationManagement isActive={isActive} onOpenSession={onOpenGardenFlowSession} /> : <>
       <button
         type="button"
         onClick={openDialog}
@@ -699,11 +694,12 @@ export function Automation({ isActive = true, onOpenGardenFlowSession }: Automat
 
       <main className="automation-content">
         <div className="workbench-schedule__heading">
-          <span>05 · SCHEDULE</span>
-          <h1 className="automation-title">计划台</h1>
+          <span>自动化</span>
+          <h1 className="automation-title">自动任务</h1>
           <p>查看今天、接下来与异常任务，保存前先读一遍自然语言执行摘要。</p>
         </div>
 
+        {currentItems.length === 0 ? <WorkspaceGuide title="先配置一项任务，再决定是否定时执行" description="可以使用内置采集任务，也可以新建自定义任务。任务有明确的运行状态和报告，需要你确认的事项单独处理。" steps={[{ title: '选择与配置', description: '选择任务，填写关键词、范围和时间。' }, { title: '检查就绪状态', description: '核对桌面连接、浏览器账号与所需模型。' }, { title: '开启或手动运行', description: '确认配置后执行，结果与问题会保留在运行记录和报告中。' }]} /> : <WorkspaceHelp title="自动任务怎么开始？"><WorkspaceGuide title="先配置一项任务，再决定是否定时执行" description="可以使用内置采集任务，也可以新建自定义任务。任务有明确的运行状态和报告，需要你确认的事项单独处理。" steps={[{ title: '选择与配置', description: '选择任务，填写关键词、范围和时间。' }, { title: '检查就绪状态', description: '核对桌面连接、浏览器账号与所需模型。' }, { title: '开启或手动运行', description: '确认配置后执行，结果与问题会保留在运行记录和报告中。' }]} /></WorkspaceHelp>}
         <nav className="workbench-schedule__views" aria-label="自动化视图">
           {([
             ['today', '今天'],
@@ -741,7 +737,7 @@ export function Automation({ isActive = true, onOpenGardenFlowSession }: Automat
               </button>
             )}
             {!loading && !error && visibleAutomationItems.length === 0 && (
-              <div className="automation-empty">当前视图没有任务</div>
+              <div className="automation-empty">当前视图没有任务。可点击「新建自动化」，或展开上方内置任务模板；运行后在记录中查看结果。</div>
             )}
             {visibleAutomationItems.map((item) => (
               <div
@@ -819,7 +815,7 @@ export function Automation({ isActive = true, onOpenGardenFlowSession }: Automat
           </div>
         </section>
       </main>
-      </>}
+
     </div>
   );
 }

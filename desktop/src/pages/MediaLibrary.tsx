@@ -1,3 +1,4 @@
+import { WorkspaceGuide, WorkspaceMore } from '../features/workbench/WorkspaceGuidance';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ExternalLink, Link2, RefreshCw, Save, FolderOpen, ImagePlus, Sparkles, Search, SlidersHorizontal, Image, X, Clapperboard, Trash2, Music2, Download } from 'lucide-react';
 import clsx from 'clsx';
@@ -1099,8 +1100,8 @@ export function MediaLibrary({
                         <Image className="w-3.5 h-3.5" />
                     </div>
                     <div className="min-w-0">
-                        <h1 className="text-base leading-none font-semibold text-text-primary">媒体库画廊</h1>
-                        <div className="text-[11px] mt-0.5 text-text-tertiary truncate">管理 AI 生成图、计划图并快速绑定稿件</div>
+                        <h1 className="text-base leading-none font-semibold text-text-primary">媒体</h1>
+                        <div className="text-[11px] mt-0.5 text-text-tertiary truncate">保存与复用图片、视频和声音，按需应用到作品</div>
                     </div>
 
                     <div className="hidden xl:flex items-center gap-1.5 min-w-0 ml-2">
@@ -1125,7 +1126,7 @@ export function MediaLibrary({
                                 source: 'media-library',
                                 sourceTitle: '媒体库画廊',
                             })}
-                            className="h-7 px-2.5 text-[11px] rounded-md border border-border hover:bg-surface-secondary text-text-secondary"
+                            className="workspace-secondary-button"
                         >
                             <span className="inline-flex items-center gap-1">
                                 <ImagePlus className="w-3.5 h-3.5" />
@@ -1138,16 +1139,17 @@ export function MediaLibrary({
                                 source: 'media-library',
                                 sourceTitle: '媒体库画廊',
                             })}
-                            className="h-7 px-2.5 text-[11px] rounded-md border border-border hover:bg-surface-secondary text-text-secondary"
+                            className="workspace-secondary-button"
                         >
                             <span className="inline-flex items-center gap-1">
                                 <Clapperboard className="w-3.5 h-3.5" />
                                 生视频
                             </span>
                         </button>
+                        <WorkspaceMore label="媒体更多操作">
                         <button
                             onClick={() => void window.ipcRenderer.media.openRoot()}
-                            className="h-7 px-2.5 text-[11px] rounded-md border border-border hover:bg-surface-secondary text-text-secondary"
+                            className="workspace-secondary-button"
                         >
                             <span className="inline-flex items-center gap-1">
                                 <FolderOpen className="w-3.5 h-3.5" />
@@ -1156,13 +1158,14 @@ export function MediaLibrary({
                         </button>
                         <button
                             onClick={() => void loadData()}
-                            className="h-7 px-2.5 text-[11px] rounded-md border border-border hover:bg-surface-secondary text-text-secondary"
+                            className="workspace-secondary-button"
                         >
                             <span className="inline-flex items-center gap-1">
                                 <RefreshCw className="w-3.5 h-3.5" />
                                 刷新
                             </span>
                         </button>
+                        </WorkspaceMore>
                     </div>
                 </div>
             </div>
@@ -1174,7 +1177,7 @@ export function MediaLibrary({
                         <input
                             value={query}
                             onChange={(event) => setQuery(event.target.value)}
-                            placeholder="搜索标题、提示词、项目ID、稿件路径"
+                            placeholder="搜索媒体标题、提示词或来源"
                             className="w-full pl-9 pr-3 py-2 text-sm rounded-md border border-border bg-surface-primary focus:outline-none focus:ring-1 focus:ring-accent-primary"
                         />
                     </div>
@@ -1232,7 +1235,7 @@ export function MediaLibrary({
                 ) : error ? (
                     <div className="text-sm text-status-error">{error}</div>
                 ) : filteredAssets.length === 0 ? (
-                    <div className="text-sm text-text-tertiary">暂无媒体资产</div>
+                    assets.length ? <div className="workspace-empty"><h2>没有符合筛选条件的媒体</h2><p>调整关键词、来源或类型后再试。</p><button className="workspace-secondary-button" onClick={() => { setQuery(''); setSourceFilter('all'); }}>清除筛选</button></div> : <WorkspaceGuide title="把可复用的素材留在这里" description="生成或保存的图片、视频和音频可集中管理，创作时通过素材选择器引用。" steps={[{ title: '准备素材', description: '在生成工具中制作图片、视频或声音，并保存结果。' }, { title: '整理与查找', description: '按类型、来源和关键词查找需要的媒体。' }, { title: '用于作品', description: '在编辑器中选择素材，应用到指定页面或镜头。' }]}><button className="workspace-primary-button" onClick={() => onNavigateToGenerationStudio?.({ mode: 'image', source: 'media-library', sourceTitle: '媒体' })}>生成第一份素材</button></WorkspaceGuide>
                 ) : (
                     <div className="space-y-4">
                         <div className="flex items-start gap-4">

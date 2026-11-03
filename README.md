@@ -57,7 +57,7 @@ flowchart LR
 
 ## 产品界面
 
-以下通用工作台截图来自同一个实际使用中的 GardenFlow 空间，展示已有素材、选题、稿件和媒体产物。
+以下通用工作台截图来自较早界面中的同一个实际使用空间，展示素材、选题、稿件和媒体产物。当前导航和布局见[界面规范](./Docs/NATURAL_NEWSROOM_UI.md)。
 
 ![GardenFlow 浅色主工作台](./images/workbench-light.jpg)
 

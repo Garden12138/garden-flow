@@ -32,7 +32,7 @@ async function init() {
 
   const health = await sendMessage({ type: 'healthcheck' });
   if (health?.success) {
-    serverStatusEl.textContent = '本地知识库已链接 ✅';
+    serverStatusEl.textContent = health.health?.captureSpaceName ? `保存到：${health.health.captureSpaceName}` : '已连接桌面空间';
     serverStatusEl.className = 'status ok';
   } else {
     serverStatusEl.textContent = '未链接，请打开GardenFlow';
@@ -242,3 +242,5 @@ function safeHost(rawUrl) {
     return '';
   }
 }
+
+document.getElementById('open-sidepanel')?.addEventListener('click', () => { void sendMessage({ type: 'sidepanel:open' }).then(() => window.close()).catch(error => showResult(String(error), 'error')); });

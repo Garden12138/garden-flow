@@ -2,7 +2,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { getSettings } from '../db';
 import { createGeneratedMediaAsset, type MediaAsset } from './mediaLibraryStore';
-import { normalizeApiBaseUrl } from './urlUtils';
+import { normalizeApiBaseUrl, parseMediaProviderEndpoint } from './urlUtils';
+import { resolveAssetSourceToPath } from './localAssetManager';
 import {
     buildAliyunBailianVideoCreateUrl,
     buildAliyunBailianVideoCreateUrlCandidates,
@@ -11,9 +12,12 @@ import {
     buildMiniMaxVideoCreateUrl,
     buildMiniMaxVideoQueryUrl,
     buildMiniMaxVideoRequest,
+    buildLocalH3VideoRequest,
     isHappyHorseReferenceVideoModel,
     normalizeMiniMaxReferenceAudioUrl,
     resolveVideoProvider,
+    MINIMAX_H3_LOCAL_RESOLUTION,
+    MINIMAX_VIDEO_MODEL,
 } from '../../shared/videoProvider';
 import {
     buildNewApiVideoCreateUrl,
@@ -27,6 +31,7 @@ import {
     getVideoModelCapabilities,
     resolveVideoModelRoute,
     videoModeReferenceRange,
+    type VideoResolution,
 } from '../../shared/videoGenerationCapabilities';
 import { normalizeMediaValueForRemote as resolveHostedMediaValue } from './imageHosting/service.ts';
 import { transcodeProductVideoImageToJpeg } from './productVideoImageDecode.ts';
@@ -46,7 +51,7 @@ export interface GenerateVideosInput {
     aspectRatio?: string;
     count?: number;
     durationSeconds?: number;
-    resolution?: '720p' | '1080p';
+    resolution?: VideoResolution;
     generateAudio?: boolean;
     generationMode?: 'text-to-video' | 'reference-guided' | 'first-last-frame' | 'continuation';
     referenceImages?: string[];
@@ -60,7 +65,7 @@ export interface GenerateVideosResult {
     endpoint: string;
     provider: string;
     aspectRatio: '16:9' | '9:16';
-    resolution: '720p' | '1080p';
+    resolution: VideoResolution;
     durationSeconds: number;
     generateAudio: boolean;
     assets: MediaAsset[];
@@ -176,17 +181,32 @@ async function normalizeMediaValueForRemote(value: string): Promise<string> {
     });
 }
 
-async function fetchGeneratedVideoBuffer(videoUrl: string, apiKey: string): Promise<{ buffer: Buffer; mimeType: string }> {
-    const attempts: Array<Record<string, string>> = [
-        {},
-        { 'x-goog-api-key': apiKey },
-        { Authorization: `Bearer ${apiKey}` },
-    ];
+async function encodeLocalH3Frame(value: string): Promise<string> {
+    const maxBytes = 12 * 1024 * 1024;
+    if (/^data:/i.test(value)) {
+        const match = /^data:image\/(png|jpeg|webp);base64,([a-z\d+/]+={0,2})$/i.exec(value);
+        if (match && Buffer.byteLength(match[2], 'base64') <= maxBytes) return value;
+        throw new Error('MiniMax-H3 首尾帧须为不超过 12 MiB 的 PNG、JPEG 或 WebP 图片。');
+    }
+    if (/^https?:\/\//i.test(value)) {
+        throw new Error('MiniMax-H3 首尾帧需要本地图片，请先将网络图片保存到本机。');
+    }
+    const filePath = resolveAssetSourceToPath(value);
+    const mimeType = inferMimeTypeFromPath(filePath);
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(mimeType) || (await fs.stat(filePath)).size > maxBytes) {
+        throw new Error('MiniMax-H3 首尾帧须为不超过 12 MiB 的 PNG、JPEG 或 WebP 图片。');
+    }
+    return `data:${mimeType};base64,${(await fs.readFile(filePath)).toString('base64')}`;
+}
+
+async function fetchGeneratedVideoBuffer(videoUrl: string, apiKey?: string): Promise<{ buffer: Buffer; mimeType: string }> {
+    const attempts: Array<Record<string, string>> = [{}];
+    if (apiKey) attempts.push({ 'x-goog-api-key': apiKey }, { Authorization: `Bearer ${apiKey}` });
     let lastError = 'Failed to download generated video.';
 
     for (const headers of attempts) {
         try {
-            const response = await fetch(videoUrl, { headers });
+            const response = await fetch(videoUrl, { headers, signal: apiKey ? undefined : AbortSignal.timeout(180_000) });
             if (!response.ok) {
                 lastError = `下载生成视频失败 (${response.status} ${response.statusText})`;
                 continue;
@@ -800,6 +820,7 @@ async function generateViaNewApiVideoRoute(input: {
 }
 
 async function generateViaMiniMaxVideoRoute(input: {
+    provider: 'minimax' | 'minimax-h3-local';
     prompt: string;
     endpoint: string;
     apiKey: string;
@@ -816,10 +837,12 @@ async function generateViaMiniMaxVideoRoute(input: {
     generationMode: VideoGenerationMode;
     generateAudio?: boolean;
 }): Promise<GenerateVideosResult> {
+    const local = input.provider === 'minimax-h3-local';
     if (input.generationMode === 'continuation') {
         throw new Error('MiniMax-H3 当前配置支持文生视频、参考生成和首尾帧生成；视频再生成需要独立接口，暂不支持“视频续写”模式。');
     }
-    const createUrl = buildMiniMaxVideoCreateUrl(input.endpoint);
+    const endpoint = local ? parseMediaProviderEndpoint(input.endpoint).href : input.endpoint;
+    const createUrl = buildMiniMaxVideoCreateUrl(endpoint);
     if (!createUrl) {
         throw new Error('MiniMax 生视频 Endpoint 无效。');
     }
@@ -827,7 +850,7 @@ async function generateViaMiniMaxVideoRoute(input: {
         .map((item) => String(item || '').trim())
         .filter(Boolean)
         .slice(0, input.generationMode === 'first-last-frame' ? 2 : 9);
-    const normalizedRefs = (await Promise.all(refs.map((item) => normalizeMediaValueForRemote(item)))).filter(Boolean);
+    const normalizedRefs = (await Promise.all(refs.map(local ? encodeLocalH3Frame : normalizeMediaValueForRemote))).filter(Boolean);
     const referenceAudios = (Array.isArray(input.referenceAudios) ? input.referenceAudios : [])
         .map((item) => String(item || '').trim())
         .filter(Boolean)
@@ -838,7 +861,7 @@ async function generateViaMiniMaxVideoRoute(input: {
     const assets: MediaAsset[] = [];
 
     for (let index = 0; index < input.count; index += 1) {
-        const body = buildMiniMaxVideoRequest({
+        const body = local ? buildLocalH3VideoRequest(input.prompt, normalizedRefs) : buildMiniMaxVideoRequest({
             model: input.model,
             prompt: input.prompt,
             referenceImages: normalizedRefs,
@@ -857,6 +880,7 @@ async function generateViaMiniMaxVideoRoute(input: {
                     Authorization: `Bearer ${input.apiKey}`,
                 },
                 body: JSON.stringify(body),
+                ...(local ? { redirect: 'error', signal: AbortSignal.timeout(90_000) } as const : {}),
             });
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error || 'fetch failed');
@@ -873,7 +897,7 @@ async function generateViaMiniMaxVideoRoute(input: {
         if (!taskId) {
             throw new Error('MiniMax 生视频创建成功，但接口未返回 task_id。');
         }
-        const queryUrl = buildMiniMaxVideoQueryUrl(input.endpoint, taskId);
+        const queryUrl = buildMiniMaxVideoQueryUrl(endpoint, taskId);
         if (!queryUrl) {
             throw new Error('MiniMax 生视频查询地址无效。');
         }
@@ -900,6 +924,7 @@ async function generateViaMiniMaxVideoRoute(input: {
                 response = await fetch(queryUrl, {
                     method: 'GET',
                     headers: { Authorization: `Bearer ${input.apiKey}` },
+                    ...(local ? { redirect: 'error', signal: AbortSignal.timeout(30_000) } as const : {}),
                 });
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error || 'fetch failed');
@@ -926,17 +951,17 @@ async function generateViaMiniMaxVideoRoute(input: {
         if (!videoUrl) {
             throw new Error('MiniMax 生视频任务已完成，但接口未返回 task.content.url。');
         }
-        const downloaded = await fetchGeneratedVideoBuffer(videoUrl, input.apiKey);
+        const downloaded = await fetchGeneratedVideoBuffer(videoUrl, local ? undefined : input.apiKey);
         assets.push(await createGeneratedMediaAsset({
             prompt: input.prompt,
             privacyScope: input.privacyScope,
             dataBuffer: downloaded.buffer,
             mimeType: downloaded.mimeType,
             projectId: input.projectId?.trim() || undefined,
-            provider: 'minimax',
+            provider: input.provider,
             model: input.model,
             aspectRatio: input.aspectRatio,
-            size: input.resolution,
+            size: local ? String(finalPayload?.task?.resolution || MINIMAX_H3_LOCAL_RESOLUTION) : input.resolution,
             quality: `${input.durationSeconds}s`,
             title: input.title?.trim() || undefined,
         }));
@@ -945,9 +970,9 @@ async function generateViaMiniMaxVideoRoute(input: {
     return {
         model: input.model,
         endpoint: input.endpoint,
-        provider: 'minimax',
+        provider: input.provider,
         aspectRatio: input.aspectRatio,
-        resolution: input.resolution,
+        resolution: local ? MINIMAX_H3_LOCAL_RESOLUTION : input.resolution,
         durationSeconds: input.durationSeconds,
         generateAudio: Boolean(input.generateAudio),
         assets,
@@ -1154,8 +1179,12 @@ export async function generateVideosToMediaLibrary(input: GenerateVideosInput): 
     const configuredModel = String(input.model || configuredRoute?.model || settings.video_model || '').trim();
     const model = configuredModel;
     const provider = resolveVideoProvider(endpoint, model, configuredRoute?.provider.preset);
+    const localH3 = provider === 'minimax-h3-local';
     const inputApiKey = String(input.apiKey || '').trim();
-    const videoApiKey = String(configuredRoute?.provider.apiKey || settings.video_api_key || '').trim();
+    const routeApiKey = configuredRoute?.provider.apiKey || '';
+    const videoApiKey = localH3
+        ? (endpoint === normalizeApiBaseUrl(configuredRoute?.provider.endpoint || '') ? routeApiKey : '').trim()
+        : String(routeApiKey || settings.video_api_key || '').trim();
     const apiKey = inputApiKey || videoApiKey;
     const selectedKeySource = inputApiKey
         ? 'input.apiKey'
@@ -1166,7 +1195,7 @@ export async function generateVideosToMediaLibrary(input: GenerateVideosInput): 
     const resolution = normalizeVideoResolution(String(input.resolution || '').trim());
     const modelCapabilities = getVideoModelCapabilities(model, endpoint, configuredRoute?.provider.preset);
     const isNewApi = provider === 'new-api-aliyun' || provider === 'new-api-minimax';
-    const durationSeconds = normalizeVideoDuration(
+    const durationSeconds = localH3 ? 5 : normalizeVideoDuration(
         input.durationSeconds,
         input.privacyScope === 'project' ? { min: Math.min(...modelCapabilities.durationSeconds), max: Math.max(...modelCapabilities.durationSeconds) } : provider === 'aliyun-bailian'
             ? { min: 3, max: 15 }
@@ -1187,7 +1216,7 @@ export async function generateVideosToMediaLibrary(input: GenerateVideosInput): 
             ? Math.max(modelCapabilities.maxReferenceImages, generationMode === 'first-last-frame' ? 2 : 0)
             : generationMode === 'reference-guided' ? 5 : 2;
     const referenceImages = Array.isArray(input.referenceImages)
-        ? input.referenceImages.filter(Boolean).slice(0, maxReferenceImages)
+        ? input.referenceImages.filter(Boolean).slice(0, localH3 ? undefined : maxReferenceImages)
         : [];
     const referenceAudios = Array.isArray(input.referenceAudios)
         ? input.referenceAudios.filter(Boolean)
@@ -1218,13 +1247,24 @@ export async function generateVideosToMediaLibrary(input: GenerateVideosInput): 
     if (!modelCapabilities.aspectRatios.includes(aspectRatio)) {
         throw new Error(`${model} 不支持 ${aspectRatio} 视频比例。`);
     }
-    if (!modelCapabilities.resolutions.includes(resolution)) {
-        throw new Error(`${model} 不支持 ${resolution} 清晰度。`);
+    const outputResolution = input.resolution === MINIMAX_H3_LOCAL_RESOLUTION || (localH3 && resolution === '720p')
+        ? MINIMAX_H3_LOCAL_RESOLUTION
+        : resolution;
+    if (!modelCapabilities.resolutions.includes(outputResolution)) {
+        throw new Error(`${model} 不支持 ${outputResolution} 清晰度。可用规格：${modelCapabilities.resolutions.join('、')}。`);
     }
     if (generateAudio && !modelCapabilities.supportsGeneratedAudio) {
         throw new Error(`${model} 当前不支持同步生成音频，请关闭音频选项后重试。`);
     }
-    if (input.privacyScope !== 'project') console.log('[VideoGeneration] auth prepared', {
+    if (localH3) {
+        if (model !== MINIMAX_VIDEO_MODEL) throw new Error('内网视频服务的模型 ID 必须为 MiniMax-H3。');
+        if (firstClip || drivingAudio) throw new Error('内网 MiniMax-H3 仅支持图片作为输入素材。');
+        const range = videoModeReferenceRange(modelCapabilities, generationMode);
+        if (referenceImages.length < range.min || referenceImages.length > range.max) {
+            throw new Error(`内网 MiniMax-H3 在当前模式需要 ${range.min} 张参考图。`);
+        }
+    }
+    if (!localH3 && input.privacyScope !== 'project') console.log('[VideoGeneration] auth prepared', {
         endpoint,
         keySource: selectedKeySource,
         keySuffix: maskKeySuffix(apiKey),
@@ -1308,8 +1348,9 @@ export async function generateVideosToMediaLibrary(input: GenerateVideosInput): 
         });
     }
 
-    if (provider === 'minimax') {
+    if (provider === 'minimax' || provider === 'minimax-h3-local') {
         return generateViaMiniMaxVideoRoute({
+            provider,
             prompt,
             endpoint,
             apiKey,

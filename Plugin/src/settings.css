@@ -212,3 +212,8 @@ input:focus {
     flex-direction: column;
   }
 }
+body { background:var(--gf-paper); color:var(--gf-ink); font-family:'IBM Plex Sans','Noto Sans SC',sans-serif; }
+.panel { border:1px solid var(--gf-border); border-radius:12px; background:var(--gf-surface); box-shadow:none; }
+h1,h2 { font-family:inherit; }
+.btn.primary { background:var(--gf-iris); color:white; box-shadow:none; }
+button:focus-visible,input:focus-visible { outline:2px solid var(--gf-iris); outline-offset:3px; }

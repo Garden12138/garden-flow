@@ -1,11 +1,14 @@
+import { xcliModels, requireXcliCapabilities, xcliRequest, xcliJson } from './xcliGateway.ts';
 import { promises as fs } from 'node:fs';
 import { extname, isAbsolute, normalize } from 'node:path';
 import { resolveAssetSourceToPath } from './localAssetManager.ts';
 import { isLocalAssetSource } from '../../shared/localAsset.ts';
-import { normalizeApiBaseUrl } from './urlUtils.ts';
+import { normalizeApiBaseUrl, parseMediaProviderEndpoint } from './urlUtils.ts';
+import { QWEN_IMAGE_STUDIO, QWEN_IMAGE_STUDIO_DEFAULT_SIZE } from '../../shared/qwenImageStudio.ts';
 
 export type ImageProviderTemplate =
     | 'openai-images'
+    | typeof QWEN_IMAGE_STUDIO
     | 'openai-chat-completions-image'
     | 'gemini-openai-images'
     | 'gemini-imagen-native'
@@ -30,6 +33,7 @@ export interface ImageGenerationRequest {
     providerTemplate: ImageProviderTemplate;
     generationMode?: ImageGenerationMode;
     referenceImages?: string[];
+    mask?: string;
     aspectRatio?: ImageAspectRatio;
     size?: string;
     quality?: ImageQuality | string;
@@ -39,6 +43,7 @@ export interface ImageGenerationRequest {
 export interface GeneratedImageOutput {
     imageBuffer: Buffer;
     mimeType?: string;
+    size?: string;
 }
 
 export interface ImageProviderAdapter {
@@ -64,6 +69,11 @@ const DEFAULT_SIZE_BY_ASPECT: Record<Exclude<ImageAspectRatio, 'auto'>, string> 
 const SEEDREAM_MIN_PIXELS = 3_686_400;
 const SIZE_STEP = 64;
 const IMAGE_PROVIDER_CAPABILITIES: Record<ImageProviderTemplate, ImageProviderCapabilities> = {
+    [QWEN_IMAGE_STUDIO]: {
+        supportedModes: ['text-to-image', 'image-to-image', 'reference-guided'],
+        supportsReferenceImages: true,
+        maxReferenceImages: 1,
+    },
     'openai-images': {
         supportedModes: ['text-to-image', 'image-to-image', 'reference-guided'],
         supportsReferenceImages: true,
@@ -1590,10 +1600,140 @@ const openAiChatCompletionsImageAdapter: ImageProviderAdapter = {
     },
 };
 
+async function generateXcliImages(request: ImageGenerationRequest): Promise<GeneratedImageOutput[]> {
+    const count = request.count ?? 1;
+    const mode = request.generationMode || 'text-to-image';
+    const refs = request.referenceImages || [];
+    if (!Number.isInteger(count) || count < 1 || count > 4 || refs.length > 4
+        || !['text-to-image', 'image-to-image', 'reference-guided'].includes(mode)
+        || (mode === 'text-to-image' && refs.length > 0)
+        || (mode !== 'text-to-image' && refs.length === 0)) {
+        throw new Error('xcli image count, generation mode or reference inputs are invalid');
+    }
+    const size = request.size || 'auto';
+    const dimensions = /^(\d+)x(\d+)$/.exec(size);
+    if (size !== 'auto' && (!dimensions || Number(dimensions[1]) < 1 || Number(dimensions[2]) < 1
+        || Number(dimensions[1]) * Number(dimensions[2]) > 16_777_216)) throw new Error('xcli image size is invalid');
+    const required = [mode === 'text-to-image' ? 'image.generate' : 'image.edit', ...(refs.length > 1 ? ['image.multi_reference'] : [])];
+    requireXcliCapabilities(await xcliModels(request.endpoint, request.apiKey), request.model, required);
+    const fields: Record<string, string> = { model: request.model, prompt: request.prompt, n: String(count), size, response_format: 'b64_json' };
+    if (request.quality) fields.quality = request.quality;
+    let body: string | FormData;
+    if (refs.length) {
+        const form = new FormData();
+        for (const [key, value] of Object.entries(fields)) form.append(key, value);
+        let total = Buffer.byteLength(request.prompt);
+        for (const ref of refs) {
+            if (!ref.startsWith('data:')) {
+                const path = isLocalFileLikeReference(ref) ? resolveLocalReferencePath(ref) : null;
+                if (!path || (await fs.stat(path)).size > 20 * 1024 * 1024) throw new Error('xcli requires a local reference image within 20 MiB');
+            }
+            const decoded = decodeDataUrl(await normalizeReferenceImageInput(ref));
+            if (!decoded || !['image/png', 'image/jpeg', 'image/webp'].includes(decoded.mimeType)
+                || decoded.base64.length > 28 * 1024 * 1024) throw new Error('xcli reference image is invalid');
+            const bytes = Buffer.from(decoded.base64, 'base64');
+            total += bytes.length;
+            if (!bytes.length || bytes.toString('base64') !== decoded.base64 || bytes.length > 20 * 1024 * 1024
+                || total > 32 * 1024 * 1024 - 65536) throw new Error('xcli reference images exceed the size limit');
+            form.append('image[]', new Blob([bytes], { type: decoded.mimeType }), 'reference.' + (decoded.mimeType === 'image/jpeg' ? 'jpg' : decoded.mimeType.split('/')[1]));
+        }
+        body = form;
+    } else {
+        body = JSON.stringify({ ...fields, n: count });
+        if (Buffer.byteLength(body) > 4 * 1024 * 1024) throw new Error('xcli request exceeds 4 MiB');
+    }
+    const result = await xcliJson(await xcliRequest(request.endpoint, request.apiKey, refs.length ? '/images/edits' : '/images/generations', body));
+    if (!Array.isArray(result?.data) || result.data.length !== count) throw new Error('xcli image output count does not match the request');
+    return result.data.map((item: any) => {
+        if (typeof item?.b64_json !== 'string' || item.url || item.b64_json.length > 28 * 1024 * 1024) throw new Error('xcli returned an invalid image result');
+        const imageBuffer = Buffer.from(item.b64_json, 'base64');
+        const signature = imageBuffer.subarray(0, 12);
+        if (!imageBuffer.length || imageBuffer.length > 20 * 1024 * 1024 || imageBuffer.toString('base64') !== item.b64_json
+            || !(signature.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'))
+                || signature.subarray(0, 3).equals(Buffer.from('ffd8ff', 'hex'))
+                || (signature.toString('ascii', 0, 4) === 'RIFF' && signature.toString('ascii', 8, 12) === 'WEBP'))) {
+            throw new Error('xcli returned an invalid image result');
+        }
+        return { imageBuffer, mimeType: inferImageMimeType(imageBuffer) };
+    });
+}
+
+async function readQwenImageStudioUpload(source: string) {
+    const file = await readReferenceImageForMultipart(await normalizeReferenceImageInput(source));
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.blob.type.split(';')[0]) || !file.blob.size || file.blob.size > 20 * 1024 * 1024) {
+        throw new Error('Qwen Image Studio 仅支持不超过 20 MiB 的 PNG、JPEG 或 WebP 文件。');
+    }
+    return file;
+}
+
+const qwenImageStudioAdapter: ImageProviderAdapter = {
+    template: QWEN_IMAGE_STUDIO,
+    supportsMultiCount: true,
+    async generate(request) {
+        const references = request.referenceImages || [];
+        const mode = request.generationMode || (references.length ? 'image-to-image' : 'text-to-image');
+        const edit = mode !== 'text-to-image';
+        if (references.length !== (edit ? 1 : 0) || (request.mask && !edit)) {
+            throw new Error('Qwen Image Studio 编辑需要恰好一张原图，可另附一张遮罩。');
+        }
+        if (!request.prompt.trim() || Array.from(request.prompt).length > 4000) {
+            throw new Error('Qwen Image Studio 提示词长度必须为 1–4000 个字符。');
+        }
+        const endpoint = parseMediaProviderEndpoint(request.endpoint);
+        const prefix = endpoint.pathname.replace(/\/+$/, '').replace(/(?:\/v1)?\/images\/(?:generations|edits)$/, '').replace(/\/v1$/, '');
+        let size = QWEN_IMAGE_STUDIO_DEFAULT_SIZE;
+        if (request.size === '1024x1024' && (request.count || 1) === 1) {
+            const healthUrl = new URL(endpoint);
+            healthUrl.pathname = `${prefix}/health`;
+            const health = await fetch(healthUrl, { signal: AbortSignal.timeout(5000), redirect: 'error' })
+                .then(async (response) => response.ok ? await parseJsonSafe(response) : null)
+                .catch(() => null);
+            if (Array.isArray(health?.allowed_sizes) && health.allowed_sizes.includes('1024x1024')) {
+                size = '1024x1024';
+            }
+        }
+        endpoint.pathname = `${prefix}/v1/images/${edit ? 'edits' : 'generations'}`;
+        const params = { model: request.model, prompt: request.prompt, size, n: 1, output_format: 'png', response_format: 'b64_json' };
+        const headers: Record<string, string> = { Authorization: `Bearer ${request.apiKey}` };
+        let body: FormData | string;
+        if (edit) {
+            const form = new FormData();
+            for (const [key, value] of Object.entries(params)) form.set(key, String(value));
+            const image = await readQwenImageStudioUpload(references[0]);
+            form.set('image', image.blob, image.filename);
+            if (request.mask) {
+                const mask = await readQwenImageStudioUpload(request.mask);
+                form.set('mask', mask.blob, mask.filename);
+            }
+            body = form;
+        } else {
+            headers['Content-Type'] = 'application/json';
+            body = JSON.stringify(params);
+        }
+        const outputs: GeneratedImageOutput[] = [];
+        for (let index = 0; index < (request.count || 1); index += 1) {
+            const response = await fetch(endpoint, {
+                method: 'POST', headers, body, redirect: 'error',
+                signal: AbortSignal.timeout(Math.max(660_000, resolveImageRequestTimeoutMs())),
+            });
+            const payload = await parseJsonSafe(response);
+            if (!response.ok) {
+                throw new Error(`Qwen Image Studio 请求失败 (${response.status})：${payload?.error?.message || response.statusText}`);
+            }
+            const output: GeneratedImageOutput[] = [];
+            pushBase64(output, payload?.data?.[0]?.b64_json, 'image/png');
+            if (!output[0]?.imageBuffer.length) throw new Error('Qwen Image Studio 未返回有效的 PNG 数据。');
+            outputs.push({ ...output[0], size });
+        }
+        return outputs;
+    },
+};
+
 const openAiAdapter: ImageProviderAdapter = {
     template: 'openai-images',
     supportsMultiCount: true,
     async generate(request) {
+        if (request.provider === 'xcli') return generateXcliImages(request);
         const mode = resolveGenerationModeForTemplate('openai-images', request.generationMode);
         const refs = await normalizeReferenceImagesForTransport(
             pickReferenceImages(request, IMAGE_PROVIDER_CAPABILITIES['openai-images'].maxReferenceImages)
@@ -2316,6 +2456,7 @@ const midjourneyProxyAdapter: ImageProviderAdapter = {
 };
 
 const ADAPTERS: Record<ImageProviderTemplate, ImageProviderAdapter> = {
+    [QWEN_IMAGE_STUDIO]: qwenImageStudioAdapter,
     'openai-images': openAiAdapter,
     'openai-chat-completions-image': openAiChatCompletionsImageAdapter,
     'gemini-openai-images': geminiOpenAiAdapter,
@@ -2331,6 +2472,7 @@ const ADAPTERS: Record<ImageProviderTemplate, ImageProviderAdapter> = {
 export function normalizeImageProviderTemplate(providerTemplate?: string, provider?: string): ImageProviderTemplate {
     const normalizedTemplate = String(providerTemplate || '').trim().toLowerCase();
     const supportedTemplates = new Set<ImageProviderTemplate>([
+        QWEN_IMAGE_STUDIO,
         'openai-images',
         'openai-chat-completions-image',
         'gemini-openai-images',
@@ -2347,6 +2489,7 @@ export function normalizeImageProviderTemplate(providerTemplate?: string, provid
     }
 
     const normalizedProvider = String(provider || '').trim().toLowerCase();
+    if (normalizedProvider === QWEN_IMAGE_STUDIO) return QWEN_IMAGE_STUDIO;
     if (normalizedProvider.includes('midjourney') || normalizedProvider.includes('mj')) {
         return 'midjourney-proxy';
     }

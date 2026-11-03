@@ -9,6 +9,16 @@ export default {
   darkMode: 'class', // We'll control dark mode manually or via system preference class
   theme: {
     extend: {
+      // The app root is 14px. Use explicit text sizes so rem-based defaults do not shrink controls.
+      fontSize: {
+        xs: ['12px', { lineHeight: '18px' }],
+        sm: ['14px', { lineHeight: '21px' }],
+        base: ['14px', { lineHeight: '22px' }],
+        lg: ['18px', { lineHeight: '26px' }],
+        xl: ['20px', { lineHeight: '28px' }],
+        '2xl': ['24px', { lineHeight: '32px' }],
+        '3xl': ['30px', { lineHeight: '36px' }],
+      },
       colors: {
         // Semantic names based on theme.md
         background: semanticColor('--color-background'),
@@ -44,7 +54,7 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['"SF Pro Text"', '"PingFang SC"', '"Noto Sans SC"', '"Segoe UI"', 'Inter', 'system-ui', 'sans-serif'],
+        sans: ['"IBM Plex Sans"', '"Noto Sans SC"', 'sans-serif'],
         mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', "Liberation Mono", "Courier New", 'monospace'],
       }
     },

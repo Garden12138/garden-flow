@@ -1,3 +1,5 @@
+import { WorkspaceGuide } from '../features/workbench/WorkspaceGuidance';
+import { useDialogFocus } from '../features/workbench/useDialogFocus';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import {
     ArrowLeft,
@@ -27,7 +29,10 @@ import clsx from 'clsx';
 import {
     buildVideoModelRoutes,
     type VideoModelCapabilities,
+    type VideoResolution,
 } from '../../shared/videoGenerationCapabilities';
+import { MINIMAX_H3_LOCAL_RESOLUTION } from '../../shared/videoProvider';
+import { QWEN_IMAGE_STUDIO, QWEN_IMAGE_STUDIO_DEFAULT_SIZE } from '../../shared/qwenImageStudio';
 import type { GenerationAssetPickerRequest, GenerationIntent, PendingChatMessage } from '../features/app-shell/types';
 import { subscribeSettingsUpdated } from '../bridge/appEvents';
 import type { UploadedFileAttachment } from '../components/ChatComposer';
@@ -459,7 +464,7 @@ function applyIntentPreset(
         setBindTarget: (value: string) => void;
         setImageAspectRatio: (value: string) => void;
         setVideoAspectRatio: (value: '16:9' | '9:16') => void;
-        setVideoResolution: (value: '720p' | '1080p') => void;
+        setVideoResolution: (value: VideoResolution) => void;
         setVideoDurationSeconds: (value: number) => void;
         setVideoMode: (value: VideoGenerationMode) => void;
         setImageProjectId: (value: string) => void;
@@ -487,7 +492,7 @@ function applyIntentPreset(
             setters.setVideoAspectRatio(intent.preset.aspectRatio);
         }
     }
-    if (intent.preset?.resolution === '720p' || intent.preset?.resolution === '1080p') {
+    if (intent.preset?.resolution === '720p' || intent.preset?.resolution === '1080p' || intent.preset?.resolution === MINIMAX_H3_LOCAL_RESOLUTION) {
         setters.setVideoResolution(intent.preset.resolution);
     }
     if (typeof intent.preset?.durationSeconds === 'number' && Number.isFinite(intent.preset.durationSeconds)) {
@@ -1674,6 +1679,14 @@ export function GenerationStudio({
     onReturnHome,
     onOpenAssets,
 }: GenerationStudioProps) {
+    const [recipeOpen, setRecipeOpen] = useState(false);
+    const [recipeNarrow, setRecipeNarrow] = useState(() => window.innerWidth < 1200);
+    const recipeRef = useDialogFocus(() => setRecipeOpen(false), recipeOpen && recipeNarrow);
+    useEffect(() => {
+        const resize = () => setRecipeNarrow(window.innerWidth < 1200);
+        window.addEventListener('resize', resize);
+        return () => window.removeEventListener('resize', resize);
+    }, []);
     const [settings, setSettings] = useState<SettingsShape>({});
     const [contextIntent, setContextIntent] = useState<GenerationIntent | null>(null);
     const [studioMode, setStudioMode] = useState<StudioMode>('image');
@@ -1708,6 +1721,7 @@ export function GenerationStudio({
     const [agentExecutionActive, setAgentExecutionActive] = useState(false);
     const [isPreparingAgentMessage, setIsPreparingAgentMessage] = useState(false);
     const [agentPendingMessage, setAgentPendingMessage] = useState<PendingChatMessage | null>(null);
+    const isAgentTurnActive = isPreparingAgentMessage || Boolean(agentPendingMessage) || agentExecutionActive;
     const [agentAttachment, setAgentAttachment] = useState<UploadedFileAttachment | null>(null);
     const [agentSendNonce, setAgentSendNonce] = useState(0);
     const [agentClearNonce, setAgentClearNonce] = useState(0);
@@ -1724,7 +1738,7 @@ export function GenerationStudio({
     const [videoFirstClip, setVideoFirstClip] = useState<ReferenceItem | null>(null);
     const [videoDrivingAudio, setVideoDrivingAudio] = useState<ReferenceItem | null>(null);
     const [videoAspectRatio, setVideoAspectRatio] = useState<'16:9' | '9:16'>('16:9');
-    const [videoResolution, setVideoResolution] = useState<'720p' | '1080p'>('720p');
+    const [videoResolution, setVideoResolution] = useState<VideoResolution>('720p');
     const [videoDurationSeconds, setVideoDurationSeconds] = useState(8);
     const [videoGenerateAudio, setVideoGenerateAudio] = useState(false);
     const [isReadingVideoRefs, setIsReadingVideoRefs] = useState(false);
@@ -2055,8 +2069,8 @@ export function GenerationStudio({
     }, [onIntentConsumed, pendingIntent]);
 
     useEffect(() => {
-        onExecutionStateChange?.(isPreparingAgentMessage || agentExecutionActive || feedEntries.some((entry) => isGenerationFeedEntry(entry) && entry.status === 'running'));
-    }, [agentExecutionActive, feedEntries, isPreparingAgentMessage, onExecutionStateChange]);
+        onExecutionStateChange?.(isAgentTurnActive || feedEntries.some((entry) => isGenerationFeedEntry(entry) && entry.status === 'running'));
+    }, [feedEntries, isAgentTurnActive, onExecutionStateChange]);
 
     useEffect(() => {
         if (!isAgentMode || isDigitalHumanMode) {
@@ -2249,6 +2263,10 @@ export function GenerationStudio({
         () => imageModelOptions.find((option) => option.value === imageModel.trim()) || null,
         [imageModel, imageModelOptions],
     );
+    const isQwenImageStudio = useMemo(() => (
+        (resolveSelectedModelOverride(settings, 'image', 'image', imageModel).providerTemplate
+            || settings.image_provider_template) === QWEN_IMAGE_STUDIO
+    ), [imageModel, settings]);
     const selectedCoverManuscript = useMemo(() => {
         const selectedPath = coverManuscriptPath.trim();
         if (!selectedPath) return null;
@@ -2498,7 +2516,11 @@ export function GenerationStudio({
     }), [contextIntent?.source, contextIntent?.sourceTitle]);
 
     const runImageRequest = useCallback((request: ImageGenerationRequest): boolean => {
-        const validationError = validateImageGenerationRequest(request, { hasImageConfig });
+        const modelRouteOverride = resolveSelectedModelOverride(settings, 'image', 'image', request.model);
+        const qwenStudio = (modelRouteOverride.providerTemplate || settings.image_provider_template) === QWEN_IMAGE_STUDIO;
+        const validationError = qwenStudio && request.referenceItems.length > 1
+            ? 'Qwen Image Studio 编辑仅支持一张原图'
+            : validateImageGenerationRequest(request, { hasImageConfig });
         if (validationError) {
             setImageError(validationError);
             return false;
@@ -2510,7 +2532,6 @@ export function GenerationStudio({
 
         void (async () => {
             try {
-                const modelRouteOverride = resolveSelectedModelOverride(settings, 'image', 'image', request.model);
                 const result = await submitImageGeneration(window.ipcRenderer.generation, request, {
                     clientRequestId: entry.id,
                     source: generationSubmitSource(contextIntent?.source),
@@ -2520,7 +2541,7 @@ export function GenerationStudio({
                 });
 
                 updateFeedEntries((prev) => prev.map((item) => (
-                    item.id === entry.id
+                    isGenerationFeedEntry(item) && item.id === entry.id && !item.jobId
                         ? { ...item, jobId: result.jobId, jobStatus: 'queued', status: 'running', error: undefined }
                         : item
                 )));
@@ -2573,7 +2594,7 @@ export function GenerationStudio({
                 });
 
                 updateFeedEntries((prev) => prev.map((item) => (
-                    item.id === entry.id
+                    isGenerationFeedEntry(item) && item.id === entry.id && !item.jobId
                         ? { ...item, jobId: result.jobId, jobStatus: 'queued', status: 'running', error: undefined }
                         : item
                 )));
@@ -2614,7 +2635,7 @@ export function GenerationStudio({
                 });
 
                 updateFeedEntries((prev) => prev.map((item) => (
-                    item.id === entry.id
+                    isGenerationFeedEntry(item) && item.id === entry.id && !item.jobId
                         ? { ...item, jobId: result.jobId, jobStatus: 'queued', status: 'running', error: undefined }
                         : item
                 )));
@@ -2676,7 +2697,7 @@ export function GenerationStudio({
                     },
                 });
                 updateFeedEntries((prev) => prev.map((item) => (
-                    item.id === entry.id
+                    isGenerationFeedEntry(item) && item.id === entry.id && !item.jobId
                         ? { ...item, jobId: result.jobId, jobStatus: 'queued', status: 'running', error: undefined }
                         : item
                 )));
@@ -2757,10 +2778,10 @@ export function GenerationStudio({
             projectId: imageProjectId,
             count: imageCount,
             model: imageModel,
-            aspectRatio: imageAspectRatio,
-            size: imageSize,
-            quality: DEFAULT_IMAGE_QUALITY,
-            resolution: imageResolution,
+            aspectRatio: isQwenImageStudio ? '1:1' : imageAspectRatio,
+            size: isQwenImageStudio ? QWEN_IMAGE_STUDIO_DEFAULT_SIZE : imageSize,
+            quality: isQwenImageStudio ? 'auto' : DEFAULT_IMAGE_QUALITY,
+            resolution: isQwenImageStudio ? QWEN_IMAGE_STUDIO_DEFAULT_SIZE : imageResolution,
             imageMode,
             referenceItems: imageReferences,
         }));
@@ -2777,6 +2798,7 @@ export function GenerationStudio({
         imageReferences,
         imageResolution,
         imageSize,
+        isQwenImageStudio,
         imageTitle,
         runImageRequest,
     ]);
@@ -2940,7 +2962,7 @@ export function GenerationStudio({
                     throw new Error(result?.error || '重新生成失败');
                 }
                 updateFeedEntries((prev) => prev.map((item) => (
-                    item.id === replayEntry.id
+                    isGenerationFeedEntry(item) && item.id === replayEntry.id && !item.jobId
                         ? { ...item, jobId: result.jobId, jobStatus: 'queued', status: 'running', error: undefined }
                         : item
                 )));
@@ -3182,17 +3204,22 @@ export function GenerationStudio({
 
     const appendImageReferenceFiles = useCallback(async (files: File[]) => {
         if (!files.length) return;
+        if (isQwenImageStudio && files.length > 1) {
+            setImageError('Qwen Image Studio 编辑仅支持一张原图');
+            return;
+        }
         setIsReadingImageRefs(true);
         try {
-            const nextItems = await filesToReferenceItems(files, 4);
-            setImageReferences((prev) => [...prev, ...nextItems].slice(0, 4));
+            const nextItems = await filesToReferenceItems(files, isQwenImageStudio ? 1 : 4);
+            setImageReferences((prev) => isQwenImageStudio ? nextItems : [...prev, ...nextItems].slice(0, 4));
+            setImageError('');
         } catch (error) {
             console.error('Failed to read image references:', error);
             setImageError('参考图读取失败，请重试');
         } finally {
             setIsReadingImageRefs(false);
         }
-    }, []);
+    }, [isQwenImageStudio]);
 
     const handleImageReferenceFiles = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
         try {
@@ -3335,7 +3362,7 @@ export function GenerationStudio({
         if (!onOpenAssets || (studioMode !== 'image' && studioMode !== 'cover' && studioMode !== 'video')) return;
         const maxCount = studioMode === 'video'
             ? (videoMode === 'first-last-frame' ? 2 : Math.max(1, activeVideoCapabilities?.maxReferenceImages || 5))
-            : 4;
+            : studioMode === 'image' && isQwenImageStudio ? 1 : 4;
         onOpenAssets({
             mediaKind: 'image',
             maxCount,
@@ -3346,7 +3373,7 @@ export function GenerationStudio({
                     assetReferences: references,
                 }).then((items) => {
                     if (studioMode === 'image') {
-                        setImageReferences(items.slice(0, 4));
+                        setImageReferences(items.slice(0, maxCount));
                         setImageMode('reference-guided');
                         setImageError('');
                     } else if (studioMode === 'cover') {
@@ -3369,7 +3396,7 @@ export function GenerationStudio({
                 });
             },
         });
-    }, [activeVideoCapabilities?.maxReferenceImages, onOpenAssets, studioMode, videoMode]);
+    }, [activeVideoCapabilities?.maxReferenceImages, isQwenImageStudio, onOpenAssets, studioMode, videoMode]);
 
     const openGenerationAudioAssetPicker = useCallback(() => {
         if (!onOpenAssets || studioMode !== 'video' || !activeVideoCapabilities?.supportsReferenceAudio) return;
@@ -3458,10 +3485,10 @@ export function GenerationStudio({
             projectId: imageProjectId,
             count: imageCount,
             model: imageModel,
-            aspectRatio: imageAspectRatio,
-            size: imageSize,
-            quality: DEFAULT_IMAGE_QUALITY,
-            resolution: imageResolution,
+            aspectRatio: isQwenImageStudio ? '1:1' : imageAspectRatio,
+            size: isQwenImageStudio ? QWEN_IMAGE_STUDIO_DEFAULT_SIZE : imageSize,
+            quality: isQwenImageStudio ? 'auto' : DEFAULT_IMAGE_QUALITY,
+            resolution: isQwenImageStudio ? QWEN_IMAGE_STUDIO_DEFAULT_SIZE : imageResolution,
             imageMode,
             referenceItems: imageReferences,
         });
@@ -3494,6 +3521,7 @@ export function GenerationStudio({
         imageReferences,
         imageResolution,
         imageSize,
+        isQwenImageStudio,
         imageTitle,
         studioMode,
         videoAspectRatio,
@@ -3811,15 +3839,6 @@ export function GenerationStudio({
         setAgentSendNonce((value) => value + 1);
         const agentSendTimestamp = Date.now();
         ensureAgentFeedEntry(agentSessionId, agentSendTimestamp, { bump: true, reviveDeleted: true });
-        updateFeedEntries((prev) => [
-            ...prev,
-            createGenerationFeedEntry(currentAgentRequest, {
-                id: makeId('generation'),
-                createdAt: agentSendTimestamp + 1,
-                source: contextIntent?.source || 'standalone',
-                sourceTitle: contextIntent?.sourceTitle,
-            }),
-        ]);
         const videoToolInputs = currentAgentRequest.type === 'video'
             ? {
                 operation: 'generate' as const,
@@ -3914,7 +3933,6 @@ export function GenerationStudio({
         isPreparingAgentMessage,
         recentAgentAssets,
         studioMode,
-        updateFeedEntries,
     ]);
     const handleAgentPendingMessageError = useCallback((message: string) => {
         if (studioMode === 'video') setVideoError(message);
@@ -3995,9 +4013,12 @@ export function GenerationStudio({
         </div>
     );
 
+    const runningEntries = feedEntries.filter((entry): entry is GenerationFeedEntry => isGenerationFeedEntry(entry) && entry.status === 'running');
+    const runningCount = runningEntries.length + Number(isAgentTurnActive
+        && !runningEntries.some((entry) => entry.ownerSessionId === agentSessionId));
     return (
-        <div className="workbench-production h-full min-h-0 text-text-primary">
-            <div className="flex h-full min-h-0 flex-col px-6">
+        <div data-recipe-open={recipeOpen} className="workbench-production h-full min-h-0 text-text-primary">
+            <div className="production-workspace">
                 {onReturnHome && (
                     <div className="flex h-12 shrink-0 items-center">
                         <button
@@ -4014,20 +4035,21 @@ export function GenerationStudio({
                 <main ref={feedScrollRef} className={clsx('flex-1 min-h-0 overflow-y-auto', onReturnHome ? 'pt-0' : 'pt-6')}>
                     <header className="workbench-production__feed-header">
                         <div>
-                            <span>04 · PRODUCE</span>
-                            <h1>结果流</h1>
+                            <span>创作 · 生成工具</span>
+                            <h1>生成工具</h1>
                             <p>生成任务按时间排列；参考素材、状态与下一步操作始终可见。</p>
                         </div>
-                        <div className="workbench-production__status-summary">
-                            <span>{feedEntries.filter((entry) => isGenerationFeedEntry(entry) && entry.status === 'running').length} 运行中</span>
+                        <div className="workbench-production__status-summary"><button className="workspace-primary-button production-recipe-toggle" aria-expanded={recipeOpen} aria-controls="generation-recipe" onClick={() => setRecipeOpen(value => !value)}>开始生成</button>
+                            <span>{runningCount} 运行中</span>
                             <span>{feedEntries.filter((entry) => isGenerationFeedEntry(entry) && entry.status === 'error').length} 异常</span>
                         </div>
                     </header>
+                    {!feedEntries.some(isGenerationFeedEntry) && <div className="mt-6"><WorkspaceGuide title="描述想要的内容，先生成一个结果" description="选择图片、视频或音频，填写要求并核对模型。生成前会显示必要参数和确认，结果可以保存到媒体库或用于作品。" steps={[{ title: '选择内容形式', description: '在生成设置中选择工具，按需添加参考素材。' }, { title: '写清楚要求', description: '描述主体、风格和用途，再核对模型与规格。' }, { title: '确认后生成', description: '查看结果，满意后保存或应用到作品。' }]} /></div>}
                     {visibleFeedItems.length === 0 ? (
                         <WorkbenchStatePanel
                             state="empty"
                             title="结果流还是空的"
-                            description="在右侧填写生成配方；任务提交后会在这里显示排队、运行和结果。"
+                            description="打开生成设置并填写要求；提交后会在这里显示进度与结果。"
                         />
                     ) : (
                         <div className="mx-auto max-w-[860px] space-y-7 pb-10">
@@ -4106,10 +4128,11 @@ export function GenerationStudio({
                     )}
                 </main>
 
-                <footer className="bg-background pb-5 pt-4">
+                {recipeOpen && recipeNarrow && <button type="button" className="production-recipe-backdrop" aria-label="关闭生成设置遮罩" onClick={() => setRecipeOpen(false)} />}
+                <footer ref={recipeRef} id="generation-recipe" role={recipeOpen && recipeNarrow ? 'dialog' : undefined} aria-modal={recipeOpen && recipeNarrow ? true : undefined} aria-label="生成设置" className="production-recipe"><button className="workspace-secondary-button production-recipe-toggle" onClick={() => setRecipeOpen(false)}>收起设置</button>
                     <div className="workbench-production__recipe-header">
                         <span>GENERATION RECIPE</span>
-                        <h2>生成配方</h2>
+                        <h2>生成设置</h2>
                         <p>提示词、参考素材与主要参数保持常显。</p>
                     </div>
                     <div className={composerWidthClass}>
@@ -4117,14 +4140,14 @@ export function GenerationStudio({
                             {studioToolbar}
 
                             <div className="mt-3 rounded-[20px] border border-border bg-surface-primary p-4">
-                                <div className={composerGridClass}>
+                                <div className={composerGridClass + ' production-recipe-fields'}>
                                     {(studioMode === 'image' || studioMode === 'cover' || studioMode === 'video') && (
                                         <div className="space-y-3">
                                             {studioMode === 'image' ? (
                                                 <UploadPreviewCard
                                                     label={isReadingImageRefs ? '读取中' : '图片'}
-                                                    accept="image/*"
-                                                    multiple
+                                                    accept={isQwenImageStudio ? 'image/png,image/jpeg,image/webp' : 'image/*'}
+                                                    multiple={!isQwenImageStudio}
                                                     items={imageReferences}
                                                     onChange={handleImageReferenceFiles}
                                                     onFiles={appendImageReferenceFiles}
@@ -4294,18 +4317,24 @@ export function GenerationStudio({
                                                             资产库
                                                         </button>
                                                     )}
-                                                    <ImageAspectRatioPicker
-                                                        value={imageAspectRatio}
-                                                        onChange={setImageAspectRatio}
-                                                    />
-                                                    <PopoverSelect
-                                                        value={imageResolution}
-                                                        onChange={setImageResolution}
-                                                        options={IMAGE_RESOLUTION_OPTIONS}
-                                                        className="min-w-[82px]"
-                                                        title="清晰度"
-                                                        panelClassName="w-[220px]"
-                                                    />
+                                                    {isQwenImageStudio ? (
+                                                        <span className="text-xs text-text-secondary">768×768 · 编辑限一张原图</span>
+                                                    ) : (
+                                                        <>
+                                                            <ImageAspectRatioPicker
+                                                                value={imageAspectRatio}
+                                                                onChange={setImageAspectRatio}
+                                                            />
+                                                            <PopoverSelect
+                                                                value={imageResolution}
+                                                                onChange={setImageResolution}
+                                                                options={IMAGE_RESOLUTION_OPTIONS}
+                                                                className="min-w-[82px]"
+                                                                title="清晰度"
+                                                                panelClassName="w-[220px]"
+                                                            />
+                                                        </>
+                                                    )}
                                                     <PopoverSelect
                                                         value={String(imageCount)}
                                                         onChange={(value) => setImageCount(Number(value) || 1)}
@@ -4583,7 +4612,7 @@ export function GenerationStudio({
                                                     />
                                                     <PopoverSelect
                                                         value={videoResolution}
-                                                        onChange={(value) => setVideoResolution(value as '720p' | '1080p')}
+                                                        onChange={(value) => setVideoResolution(value as VideoResolution)}
                                                         options={videoResolutionOptions}
                                                         className="min-w-[96px]"
                                                         title="视频清晰度"

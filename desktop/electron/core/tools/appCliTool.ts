@@ -76,6 +76,7 @@ import {
     resolveXhsMediaGenerationSlot,
 } from '../../../shared/xhsNote';
 import { resolveVideoProvider } from '../../../shared/videoProvider';
+import { type VideoResolution } from '../../../shared/videoGenerationCapabilities';
 import {
     describeAutomationSchedule,
     normalizeAutomationTaskSource,
@@ -212,7 +213,7 @@ interface GeneratedVideoCliResult {
     }>;
     voiceReferenceUsed?: boolean;
     aspectRatio?: string;
-    resolution: '720p' | '1080p';
+    resolution: VideoResolution;
     durationSeconds: number;
     count: number;
     clipCount?: number;
@@ -3763,6 +3764,7 @@ export class AppCliTool extends DeclarativeTool<typeof AppCliParamsSchema> {
                 title: readFlag(parsed.flags, 'title') || (payload.title as string | undefined),
                 generationMode,
                 referenceImages,
+                mask: readFlag(parsed.flags, 'mask') || (payload.mask as string | undefined),
                 count: xhsTarget ? 1 : parseNumber(readFlag(parsed.flags, 'count') || payload.count),
                 model: readFlag(parsed.flags, 'model') || (payload.model as string | undefined),
                 provider: readFlag(parsed.flags, 'provider') || (payload.provider as string | undefined),
@@ -4421,7 +4423,7 @@ export class AppCliTool extends DeclarativeTool<typeof AppCliParamsSchema> {
                 count: xhsTarget ? 1 : parseNumber(readFlag(parsed.flags, 'count') || payload.count),
                 model: readFlag(parsed.flags, 'model') || (payload.model as string | undefined),
                 aspectRatio: readFlag(parsed.flags, 'ratio', 'aspect-ratio') || (payload.aspectRatio as string | undefined),
-                resolution: (readFlag(parsed.flags, 'resolution', 'size') || payload.resolution) as '720p' | '1080p' | undefined,
+                resolution: (readFlag(parsed.flags, 'resolution', 'size') || payload.resolution) as VideoResolution | undefined,
                 durationSeconds: parseNumber(readFlag(parsed.flags, 'duration', 'seconds') || payload.durationSeconds || payload.seconds),
                 generateAudio: parseBoolean(readFlag(parsed.flags, 'audio', 'generate-audio') || payload.generateAudio),
             });

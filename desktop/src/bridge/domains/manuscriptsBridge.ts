@@ -4,6 +4,8 @@ import type { BridgeCore, Listener } from '../types';
 export function createManuscriptsBridge(core: BridgeCore) {
   return {
     manuscripts: {
+      // The current main process has no write-proposal handlers. Keep the optional UI explicit.
+      capabilities: Object.freeze<{ writeProposals: boolean }>({ writeProposals: false }),
       list: <T = unknown>() => core.invokeChannel('manuscripts:list') as Promise<T>,
       read: <T = unknown>(filePath: string) => core.invokeChannel('manuscripts:read', filePath) as Promise<T>,
       save: <T = unknown>(payload: Record<string, unknown>) => core.invokeChannel('manuscripts:save', payload) as Promise<T>,

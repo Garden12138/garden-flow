@@ -1,31 +1,11 @@
+import { parseMetricCsv } from '../../../shared/metricCsv.ts';
+export { parseMetricCsv } from '../../../shared/metricCsv.ts';
 import { MetricCsvFields, MetricCsvPreviewSchema, MetricInputSchema, type MetricInput, type MetricObservation, type PublicationLink, type MetricComparison } from '../../../shared/contentExperiments.ts';
 import { ciDigest } from './repository.ts';
 
 export const metricIdentity = (input: MetricInput) => ciDigest([input.publicationLinkId, input.metric.key, input.window]);
 export const metricCsvTemplate = MetricCsvFields.join(',') + '\n';
 
-// Bounded RFC 4180 parser. No formulas or scripts are evaluated, and no file paths are accepted.
-export function parseMetricCsv(csv: string): string[][] {
-    if (csv.length > 1000000) throw new Error('CSV 超过 100 万字符');
-    csv = csv.replace(/^\uFEFF/, '');
-    const rows: string[][] = []; let row: string[] = []; let field = ''; let quoted = false; let closed = false;
-    const cell = () => { row.push(field); field = ''; closed = false; if (row.length > 50) throw new Error('CSV 列数超过 50'); };
-    const line = () => { cell(); rows.push(row); row = []; if (rows.length > 1001) throw new Error('CSV 最多 1000 条观测'); };
-    for (let index = 0; index < csv.length; index++) {
-        const char = csv[index];
-        if (quoted) {
-            if (char === '"' && csv[index + 1] === '"') { field += '"'; index++; }
-            else if (char === '"') { quoted = false; closed = true; }
-            else field += char;
-        } else if (char === ',') cell();
-        else if (char === '\r' || char === '\n') { if (char === '\r' && csv[index + 1] === '\n') index++; line(); }
-        else if (char === '"' && !field && !closed) quoted = true;
-        else { if (closed || char === '"') throw new Error('CSV 引号格式错误'); field += char; }
-    }
-    if (quoted) throw new Error('CSV 引号未闭合');
-    if (field || row.length || closed) line();
-    return rows;
-}
 const csvTime = (value: string): number => {
     if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) throw new Error('时间须为带时区偏移的 ISO 时间');
     const time = Date.parse(value);

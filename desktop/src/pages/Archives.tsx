@@ -1,3 +1,5 @@
+import { useDialogFocus } from '../features/workbench/useDialogFocus';
+import { WorkspaceGuide } from '../features/workbench/WorkspaceGuidance';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     Archive,
@@ -18,7 +20,6 @@ import {
 } from 'lucide-react';
 import { appConfirm } from '../utils/appDialogs';
 import { clsx } from 'clsx';
-import { APP_BRAND } from '../config/brand';
 
 interface ArchiveProfileRecord {
     id: string;
@@ -73,18 +74,6 @@ interface ArchiveSample {
     createdAt: number;
 }
 
-interface AccountSummaryRecord {
-    id: string;
-    platform?: string;
-    platformUserId?: string;
-    username?: string;
-    homepageUrl?: string;
-    postCount?: number;
-    lastImportedAt?: string;
-    lastLearnedAt?: string;
-    updatedAt?: string;
-}
-
 const normalizeProfile = (profile: ArchiveProfileRecord): ArchiveProfile => ({
     id: profile.id,
     name: profile.name,
@@ -120,13 +109,14 @@ const formatDate = (sample: ArchiveSample) => {
 export function Archives({ isActive = true }: { isActive?: boolean }) {
     const [profiles, setProfiles] = useState<ArchiveProfile[]>([]);
     const [samples, setSamples] = useState<ArchiveSample[]>([]);
-    const [accounts, setAccounts] = useState<AccountSummaryRecord[]>([]);
     const [selectedProfileId, setSelectedProfileId] = useState('');
     const [selectedSampleId, setSelectedSampleId] = useState('');
     const [isLoadingProfiles, setIsLoadingProfiles] = useState(true);
     const [isLoadingSamples, setIsLoadingSamples] = useState(true);
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
     const [isSampleModalOpen, setIsSampleModalOpen] = useState(false);
+    const profileDialogRef = useDialogFocus(() => setIsProfileModalOpen(false), isProfileModalOpen);
+    const sampleDialogRef = useDialogFocus(() => setIsSampleModalOpen(false), isSampleModalOpen);
     const [editingProfile, setEditingProfile] = useState<ArchiveProfile | null>(null);
     const [editingSample, setEditingSample] = useState<ArchiveSample | null>(null);
     const profilesRef = useRef<ArchiveProfile[]>([]);
@@ -211,15 +201,6 @@ export function Archives({ isActive = true }: { isActive?: boolean }) {
         }
     }, []);
 
-    const loadAccounts = useCallback(async () => {
-        try {
-            const result = await window.ipcRenderer.accounts.list() as { accounts?: AccountSummaryRecord[] };
-            setAccounts(Array.isArray(result?.accounts) ? result.accounts : []);
-        } catch (error) {
-            console.error('Failed to load account profiles:', error);
-        }
-    }, []);
-
     const loadSamples = useCallback(async (profileId: string) => {
         if (!profileId) return;
         const requestId = loadSamplesRequestRef.current + 1;
@@ -248,8 +229,7 @@ export function Archives({ isActive = true }: { isActive?: boolean }) {
     useEffect(() => {
         if (!isActive) return;
         void loadProfiles();
-        void loadAccounts();
-    }, [isActive, loadAccounts, loadProfiles]);
+    }, [isActive, loadProfiles]);
 
     useEffect(() => {
         if (!isActive) return;
@@ -425,7 +405,7 @@ export function Archives({ isActive = true }: { isActive?: boolean }) {
     };
 
     return (
-        <div className="flex h-full min-h-0">
+        <div className="workspace-profiles flex h-full min-h-0">
             <div className="w-72 border-r border-border bg-surface-secondary/30 flex flex-col">
                 <div className="p-4 border-b border-border">
                     <div className="flex items-center justify-between">
@@ -435,6 +415,7 @@ export function Archives({ isActive = true }: { isActive?: boolean }) {
                         </div>
                         <button
                             onClick={openCreateProfile}
+                            aria-label="创建风格档案"
                             className="p-1.5 text-text-tertiary hover:text-accent-primary hover:bg-surface-primary rounded transition-colors"
                         >
                             <Plus className="w-4 h-4" />
@@ -486,30 +467,24 @@ export function Archives({ isActive = true }: { isActive?: boolean }) {
             <div className="flex-1 flex flex-col min-w-0 bg-surface-primary">
                 <div className="px-6 py-4 border-b border-border flex items-center justify-between">
                     <div>
-                        <div className="text-lg font-semibold text-text-primary">{selectedProfile?.name || '档案详情'}</div>
+                        <h1 className="text-xl font-semibold text-text-primary">{selectedProfile?.name || '风格档案'}</h1>
                         <div className="text-sm text-text-tertiary">
                             {selectedProfile ? `最近更新 ${new Date(selectedProfile.updatedAt).toISOString().slice(0, 10)}` : '请选择档案'}
                         </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    {selectedProfile && <div className="flex flex-wrap items-center gap-2">
                         <button
                             onClick={openCreateSample}
                             disabled={!selectedProfile}
-                            className="flex items-center gap-1.5 px-3 py-1.5 border border-border rounded text-xs hover:bg-surface-secondary transition-colors disabled:opacity-50"
+                            className="workspace-secondary-button"
                         >
                             <Upload className="w-3.5 h-3.5" />
                             导入样本
                         </button>
                         <button
-                            className="flex items-center gap-1.5 px-3 py-1.5 border border-border rounded text-xs hover:bg-surface-secondary transition-colors"
-                        >
-                            <Sparkles className="w-3.5 h-3.5" />
-                            生成风格摘要
-                        </button>
-                        <button
                             onClick={openEditProfile}
                             disabled={!selectedProfile}
-                            className="flex items-center gap-1.5 px-3 py-1.5 border border-border rounded text-xs hover:bg-surface-secondary transition-colors disabled:opacity-50"
+                            className="workspace-secondary-button"
                         >
                             <Pencil className="w-3.5 h-3.5" />
                             编辑档案
@@ -517,68 +492,17 @@ export function Archives({ isActive = true }: { isActive?: boolean }) {
                         <button
                             onClick={deleteProfile}
                             disabled={!selectedProfile}
-                            className="flex items-center gap-1.5 px-3 py-1.5 border border-border rounded text-xs text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50"
+                            className="workspace-secondary-button text-status-error"
                         >
                             <Trash2 className="w-3.5 h-3.5" />
                             删除
                         </button>
-                    </div>
+                    </div>}
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                    <div className="bg-surface-secondary/50 rounded-lg border border-border p-4">
-                        <div className="flex items-center justify-between gap-3">
-                            <div>
-                                <div className="flex items-center gap-2 text-sm font-medium text-text-primary">
-                                    <Sparkles className="w-4 h-4 text-accent-primary" />
-                                    运营账号学习
-                                </div>
-                                <div className="mt-1 text-xs text-text-tertiary">
-                                    通过浏览器插件绑定账号后，{APP_BRAND.displayName} 会自动更新创作档案、写作风格和待确认长期偏好。
-                                </div>
-                            </div>
-                            <button
-                                onClick={loadAccounts}
-                                className="px-3 py-1.5 border border-border rounded text-xs hover:bg-surface-primary transition-colors"
-                            >
-                                刷新
-                            </button>
-                        </div>
-                        <div className="mt-4 grid grid-cols-1 xl:grid-cols-3 gap-3">
-                            {accounts.length === 0 ? (
-                                <div className="xl:col-span-3 rounded-lg border border-dashed border-border bg-surface-primary px-4 py-5 text-sm text-text-secondary">
-                                    当前空间还没有绑定运营账号。打开小红书账号主页，在插件侧边栏点击“绑定并学习这个账号”。
-                                </div>
-                            ) : (
-                                accounts.map(account => (
-                                    <div key={account.id} className="rounded-lg border border-border bg-surface-primary p-3">
-                                        <div className="flex items-center justify-between gap-2">
-                                            <div className="min-w-0">
-                                                <div className="truncate text-sm font-semibold text-text-primary">{account.username || '未命名账号'}</div>
-                                                <div className="mt-1 text-xs text-text-tertiary">{account.platform || '-'} · {account.platformUserId || account.id}</div>
-                                            </div>
-                                            <span className="shrink-0 rounded bg-accent-primary/10 px-2 py-1 text-[10px] font-medium text-accent-primary">
-                                                已绑定
-                                            </span>
-                                        </div>
-                                        <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                                            <div className="rounded bg-surface-secondary px-2 py-1.5">
-                                                <div className="text-text-tertiary">历史内容</div>
-                                                <div className="mt-0.5 font-medium text-text-primary">{Number(account.postCount || 0)} 条</div>
-                                            </div>
-                                            <div className="rounded bg-surface-secondary px-2 py-1.5">
-                                                <div className="text-text-tertiary">写作风格</div>
-                                                <div className="mt-0.5 font-medium text-text-primary">{account.lastLearnedAt ? '已更新' : '待学习'}</div>
-                                            </div>
-                                        </div>
-                                        <div className="mt-3 text-[11px] leading-4 text-text-tertiary">
-                                            {account.lastImportedAt ? `最近导入 ${account.lastImportedAt.slice(0, 10)}` : '等待首次导入'}
-                                        </div>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    </div>
+                    {!selectedProfile ? <WorkspaceGuide title="让每次创作保持熟悉的表达" description="为品牌、账号或栏目记录读者、目标、语气和参考样本，创作时可以反复引用。" steps={[{ title: '建立档案', description: '先写清楚服务谁、想传达什么，以及希望的表达方式。' }, { title: '加入参考样本', description: '保存有代表性的内容和风格标签。' }, { title: '用于下一件作品', description: '在创作时引用档案，保持表达一致。' }]}><button className="workspace-primary-button" onClick={openCreateProfile}>创建风格档案</button></WorkspaceGuide> : <>
+                    <div className="rounded-xl border border-border bg-surface-primary p-4"><h2 className="text-sm font-semibold">把表达方式留在档案里</h2><p className="mt-2 text-xs leading-6 text-text-secondary">按品牌、账号或栏目维护目标、读者、语气与参考样本，在创作时选择使用。当前桌面端支持手工管理档案与样本；自动账号学习尚未接入。</p></div>
 
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                         <div className="bg-surface-secondary/50 rounded-lg border border-border p-4">
@@ -645,20 +569,6 @@ export function Archives({ isActive = true }: { isActive?: boolean }) {
                             <div className="flex items-center gap-2 text-sm font-medium text-text-primary">
                                 <FileText className="w-4 h-4 text-text-secondary" />
                                 样本库
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <button className="flex items-center gap-1.5 px-2.5 py-1 border border-border rounded text-xs hover:bg-surface-secondary transition-colors">
-                                    <Filter className="w-3.5 h-3.5" />
-                                    平台
-                                </button>
-                                <button className="flex items-center gap-1.5 px-2.5 py-1 border border-border rounded text-xs hover:bg-surface-secondary transition-colors">
-                                    <Tag className="w-3.5 h-3.5" />
-                                    主题
-                                </button>
-                                <button className="flex items-center gap-1.5 px-2.5 py-1 border border-border rounded text-xs hover:bg-surface-secondary transition-colors">
-                                    <Star className="w-3.5 h-3.5" />
-                                    代表作
-                                </button>
                             </div>
                         </div>
 
@@ -749,12 +659,13 @@ export function Archives({ isActive = true }: { isActive?: boolean }) {
                             </div>
                         </div>
                     </div>
+                    </>}
                 </div>
             </div>
 
             {isProfileModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                    <div className="w-full max-w-lg mx-4 bg-surface-primary rounded-xl border border-border shadow-2xl overflow-hidden">
+                    <section ref={profileDialogRef} role="dialog" aria-modal="true" aria-label="编辑风格档案" className="w-full max-w-lg mx-4 bg-surface-primary rounded-xl border border-border shadow-2xl overflow-hidden">
                         <div className="px-6 py-4 border-b border-border flex items-center justify-between">
                             <h3 className="text-base font-semibold text-text-primary">{editingProfile ? '编辑档案' : '创建档案'}</h3>
                             <button
@@ -833,13 +744,13 @@ export function Archives({ isActive = true }: { isActive?: boolean }) {
                                 保存
                             </button>
                         </div>
-                    </div>
+                    </section>
                 </div>
             )}
 
             {isSampleModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                    <div className="w-full max-w-2xl mx-4 bg-surface-primary rounded-xl border border-border shadow-2xl overflow-hidden">
+                    <section ref={sampleDialogRef} role="dialog" aria-modal="true" aria-label="编辑风格样本" className="w-full max-w-2xl mx-4 bg-surface-primary rounded-xl border border-border shadow-2xl overflow-hidden">
                         <div className="px-6 py-4 border-b border-border flex items-center justify-between">
                             <h3 className="text-base font-semibold text-text-primary">{editingSample ? '编辑样本' : '新增样本'}</h3>
                             <button
@@ -919,7 +830,7 @@ export function Archives({ isActive = true }: { isActive?: boolean }) {
                                 保存
                             </button>
                         </div>
-                    </div>
+                    </section>
                 </div>
             )}
         </div>

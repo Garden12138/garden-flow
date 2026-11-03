@@ -1,4 +1,6 @@
+import { resolveConfiguredImageRoute } from './aiModelRouteResolver';
 import { assertImagePromptBudget } from '../../shared/imagePromptBudget';
+import { QWEN_IMAGE_STUDIO, QWEN_IMAGE_STUDIO_DEFAULT_SIZE, QWEN_IMAGE_STUDIO_MODEL } from '../../shared/qwenImageStudio';
 import { getSettings } from '../db';
 import { createGeneratedMediaAsset, type MediaAsset } from './mediaLibraryStore';
 import {
@@ -20,6 +22,7 @@ export interface GenerateImagesInput {
     title?: string;
     generationMode?: ImageGenerationMode | string;
     referenceImages?: string[];
+    mask?: string;
     count?: number;
     size?: string;
     quality?: string;
@@ -57,6 +60,7 @@ export function resolveDefaultImageEndpoint(template: ImageProviderTemplate): st
             return 'http://127.0.0.1:8080';
         case 'jimeng-openai-wrapper':
         case 'jimeng-images':
+        case QWEN_IMAGE_STUDIO:
             return '';
         case 'openai-chat-completions-image':
         case 'openai-images':
@@ -67,6 +71,8 @@ export function resolveDefaultImageEndpoint(template: ImageProviderTemplate): st
 
 export function resolveDefaultImageModel(template: ImageProviderTemplate): string {
     switch (template) {
+        case QWEN_IMAGE_STUDIO:
+            return QWEN_IMAGE_STUDIO_MODEL;
         case 'gemini-openai-images':
             return 'gemini-2.5-flash-image';
         case 'gemini-imagen-native':
@@ -89,6 +95,14 @@ export function resolveDefaultImageModel(template: ImageProviderTemplate): strin
     }
 }
 
+export function resolveQwenImageApiKey(inputApiKey: string | undefined, endpoint: string, settings: Record<string, unknown>): string {
+    if (inputApiKey?.trim()) return inputApiKey.trim();
+    return settings.image_provider_template === QWEN_IMAGE_STUDIO
+        && endpoint === normalizeApiBaseUrl(String(settings.image_endpoint || ''))
+        ? String(settings.image_api_key || '').trim()
+        : '';
+}
+
 export async function generateImagesToMediaLibrary(input: GenerateImagesInput): Promise<GenerateImagesResult> {
     const normalizedPrompt = String(input.prompt || '').trim();
     if (!normalizedPrompt) {
@@ -96,6 +110,10 @@ export async function generateImagesToMediaLibrary(input: GenerateImagesInput): 
     }
 
     const settings = (getSettings() || {}) as Record<string, unknown>;
+    const route = !input.provider && !input.providerTemplate && !input.endpoint
+        ? resolveConfiguredImageRoute(settings, input.model)
+        : null;
+    if (route) input = { ...input, ...route };
     const provider = String(input.provider || settings.image_provider || 'openai-compatible').trim();
     const providerTemplate = normalizeImageProviderTemplate(
         String(input.providerTemplate || settings.image_provider_template || '').trim(),
@@ -114,12 +132,17 @@ export async function generateImagesToMediaLibrary(input: GenerateImagesInput): 
             ''
         ).trim()
     );
-    const apiKey = String(input.apiKey || settings.image_api_key || settings.api_key || '').trim();
+    const isQwenStudio = providerTemplate === QWEN_IMAGE_STUDIO;
+    const apiKey = route ? String(input.apiKey || '').trim()
+        : isQwenStudio ? resolveQwenImageApiKey(input.apiKey, endpoint, settings)
+        : String(input.apiKey || settings.image_api_key || (provider !== 'xcli' ? settings.api_key : '') || '').trim();
     const model = String(input.model || settings.image_model || resolveDefaultImageModel(providerTemplate)).trim();
-    const size = normalizeImageSize(String(input.size || settings.image_size || '').trim());
-    const quality = String(input.quality || settings.image_quality || 'standard').trim();
+    const size = isQwenStudio ? String(input.size || QWEN_IMAGE_STUDIO_DEFAULT_SIZE).trim()
+        : provider === 'xcli' ? String(input.size || settings.image_size || 'auto').trim()
+        : normalizeImageSize(String(input.size || settings.image_size || '').trim());
+    const quality = isQwenStudio ? 'auto' : String(input.quality || settings.image_quality || 'standard').trim();
     const rawReferenceImages = Array.isArray(input.referenceImages)
-        ? input.referenceImages.map((item) => String(item || '').trim()).filter(Boolean).slice(0, input.privacyScope === 'project' ? undefined : 4)
+        ? input.referenceImages.map((item) => String(item || '').trim()).filter(Boolean).slice(0, provider === 'xcli' || input.privacyScope === 'project' ? undefined : 4)
         : [];
     const requestedGenerationMode = (
         input.generationMode === 'image-to-image' ||
@@ -128,10 +151,11 @@ export async function generateImagesToMediaLibrary(input: GenerateImagesInput): 
             ? input.generationMode
             : undefined
     ) || (rawReferenceImages.length > 0 ? 'reference-guided' : 'text-to-image');
-    const aspectRatio = normalizeImageAspectRatio(
+    const aspectRatio = isQwenStudio ? '1:1' : normalizeImageAspectRatio(
         String(input.aspectRatio || settings.image_aspect_ratio || '').trim()
     );
-    const count = Math.max(1, Math.min(4, Number(input.count) || 1));
+    const count = provider === 'xcli' ? Number(input.count ?? 1) : Math.max(1, Math.min(4, Number(input.count) || 1));
+    if (provider === 'xcli' && (providerTemplate !== 'openai-images' || rawReferenceImages.length > 4 || (requestedGenerationMode !== 'text-to-image' && !rawReferenceImages.length))) throw new Error('xcli requires openai-images and complete reference inputs (at most four)');
 
     if (!endpoint) {
         throw new Error('Image endpoint is missing. Please configure it in Settings.');
@@ -142,6 +166,10 @@ export async function generateImagesToMediaLibrary(input: GenerateImagesInput): 
 
     const adapter = getImageProviderAdapter(providerTemplate, provider);
     const capabilities = getImageProviderCapabilities(providerTemplate, provider, model);
+    if (input.mask && !isQwenStudio) throw new Error('当前图片服务不支持遮罩编辑。');
+    if (isQwenStudio && (rawReferenceImages.length > 1 || (rawReferenceImages.length && requestedGenerationMode === 'text-to-image'))) {
+        throw new Error('Qwen Image Studio 文生图不接收参考图，编辑模式仅支持一张原图。');
+    }
     if (input.privacyScope === 'project') assertImagePromptBudget(providerTemplate, model, normalizedPrompt);
     if (input.privacyScope === 'project' && rawReferenceImages.length && (!capabilities.supportsReferenceImages || rawReferenceImages.length > capabilities.maxReferenceImages || !capabilities.supportedModes.includes(requestedGenerationMode))) throw new Error('当前模型无法完整使用已确认参考图；请减少参考或更换模型，不会退回纯文字生成');
     let generationMode: ImageGenerationMode = capabilities.supportedModes.includes(requestedGenerationMode)
@@ -167,6 +195,7 @@ export async function generateImagesToMediaLibrary(input: GenerateImagesInput): 
             providerTemplate,
             generationMode,
             referenceImages,
+            mask: input.mask,
             aspectRatio,
             size,
             quality,
@@ -204,7 +233,7 @@ export async function generateImagesToMediaLibrary(input: GenerateImagesInput): 
             projectId: input.projectId?.trim() || undefined,
             provider,
             model,
-            size,
+            size: output.size || size,
             quality,
             aspectRatio,
             title: input.title?.trim() || undefined,
@@ -218,7 +247,7 @@ export async function generateImagesToMediaLibrary(input: GenerateImagesInput): 
         model,
         generationMode,
         referenceImageCount: referenceImages.length,
-        size,
+        size: images[0].size || size,
         quality,
         aspectRatio,
         assets,

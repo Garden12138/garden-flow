@@ -8,7 +8,7 @@
   },
   "packageManager": "pnpm@10.28.2",
   "scripts": {
-    "build": "node scripts/sync-manifest-version.mjs && node scripts/build.mjs",
+    "build": "node ../scripts/sync-brand.cjs && node scripts/sync-manifest-version.mjs && node scripts/build.mjs",
     "verify": "node scripts/verify.mjs",
     "test": "node --test tests/*.test.mjs",
     "check": "pnpm build && pnpm verify && pnpm test"

@@ -1,3 +1,6 @@
+import { z } from 'zod';
+import { DesktopOpenSchema, desktopOpenRoute } from '../shared/workspaceHandoff';
+import { mergeWorkCatalog, type WorkCatalogItem } from '../shared/workCatalog';
 import { persistSocialKnowledgeEntry, resolveSocialEntryId, serializeSocialWrite } from './core/socialKnowledgeStore';
 import { socialPlatformFromUrl } from '../shared/socialCapture';
 import { saveSocialCaptureUrl } from './core/socialCaptureRuntime';
@@ -8441,6 +8444,7 @@ ipcMain.handle('image-gen:generate', async (_, {
   title,
   generationMode,
   referenceImages,
+  mask,
   count,
   size,
   quality,
@@ -8454,6 +8458,7 @@ ipcMain.handle('image-gen:generate', async (_, {
   title?: string;
   generationMode?: 'text-to-image' | 'image-to-image' | 'reference-guided' | string;
   referenceImages?: string[];
+  mask?: string;
   count?: number;
   size?: string;
   quality?: string;
@@ -8470,6 +8475,7 @@ ipcMain.handle('image-gen:generate', async (_, {
       title,
       generationMode,
       referenceImages,
+      mask,
       count,
       size,
       quality,
@@ -8511,7 +8517,7 @@ ipcMain.handle('video-gen:generate', async (_, {
   aspectRatio?: string;
   count?: number;
   durationSeconds?: number;
-  resolution?: '720p' | '1080p';
+  resolution?: import('../shared/videoGenerationCapabilities').VideoResolution;
   generateAudio?: boolean;
   drivingAudio?: string;
   firstClip?: string;
@@ -12443,6 +12449,56 @@ async function listManuscriptTreeWithCache() {
 }
 
 // 列出文件树
+ipcMain.handle('work-catalog:list', async (_event, input: unknown) => {
+  try {
+    z.object({}).strict().parse(input || {});
+    const spaceId = getWorkspacePaths().activeSpaceId;
+    return await runInWorkspaceSpace(spaceId, async () => {
+      const fs = await import('node:fs/promises');
+      const [tree, projects, entries] = await Promise.all([
+        listManuscriptTreeWithCache(), listVideoEditorV2Projects(),
+        fs.readdir(path.join(getWorkspacePaths().gardenflow, 'creation-workspaces'), { withFileTypes: true }).catch(error => { if (error.code === 'ENOENT') return []; throw error; }),
+      ]);
+      const legacy: WorkCatalogItem[] = [];
+      const walk = (nodes: ManuscriptTreeNode[]) => {
+        for (const node of nodes) {
+          if (node.isDirectory) { if (node.children) walk(node.children); continue; }
+          legacy.push({ id: 'manuscript:' + node.path, title: node.title && node.title !== '未命名' ? node.title : node.name, kind: node.draftType || 'writing', updatedAt: new Date(node.updatedAt || 0).toISOString(),
+            availability: 'ready', target: { kind: 'manuscript', path: node.path }, nativeKey: 'note:' + node.path.replace(/\\/g, '/') });
+        }
+      };
+      walk(tree);
+      for (const project of projects) {
+        const asset = project.assets.find(asset => asset.thumbnailPath || asset.kind === 'image');
+        legacy.push({ id: 'video:' + project.id, title: project.title, kind: project.projectKind === 'dream-story' ? 'dream-story' : 'product-video',
+          platform: project.projectKind === 'dream-story' ? 'tiktok' : project.productVideo?.proposal.creationTarget?.platform,
+          updatedAt: project.updatedAt, previewUrl: asset?.thumbnailPath || (asset?.kind === 'image' ? asset.projectPath : undefined), availability: 'ready', target: { kind: 'video', id: project.id }, nativeKey: 'video:' + project.id });
+      }
+      const candidates = entries.filter(entry => entry.isFile() && /^[a-zA-Z0-9_-]{1,160}\.json$/.test(entry.name));
+      const registered: WorkCatalogItem[] = [];
+      for (const entry of candidates.slice(0, 5000)) {
+        const id = entry.name.slice(0, -5);
+        try {
+          const work = await readCreationWorkspace(id);
+          const nativeKey = work.native ? work.native.kind === 'video' ? 'video:' + work.native.projectId : 'note:' + work.native.path.replace(/\\/g, '/') : undefined;
+          const native = legacy.find(item => item.nativeKey === nativeKey);
+          const missing = Boolean(work.native && !native);
+          let notePreview: string | undefined;
+          if (!missing && work.native?.kind === 'note') {
+            try { const note = await getXhsNoteProject(work.native.path); notePreview = note.document.mediaSlots.find(slot => slot.previewUrl && slot.status === 'ready')?.previewUrl; }
+            catch { /* A workspace remains visible when its optional thumbnail cannot be read. */ }
+          }
+          registered.push({ id: work.id, title: work.draft.title || native?.title || '未命名作品', kind: work.capability, platform: work.platform, updatedAt: work.updatedAt,
+            previewUrl: native?.previewUrl || notePreview, nativeKey, availability: missing ? 'missing' : 'ready', ...(missing ? { issue: '关联作品文件缺失，保留原有工程记录' } : {}), target: { kind: 'workspace', id: work.id } });
+        } catch (error) {
+          registered.push({ id, title: '无法读取的作品', kind: 'unknown', updatedAt: '', availability: 'unreadable', issue: error instanceof Error ? error.message : '读取失败', target: { kind: 'workspace', id } });
+        }
+      }
+      return { success: true, items: mergeWorkCatalog(registered, legacy), partial: candidates.length > 5000 };
+    });
+  } catch (error) { return { success: false, items: [], partial: true, error: error instanceof Error ? error.message : String(error) }; }
+});
+
 ipcMain.handle('manuscripts:list', async () => {
   try {
     const tree = await listManuscriptTreeWithCache();
@@ -15691,6 +15747,15 @@ async function handleBrowserCaptureBridgeRequest(
   params: Record<string, unknown>,
   _context: BrowserCaptureBridgeRequestContext,
 ): Promise<unknown> {
+  if (method === 'desktop.open') {
+    const request = DesktopOpenSchema.parse(params);
+    if (request.spaceId && request.spaceId !== getActiveSpaceId()) throw bridgePayloadError('SPACE_CHANGED', '当前桌面空间已变化，请切回原保存空间后再打开。');
+    const target = win && !win.isDestroyed() ? win : null;
+    if (!target) throw bridgePayloadError('WINDOW_UNAVAILABLE', '请先打开 GardenFlow 主窗口。');
+    if (target.isMinimized()) target.restore(); target.show(); target.focus();
+    target.webContents.send('workspace:open-route', desktopOpenRoute(request));
+    return { success: true };
+  }
   if (method === 'desktop.health') {
     const captureSpaceId = getActiveSpaceId();
     await Promise.all([ensureKnowledgeRedbookDir(), ensureKnowledgeYoutubeDir()]);
@@ -15703,6 +15768,7 @@ async function handleBrowserCaptureBridgeRequest(
       success: true,
       status: 'ok',
       captureSpaceId,
+      captureSpaceName: listSpaces().find(space => space.id === captureSpaceId)?.name || captureSpaceId,
       app: 'GardenFlow',
       appVersion: app.getVersion(),
       bridgeProtocolVersion: browserCaptureBridgeService.getStatus().protocolVersion,

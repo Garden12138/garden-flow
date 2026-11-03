@@ -1,14 +1,14 @@
 /* Generated from branding/visual-theme.json; run pnpm sync:brand. */
 :root {
-  --gf-paper: #F4F1E6;
-  --gf-surface: #FBF9F3;
-  --gf-surface-secondary: #F0EDE2;
-  --gf-surface-tertiary: #E2E4D8;
-  --gf-border: #CFCCBE;
-  --gf-divider: #DEDACD;
-  --gf-ink: #2E3142;
-  --gf-text-secondary: #555767;
-  --gf-text-tertiary: #777780;
+  --gf-paper: #F7F8FA;
+  --gf-surface: #FFFFFF;
+  --gf-surface-secondary: #F2F4F7;
+  --gf-surface-tertiary: #E7EAEF;
+  --gf-border: #E0E3E9;
+  --gf-divider: #EBEDF1;
+  --gf-ink: #1F2933;
+  --gf-text-secondary: #596472;
+  --gf-text-tertiary: #798392;
   --gf-iris: #4B3269;
   --gf-iris-hover: #3B274F;
   --gf-iris-muted: #ECE7F1;

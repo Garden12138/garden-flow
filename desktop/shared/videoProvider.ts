@@ -1,10 +1,11 @@
-export type VideoProviderPreset = 'aliyun-bailian' | 'minimax' | 'new-api-aliyun' | 'new-api-minimax' | 'custom';
-export type VideoProviderKind = 'aliyun-bailian' | 'minimax' | 'new-api-aliyun' | 'new-api-minimax' | 'openai-compatible';
+export type VideoProviderPreset = 'aliyun-bailian' | 'minimax' | 'minimax-h3-local' | 'new-api-aliyun' | 'new-api-minimax' | 'custom';
+export type VideoProviderKind = Exclude<VideoProviderPreset, 'custom'> | 'openai-compatible';
 
 export const ALIYUN_BAILIAN_VIDEO_SYNTHESIS_PATH = '/api/v1/services/aigc/video-generation/video-synthesis';
 export const ALIYUN_BAILIAN_BEIJING_PUBLIC_ENDPOINT = `https://dashscope.aliyuncs.com${ALIYUN_BAILIAN_VIDEO_SYNTHESIS_PATH}`;
 export const MINIMAX_VIDEO_BASE_URL = 'https://api.minimaxi.com';
 export const MINIMAX_VIDEO_MODEL = 'MiniMax-H3';
+export const MINIMAX_H3_LOCAL_RESOLUTION = '608x352';
 export const MINIMAX_VIDEO_CREATE_PATH = '/v2/video_generation';
 export const MINIMAX_VIDEO_QUERY_PATH = '/v2/query/video_generation';
 
@@ -16,7 +17,7 @@ export function resolveVideoProvider(endpoint: string, _model = '', preset?: str
     const normalizedEndpoint = String(endpoint || '').trim().toLowerCase();
     if (preset === 'new-api-aliyun' || preset === 'new-api-minimax') return preset;
     if (preset === 'aliyun-bailian') return 'aliyun-bailian';
-    if (preset === 'minimax') return 'minimax';
+    if (preset === 'minimax' || preset === 'minimax-h3-local') return preset;
     if (preset === 'custom') return 'openai-compatible';
     if (
         normalizedEndpoint.includes('.maas.aliyuncs.com')
@@ -40,7 +41,7 @@ export function buildMiniMaxVideoCreateUrl(endpoint: string): string {
         const parsed = new URL(raw);
         const pathname = parsed.pathname.replace(/\/+$/, '');
         if (!pathname.toLowerCase().endsWith(MINIMAX_VIDEO_CREATE_PATH)) {
-            parsed.pathname = `${pathname}${MINIMAX_VIDEO_CREATE_PATH}`.replace(/\/{2,}/g, '/');
+            parsed.pathname = `${pathname.replace(/\/v2$/i, '')}${MINIMAX_VIDEO_CREATE_PATH}`.replace(/\/{2,}/g, '/');
         }
         parsed.search = '';
         parsed.hash = '';
@@ -108,6 +109,20 @@ export function buildMiniMaxVideoRequest(input: {
         resolution: input.resolution === '1080p' ? '2K' : '768P',
         duration: input.durationSeconds,
         ratio: input.generationMode === 'first-last-frame' ? 'adaptive' : input.aspectRatio,
+    };
+}
+
+export function buildLocalH3VideoRequest(prompt: string, referenceImages: string[]): Record<string, unknown> {
+    const content: Array<Record<string, unknown>> = [{ type: 'text', text: prompt }];
+    referenceImages.forEach((url, index) => {
+        content.push({ type: 'image_url', image_url: { url }, role: index === 0 ? 'first_frame' : 'last_frame' });
+    });
+    return {
+        model: MINIMAX_VIDEO_MODEL,
+        content,
+        resolution: '768P',
+        duration: 5,
+        ratio: referenceImages.length ? 'adaptive' : '16:9',
     };
 }
 

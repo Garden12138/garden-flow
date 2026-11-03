@@ -13,8 +13,8 @@ test('workflow stages map to the intended desktop pages', () => {
     assert.deepEqual(FLOW_STAGE_VIEW_MAP, {
         home: 'home',
         collect: 'knowledge',
-        ideate: 'wander',
-        compose: 'gardenflow',
+        ideate: 'opportunities',
+        compose: 'works',
         produce: 'generation-studio',
         library: 'subjects',
         schedule: 'automation',

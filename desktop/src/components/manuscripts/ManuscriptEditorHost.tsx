@@ -1511,7 +1511,7 @@ export function ManuscriptEditorHost({ filePath, onNavigateToGenerationStudio, i
     }, [editorFile, refreshPackageState]);
 
     const loadEditorWriteProposal = useCallback(async (filePath: string | null) => {
-        if (!filePath || /\.(redpost|redvideo)$/i.test(filePath)) {
+        if (!filePath || window.ipcRenderer.manuscripts.capabilities?.writeProposals !== true || /\.(redpost|redvideo)$/i.test(filePath)) {
             setEditorWriteProposal(null);
             return;
         }
@@ -1584,6 +1584,7 @@ export function ManuscriptEditorHost({ filePath, onNavigateToGenerationStudio, i
     }, [editorDescriptor?.draftType, editorWriteProposal?.id, editorWriteProposal?.proposedContent]);
 
     useEffect(() => {
+        if (window.ipcRenderer.manuscripts.capabilities?.writeProposals !== true) return;
         const handleProposalChanged = (_event: unknown, payload?: { filePath?: string; proposal?: ManuscriptWriteProposal | null }) => {
             if (!editorFile) return;
             if (!isSameDraftRelativePath(payload?.filePath, editorFile)) return;
