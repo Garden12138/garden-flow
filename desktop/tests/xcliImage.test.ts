@@ -24,6 +24,9 @@ import { productVideoHarness } from './helpers/productVideoHarness.ts';
 const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
 const unixOnly = { skip: process.platform === 'win32' };
 const request = { version: 1, capability: 'image', goal: '猫', timeout_sec: 1200 };
+const legacyGatewayEndpoint = 'http://127.0.0.1:19471/v1';
+const legacyImageAlias = 'xcli/legacy-image';
+const legacyChatAlias = 'xcli/legacy-chat';
 
 function makeFakeXcli(t: TestContext, mode = 'ok') {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'gf-fake-xcli-'));
@@ -149,7 +152,7 @@ const adapterInput = {
 
 test('normalizes xcli image agents and defaults legacy aliases to auto', () => {
     assert.equal(normalizeXcliImageAgent(' Codex '), 'codex');
-    assert.equal(normalizeXcliImageAgent('xcli/image-default'), 'auto');
+    assert.equal(normalizeXcliImageAgent(legacyImageAlias), 'auto');
     assert.equal(normalizeXcliImageAgent(''), 'auto');
     assert.equal(normalizeXcliImageAgent(undefined), 'auto');
 });
@@ -158,9 +161,9 @@ test('migrates saved xcli gateway settings to an image-only CLI source', () => {
     const source = normalizeXcliSource({
         id: 'old-source',
         presetId: 'xcli',
-        baseURL: 'http://127.0.0.1:18741/v1',
+        baseURL: legacyGatewayEndpoint,
         apiKey: 'fixture-token',
-        model: 'xcli/text-default',
+        model: legacyChatAlias,
     });
     const agents = ['auto', 'codex', 'antigravity', 'cursor'];
     assert.deepEqual(source, {
@@ -319,7 +322,7 @@ test('reports the xcli failure kind and task ID', unixOnly, async (t) => {
 
 test('routes the saved image capability to xcli and migrates the legacy model selection', () => {
     const settings = xcliSettings('');
-    settings.ai_model_routes_json.image.model = 'xcli/image-default';
+    settings.ai_model_routes_json.image.model = legacyImageAlias;
     assert.deepEqual(modelRoutes.resolveConfiguredImageRoute(settings), {
         provider: 'xcli', providerTemplate: 'xcli', model: 'auto', apiKey: '', endpoint: 'xcli',
     });
@@ -393,10 +396,10 @@ test('shows the exact private-project xcli error as a definite job failure', uni
 
 test('rejects a legacy xcli chat route with instructions to switch sources', () => {
     const source = {
-        ...xcliSource('http://127.0.0.1:18741/v1'),
-        model: 'xcli/text-default',
+        ...xcliSource(legacyGatewayEndpoint),
+        model: legacyChatAlias,
         apiKey: 'fixture-token',
-        modelsMeta: [{ id: 'xcli/text-default', capabilities: ['chat'] }],
+        modelsMeta: [{ id: legacyChatAlias, capabilities: ['chat'] }],
     };
     const settings = {
         ai_sources_json: JSON.stringify([source]),

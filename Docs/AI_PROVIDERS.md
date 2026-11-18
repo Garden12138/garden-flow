@@ -62,12 +62,17 @@ GardenFlow 使用 BYOK（Bring Your Own Key）模式，不包含共享 API Key�
 不要在 Issue、截图或诊断附件中粘贴 Key。GardenFlow 导出诊断时会自动脱敏，但提交前仍需人工检查。
 
 
-## xcli Model Gateway
+## xcli（本机 CLI 生图）
 
-在设置中新增 `xcli Model Gateway` 供应商，填写已启动网关的本机 IP、实际端口和 `/v1` 路径，以及为 GardenFlow 签发的独立应用 Token。默认示例为 `http://127.0.0.1:18741/v1`，可更改端口。点击“检查模型目录”仅读取授权目录，不发起模型推理。显示的 local/remote/unknown 是网关配置声明；本机传输不代表本机推理。
+安装 xcli v2，建议放到 `~/.local/bin/xcli`。在终端登录 Codex、Antigravity 或 Cursor CLI 中的至少一个，然后运行 `xcli agents` 确认状态。生图使用所选 CLI 的登录和额度。[下载 xcli v2](https://github.com/Garden12138/xcli/releases)
 
-为对话与图片分别选择模型别名，例如 `xcli/text-default` 与 `xcli/image-default`。图片路由使用 `openai-images`。xcli 分支核验能力后只提交一次请求，保留尺寸、数量和所有参考图；不删除参数、不调整尺寸、不在编辑失败后转为文生图。只接收 base64 图片，不下载返回 URL。单图最多 20 MiB、16,777,216 像素，总请求最多 32 MiB，最多四张参考图和四个结果。暂未提供 mask 控件。
+1. 在设置中点击「添加供应商」，选择「xcli（本机 CLI 生图）」。
+2. 「xcli 可执行文件」可保留为 `xcli`，按 `XCLI_PATH`、`PATH`、`~/.local/bin/xcli` 的顺序查找。也可以填写绝对路径，文件名须为 `xcli`。配置无需 API Key。
+3. 在「生图 CLI」选择「自动（推荐）」或固定一个 CLI，然后点击「检查 CLI 状态」。GardenFlow 会先保存设置，再检查可用 CLI。检查不消耗生图额度。
+4. 在「能力路由」的「图片生成」中选择该来源并保存。
 
-Pi Agent 在发送上下文前要求目录中已验证的 Tool Calling 和流式文本能力。文本模型没有图片输入能力时，不能因为别名未知而自动启用 Vision。使用独立 Token 的模型权限与云端授权控制可调用上游；如网关要求额外逐请求同意，本客户端尚未提供该确认头，会收到明确拒绝。
+支持文生图、参考图生成、图生图编辑和封面生图，最多可使用 4 张参考图。图片和封面分别进入媒体库和封面库。每张通常需要 1～5 分钟。比例和尺寸作为生成要求传给 CLI，实际结果可能不同。xcli 不支持遮罩编辑、对话模型或 Windows。私密项目暂不支持 xcli，因为 xcli 和各 CLI 会在项目目录外保存提示词副本。
 
-生成结果继续通过媒体库保存。真实模型效果、Vision、参考图编辑、封面入库和 Pi 工具流仍须在选定上游后执行应用验收。可先使用本机假上游运行离线测试：`pnpm --dir desktop test`，类型检查：`pnpm --dir desktop check:types`。
+如果错误信息包含任务 ID，在终端运行 `xcli result <任务 ID>` 查看详情。自动模式遇到当前 CLI 额度不足等情况时，会尝试其他可用的 CLI。
+
+开发者可运行 `pnpm --dir desktop test`。其中 xcli 测试使用临时假脚本，不消耗额度。
