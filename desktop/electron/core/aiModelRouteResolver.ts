@@ -1,4 +1,3 @@
-import { xcliEndpoint } from './xcliGateway.ts';
 import { parseAiModelRoutesValue } from '../../src/features/settings/modelRouteValue.ts';
 import {
   getModelInputCapabilities,
@@ -44,20 +43,17 @@ function canonicalizeSourceId(sourceId: string): string {
 }
 
 function parseAiSources(settings: Record<string, unknown>): Array<Record<string, unknown>> {
-  const raw = settings.ai_sources_json;
-  if (Array.isArray(raw)) {
-    return raw.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item));
+  let sources = settings.ai_sources_json;
+  if (typeof sources === 'string') {
+    try {
+      sources = JSON.parse(sources) as unknown;
+    } catch {
+      return [];
+    }
   }
-  if (typeof raw !== 'string' || !raw.trim()) {
-    return [];
-  }
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item));
-  } catch {
-    return [];
-  }
+  return Array.isArray(sources)
+    ? sources.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item)).map(normalizeXcliSource)
+    : [];
 }
 
 function routeRecord(settings: Record<string, unknown>, scope: AiRouteScope): Record<string, unknown> {
@@ -123,14 +119,7 @@ export function resolveLlmInputCapabilities(
   connection: LlmConnection,
 ): ModelInputCapability[] {
   const source = findConnectionSource(settings, connection);
-  if (source?.presetId === 'xcli') {
-    const model = Array.isArray(source.modelsMeta) ? source.modelsMeta.find((item: any) => item?.id === connection.modelName) as any : null;
-    return model?.xcli?.validated === true && model.xcli.capabilities?.includes('vision.analyze') ? ['image'] : [];
-  }
-  const explicit = explicitModelInputCapabilities(
-    findConnectionSource(settings, connection),
-    connection.modelName,
-  );
+  const explicit = explicitModelInputCapabilities(source, connection.modelName);
   return explicit ?? getModelInputCapabilities(connection.modelName);
 }
 
@@ -177,6 +166,9 @@ export function resolveSettingsLlm(
   if (!source || source.presetId === QWEN_IMAGE_STUDIO) {
     return null;
   }
+  if (source.presetId === 'xcli') {
+    throw new Error('xcli 只能作为图片来源，请在「能力路由」中为对话选择其他模型来源');
+  }
 
   const sourceBaseURL = normalizeApiBaseUrl(
     text(source.baseURL || source.baseUrl),
@@ -192,10 +184,6 @@ export function resolveSettingsLlm(
       scope === 'chat' ? 'default' : scope,
       text(settings.model_name || settings.openaiModel) || 'gpt-4o',
     );
-  if (source.presetId === 'xcli') {
-    xcliEndpoint(text(source.baseURL || source.baseUrl));
-    if (!apiKey || apiKey === 'local') throw new Error('xcli requires an independent application Token');
-  }
   let resolvedApiKey = apiKey;
   try {
     const hostname = new URL(baseURL).hostname.toLowerCase();
@@ -238,11 +226,6 @@ export function resolveVisionCapablePlanningLlm(
   return null;
 }
 
-export function isXcliConnection(settings: Record<string, unknown>, baseURL: string): boolean {
-  return parseAiSources(settings).some((source) => source.presetId === 'xcli'
-    && normalizeApiBaseUrl(text(source.baseURL || source.baseUrl), '') === baseURL);
-}
-
 export function resolveConfiguredImageRoute(settings: Record<string, unknown>, requestedModel?: string) {
   const route = parseAiModelRoutesValue(settings.ai_model_routes_json).image as Record<string, unknown> | undefined;
   const sources = parseAiSources(settings);
@@ -260,7 +243,7 @@ export function resolveConfiguredImageRoute(settings: Record<string, unknown>, r
   const routing = imageRoutingForPreset(preset);
   if (preset === 'xcli') {
     return {
-      endpoint: text(normalizeXcliSource(source).baseURL) || 'xcli',
+      endpoint: text(source.baseURL) || 'xcli',
       apiKey: '',
       model: normalizeXcliImageAgent(selectedModel),
       ...routing,
@@ -280,5 +263,11 @@ export function resolveXcliSourceExecutable(settings: Record<string, unknown>): 
   const selected = route?.mode === 'disabled' ? null : findSource(sources, text(route?.sourceId || route?.source_id));
   const source = selected || sources[0];
   if (!source) throw new Error('请先在设置中添加 xcli 来源');
-  return text(normalizeXcliSource(source).baseURL) || 'xcli';
+  return text(source.baseURL) || 'xcli';
+}
+
+export function resolveSavedXcliSource(settings: Record<string, unknown>, sourceId?: string): Record<string, unknown> {
+  const source = typeof sourceId === 'string' ? findSource(parseAiSources(settings), sourceId) : null;
+  if (source?.presetId !== 'xcli') throw new Error('请先保存设置后再检查 CLI 状态');
+  return source;
 }

@@ -18,6 +18,8 @@ import {
 import * as imageProviders from '../electron/core/imageProviderAdapters.ts';
 import * as modelRoutes from '../electron/core/aiModelRouteResolver.ts';
 import type { MediaJobProjection } from '../electron/core/mediaGenerationJobRegistry.ts';
+import { dreamRequest, readyDream } from './helpers/dreamStoryFixture.ts';
+import { productVideoHarness } from './helpers/productVideoHarness.ts';
 
 const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
 const unixOnly = { skip: process.platform === 'win32' };
@@ -386,5 +388,77 @@ test('shows the exact private-project xcli error as a definite job failure', uni
     assert.equal(result?.status, 'failed');
     assert.equal(result?.result?.error, message);
     assert.equal(result?.recentEvents.at(-1)?.message, message);
+    assert.equal(fs.existsSync(fake.stdinPath), false);
+});
+
+test('rejects a legacy xcli chat route with instructions to switch sources', () => {
+    const source = {
+        ...xcliSource('http://127.0.0.1:18741/v1'),
+        model: 'xcli/text-default',
+        apiKey: 'fixture-token',
+        modelsMeta: [{ id: 'xcli/text-default', capabilities: ['chat'] }],
+    };
+    const settings = {
+        ai_sources_json: JSON.stringify([source]),
+        ai_model_routes_json: { chat: { mode: 'custom', sourceId: source.id, model: source.model } },
+    };
+    assert.throws(() => modelRoutes.resolveSettingsLlm(settings), /xcli 只能作为图片来源.*为对话选择其他模型来源/);
+});
+
+test('checks CLI status using the saved source ID and reports only usable image agents', unixOnly, async (t) => {
+    const fake = makeFakeXcli(t);
+    const { fetchModelsForAiSource } = await loadXcliModule<typeof import('../electron/core/aiSourceService.ts')>(
+        '../electron/core/aiSourceService.ts', { ai_sources_json: JSON.stringify([xcliSource(fake.executable, 's1')]) },
+    );
+    const input = { id: 's1', presetId: 'xcli', baseURL: '/bin/sh', apiKey: '', purpose: 'image' as const };
+    const result = await fetchModelsForAiSource(input);
+    assert.equal(result.protocol, 'openai');
+    assert.deepEqual(Array.from(result.models, (model) => model.id), ['auto', 'codex']);
+    assert.ok(result.models.every((model) => model.capabilities?.join() === 'image'));
+    await assert.rejects(fetchModelsForAiSource({ ...input, id: 'missing' }), /请先保存设置后再检查 CLI 状态/);
+});
+
+test('does not infer chat support for CLI IDs already described as image models', async () => {
+    const { getAiSourceModelDescriptors, hasImageGenerationConfig } = await loadXcliModule<typeof import('../src/features/media-generation/audioOptions.ts')>(
+        '../src/features/media-generation/audioOptions.ts', {},
+    );
+    const source = normalizeXcliSource({ ...xcliSource('xcli'), name: 'xcli' });
+    const models = getAiSourceModelDescriptors(source);
+    assert.deepEqual(Array.from(models, ({ id, capabilities }) => [id, capabilities.join()]), [
+        ['auto', 'image'], ['codex', 'image'], ['antigravity', 'image'], ['cursor', 'image'],
+    ]);
+    assert.equal(hasImageGenerationConfig({}, { ...adapterInput, sourceId: 'cli' }), true);
+    assert.equal(hasImageGenerationConfig({}, { endpoint: 'https://example.test/v1', sourceId: 'http' }), false);
+});
+
+test('generates a cover without an API key using only the saved xcli path', unixOnly, async (t) => {
+    const fake = makeFakeXcli(t);
+    const { generateCoverAssets } = await loadXcliModule<typeof import('../electron/core/coverGenerationService.ts')>(
+        '../electron/core/coverGenerationService.ts', xcliSettings(fake.executable), fake.directory,
+    );
+    const result = await generateCoverAssets({
+        provider: 'xcli', providerTemplate: 'xcli', endpoint: '/bin/sh', titlePrompt: '封面测试',
+    });
+    assert.equal(result.assets.length, 1);
+    const [asset] = result.assets;
+    assert.equal(asset.provider, 'xcli');
+    assert.equal(asset.size, '1x1');
+    const coverRoot = path.join(fake.directory, 'cover');
+    assert.deepEqual(fs.readFileSync(path.join(coverRoot, asset.relativePath!)), Buffer.from(png, 'base64'));
+    const catalog = JSON.parse(fs.readFileSync(path.join(coverRoot, 'catalog.json'), 'utf8'));
+    assert.equal(catalog.assets[0].id, asset.id);
+    assert.match(JSON.parse(fs.readFileSync(fake.stdinPath, 'utf8')).goal, /封面测试/);
+});
+
+test('rejects xcli while preparing a private project image before provider validation', unixOnly, async (t) => {
+    const fake = makeFakeXcli(t);
+    const harness = await productVideoHarness({ dreamStory: true });
+    t.after(() => harness.close());
+    const project = await readyDream(harness);
+    harness.state.settings = { ...xcliSettings(fake.executable), image_provider: 'xcli', image_provider_template: 'xcli' };
+    await assert.rejects(harness.api.previewDreamBatch({ ...dreamRequest(project), kind: 'image', sceneIds: ['scene_0'] }), {
+        name: 'XcliPrivateProjectError',
+    });
+    assert.equal(harness.state.imageCalls, 0);
     assert.equal(fs.existsSync(fake.stdinPath), false);
 });

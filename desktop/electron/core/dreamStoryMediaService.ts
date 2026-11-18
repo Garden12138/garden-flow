@@ -8,7 +8,7 @@ import { DreamIdSchema, DreamRequestSchema, dreamSceneInput, dreamReferenceAsset
 import { resolveAudioModelRoute } from '../../shared/audioGenerationCapabilities';
 import { resolveVideoModelRoute, assertVideoGenerationEnabled } from '../../shared/videoGenerationCapabilities';
 import { normalizeImageProviderTemplate, getImageProviderCapabilities } from './imageProviderAdapters';
-import { resolveDefaultImageEndpoint, resolveDefaultImageModel } from './imageGenerationService';
+import { resolveDefaultImageEndpoint, resolveDefaultImageModel, XcliPrivateProjectError } from './imageGenerationService';
 import { dreamVersion } from '../../shared/dreamStoryReducer';
 import { MediaGenerationJobRegistry } from './mediaGenerationJobRegistry';
 import { getAbsoluteMediaPath } from './mediaLibraryStore';
@@ -48,6 +48,7 @@ function route(kind: DreamMediaKind) {
     if (kind === 'audio') { const audio = resolveAudioModelRoute(settings); return { provider: 'tts', model: audio.model, endpoint: audio.baseURL, apiKey: audio.apiKey }; }
     const provider = String(settings.image_provider || 'openai-compatible');
     const template = normalizeImageProviderTemplate(String(settings.image_provider_template || ''), provider);
+    if (template === 'xcli') throw new XcliPrivateProjectError();
     return { provider, providerTemplate: template, model: String(settings.image_model || resolveDefaultImageModel(template)),
         endpoint: String(settings.image_endpoint || settings.api_endpoint || resolveDefaultImageEndpoint(template)), apiKey: String(settings.image_api_key || settings.api_key || '') };
 }

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronDown, Eye, EyeOff, FileText, Image as ImageIcon, Video, AudioLines } from 'lucide-react';
 import { resolveRuntimeAssetUrl } from '../../utils/runtimeAssetUrl';
 import clsx from 'clsx';
+import { normalizeXcliSource } from '../../../shared/xcliSource';
 import {
   type AiSourcePreset,
   type AiSourceConfig,
@@ -1065,11 +1066,7 @@ export const parseAiSources = (raw: string | undefined): AiSourceConfig[] => {
         const model = String(item.model || item.modelName || '');
         const rawId = String(item.id || '');
         const name = String(item.name || findAiPresetById(presetId)?.label || '供应商');
-        const modelsMeta = presetId === 'xcli' ? (Array.isArray(item.modelsMeta) ? item.modelsMeta : []).filter((value: any) => typeof value?.id === 'string' && Array.isArray(value.xcli?.capabilities)).map((value: any) => {
-          const caps = value.xcli.capabilities;
-          const validated = value.xcli.validated === true;
-          return { id: value.id, capabilities: [...(caps.includes('text.generate') ? ['chat'] : []), ...(validated && caps.includes('image.generate') ? ['image'] : []), ...(validated && caps.includes('embeddings') ? ['embedding'] : [])], inputCapabilities: validated && caps.includes('vision.analyze') ? ['image'] : [], xcli: { capabilities: caps.filter((cap: unknown) => typeof cap === 'string'), validated, inference_location: ['local', 'remote'].includes(value.xcli.inference_location) ? value.xcli.inference_location : 'unknown' } };
-        }) : normalizeAiModelDescriptors(
+        const modelsMeta = normalizeAiModelDescriptors(
           Array.isArray(item.modelsMeta)
             ? item.modelsMeta.map((value) => (value && typeof value === 'object' ? value as {
                 id?: string;
@@ -1082,7 +1079,7 @@ export const parseAiSources = (raw: string | undefined): AiSourceConfig[] => {
         const models = Array.isArray(item.models)
           ? normalizeSourceModels(item.models.map((value) => String(value || '')))
           : normalizeSourceModels([model]);
-        return {
+        return normalizeXcliSource({
           id: rawId || generateAiSourceId(),
           name,
           presetId,
@@ -1092,7 +1089,7 @@ export const parseAiSources = (raw: string | undefined): AiSourceConfig[] => {
           modelsMeta,
           model,
           protocol: (String(item.protocol || findAiPresetById(presetId)?.protocol || 'openai') as AiProtocol),
-        } satisfies AiSourceConfig;
+        } satisfies AiSourceConfig);
       });
     const seen = new Set<string>();
     return normalized.filter((source) => {

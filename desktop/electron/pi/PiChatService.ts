@@ -54,8 +54,7 @@ import {
   type GardenFlowProfilePromptBundle,
 } from '../core/gardenflowProfileStore';
 import { resolveChatMaxTokens } from '../core/chatTokenConfig';
-import { resolveSettingsLlm, isXcliConnection } from '../core/aiModelRouteResolver';
-import { xcliModels, requireXcliCapabilities } from '../core/xcliGateway';
+import { resolveSettingsLlm } from '../core/aiModelRouteResolver';
 import { resolveModelScopeFromContextType, resolveScopedModelName } from '../core/modelScopeSettings';
 import { normalizeApiBaseUrl, safeUrlJoin } from '../core/urlUtils';
 import { logDebugEvent } from '../core/debugLogger';
@@ -1487,10 +1486,6 @@ export class PiChatService {
       || routed?.modelName
       || resolveScopedModelName(settings, modelScope, (settings.openaiModel as string) || 'gpt-4o'),
     ).trim();
-
-    if (isXcliConnection(settings, baseURL)) {
-      requireXcliCapabilities(await xcliModels(baseURL, apiKey), modelName, ['text.generate', 'text.stream', 'tool_calls']);
-    }
 
     const interactivePublication = allowInteractiveOnboarding && runtimeMode === 'gardenflow'
       && !metadata.headless && !metadata.isBackgroundSession && !runtimeMetadata?.scheduledTaskId && !metadata.builtinTaskId;

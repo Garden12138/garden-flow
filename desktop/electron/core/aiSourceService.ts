@@ -1,4 +1,5 @@
-import { xcliModels } from './xcliGateway.ts';
+import { resolveSavedXcliSource } from './aiModelRouteResolver.ts';
+import { listXcliAgents, resolveTrustedXcliExecutable } from './xcliClient.ts';
 import { normalizeApiBaseUrl, safeUrlJoin } from './urlUtils.ts';
 import {
   hasModelCapability,
@@ -9,6 +10,7 @@ import {
 export type AiProtocol = 'openai' | 'anthropic' | 'gemini';
 
 export interface AiSourceConnectionInput {
+  id?: string;
   apiKey: string;
   baseURL: string;
   presetId?: string;
@@ -20,7 +22,6 @@ export interface AiModelInfo {
   id: string;
   capabilities?: ModelCapability[];
   inputCapabilities?: string[];
-  xcli?: import('./xcliGateway.ts').XcliModel['xcli'];
 }
 
 export interface AiConnectionTestResult {
@@ -342,16 +343,14 @@ const fetchGeminiModels = async (baseURL: string, apiKey: string): Promise<AiMod
 
 export async function fetchModelsForAiSource(input: AiSourceConnectionInput): Promise<{ protocol: AiProtocol; models: AiModelInfo[] }> {
   if (input.presetId === 'xcli') {
-    const models = await xcliModels(input.baseURL, input.apiKey);
-    return { protocol: 'openai', models: models.map((model) => ({
-      id: model.id, xcli: model.xcli,
-      capabilities: [
-        ...(model.xcli.capabilities.includes('text.generate') ? ['chat' as const] : []),
-        ...(model.xcli.validated && model.xcli.capabilities.includes('image.generate') ? ['image' as const] : []),
-        ...(model.xcli.validated && model.xcli.capabilities.includes('embeddings') ? ['embedding' as const] : []),
-      ],
-      inputCapabilities: model.xcli.validated && model.xcli.capabilities.includes('vision.analyze') ? ['image'] : [],
-    })).filter((model) => input.purpose !== 'image' || model.capabilities.includes('image')) };
+    const { getSettings } = await import('../db');
+    const saved = resolveSavedXcliSource(getSettings() || {}, input.id);
+    const agents = await listXcliAgents(resolveTrustedXcliExecutable(String(saved.baseURL || 'xcli')));
+    const usable = agents.filter((agent) => agent.installed && agent.available && Number(agent.strengths?.image || 0) > 0);
+    return {
+      protocol: 'openai',
+      models: [{ id: 'auto', capabilities: ['image'] }, ...usable.map((agent) => ({ id: agent.name, capabilities: ['image' as const] }))],
+    };
   }
   const protocol = detectAiProtocol(input);
   const baseURL = normalizeApiBaseUrl(input.baseURL);

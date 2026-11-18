@@ -1,8 +1,9 @@
-import { normalizeModelCapabilities, normalizeModelInputCapabilities } from '../../../shared/modelCapabilities';
 import { QWEN_IMAGE_STUDIO } from '../../../shared/qwenImageStudio';
 import { imageRoutingForPreset } from '../../../shared/imageSourceRouting';
+import { normalizeXcliImageAgent } from '../../../shared/xcliSource';
 import { findAiPresetById, inferPresetIdByEndpoint, type AiSourceConfig } from '../../config/aiSources';
 import { filterAiModelsByCapability, normalizeAiModelDescriptors, parseAiSources } from '../../pages/settings/shared';
+import { getAppTitleBarPlatform } from '../app-shell/AppTitleBar';
 import { parseAiModelRoutesValue } from '../settings/modelRouteValue';
 import type { GenerationAgentVoice } from './agentContext';
 import type { ModelRouteOverride } from './submitPayload';
@@ -121,19 +122,21 @@ export function getAiSourceModelDescriptors(source: AiSourceConfig) {
     if (source.presetId === QWEN_IMAGE_STUDIO) return normalizeAiModelDescriptors(
         [...(source.models || []), source.model].filter(Boolean).map((id) => ({ id, capabilities: ['image'] })),
     );
-    if (source.presetId === 'xcli') return (source.modelsMeta || []).map((model) => ({ id: model.id, capabilities: normalizeModelCapabilities(model.capabilities || []), inputCapabilities: normalizeModelInputCapabilities(model.inputCapabilities) }));
+    const metadata = source.modelsMeta || [];
+    const described = new Set(metadata.map((model) => model.id));
     return normalizeAiModelDescriptors([
-        ...(source.modelsMeta || []),
-        ...(source.models || []).map((id) => ({ id })),
-        source.model ? { id: source.model } : null,
+        ...metadata,
+        ...[...(source.models || []), source.model].filter((id) => !described.has(id)).map((id) => ({ id })),
     ]);
 }
 
 export function buildImageModelOptions(settings: SettingsShape): PickerOption[] {
     const sources = parseAiSources(settings.ai_sources_json);
+    const supportsXcli = getAppTitleBarPlatform() !== 'windows';
     const optionsByModel = new Map<string, { label: string; sourceLabels: string[] }>();
 
     for (const source of sources) {
+        if (source.presetId === 'xcli' && !supportsXcli) continue;
         const imageModels = filterAiModelsByCapability(getAiSourceModelDescriptors(source), 'image');
         if (imageModels.length === 0) continue;
 
@@ -154,7 +157,8 @@ export function buildImageModelOptions(settings: SettingsShape): PickerOption[] 
             }
         }
     }
-    const currentImageModel = String(settings.image_model || '').trim();
+    const xcliDefault = settings.image_provider === 'xcli' || settings.image_provider_template === 'xcli';
+    const currentImageModel = xcliDefault ? (supportsXcli ? normalizeXcliImageAgent(settings.image_model) : '') : String(settings.image_model || '').trim();
     if (currentImageModel && !optionsByModel.has(currentImageModel)) {
         optionsByModel.set(currentImageModel, { label: currentImageModel, sourceLabels: ['当前设置'] });
     }
@@ -247,7 +251,8 @@ export function resolveSelectedModelOverride(
     const selectedModel = modelId.trim();
     if (!selectedModel) return {};
     const sources = parseAiSources(settings.ai_sources_json);
-    const candidates = sources.filter((source) => sourceContainsModel(source, capability, selectedModel));
+    const supportsXcli = getAppTitleBarPlatform() !== 'windows';
+    const candidates = sources.filter((source) => (supportsXcli || source.presetId !== 'xcli') && sourceContainsModel(source, capability, selectedModel));
     if (candidates.length === 0) return {};
 
     const routes = parseAiModelRoutes(settings);
@@ -271,6 +276,17 @@ export function resolveSelectedModelOverride(
     return scope === 'image'
         ? { ...routeOverride, ...imageRoutingForPreset(selectedSource.presetId || inferPresetIdByEndpoint(selectedSource.baseURL || '') || '') }
         : routeOverride;
+}
+
+export function hasImageGenerationConfig(settings: SettingsShape, route: ModelRouteOverride): boolean {
+    const template = route.providerTemplate || settings.image_provider_template;
+    const provider = route.provider || settings.image_provider;
+    if (template === 'xcli' || provider === 'xcli') {
+        return getAppTitleBarPlatform() !== 'windows' && Boolean(route.sourceId && route.endpoint?.trim());
+    }
+    const endpoint = route.sourceId ? route.endpoint : settings.image_endpoint || settings.api_endpoint;
+    const apiKey = route.sourceId ? route.apiKey : settings.image_api_key || settings.api_key;
+    return Boolean(endpoint?.trim() && apiKey?.trim());
 }
 
 export function extractVoiceListItems(value: unknown): unknown[] {

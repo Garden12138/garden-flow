@@ -1,5 +1,6 @@
 import { WorkspaceGuide } from '../features/workbench/WorkspaceGuidance';
 import { dispatchAppIntent } from '../features/app-shell/appIntent';
+import { getAppTitleBarPlatform } from '../features/app-shell/AppTitleBar';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
@@ -19,6 +20,7 @@ import {
 import clsx from 'clsx';
 import { QWEN_IMAGE_STUDIO } from '../../shared/qwenImageStudio';
 import { imageRoutingForPreset } from '../../shared/imageSourceRouting';
+import { normalizeXcliSource, XCLI_IMAGE_AGENTS, XCLI_IMAGE_AGENT_LABELS } from '../../shared/xcliSource';
 import { MINIMAX_VIDEO_MODEL, type VideoProviderPreset } from '../../shared/videoProvider';
 import { XhsPublisherSettings } from './settings/XhsPublisherSettings';
 import {
@@ -97,7 +99,7 @@ function isLocalEndpoint(endpoint: string): boolean {
 }
 
 function sourceReady(source: AiSourceConfig): boolean {
-  return Boolean(source.baseURL.trim() && source.model.trim() && (source.apiKey.trim() || (source.presetId !== 'xcli' && source.presetId !== QWEN_IMAGE_STUDIO && isLocalEndpoint(source.baseURL))));
+  return Boolean(source.baseURL.trim() && source.model.trim() && (source.presetId === 'xcli' || source.apiKey.trim() || (source.presetId !== QWEN_IMAGE_STUDIO && isLocalEndpoint(source.baseURL))));
 }
 
 function SectionCard({ title, description, children }: {
@@ -145,6 +147,7 @@ export function Settings({
   const [debugLogging, setDebugLogging] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [checkingXcli, setCheckingXcli] = useState(false);
   const [message, setMessage] = useState('');
   const [pluginMessage, setPluginMessage] = useState('');
 
@@ -153,7 +156,7 @@ export function Settings({
     setMessage('');
     try {
       const settings = (await window.ipcRenderer.getSettings() || {}) as Record<string, unknown>;
-      const loadedSources = parseList<AiSourceConfig>(settings.ai_sources_json).map((source) => ({
+      const loadedSources = parseList<AiSourceConfig>(settings.ai_sources_json).map((source) => normalizeXcliSource({
         ...source,
         protocol: source.protocol || 'openai',
         models: Array.isArray(source.models) ? source.models : [],
@@ -187,7 +190,9 @@ export function Settings({
     setView(navigationTarget.tab === 'ai' ? 'ai' : navigationTarget.tab === 'platforms' || navigationTarget.tab === 'tools' ? 'privacy' : 'general');
   }, [navigationTarget]);
 
-  const readySources = useMemo(() => sources.filter(sourceReady), [sources]);
+  const supportsXcli = getAppTitleBarPlatform() !== 'windows';
+  const visibleSources = useMemo(() => supportsXcli ? sources : sources.filter((source) => source.presetId !== 'xcli'), [sources, supportsXcli]);
+  const readySources = useMemo(() => visibleSources.filter(sourceReady), [visibleSources]);
   const selectedVideo = videoProviders.find((provider) => provider.id === activeVideoProviderId) || null;
 
   const updateSource = (id: string, patch: Partial<AiSourceConfig>) => {
@@ -240,10 +245,10 @@ export function Settings({
     setSaving(true);
     setMessage('');
     try {
-      const sanitizedSources = sources.map((source) => ({
+      const sanitizedSources = sources.map((source) => normalizeXcliSource({
         ...source,
         name: source.name.trim(),
-        baseURL: source.baseURL.trim().replace(/\/+$/, ''),
+        baseURL: source.presetId === 'xcli' ? source.baseURL : source.baseURL.trim().replace(/\/+$/, ''),
         apiKey: source.apiKey.trim(),
         model: source.model.trim(),
         models: Array.from(new Set([...(source.models || []), source.model].map((item) => String(item || '').trim()).filter(Boolean))),
@@ -252,8 +257,9 @@ export function Settings({
         Object.entries(routes).map(([scope, route]) => {
           const source = sanitizedSources.find((item) => item.id === route.sourceId);
           const ready = source && sourceReady(source) && (source.presetId !== QWEN_IMAGE_STUDIO || scope === 'image');
-          return [scope, route.mode !== 'disabled' && ready && route.model.trim()
-            ? { mode: 'custom', sourceId: source!.id, model: route.model.trim() }
+          const model = source?.presetId === 'xcli' && scope === 'image' ? source.model : route.model.trim();
+          return [scope, route.mode !== 'disabled' && ready && model
+            ? { mode: 'custom', sourceId: source!.id, model }
             : { mode: 'disabled', sourceId: '', model: '' }];
         }),
       ) as AiModelRoutes;
@@ -261,11 +267,11 @@ export function Settings({
       if (videoGenerationEnabled && activeVideo && (!activeVideo.endpoint.trim() || !activeVideo.apiKey.trim() || !activeVideo.model.trim())) {
         throw new Error('启用的视频供应商必须填写 endpoint、key 和 model。');
       }
-      const chatSource = sanitizedSources.find((source) => source.id === normalizedRoutes.chat.sourceId);
+      const chatSource = sanitizedSources.find((source) => source.id === normalizedRoutes.chat.sourceId && source.presetId !== 'xcli');
       const imageSource = sanitizedSources.find((source) => source.id === normalizedRoutes.image.sourceId);
       const imageRouting = imageSource ? imageRoutingForPreset(imageSource.presetId) : null;
-      const transcriptionSource = sanitizedSources.find((source) => source.id === normalizedRoutes.transcription.sourceId);
-      const embeddingSource = sanitizedSources.find((source) => source.id === normalizedRoutes.embedding.sourceId);
+      const transcriptionSource = sanitizedSources.find((source) => source.id === normalizedRoutes.transcription.sourceId && source.presetId !== 'xcli');
+      const embeddingSource = sanitizedSources.find((source) => source.id === normalizedRoutes.embedding.sourceId && source.presetId !== 'xcli');
       const payload = {
         ...rawSettings,
         workspace_dir: workspaceDir.trim(),
@@ -285,8 +291,8 @@ export function Settings({
         image_endpoint: imageSource?.baseURL || '',
         image_api_key: imageSource?.apiKey || '',
         image_model: normalizedRoutes.image.model || '',
-        image_provider: imageRouting?.provider ?? rawSettings.image_provider,
-        image_provider_template: imageRouting?.providerTemplate ?? rawSettings.image_provider_template,
+        image_provider: imageRouting?.provider ?? (rawSettings.image_provider === 'xcli' ? '' : rawSettings.image_provider),
+        image_provider_template: imageRouting?.providerTemplate ?? (rawSettings.image_provider_template === 'xcli' || rawSettings.image_provider === 'xcli' ? '' : rawSettings.image_provider_template),
         transcription_endpoint: transcriptionSource?.baseURL || '',
         transcription_key: transcriptionSource?.apiKey || '',
         transcription_model: normalizedRoutes.transcription.model || '',
@@ -306,10 +312,27 @@ export function Settings({
       setSources(sanitizedSources);
       setRoutes(normalizedRoutes);
       setMessage('设置已保存');
+      return true;
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '设置保存失败');
+      return false;
     } finally {
       setSaving(false);
+    }
+  };
+
+  const checkXcliStatus = async (sourceId: string) => {
+    setCheckingXcli(true);
+    try {
+      if (!await save()) return;
+      setMessage('正在检查 CLI 状态…');
+      const models = await window.ipcRenderer.fetchModels({ id: sourceId, presetId: 'xcli', purpose: 'image' });
+      const usable = models.map((model) => model.id).filter((id) => id !== 'auto');
+      setMessage(usable.length ? `可用的生图 CLI：${usable.join('、')}` : '未找到可用的生图 CLI，请在终端运行 xcli agents 查看原因');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '检查 CLI 状态失败');
+    } finally {
+      setCheckingXcli(false);
     }
   };
 
@@ -411,9 +434,9 @@ export function Settings({
 
           {view === 'ai' ? (
             <>
-              {!sources.length && <WorkspaceGuide title="先配置你当前要用的 AI 能力" description="添加一个文本模型，就可以开始对话与写作。图片、视频和声音按需要再配置。" steps={[{ title: '添加供应商', description: '选择接口预设，填写地址、密钥和默认模型。' }, { title: '选择使用方式', description: '展开所需能力，选择供应商与模型，其余可以保持关闭。' }, { title: '保存后继续工作', description: '完成后回到研究或创作页面，不必一次配置全部服务。' }]}><button type="button" className="workspace-primary-button" onClick={addSource}>添加第一个供应商</button></WorkspaceGuide>}
+              {!visibleSources.length && <WorkspaceGuide title="先配置你当前要用的 AI 能力" description="添加一个文本模型，就可以开始对话与写作。图片、视频和声音按需要再配置。" steps={[{ title: '添加供应商', description: '选择接口预设，填写地址、密钥和默认模型。' }, { title: '选择使用方式', description: '展开所需能力，选择供应商与模型，其余可以保持关闭。' }, { title: '保存后继续工作', description: '完成后回到研究或创作页面，不必一次配置全部服务。' }]}><button type="button" className="workspace-primary-button" onClick={addSource}>添加第一个供应商</button></WorkspaceGuide>}
               <SectionCard title="供应商" description="密钥仅保存在本机。支持 OpenAI、Anthropic、Gemini、本地服务以及任意兼容接口。">
-                {sources.length === 0 ? (
+                {visibleSources.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-border p-8 text-center">
                     <Bot className="mx-auto h-8 w-8 text-accent-primary" />
                     <div className="mt-3 text-sm font-medium text-text-primary">尚未配置 AI 供应商</div>
@@ -421,7 +444,7 @@ export function Settings({
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {sources.map((source) => (
+                    {visibleSources.map((source) => (
                       <div key={source.id} className="rounded-xl border border-border bg-surface-secondary/30 p-4">
                         <div className="mb-3 flex items-center justify-between">
                           <div className="flex items-center gap-2">
@@ -432,14 +455,8 @@ export function Settings({
                           <button type="button" onClick={() => deleteSource(source.id)} className="rounded-lg p-2 text-text-tertiary hover:bg-red-500/10 hover:text-red-500" aria-label="删除供应商"><Trash2 className="h-4 w-4" /></button>
                         </div>
                         {source.presetId === 'xcli' && <div className="mb-3 text-xs text-text-secondary">
-                          本机网关不等于本机推理；上游位置与能力以 xcli 目录为准。文本和图片请分别选择模型别名。
-                          <button type="button" className="ml-2 underline" onClick={async () => {
-                            try {
-                              const models = await window.ipcRenderer.fetchModels({ ...source, purpose: 'chat' });
-                              updateSource(source.id, { models: models.map((model) => model.id), modelsMeta: models });
-                              setMessage('xcli 目录已读取（未调用模型）：' + models.map((model: any) => `${model.id} / ${model.xcli?.inference_location || 'unknown'}`).join('；'));
-                            } catch { setMessage('无法读取 xcli 目录，请检查服务、独立 Token 与端口'); }
-                          }}>检查模型目录</button>
+                          通过本机 Codex、Antigravity 或 Cursor CLI 生成图片，使用各自的登录和额度。每张约 1～5 分钟。只用于图片生成，私密项目暂不支持。
+                          <button type="button" className="ml-2 underline disabled:opacity-50" disabled={saving || checkingXcli} onClick={() => void checkXcliStatus(source.id)}>检查 CLI 状态</button>
                         </div>}
                         <div className="grid gap-3 md:grid-cols-2">
                           <label><span className={labelClass}>预设</span>
@@ -449,16 +466,27 @@ export function Settings({
                               onChange={(event) => {
                                 const preset = findAiPresetById(event.target.value);
                                 if (!preset) return;
-                                updateSource(source.id, { presetId: preset.id, name: preset.label, baseURL: preset.baseURL, protocol: preset.protocol, apiKey: '', models: [], modelsMeta: [], model: preset.defaultModel || (preset.id === 'xcli' ? 'xcli/text-default' : '') });
+                                updateSource(source.id, normalizeXcliSource({ presetId: preset.id, name: preset.label, baseURL: preset.baseURL, protocol: preset.protocol, apiKey: '', models: [], modelsMeta: [], model: preset.defaultModel || '' }));
                               }}
                             >
-                              {AI_SOURCE_PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
+                              {AI_SOURCE_PRESETS.filter((preset) => supportsXcli || preset.id !== 'xcli').map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
                             </select>
                           </label>
                           <label><span className={labelClass}>名称</span><input className={inputClass} value={source.name} onChange={(event) => updateSource(source.id, { name: event.target.value })} /></label>
-                          <label className="md:col-span-2"><span className={labelClass}>Endpoint</span><input className={inputClass} value={source.baseURL} onChange={(event) => updateSource(source.id, { baseURL: event.target.value })} placeholder="https://api.example.com/v1" /></label>
-                          <label><span className={labelClass}>API Key {source.presetId === 'xcli' ? '（独立应用 Token，必填）' : source.presetId === QWEN_IMAGE_STUDIO ? '（图片服务密钥，必填）' : isLocalEndpoint(source.baseURL) ? '（本地可留空）' : ''}</span><input type="password" className={inputClass} value={source.apiKey} onChange={(event) => updateSource(source.id, { apiKey: event.target.value })} /></label>
-                          <label><span className={labelClass}>默认模型</span><input className={inputClass} value={source.model} onChange={(event) => updateSource(source.id, { model: event.target.value })} placeholder="例如 gpt-5-mini" /></label>
+                          {source.presetId === 'xcli' ? (
+                            <>
+                              <label><span className={labelClass}>xcli 可执行文件</span><input className={inputClass} value={source.baseURL} onChange={(event) => updateSource(source.id, { baseURL: event.target.value })} placeholder="xcli（默认依次从 XCLI_PATH、PATH、~/.local/bin 查找），或填写绝对路径" /></label>
+                              <label><span className={labelClass}>生图 CLI</span><select className={inputClass} value={source.model} onChange={(event) => updateSource(source.id, { model: event.target.value })}>
+                                {XCLI_IMAGE_AGENTS.map((agent) => <option key={agent} value={agent}>{XCLI_IMAGE_AGENT_LABELS[agent]}</option>)}
+                              </select></label>
+                            </>
+                          ) : (
+                            <>
+                              <label className="md:col-span-2"><span className={labelClass}>Endpoint</span><input className={inputClass} value={source.baseURL} onChange={(event) => updateSource(source.id, { baseURL: event.target.value })} placeholder="https://api.example.com/v1" /></label>
+                              <label><span className={labelClass}>API Key {source.presetId === QWEN_IMAGE_STUDIO ? '（图片服务密钥，必填）' : isLocalEndpoint(source.baseURL) ? '（本地可留空）' : ''}</span><input type="password" className={inputClass} value={source.apiKey} onChange={(event) => updateSource(source.id, { apiKey: event.target.value })} /></label>
+                              <label><span className={labelClass}>默认模型</span><input className={inputClass} value={source.model} onChange={(event) => updateSource(source.id, { model: event.target.value })} placeholder="例如 gpt-5-mini" /></label>
+                            </>
+                          )}
                         </div>
                         {source.presetId === QWEN_IMAGE_STUDIO && <p className="mt-2 text-xs text-text-tertiary">将 localhost 和端口换成图片服务的实际地址，再到「能力路由」选择「图片生成」。默认输出 768×768，编辑支持一张原图。</p>}
                       </div>
@@ -472,8 +500,10 @@ export function Settings({
                 <div className="space-y-2">
                   {(Object.keys(ROUTE_LABELS) as AiModelRouteScope[]).map((scope) => {
                     const route = routes[scope];
+                    const routedSource = visibleSources.find((source) => source.id === route.sourceId);
+                    const routedXcli = routedSource?.presetId === 'xcli';
                     return (
-                      <details key={scope} className="workspace-configuration-row"><summary><span>{ROUTE_LABELS[scope]}</span><span>{route.mode === 'disabled' ? '未启用' : sources.find(source => source.id === route.sourceId)?.name || '待选择供应商'}</span></summary><div className="mt-4 grid items-center gap-3 md:grid-cols-[110px_1fr_1fr]">
+                      <details key={scope} className="workspace-configuration-row"><summary><span>{ROUTE_LABELS[scope]}</span><span>{route.mode === 'disabled' ? '未启用' : routedSource?.name || '待选择供应商'}</span></summary><div className="mt-4 grid items-center gap-3 md:grid-cols-[110px_1fr_1fr]">
                         <select aria-label={`${ROUTE_LABELS[scope]}启用方式`} className={inputClass} value={route.mode} onChange={(event) => setRoutes((current) => ({ ...current, [scope]: { ...route, mode: event.target.value as 'custom' | 'disabled' } }))}>
                           <option value="disabled">关闭</option>
                           <option value="custom">自定义</option>
@@ -489,9 +519,10 @@ export function Settings({
                           }}
                         >
                           <option value="">选择供应商</option>
-                          {sources.filter((source) => scope === 'image' || source.presetId !== QWEN_IMAGE_STUDIO).map((source) => <option key={source.id} value={source.id}>{source.name}</option>)}
+                          {routedXcli && scope !== 'image' && <option value={routedSource.id} disabled>{routedSource.name}（仅支持图片）</option>}
+                          {visibleSources.filter((source) => scope === 'image' || (source.presetId !== QWEN_IMAGE_STUDIO && source.presetId !== 'xcli')).map((source) => <option key={source.id} value={source.id}>{source.name}</option>)}
                         </select>
-                        <input aria-label={`${ROUTE_LABELS[scope]}模型`} className={inputClass} value={route.model || ''} disabled={route.mode === 'disabled'} onChange={(event) => setRoutes((current) => ({ ...current, [scope]: { ...route, model: event.target.value } }))} placeholder="模型 ID" />
+                        <input aria-label={`${ROUTE_LABELS[scope]}模型`} className={inputClass} value={routedXcli && scope === 'image' ? routedSource.model : route.model || ''} disabled={route.mode === 'disabled'} readOnly={routedXcli} onChange={(event) => setRoutes((current) => ({ ...current, [scope]: { ...route, model: event.target.value } }))} placeholder="模型 ID" />
                       </div></details>
                     );
                   })}

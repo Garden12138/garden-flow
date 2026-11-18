@@ -1821,7 +1821,7 @@ declare global {
       aiRoles: {
         list: () => Promise<RoleSpec[]>;
       };
-      fetchModels: (config: { apiKey: string; baseURL: string; presetId?: string; protocol?: 'openai' | 'anthropic' | 'gemini'; purpose?: 'chat' | 'image' }) => Promise<Array<{ id: string; capabilities?: string[] }>>;
+      fetchModels: (config: { id?: string; apiKey?: string; baseURL?: string; presetId?: string; protocol?: 'openai' | 'anthropic' | 'gemini'; purpose?: 'chat' | 'image' }) => Promise<Array<{ id: string; capabilities?: string[] }>>;
       detectAiProtocol: (config: { baseURL: string; presetId?: string; protocol?: string }) => Promise<{ success: boolean; protocol: 'openai' | 'anthropic' | 'gemini'; error?: string }>;
       testAiConnection: (config: { apiKey: string; baseURL: string; presetId?: string; protocol?: 'openai' | 'anthropic' | 'gemini' }) => Promise<{ success: boolean; protocol: 'openai' | 'anthropic' | 'gemini'; models: Array<{ id: string }>; message: string }>;
       listSkills: () => Promise<SkillDefinition[]>;

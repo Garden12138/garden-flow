@@ -1,7 +1,8 @@
 import { getSettings } from '../db';
 import { QWEN_IMAGE_STUDIO, QWEN_IMAGE_STUDIO_DEFAULT_SIZE } from '../../shared/qwenImageStudio';
+import { normalizeXcliImageAgent } from '../../shared/xcliSource';
 import { resolveDefaultImageEndpoint, resolveDefaultImageModel, resolveQwenImageApiKey } from './imageGenerationService';
-import { resolveConfiguredImageRoute } from './aiModelRouteResolver';
+import { resolveConfiguredImageRoute, resolveXcliSourceExecutable } from './aiModelRouteResolver';
 import {
     getImageProviderAdapter,
     getImageProviderCapabilities,
@@ -226,16 +227,18 @@ export async function generateCoverAssets(input: GenerateCoverInput): Promise<Ge
         ? resolveConfiguredImageRoute(settings, input.model)
         : null;
     if (route) input = { ...input, ...route };
-    const provider = String(input.provider || settings.image_provider || 'openai-compatible').trim();
+    const requestedProvider = String(input.provider || settings.image_provider || 'openai-compatible').trim();
     const providerTemplate = normalizeImageProviderTemplate(
         String(input.providerTemplate || settings.image_provider_template || '').trim(),
-        provider
+        requestedProvider
     );
+    const isXcli = providerTemplate === 'xcli';
+    const provider = isXcli ? 'xcli' : requestedProvider;
     const defaultImageEndpoint = resolveDefaultImageEndpoint(providerTemplate);
     const openAiFallbackEndpoint = providerTemplate === 'openai-images' || providerTemplate === 'openai-chat-completions-image'
         ? String(settings.api_endpoint || '').trim()
         : '';
-    const endpoint = normalizeApiBaseUrl(
+    const endpoint = isXcli ? resolveXcliSourceExecutable(settings) : normalizeApiBaseUrl(
         String(
             input.endpoint ||
             settings.image_endpoint ||
@@ -245,10 +248,11 @@ export async function generateCoverAssets(input: GenerateCoverInput): Promise<Ge
         ).trim()
     );
     const isQwenStudio = providerTemplate === QWEN_IMAGE_STUDIO;
-    const apiKey = route ? route.apiKey
+    const apiKey = isXcli ? '' : route ? route.apiKey
         : isQwenStudio ? resolveQwenImageApiKey(input.apiKey, endpoint, settings)
         : String(input.apiKey || settings.image_api_key || settings.api_key || '').trim();
-    const model = String(input.model || settings.image_model || resolveDefaultImageModel(providerTemplate)).trim();
+    const model = isXcli ? normalizeXcliImageAgent(input.model || settings.image_model)
+        : String(input.model || settings.image_model || resolveDefaultImageModel(providerTemplate)).trim();
     const quality = isQwenStudio ? 'auto' : String(input.quality || settings.image_quality || 'medium').trim();
     const count = Math.max(1, Math.min(4, Number(input.count) || 1));
     const aspectRatio = isQwenStudio ? '1:1' : '3:4';
@@ -257,7 +261,7 @@ export async function generateCoverAssets(input: GenerateCoverInput): Promise<Ge
     if (!endpoint) {
         throw new Error('Image endpoint is missing. Please configure it in Settings.');
     }
-    if (!apiKey) {
+    if (!apiKey && !isXcli) {
         throw new Error('Image API key is missing. Please configure it in Settings.');
     }
 
@@ -321,7 +325,7 @@ export async function generateCoverAssets(input: GenerateCoverInput): Promise<Ge
             providerTemplate,
             model,
             aspectRatio,
-            size,
+            size: isXcli ? output.size || size : size,
             quality,
         });
         assets.push(asset);
@@ -332,7 +336,7 @@ export async function generateCoverAssets(input: GenerateCoverInput): Promise<Ge
         providerTemplate,
         model,
         aspectRatio,
-        size,
+        size: isXcli ? generated[0].size || size : size,
         quality,
         assets,
     };

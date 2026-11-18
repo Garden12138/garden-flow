@@ -117,6 +117,7 @@ import {
     buildImageModelOptions,
     buildAudioModelOptions,
     resolveSelectedModelOverride,
+    hasImageGenerationConfig,
     normalizeVoiceList,
     DEFAULT_AUDIO_TTS_MODEL,
     voiceMatchesAudioModel,
@@ -1374,6 +1375,13 @@ function FeedEntryMessage({
     const isRunning = entry.status === 'running';
     const isQueued = entry.jobStatus === 'queued';
     const isCancelling = entry.jobStatus === 'cancel_requested';
+    const progressMessage = useMediaJobsStore(useCallback((state) => (
+        entry.jobId && isRunning && !isCancelling
+            ? state.jobsById[entry.jobId]?.recentEvents.reduce<string | undefined>((message, event) => (
+                event.eventType === 'progress' ? event.message : message
+            ), undefined)
+            : undefined
+    ), [entry.jobId, isRunning, isCancelling]));
     const statusLabel = isQueued
         ? '排队'
         : isCancelling
@@ -1469,7 +1477,7 @@ function FeedEntryMessage({
                             任务创作中 {progress}%...
                         </div>
                         <div className="text-[11px] text-text-tertiary">
-                            {entry.request.type === 'cover' ? '正在生成封面' : entry.request.type === 'image' ? '正在生成图片' : entry.request.type === 'audio' ? '正在生成音频' : '正在生成视频'}
+                            {progressMessage || (entry.request.type === 'cover' ? '正在生成封面' : entry.request.type === 'image' ? '正在生成图片' : entry.request.type === 'audio' ? '正在生成音频' : '正在生成视频')}
                         </div>
                     </div>
                     <div className="h-1.5 overflow-hidden rounded-full bg-surface-tertiary">
@@ -2206,9 +2214,6 @@ export function GenerationStudio({
         return () => window.cancelAnimationFrame(frame);
     }, [feedEntries, isActive]);
 
-    const resolvedImageEndpoint = (settings.image_endpoint || settings.api_endpoint || '').trim();
-    const resolvedImageApiKey = (settings.image_api_key || settings.api_key || '').trim();
-    const hasImageConfig = Boolean(resolvedImageEndpoint) && Boolean(resolvedImageApiKey);
     const videoModelRoutes = useMemo(() => buildVideoModelRoutes(settings as Record<string, unknown>), [settings]);
     const selectedVideoModelRoute = useMemo(
         () => videoModelRoutes.find((route) => route.model === videoModel.trim()) || videoModelRoutes[0] || null,
@@ -2259,14 +2264,15 @@ export function GenerationStudio({
     );
 
     const imageModelOptions = useMemo<PickerOption[]>(() => buildImageModelOptions(settings), [settings]);
+    const imageModelRoute = useMemo(() => resolveSelectedModelOverride(settings, 'image', 'image', imageModel), [imageModel, settings]);
+    const coverModelRoute = useMemo(() => resolveSelectedModelOverride(settings, 'image', 'image', coverModel), [coverModel, settings]);
+    const hasImageConfig = hasImageGenerationConfig(settings, imageModelRoute);
+    const hasCoverConfig = hasImageGenerationConfig(settings, coverModelRoute);
     const activeImageModelOption = useMemo(
         () => imageModelOptions.find((option) => option.value === imageModel.trim()) || null,
         [imageModel, imageModelOptions],
     );
-    const isQwenImageStudio = useMemo(() => (
-        (resolveSelectedModelOverride(settings, 'image', 'image', imageModel).providerTemplate
-            || settings.image_provider_template) === QWEN_IMAGE_STUDIO
-    ), [imageModel, settings]);
+    const isQwenImageStudio = (imageModelRoute.providerTemplate || settings.image_provider_template) === QWEN_IMAGE_STUDIO;
     const selectedCoverManuscript = useMemo(() => {
         const selectedPath = coverManuscriptPath.trim();
         if (!selectedPath) return null;
@@ -2520,7 +2526,7 @@ export function GenerationStudio({
         const qwenStudio = (modelRouteOverride.providerTemplate || settings.image_provider_template) === QWEN_IMAGE_STUDIO;
         const validationError = qwenStudio && request.referenceItems.length > 1
             ? 'Qwen Image Studio 编辑仅支持一张原图'
-            : validateImageGenerationRequest(request, { hasImageConfig });
+            : validateImageGenerationRequest(request, { hasImageConfig: hasImageGenerationConfig(settings, modelRouteOverride) });
         if (validationError) {
             setImageError(validationError);
             return false;
@@ -2558,7 +2564,6 @@ export function GenerationStudio({
         return true;
     }, [
         createFeedEntry,
-        hasImageConfig,
         contextIntent?.source,
         settings,
         settings.image_provider,
@@ -2726,7 +2731,8 @@ export function GenerationStudio({
     ]);
 
     const runCoverRequest = useCallback((request: CoverGenerationRequest): boolean => {
-        const validationError = validateCoverGenerationRequest(request, { hasImageConfig });
+        const modelRouteOverride = resolveSelectedModelOverride(settings, 'image', 'image', request.model);
+        const validationError = validateCoverGenerationRequest(request, { hasImageConfig: hasImageGenerationConfig(settings, modelRouteOverride) });
         if (validationError) {
             setCoverError(validationError);
             return false;
@@ -2738,7 +2744,6 @@ export function GenerationStudio({
 
         void (async () => {
             try {
-                const modelRouteOverride = resolveSelectedModelOverride(settings, 'image', 'image', request.model);
                 const result = await submitCoverGeneration(window.ipcRenderer.cover, request, {
                     titleId: makeId('cover-title'),
                     routeOverride: modelRouteOverride,
@@ -2764,7 +2769,6 @@ export function GenerationStudio({
         return true;
     }, [
         createFeedEntry,
-        hasImageConfig,
         settings,
         settings.image_provider,
         settings.image_provider_template,
@@ -4412,7 +4416,7 @@ export function GenerationStudio({
                                                     <GenerationSubmitButton
                                                         onClick={isAgentMode ? handleSendAgentMessage : handleGenerateCover}
                                                         onCancel={isAgentMode && agentExecutionActive ? handleCancelAgentExecution : undefined}
-                                                        disabled={isAgentMode ? !canSendAgentMessage : (!hasImageConfig || !coverModel.trim())}
+                                                        disabled={isAgentMode ? !canSendAgentMessage : (!hasCoverConfig || !coverModel.trim())}
                                                         title={isAgentMode ? '发送给 Agent' : '生成封面'}
                                                         ariaLabel={isAgentMode ? '发送给 Agent' : '生成封面'}
                                                         pending={isAgentMode && (isPreparingAgentMessage || agentExecutionActive)}
@@ -4689,13 +4693,13 @@ export function GenerationStudio({
 
                                         {studioMode === 'image' && !isAgentMode && !hasImageConfig && (
                                             <div className="rounded-[14px] bg-status-error/10 px-4 py-3 text-sm text-status-error">
-                                                未检测到生图配置。请先到“设置 → AI 模型”填写图片生成的 Endpoint、API Key 和模型。
+                                                未检测到生图配置。请在「设置 → 能力路由」中配置图片来源。
                                             </div>
                                         )}
 
-                                        {studioMode === 'cover' && !isAgentMode && !hasImageConfig && (
+                                        {studioMode === 'cover' && !isAgentMode && !hasCoverConfig && (
                                             <div className="rounded-[14px] bg-status-error/10 px-4 py-3 text-sm text-status-error">
-                                                未检测到生图配置。请先到“设置 → AI 模型”填写图片生成的 Endpoint、API Key 和模型。
+                                                未检测到生图配置。请在「设置 → 能力路由」中配置图片来源。
                                             </div>
                                         )}
 

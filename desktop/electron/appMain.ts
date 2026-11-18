@@ -344,6 +344,7 @@ import {
   type McpServerConfig,
 } from './core/mcpStore';
 import { normalizeApiBaseUrl, normalizeRemoteAssetUrl, safeUrlJoin } from './core/urlUtils';
+import { normalizeXcliSource } from '../shared/xcliSource';
 import { suggestProductLinks, type ProductMatchDocument } from './core/productLinkSuggestions';
 import type { LinkProductsInput } from '../shared/productLinks';
 import { validateCapturedProduct } from './core/productCaptureValidation';
@@ -1601,6 +1602,7 @@ const normalizeAiSourceListJson = (raw: unknown): string | undefined => {
         return item;
       }
       const source = item as Record<string, unknown>;
+      if (source.presetId === 'xcli') return normalizeXcliSource(source);
       return {
         ...source,
         baseURL: normalizeApiBaseUrl(String(source.baseURL || source.baseUrl || '')),
@@ -1625,7 +1627,10 @@ const normalizeSettingsInput = (settings: Record<string, unknown>) => {
     normalized.embedding_endpoint = normalizeApiBaseUrl(String(settings.embedding_endpoint || ''));
   }
   if (Object.prototype.hasOwnProperty.call(settings, 'image_endpoint')) {
-    normalized.image_endpoint = normalizeApiBaseUrl(String(settings.image_endpoint || ''));
+    const endpoint = String(settings.image_endpoint || '');
+    normalized.image_endpoint = settings.image_provider_template === 'xcli' || settings.image_provider === 'xcli'
+      ? endpoint.trim()
+      : normalizeApiBaseUrl(endpoint);
   }
   if (Object.prototype.hasOwnProperty.call(settings, 'search_endpoint')) {
     normalized.search_endpoint = normalizeApiBaseUrl(String(settings.search_endpoint || ''));
@@ -5747,6 +5752,7 @@ ipcMain.handle('ai:test-connection', async (_, payload: {
 });
 
 ipcMain.handle('ai:fetch-models', async (_, payload: {
+  id?: string;
   apiKey?: string;
   baseURL?: string;
   presetId?: string;
@@ -5756,6 +5762,7 @@ ipcMain.handle('ai:fetch-models', async (_, payload: {
   try {
     const { fetchModelsForAiSource } = await import('./core/aiSourceService');
     const { models } = await fetchModelsForAiSource({
+      id: payload?.id,
       apiKey: payload?.apiKey || '',
       baseURL: payload?.baseURL || '',
       presetId: payload?.presetId,
