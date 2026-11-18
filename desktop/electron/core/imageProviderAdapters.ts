@@ -1721,19 +1721,18 @@ const xcliImageAdapter: ImageProviderAdapter = {
         }
 
         if (result.status !== 'completed') throw xcliImageFailure(result);
-        const outputs: GeneratedImageOutput[] = [];
+        // A single xcli task can return multiple files for one generated image.
         for (const artifact of result.artifacts) {
             if (artifact?.kind !== 'image' || typeof artifact.path !== 'string' || !isAbsolute(artifact.path)) continue;
             const imageBuffer = await fs.readFile(artifact.path);
             if (!imageBuffer.length) continue;
-            outputs.push({
+            return [{
                 imageBuffer,
                 mimeType: artifact.mime || inferImageMimeType(imageBuffer),
                 size: artifact.width && artifact.height ? `${artifact.width}x${artifact.height}` : undefined,
-            });
+            }];
         }
-        if (!outputs.length) throw xcliImageFailure(result);
-        return outputs;
+        throw xcliImageFailure(result);
     },
 };
 

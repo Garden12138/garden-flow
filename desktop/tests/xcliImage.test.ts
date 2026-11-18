@@ -82,13 +82,24 @@ if (args === 'agents --json') {
             console.error('boom');
             process.exitCode = 3;
         } else {
-            const output = path.join(path.dirname(process.env.XCLI_FAKE_STDIN), 'image.png');
+            const directory = path.dirname(process.env.XCLI_FAKE_STDIN);
+            const output = path.join(directory, 'image-' + process.pid + '.png');
             const image = Buffer.from('${png}', 'base64');
             fs.writeFileSync(output, image);
+            const primary = { path: output, kind: 'image', mime: 'image/png', width: 1, height: 1, bytes: image.length };
+            const artifacts = [primary];
+            if (mode === 'multi') {
+                const empty = path.join(directory, 'empty-' + process.pid + '.png');
+                const extra = path.join(directory, 'extra-' + process.pid + '.png');
+                fs.writeFileSync(empty, '');
+                fs.writeFileSync(extra, image);
+                artifacts.unshift({ ...primary, path: empty, bytes: 0 });
+                artifacts.push({ ...primary, path: extra, width: 2, height: 2 });
+            }
             event('step.started');
             event('step.progress', { text: 'first' });
             event('step.progress', { text: 'second' });
-            finish('completed', [{ path: output, kind: 'image', mime: 'image/png', width: 1, height: 1, bytes: image.length }]);
+            finish('completed', artifacts);
         }
     });
 } else {
@@ -451,6 +462,20 @@ test('generates a cover without an API key using only the saved xcli path', unix
     const catalog = JSON.parse(fs.readFileSync(path.join(coverRoot, 'catalog.json'), 'utf8'));
     assert.equal(catalog.assets[0].id, asset.id);
     assert.match(JSON.parse(fs.readFileSync(fake.stdinPath, 'utf8')).goal, /封面测试/);
+});
+
+test('retains one valid image per xcli subprocess in media and cover generation', unixOnly, async (t) => {
+    const fake = makeFakeXcli(t, 'multi');
+    const settings = xcliSettings(fake.executable);
+    const service = await loadImageService(settings);
+    const { generateCoverAssets } = await loadXcliModule<typeof import('../electron/core/coverGenerationService.ts')>(
+        '../electron/core/coverGenerationService.ts', settings, fake.directory,
+    );
+    const image = await service.generateImagesToMediaLibrary({ prompt: '猫', count: 2 });
+    const cover = await generateCoverAssets({ titlePrompt: '封面', count: 2 });
+    assert.equal(fs.readdirSync(fake.directory).filter((name) => /^image-/.test(name)).length, 4);
+    assert.deepEqual(Array.from(image.assets, (asset) => asset.size), ['1x1', '1x1']);
+    assert.deepEqual(Array.from(cover.assets, (asset) => asset.size), ['1x1', '1x1']);
 });
 
 test('rejects xcli while preparing a private project image before provider validation', unixOnly, async (t) => {
