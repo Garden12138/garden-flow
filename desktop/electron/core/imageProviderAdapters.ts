@@ -1,13 +1,16 @@
-import { xcliModels, requireXcliCapabilities, xcliRequest, xcliJson } from './xcliGateway.ts';
 import { promises as fs } from 'node:fs';
-import { extname, isAbsolute, normalize } from 'node:path';
+import { tmpdir } from 'node:os';
+import { extname, isAbsolute, join, normalize, resolve } from 'node:path';
 import { resolveAssetSourceToPath } from './localAssetManager.ts';
 import { isLocalAssetSource } from '../../shared/localAsset.ts';
 import { normalizeApiBaseUrl, parseMediaProviderEndpoint } from './urlUtils.ts';
 import { QWEN_IMAGE_STUDIO, QWEN_IMAGE_STUDIO_DEFAULT_SIZE } from '../../shared/qwenImageStudio.ts';
+import { normalizeXcliImageAgent, XCLI_IMAGE_AGENT_LABELS, type XcliImageAgent } from '../../shared/xcliSource.ts';
+import { resolveTrustedXcliExecutable, submitXcliTask, XcliCancelledError, type XcliEvent, type XcliResult } from './xcliClient.ts';
 
 export type ImageProviderTemplate =
     | 'openai-images'
+    | 'xcli'
     | typeof QWEN_IMAGE_STUDIO
     | 'openai-chat-completions-image'
     | 'gemini-openai-images'
@@ -38,6 +41,8 @@ export interface ImageGenerationRequest {
     size?: string;
     quality?: ImageQuality | string;
     count?: number;
+    signal?: AbortSignal;
+    onProgress?: (message: string) => void;
 }
 
 export interface GeneratedImageOutput {
@@ -75,6 +80,11 @@ const IMAGE_PROVIDER_CAPABILITIES: Record<ImageProviderTemplate, ImageProviderCa
         maxReferenceImages: 1,
     },
     'openai-images': {
+        supportedModes: ['text-to-image', 'image-to-image', 'reference-guided'],
+        supportsReferenceImages: true,
+        maxReferenceImages: 4,
+    },
+    xcli: {
         supportedModes: ['text-to-image', 'image-to-image', 'reference-guided'],
         supportsReferenceImages: true,
         maxReferenceImages: 4,
@@ -1600,63 +1610,132 @@ const openAiChatCompletionsImageAdapter: ImageProviderAdapter = {
     },
 };
 
-async function generateXcliImages(request: ImageGenerationRequest): Promise<GeneratedImageOutput[]> {
-    const count = request.count ?? 1;
-    const mode = request.generationMode || 'text-to-image';
-    const refs = request.referenceImages || [];
-    if (!Number.isInteger(count) || count < 1 || count > 4 || refs.length > 4
-        || !['text-to-image', 'image-to-image', 'reference-guided'].includes(mode)
-        || (mode === 'text-to-image' && refs.length > 0)
-        || (mode !== 'text-to-image' && refs.length === 0)) {
-        throw new Error('xcli image count, generation mode or reference inputs are invalid');
+export function buildXcliImageGoal(input: {
+    prompt: string;
+    generationMode?: ImageGenerationMode;
+    aspectRatio?: string;
+    size?: string;
+}): string {
+    const requirements: string[] = [];
+    if (input.aspectRatio && input.aspectRatio !== 'auto') requirements.push(`画面比例：${input.aspectRatio}`);
+    if (input.size && /^\d+x\d+$/.test(input.size)) {
+        requirements.push(`尺寸约 ${input.size.replace('x', '×')} 像素`);
     }
-    const size = request.size || 'auto';
-    const dimensions = /^(\d+)x(\d+)$/.exec(size);
-    if (size !== 'auto' && (!dimensions || Number(dimensions[1]) < 1 || Number(dimensions[2]) < 1
-        || Number(dimensions[1]) * Number(dimensions[2]) > 16_777_216)) throw new Error('xcli image size is invalid');
-    const required = [mode === 'text-to-image' ? 'image.generate' : 'image.edit', ...(refs.length > 1 ? ['image.multi_reference'] : [])];
-    requireXcliCapabilities(await xcliModels(request.endpoint, request.apiKey), request.model, required);
-    const fields: Record<string, string> = { model: request.model, prompt: request.prompt, n: String(count), size, response_format: 'b64_json' };
-    if (request.quality) fields.quality = request.quality;
-    let body: string | FormData;
-    if (refs.length) {
-        const form = new FormData();
-        for (const [key, value] of Object.entries(fields)) form.append(key, value);
-        let total = Buffer.byteLength(request.prompt);
-        for (const ref of refs) {
-            if (!ref.startsWith('data:')) {
-                const path = isLocalFileLikeReference(ref) ? resolveLocalReferencePath(ref) : null;
-                if (!path || (await fs.stat(path)).size > 20 * 1024 * 1024) throw new Error('xcli requires a local reference image within 20 MiB');
-            }
-            const decoded = decodeDataUrl(await normalizeReferenceImageInput(ref));
-            if (!decoded || !['image/png', 'image/jpeg', 'image/webp'].includes(decoded.mimeType)
-                || decoded.base64.length > 28 * 1024 * 1024) throw new Error('xcli reference image is invalid');
-            const bytes = Buffer.from(decoded.base64, 'base64');
-            total += bytes.length;
-            if (!bytes.length || bytes.toString('base64') !== decoded.base64 || bytes.length > 20 * 1024 * 1024
-                || total > 32 * 1024 * 1024 - 65536) throw new Error('xcli reference images exceed the size limit');
-            form.append('image[]', new Blob([bytes], { type: decoded.mimeType }), 'reference.' + (decoded.mimeType === 'image/jpeg' ? 'jpg' : decoded.mimeType.split('/')[1]));
-        }
-        body = form;
-    } else {
-        body = JSON.stringify({ ...fields, n: count });
-        if (Buffer.byteLength(body) > 4 * 1024 * 1024) throw new Error('xcli request exceeds 4 MiB');
+    if (input.generationMode === 'image-to-image') {
+        requirements.push('参考图用法：在参考图基础上修改，保留未要求改动的部分');
+    } else if (input.generationMode === 'reference-guided') {
+        requirements.push('参考图用法：参考所给图片的风格和主体，生成一张新图');
     }
-    const result = await xcliJson(await xcliRequest(request.endpoint, request.apiKey, refs.length ? '/images/edits' : '/images/generations', body));
-    if (!Array.isArray(result?.data) || result.data.length !== count) throw new Error('xcli image output count does not match the request');
-    return result.data.map((item: any) => {
-        if (typeof item?.b64_json !== 'string' || item.url || item.b64_json.length > 28 * 1024 * 1024) throw new Error('xcli returned an invalid image result');
-        const imageBuffer = Buffer.from(item.b64_json, 'base64');
-        const signature = imageBuffer.subarray(0, 12);
-        if (!imageBuffer.length || imageBuffer.length > 20 * 1024 * 1024 || imageBuffer.toString('base64') !== item.b64_json
-            || !(signature.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'))
-                || signature.subarray(0, 3).equals(Buffer.from('ffd8ff', 'hex'))
-                || (signature.toString('ascii', 0, 4) === 'RIFF' && signature.toString('ascii', 8, 12) === 'WEBP'))) {
-            throw new Error('xcli returned an invalid image result');
-        }
-        return { imageBuffer, mimeType: inferImageMimeType(imageBuffer) };
-    });
+    return requirements.length ? `${input.prompt}\n\n生成要求：\n- ${requirements.join('\n- ')}` : input.prompt;
 }
+
+export function buildXcliImageRequest(request: ImageGenerationRequest, images: string[], timeoutSec: number): Record<string, unknown> {
+    const agent = normalizeXcliImageAgent(request.model);
+    return {
+        version: 1,
+        capability: 'image',
+        goal: buildXcliImageGoal(request),
+        ...(images.length ? { images } : {}),
+        ...(agent === 'auto' ? {} : { agent }),
+        timeout_sec: timeoutSec,
+        metadata: { app: 'gardenflow' },
+    };
+}
+
+function xcliAgentLabel(agent: unknown): string {
+    if (typeof agent !== 'string' || !agent) return 'CLI';
+    return Object.prototype.hasOwnProperty.call(XCLI_IMAGE_AGENT_LABELS, agent) ? XCLI_IMAGE_AGENT_LABELS[agent as XcliImageAgent] : agent;
+}
+
+export function xcliProgressMessage(event: XcliEvent, startedAt: number, now: number): string | null {
+    const agent = xcliAgentLabel(event.agent);
+    switch (event.type) {
+        case 'step.started':
+            return `${agent} 开始生成图片`;
+        case 'step.waiting':
+            return `等待 ${agent} 空闲`;
+        case 'step.progress':
+            return `${agent} 生成中（已 ${Math.max(0, Math.floor((now - startedAt) / 1000))} 秒）`;
+        case 'agent.fallback': {
+            const details = event.data as { from?: unknown; to?: unknown; reason?: unknown } | undefined;
+            const reason = typeof details?.reason === 'string' ? details.reason : 'unknown';
+            return `${xcliAgentLabel(details?.from || event.agent)} 不可用（${reason}），改用 ${xcliAgentLabel(details?.to)}`;
+        }
+        default:
+            return null;
+    }
+}
+
+function xcliImageFailure(result: XcliResult): Error {
+    return new Error(`xcli 生成失败（${result.error?.kind || 'no_artifact'}）：${result.error?.message || '未返回图片'}（任务 ${result.task_id}，可运行 xcli result ${result.task_id} 查看详情）`);
+}
+
+const xcliImageAdapter: ImageProviderAdapter = {
+    template: 'xcli',
+    supportsMultiCount: false,
+    async generate(request) {
+        if (request.signal?.aborted) throw new XcliCancelledError();
+        const executable = resolveTrustedXcliExecutable(request.endpoint);
+        const images: string[] = [];
+        let temporaryDirectory: string | undefined;
+        let result: XcliResult;
+        try {
+            for (const reference of request.referenceImages ?? []) {
+                const localPath = isLocalFileLikeReference(reference) ? resolveLocalReferencePath(reference) : null;
+                if (localPath && (await fs.stat(localPath).catch(() => null))?.isFile()) {
+                    images.push(resolve(localPath));
+                    continue;
+                }
+                const decoded = decodeDataUrl(await normalizeReferenceImageInput(reference));
+                if (!decoded || !['image/png', 'image/jpeg', 'image/webp'].includes(decoded.mimeType)) {
+                    throw new Error('参考图格式不支持（仅 PNG、JPEG、WebP）');
+                }
+                const bytes = Buffer.from(decoded.base64, 'base64');
+                if (!bytes.length) throw new Error('参考图格式不支持（仅 PNG、JPEG、WebP）');
+                temporaryDirectory ??= await fs.mkdtemp(join(tmpdir(), 'gardenflow-xcli-'));
+                const extension = decoded.mimeType === 'image/jpeg' ? 'jpg' : decoded.mimeType.split('/')[1];
+                const imagePath = join(temporaryDirectory, `ref-${images.length + 1}.${extension}`);
+                await fs.writeFile(imagePath, bytes);
+                images.push(imagePath);
+            }
+            const startedAt = Date.now();
+            let lastProgress = -Infinity;
+            result = await submitXcliTask(
+                executable,
+                buildXcliImageRequest(request, images, Math.max(1, Math.round(resolveImageRequestTimeoutMs() / 1000))),
+                {
+                    signal: request.signal,
+                    onEvent: (event) => {
+                        const now = Date.now();
+                        const urgent = event.type === 'step.started' || event.type === 'agent.fallback';
+                        if (!urgent && now - lastProgress < 5000) return;
+                        const message = xcliProgressMessage(event, startedAt, now);
+                        if (!message) return;
+                        lastProgress = now;
+                        request.onProgress?.(message);
+                    },
+                },
+            );
+        } finally {
+            if (temporaryDirectory) await fs.rm(temporaryDirectory, { recursive: true, force: true });
+        }
+
+        if (result.status !== 'completed') throw xcliImageFailure(result);
+        const outputs: GeneratedImageOutput[] = [];
+        for (const artifact of result.artifacts) {
+            if (artifact?.kind !== 'image' || typeof artifact.path !== 'string' || !isAbsolute(artifact.path)) continue;
+            const imageBuffer = await fs.readFile(artifact.path);
+            if (!imageBuffer.length) continue;
+            outputs.push({
+                imageBuffer,
+                mimeType: artifact.mime || inferImageMimeType(imageBuffer),
+                size: artifact.width && artifact.height ? `${artifact.width}x${artifact.height}` : undefined,
+            });
+        }
+        if (!outputs.length) throw xcliImageFailure(result);
+        return outputs;
+    },
+};
 
 async function readQwenImageStudioUpload(source: string) {
     const file = await readReferenceImageForMultipart(await normalizeReferenceImageInput(source));
@@ -1733,7 +1812,6 @@ const openAiAdapter: ImageProviderAdapter = {
     template: 'openai-images',
     supportsMultiCount: true,
     async generate(request) {
-        if (request.provider === 'xcli') return generateXcliImages(request);
         const mode = resolveGenerationModeForTemplate('openai-images', request.generationMode);
         const refs = await normalizeReferenceImagesForTransport(
             pickReferenceImages(request, IMAGE_PROVIDER_CAPABILITIES['openai-images'].maxReferenceImages)
@@ -2458,6 +2536,7 @@ const midjourneyProxyAdapter: ImageProviderAdapter = {
 const ADAPTERS: Record<ImageProviderTemplate, ImageProviderAdapter> = {
     [QWEN_IMAGE_STUDIO]: qwenImageStudioAdapter,
     'openai-images': openAiAdapter,
+    xcli: xcliImageAdapter,
     'openai-chat-completions-image': openAiChatCompletionsImageAdapter,
     'gemini-openai-images': geminiOpenAiAdapter,
     'gemini-imagen-native': geminiImagenNativeAdapter,
@@ -2471,9 +2550,12 @@ const ADAPTERS: Record<ImageProviderTemplate, ImageProviderAdapter> = {
 
 export function normalizeImageProviderTemplate(providerTemplate?: string, provider?: string): ImageProviderTemplate {
     const normalizedTemplate = String(providerTemplate || '').trim().toLowerCase();
+    const normalizedProvider = String(provider || '').trim().toLowerCase();
+    if (normalizedProvider === 'xcli') return 'xcli';
     const supportedTemplates = new Set<ImageProviderTemplate>([
         QWEN_IMAGE_STUDIO,
         'openai-images',
+        'xcli',
         'openai-chat-completions-image',
         'gemini-openai-images',
         'gemini-imagen-native',
@@ -2488,7 +2570,6 @@ export function normalizeImageProviderTemplate(providerTemplate?: string, provid
         return normalizedTemplate as ImageProviderTemplate;
     }
 
-    const normalizedProvider = String(provider || '').trim().toLowerCase();
     if (normalizedProvider === QWEN_IMAGE_STUDIO) return QWEN_IMAGE_STUDIO;
     if (normalizedProvider.includes('midjourney') || normalizedProvider.includes('mj')) {
         return 'midjourney-proxy';

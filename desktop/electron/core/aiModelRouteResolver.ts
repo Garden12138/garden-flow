@@ -9,6 +9,7 @@ import { resolveModelScopeFromContextType, resolveScopedModelName } from './mode
 import { normalizeApiBaseUrl } from './urlUtils.ts';
 import { QWEN_IMAGE_STUDIO } from '../../shared/qwenImageStudio.ts';
 import { imageRoutingForPreset } from '../../shared/imageSourceRouting.ts';
+import { normalizeXcliImageAgent, normalizeXcliSource } from '../../shared/xcliSource.ts';
 
 export type AiRouteScope = 'chat' | 'wander' | 'knowledge' | 'gardenflow';
 
@@ -258,8 +259,12 @@ export function resolveConfiguredImageRoute(settings: Record<string, unknown>, r
   if (!source || !preset) return null;
   const routing = imageRoutingForPreset(preset);
   if (preset === 'xcli') {
-    const xcli = resolveXcliImageRoute(settings);
-    return xcli ? { ...xcli, ...routing } : null;
+    return {
+      endpoint: text(normalizeXcliSource(source).baseURL) || 'xcli',
+      apiKey: '',
+      model: normalizeXcliImageAgent(selectedModel),
+      ...routing,
+    };
   }
   const endpoint = normalizeApiBaseUrl(text(source.baseURL || source.baseUrl));
   const model = requested || selectedModel;
@@ -269,13 +274,11 @@ export function resolveConfiguredImageRoute(settings: Record<string, unknown>, r
   return { endpoint, apiKey, model, ...routing };
 }
 
-export function resolveXcliImageRoute(settings: Record<string, unknown>): { endpoint: string; apiKey: string; model: string } | null {
+export function resolveXcliSourceExecutable(settings: Record<string, unknown>): string {
   const route = parseAiModelRoutesValue(settings.ai_model_routes_json).image as Record<string, unknown> | undefined;
-  if (!route || route.mode === 'disabled') return null;
-  const source = findSource(parseAiSources(settings), text(route.sourceId));
-  if (source?.presetId !== 'xcli') return null;
-  const apiKey = text(source.apiKey);
-  const model = text(route.model || source.model);
-  if (!apiKey || apiKey === 'local' || !model) throw new Error('Configure an xcli image alias and independent Token');
-  return { endpoint: xcliEndpoint(text(source.baseURL)), apiKey, model };
+  const sources = parseAiSources(settings).filter((source) => source.presetId === 'xcli');
+  const selected = route?.mode === 'disabled' ? null : findSource(sources, text(route?.sourceId || route?.source_id));
+  const source = selected || sources[0];
+  if (!source) throw new Error('请先在设置中添加 xcli 来源');
+  return text(normalizeXcliSource(source).baseURL) || 'xcli';
 }

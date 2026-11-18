@@ -1,4 +1,4 @@
-import { resolveConfiguredImageRoute } from './aiModelRouteResolver';
+import { resolveConfiguredImageRoute, resolveXcliSourceExecutable } from './aiModelRouteResolver';
 import { assertImagePromptBudget } from '../../shared/imagePromptBudget';
 import { QWEN_IMAGE_STUDIO, QWEN_IMAGE_STUDIO_DEFAULT_SIZE, QWEN_IMAGE_STUDIO_MODEL } from '../../shared/qwenImageStudio';
 import { getSettings } from '../db';
@@ -13,6 +13,8 @@ import {
     type ImageGenerationMode,
 } from './imageProviderAdapters';
 import { normalizeApiBaseUrl } from './urlUtils';
+import { normalizeXcliImageAgent } from '../../shared/xcliSource';
+import { XcliCancelledError } from './xcliClient';
 
 export interface GenerateImagesInput {
     prompt: string;
@@ -32,6 +34,15 @@ export interface GenerateImagesInput {
     endpoint?: string;
     apiKey?: string;
     aspectRatio?: string;
+    signal?: AbortSignal;
+    onProgress?: (message: string) => void;
+}
+
+export class XcliPrivateProjectError extends Error {
+    constructor() {
+        super('私密项目暂不支持 xcli 生图：xcli 和各 CLI 会在项目外保存提示词副本。请为私密项目选择其他图片来源。');
+        this.name = 'XcliPrivateProjectError';
+    }
 }
 
 export interface GenerateImagesResult {
@@ -104,7 +115,8 @@ export function resolveQwenImageApiKey(inputApiKey: string | undefined, endpoint
 }
 
 export async function generateImagesToMediaLibrary(input: GenerateImagesInput): Promise<GenerateImagesResult> {
-    const normalizedPrompt = String(input.prompt || '').trim();
+    const rawPrompt = String(input.prompt || '');
+    const normalizedPrompt = rawPrompt.trim();
     if (!normalizedPrompt) {
         throw new Error('Prompt is required');
     }
@@ -114,16 +126,20 @@ export async function generateImagesToMediaLibrary(input: GenerateImagesInput): 
         ? resolveConfiguredImageRoute(settings, input.model)
         : null;
     if (route) input = { ...input, ...route };
-    const provider = String(input.provider || settings.image_provider || 'openai-compatible').trim();
+    const requestedProvider = String(input.provider || settings.image_provider || 'openai-compatible').trim();
     const providerTemplate = normalizeImageProviderTemplate(
         String(input.providerTemplate || settings.image_provider_template || '').trim(),
-        provider
+        requestedProvider
     );
+    const isXcli = providerTemplate === 'xcli';
+    if (isXcli && input.privacyScope === 'project') throw new XcliPrivateProjectError();
+    const provider = isXcli ? 'xcli' : requestedProvider;
+    const prompt = isXcli ? rawPrompt : normalizedPrompt;
     const defaultImageEndpoint = resolveDefaultImageEndpoint(providerTemplate);
     const openAiFallbackEndpoint = providerTemplate === 'openai-images' || providerTemplate === 'openai-chat-completions-image'
         ? String(settings.api_endpoint || '').trim()
         : '';
-    const endpoint = normalizeApiBaseUrl(
+    const endpoint = isXcli ? resolveXcliSourceExecutable(settings) : normalizeApiBaseUrl(
         String(
             input.endpoint ||
             settings.image_endpoint ||
@@ -133,16 +149,16 @@ export async function generateImagesToMediaLibrary(input: GenerateImagesInput): 
         ).trim()
     );
     const isQwenStudio = providerTemplate === QWEN_IMAGE_STUDIO;
-    const apiKey = route ? String(input.apiKey || '').trim()
+    const apiKey = isXcli ? '' : route ? String(input.apiKey || '').trim()
         : isQwenStudio ? resolveQwenImageApiKey(input.apiKey, endpoint, settings)
-        : String(input.apiKey || settings.image_api_key || (provider !== 'xcli' ? settings.api_key : '') || '').trim();
-    const model = String(input.model || settings.image_model || resolveDefaultImageModel(providerTemplate)).trim();
+        : String(input.apiKey || settings.image_api_key || settings.api_key || '').trim();
+    const model = isXcli ? normalizeXcliImageAgent(input.model || settings.image_model)
+        : String(input.model || settings.image_model || resolveDefaultImageModel(providerTemplate)).trim();
     const size = isQwenStudio ? String(input.size || QWEN_IMAGE_STUDIO_DEFAULT_SIZE).trim()
-        : provider === 'xcli' ? String(input.size || settings.image_size || 'auto').trim()
         : normalizeImageSize(String(input.size || settings.image_size || '').trim());
     const quality = isQwenStudio ? 'auto' : String(input.quality || settings.image_quality || 'standard').trim();
     const rawReferenceImages = Array.isArray(input.referenceImages)
-        ? input.referenceImages.map((item) => String(item || '').trim()).filter(Boolean).slice(0, provider === 'xcli' || input.privacyScope === 'project' ? undefined : 4)
+        ? input.referenceImages.map((item) => String(item || '').trim()).filter(Boolean).slice(0, input.privacyScope === 'project' ? undefined : 4)
         : [];
     const requestedGenerationMode = (
         input.generationMode === 'image-to-image' ||
@@ -154,13 +170,12 @@ export async function generateImagesToMediaLibrary(input: GenerateImagesInput): 
     const aspectRatio = isQwenStudio ? '1:1' : normalizeImageAspectRatio(
         String(input.aspectRatio || settings.image_aspect_ratio || '').trim()
     );
-    const count = provider === 'xcli' ? Number(input.count ?? 1) : Math.max(1, Math.min(4, Number(input.count) || 1));
-    if (provider === 'xcli' && (providerTemplate !== 'openai-images' || rawReferenceImages.length > 4 || (requestedGenerationMode !== 'text-to-image' && !rawReferenceImages.length))) throw new Error('xcli requires openai-images and complete reference inputs (at most four)');
+    const count = Math.max(1, Math.min(4, Number(input.count) || 1));
 
     if (!endpoint) {
         throw new Error('Image endpoint is missing. Please configure it in Settings.');
     }
-    if (!apiKey) {
+    if (!apiKey && !isXcli) {
         throw new Error('Image API key is missing. Please configure it in Settings.');
     }
 
@@ -186,7 +201,7 @@ export async function generateImagesToMediaLibrary(input: GenerateImagesInput): 
     }
     const images = adapter.supportsMultiCount
         ? await adapter.generate({
-            prompt: normalizedPrompt,
+            prompt,
             promptExtend: input.promptExtend,
             model,
             endpoint,
@@ -200,10 +215,12 @@ export async function generateImagesToMediaLibrary(input: GenerateImagesInput): 
             size,
             quality,
             count,
+            signal: input.signal,
+            onProgress: input.onProgress,
         })
         : (await Promise.all(
             Array.from({ length: count }, async () => adapter.generate({
-                prompt: normalizedPrompt,
+                prompt,
                 promptExtend: input.promptExtend,
                 model,
                 endpoint,
@@ -216,9 +233,12 @@ export async function generateImagesToMediaLibrary(input: GenerateImagesInput): 
                 size,
                 quality,
                 count: 1,
+                signal: input.signal,
+                onProgress: input.onProgress,
             }))
         )).flat();
 
+    if (isXcli && input.signal?.aborted) throw new XcliCancelledError();
     if (images.length === 0) {
         throw new Error('Image generation returned no valid image payload.');
     }

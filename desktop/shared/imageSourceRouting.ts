@@ -2,7 +2,7 @@ import { QWEN_IMAGE_STUDIO } from './qwenImageStudio.ts';
 
 export function imageRoutingForPreset(presetId: string): { provider: string; providerTemplate: string } {
     const preset = presetId.trim().toLowerCase();
-    if (preset === 'xcli') return { provider: 'xcli', providerTemplate: 'openai-images' };
+    if (preset === 'xcli') return { provider: 'xcli', providerTemplate: 'xcli' };
     if (preset === QWEN_IMAGE_STUDIO) return { provider: QWEN_IMAGE_STUDIO, providerTemplate: QWEN_IMAGE_STUDIO };
     if (preset.includes('dashscope') || preset.includes('qwen') || preset === 'buts') {
         return { provider: 'dashscope', providerTemplate: 'dashscope-wan-native' };
