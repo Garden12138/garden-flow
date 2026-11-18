@@ -69,7 +69,8 @@ export async function productVideoHarness(options: { platformVersions?: boolean;
             export const getTaskGraphRuntime = () => runtime;
             export const getAgentRuntime = () => ({ failExecution: (id) => {state.tasks.get(id).status = 'failed';}, completeExecution: (id) => {state.tasks.get(id).status = 'completed';} });`,
         video: `export class VideoGenerateTool { async execute() { globalThis.__fixture.videoCalls++; throw new Error('unexpected video generation'); } }`,
-        imageProvider: `export const generateImagesToMediaLibrary = async (input) => { const state = globalThis.__fixture; state.imageCalls++; if (state.imageHook) return state.imageHook(input); throw new Error('unexpected image generation'); };
+        imageProvider: `export class XcliPrivateProjectError extends Error {}
+            export const generateImagesToMediaLibrary = async (input) => { const state = globalThis.__fixture; state.imageCalls++; if (state.imageHook) return state.imageHook(input); throw new Error('unexpected image generation'); };
             export const resolveDefaultImageModel = () => 'fixture-image';
             export const resolveDefaultImageEndpoint = () => 'https://image.invalid/v1';`,
         imageRenderer: `export const getProductImageFontCss = async () => '';

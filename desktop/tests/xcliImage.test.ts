@@ -17,6 +17,7 @@ import {
 } from '../electron/core/xcliClient.ts';
 import * as imageProviders from '../electron/core/imageProviderAdapters.ts';
 import * as modelRoutes from '../electron/core/aiModelRouteResolver.ts';
+import type { MediaJobProjection } from '../electron/core/mediaGenerationJobRegistry.ts';
 
 const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
 const unixOnly = { skip: process.platform === 'win32' };
@@ -61,11 +62,11 @@ if (args === 'agents --json') {
     process.stdin.on('end', () => {
         fs.writeFileSync(process.env.XCLI_FAKE_STDIN, stdin);
         if (mode === 'hang') {
-            const timer = setInterval(() => {}, 1000);
+            const watchdog = setTimeout(() => process.exit(99), 4000);
             process.on('SIGTERM', () => {
                 fs.writeFileSync(process.env.XCLI_FAKE_SIGNAL, 'SIGTERM');
                 finish('cancelled');
-                clearInterval(timer);
+                clearTimeout(watchdog);
                 process.exitCode = 130;
             });
             event('step.started');
@@ -92,31 +93,47 @@ if (args === 'agents --json') {
     return { directory, executable, stdinPath, signalPath };
 }
 
-async function loadImageService(settings: Record<string, unknown>) {
+async function loadXcliModule<T>(entryPoint: string, settings: Record<string, unknown>, root?: string) {
+    const stubs: Record<string, string> = {
+        db: `export const getSettings = () => globalThis.settings;
+            export const getWorkspacePaths = () => ({ base: globalThis.root, media: globalThis.root });
+            export const getWorkspacePathsForSpace = getWorkspacePaths;`,
+        mediaLibraryStore: `export const createGeneratedMediaAsset = async ({ mimeType, size }) => ({ mimeType, size });
+            export const getAbsoluteMediaPath = path => path;`,
+        videoGenerationService: `export const generateVideosToMediaLibrary = async () => { throw new Error('Unexpected video generation'); };`,
+    };
     const compiled = await build({
-        entryPoints: [fileURLToPath(new URL('../electron/core/imageGenerationService.ts', import.meta.url))],
+        entryPoints: [fileURLToPath(new URL(entryPoint, import.meta.url))],
         bundle: true,
         write: false,
         platform: 'node',
         format: 'cjs',
         plugins: [{
-            name: 'xcli-image-service-fixtures',
+            name: 'xcli-fixtures',
             setup(builder) {
-                builder.onResolve({ filter: /(?:^|\/)(db|mediaLibraryStore)$/ }, (args) => ({ path: args.path, namespace: 'fixture' }));
-                builder.onLoad({ filter: /.*/, namespace: 'fixture' }, ({ path: file }) => ({
-                    loader: 'js',
-                    contents: file.endsWith('/db')
-                        ? 'export const getSettings = () => globalThis.settings;'
-                        : 'export const createGeneratedMediaAsset = async ({ mimeType, size }) => ({ mimeType, size });',
+                builder.onResolve({ filter: /(?:^|\/)(db|mediaLibraryStore|videoGenerationService)$/ }, (args) => ({
+                    path: path.basename(args.path), namespace: 'fixture',
                 }));
+                builder.onLoad({ filter: /.*/, namespace: 'fixture' }, ({ path: key }) => ({ loader: 'js', contents: stubs[key] }));
             },
         }],
     });
-    const module = { exports: {} as typeof import('../electron/core/imageGenerationService.ts') };
+    const module = { exports: {} as T };
     vm.runInNewContext(compiled.outputFiles[0].text, {
-        module, exports: module.exports, require: createRequire(import.meta.url), settings, Buffer, URL, process, console, setTimeout, clearTimeout,
+        module, exports: module.exports, require: createRequire(import.meta.url), settings, root,
+        Buffer, URL, process, console, AbortController, setTimeout, clearTimeout,
     });
     return module.exports;
+}
+
+function loadImageService(settings: Record<string, unknown>) {
+    return loadXcliModule<typeof import('../electron/core/imageGenerationService.ts')>('../electron/core/imageGenerationService.ts', settings);
+}
+
+function loadJobRegistry(fake: ReturnType<typeof makeFakeXcli>) {
+    return loadXcliModule<typeof import('../electron/core/mediaGenerationJobRegistry.ts')>(
+        '../electron/core/mediaGenerationJobRegistry.ts', xcliSettings(fake.executable), fake.directory,
+    );
 }
 
 const xcliSource = (baseURL: string, id = 'cli') => ({ id, presetId: 'xcli', baseURL, model: 'auto' });
@@ -334,4 +351,40 @@ test('uses the saved xcli executable when an image request supplies a different 
     assert.equal(result.assets.length, 1);
     assert.equal(result.assets[0].mimeType, 'image/png');
     assert.equal(JSON.parse(fs.readFileSync(fake.stdinPath, 'utf8')).goal, adapterInput.prompt);
+});
+
+test('records xcli media progress and cancels the child process through the job registry', unixOnly, async (t) => {
+    const fake = makeFakeXcli(t, 'hang');
+    const { MediaGenerationJobRegistry } = await loadJobRegistry(fake);
+    const registry = new MediaGenerationJobRegistry();
+    const deadline = Date.now() + 5000;
+    const progress = new Promise<MediaJobProjection>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('No xcli start progress from the registry')), 3000);
+        registry.on('job-updated', (job: MediaJobProjection) => {
+            if (job.recentEvents.some((event) => event.eventType === 'progress' && event.message === 'Codex 开始生成图片')) {
+                clearTimeout(timeout);
+                resolve(job);
+            }
+        });
+    });
+    const { jobId } = await registry.submit('image', { prompt: '猫' });
+    assert.equal((await progress).jobId, jobId);
+    await registry.cancelJob(jobId);
+    const result = await registry.awaitJob(jobId, Math.max(deadline - Date.now(), 0));
+    assert.equal(result?.status, 'cancelled');
+    assert.equal(result?.artifacts.length, 0);
+    assert.equal(fs.readFileSync(fake.signalPath, 'utf8'), 'SIGTERM');
+});
+
+test('shows the exact private-project xcli error as a definite job failure', unixOnly, async (t) => {
+    const fake = makeFakeXcli(t);
+    const { MediaGenerationJobRegistry } = await loadJobRegistry(fake);
+    const registry = new MediaGenerationJobRegistry('test-space', 'media-jobs.json', 'private-test');
+    const { jobId } = await registry.submit('image', { prompt: 'private prompt', projectId: 'private-test' });
+    const result = await registry.awaitJob(jobId, 5000);
+    const message = '私密项目暂不支持 xcli 生图：xcli 和各 CLI 会在项目外保存提示词副本。请为私密项目选择其他图片来源。';
+    assert.equal(result?.status, 'failed');
+    assert.equal(result?.result?.error, message);
+    assert.equal(result?.recentEvents.at(-1)?.message, message);
+    assert.equal(fs.existsSync(fake.stdinPath), false);
 });

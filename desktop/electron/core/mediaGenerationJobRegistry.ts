@@ -6,7 +6,7 @@ import { EventEmitter } from 'node:events';
 import { getSettings, getWorkspacePaths, getWorkspacePathsForSpace } from '../db';
 import { createGeneratedMediaAsset, getAbsoluteMediaPath, type MediaAsset } from './mediaLibraryStore';
 import { isPathWithinRoots, resolveAssetSourceToPath, toAppAssetUrl } from './localAssetManager';
-import { generateImagesToMediaLibrary } from './imageGenerationService';
+import { generateImagesToMediaLibrary, XcliPrivateProjectError } from './imageGenerationService';
 import { generateVideosToMediaLibrary } from './videoGenerationService';
 import { normalizeApiBaseUrl, safeUrlJoin } from './urlUtils';
 import {
@@ -664,6 +664,10 @@ export class MediaGenerationJobRegistry extends EventEmitter {
           endpoint: optionalText(request.endpoint) || optionalText(request.baseURL),
           apiKey: optionalText(request.apiKey),
           aspectRatio: optionalText(request.aspectRatio),
+          signal: controller.signal,
+          onProgress: (message: string) => {
+            if (!controller.signal.aborted) void this.recordEvent(job, 'progress', message).catch(() => {});
+          },
         });
         result = {
           ...imageResult,
@@ -738,7 +742,8 @@ export class MediaGenerationJobRegistry extends EventEmitter {
       }
       await this.setStatus(job, 'completed', 'completed', '媒体生成完成', { artifactCount: assets.length });
     } catch (error) {
-      const message = this.privateProjectId
+      const privateXcliRejected = error instanceof XcliPrivateProjectError;
+      const message = this.privateProjectId && !privateXcliRejected
         ? '私密媒体请求未成功完成，请核对供应商状态后决定是否重试'
         : error instanceof Error ? error.message : String(error);
       if (job.status === 'cancel_requested' || controller.signal.aborted) {
@@ -747,7 +752,7 @@ export class MediaGenerationJobRegistry extends EventEmitter {
       } else {
         if (job.attempt) job.attempt.lastError = message;
         job.result = { success: false, error: message };
-        const unknown = Boolean(this.privateProjectId && ['submitting', 'polling'].includes(job.status) && !(error instanceof AudioProviderRequestError && error.terminal));
+        const unknown = Boolean(this.privateProjectId && !privateXcliRejected && ['submitting', 'polling'].includes(job.status) && !(error instanceof AudioProviderRequestError && error.terminal));
         await this.setStatus(job, unknown ? 'submission_unknown' : 'failed', unknown ? 'submission_unknown' : 'failed', message, { error: message });
       }
     } finally {
