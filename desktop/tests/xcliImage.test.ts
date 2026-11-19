@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import { build } from 'esbuild';
 import { normalizeXcliImageAgent, normalizeXcliSource } from '../shared/xcliSource.ts';
+import { applyGenerationToolConstraints, ImageGenerateParamsSchema } from '../shared/mediaGenerationContracts.ts';
 import {
     listXcliAgents,
     resolveTrustedXcliExecutable,
@@ -27,6 +28,11 @@ const request = { version: 1, capability: 'image', goal: '猫', timeout_sec: 120
 const legacyGatewayEndpoint = 'http://127.0.0.1:19471/v1';
 const legacyImageAlias = 'xcli/legacy-image';
 const legacyChatAlias = 'xcli/legacy-chat';
+const officialProxy = {
+    id: 'proxy', name: 'GardenFlow 官方', presetId: 'gardenflow-official',
+    baseURL: 'https://proxy.example.test/v1', apiKey: 'fixture-key', model: 'gardenflow-max',
+    modelsMeta: [{ id: 'gardenflow-image', capabilities: ['image'] }, { id: 'codex', capabilities: ['image'] }],
+};
 
 function makeFakeXcli(t: TestContext, mode = 'ok') {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'gf-fake-xcli-'));
@@ -443,6 +449,51 @@ test('does not infer chat support for CLI IDs already described as image models'
     ]);
     assert.equal(hasImageGenerationConfig({}, { ...adapterInput, sourceId: 'cli' }), true);
     assert.equal(hasImageGenerationConfig({}, { endpoint: 'https://example.test/v1', sourceId: 'http' }), false);
+});
+
+test('keeps saved proxy presets distinct from xcli in Settings', async () => {
+    const { getAiSourcePresetOptions, inferPresetIdByEndpoint } = await loadXcliModule<typeof import('../src/config/aiSources.ts')>(
+        '../src/config/aiSources.ts', {},
+    );
+    const options = getAiSourcePresetOptions(officialProxy, true);
+    assert.equal(options.find((option) => option.id === officialProxy.presetId)?.label, officialProxy.name);
+    assert.ok(options.some((option) => option.id === 'xcli'));
+    assert.equal(inferPresetIdByEndpoint('https://proxy.example.test/xcli/v1'), 'custom');
+});
+
+test('keeps the xcli picker selection distinct from the proxy model and routes the locked Agent tool call', unixOnly, async (t) => {
+    const fake = makeFakeXcli(t);
+    const settings = {
+        ai_sources_json: JSON.stringify([officialProxy, xcliSource(fake.executable)]),
+        ai_model_routes_json: JSON.stringify({ image: { mode: 'custom', sourceId: 'proxy', model: 'gardenflow-image' } }),
+        image_model: 'gardenflow-image',
+    };
+    const { buildImageModelOptions, getDefaultImageModelSelection, resolveSelectedModelOverride } = await loadXcliModule<typeof import('../src/features/media-generation/audioOptions.ts')>(
+        '../src/features/media-generation/audioOptions.ts', {},
+    );
+    const options = buildImageModelOptions(settings);
+    assert.ok(options.some((option) => option.value === 'codex' && option.description === 'GardenFlow 官方'));
+    const xcli = options.find((option) => option.label === 'xcli · Codex');
+    assert.ok(xcli);
+    assert.notEqual(xcli.value, 'codex');
+    assert.equal(getDefaultImageModelSelection({ image_provider: 'xcli', image_model: 'codex' }), xcli.value);
+    const route = resolveSelectedModelOverride(settings, 'image', 'image', xcli.value);
+    assert.equal(route.provider, 'xcli');
+    assert.equal(route.sourceId, 'cli');
+    const args = applyGenerationToolConstraints('image_generate', {
+        prompt: '猫', model: 'gardenflow-image', provider: 'openai-compatible',
+    }, { imageGenerate: { model: route.model, sourceId: route.sourceId } });
+    const { generateImagesToMediaLibrary } = await loadImageService(settings);
+    const image = await generateImagesToMediaLibrary(ImageGenerateParamsSchema.parse(args));
+    assert.equal(image.provider, 'xcli');
+    assert.equal(JSON.parse(fs.readFileSync(fake.stdinPath, 'utf8')).agent, 'codex');
+
+    const xcliDefault = { ...settings, ai_model_routes_json: JSON.stringify(xcliSettings(fake.executable).ai_model_routes_json) };
+    const proxy = modelRoutes.resolveConfiguredImageRoute(xcliDefault, 'gardenflow-image', officialProxy.id);
+    assert.equal(proxy?.endpoint, officialProxy.baseURL);
+    assert.equal(proxy?.model, 'gardenflow-image');
+    assert.equal(proxy?.provider, 'openai-compatible');
+    assert.throws(() => modelRoutes.resolveConfiguredImageRoute(xcliDefault, 'codex', 'removed'), /图片供应商已移除/);
 });
 
 test('generates a cover without an API key using only the saved xcli path', unixOnly, async (t) => {

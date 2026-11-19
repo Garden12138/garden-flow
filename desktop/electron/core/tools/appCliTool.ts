@@ -3767,6 +3767,7 @@ export class AppCliTool extends DeclarativeTool<typeof AppCliParamsSchema> {
                 mask: readFlag(parsed.flags, 'mask') || (payload.mask as string | undefined),
                 count: xhsTarget ? 1 : parseNumber(readFlag(parsed.flags, 'count') || payload.count),
                 model: readFlag(parsed.flags, 'model') || (payload.model as string | undefined),
+                sourceId: readFlag(parsed.flags, 'source-id') || (typeof payload.sourceId === 'string' ? payload.sourceId : undefined),
                 provider: readFlag(parsed.flags, 'provider') || (payload.provider as string | undefined),
                 providerTemplate: readFlag(parsed.flags, 'template', 'provider-template') || (payload.providerTemplate as string | undefined),
                 aspectRatio: readFlag(parsed.flags, 'ratio', 'aspect-ratio') || (payload.aspectRatio as string | undefined),

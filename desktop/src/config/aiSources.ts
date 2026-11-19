@@ -1,5 +1,5 @@
 
-import { QWEN_IMAGE_STUDIO, QWEN_IMAGE_STUDIO_MODEL } from '../../shared/qwenImageStudio';
+import { QWEN_IMAGE_STUDIO, QWEN_IMAGE_STUDIO_MODEL } from '../../shared/qwenImageStudio.ts';
 
 export interface AiSourcePreset {
   id: string;
@@ -89,19 +89,27 @@ export const findAiPresetById = (presetId: string): AiSourcePreset | undefined =
   return AI_SOURCE_PRESETS.find((preset) => preset.id === presetId);
 };
 
+export function getAiSourcePresetOptions(source: AiSourceConfig, supportsXcli: boolean): AiSourcePreset[] {
+  const presets = AI_SOURCE_PRESETS.filter((preset) => supportsXcli || preset.id !== 'xcli');
+  if (findAiPresetById(source.presetId)) return presets;
+  return [{
+    id: source.presetId,
+    label: source.name?.trim() || source.presetId || '自定义供应商',
+    baseURL: source.baseURL,
+    protocol: source.protocol || 'openai',
+  }, ...presets];
+}
+
 export const inferPresetIdByEndpoint = (endpoint: string): string => {
   const normalized = normalizeEndpoint(endpoint);
   if (!normalized) return DEFAULT_AI_PRESET_ID;
+  const httpPresets = AI_SOURCE_PRESETS.filter((preset) => preset.id !== 'xcli' && preset.baseURL);
 
-  const exact = AI_SOURCE_PRESETS.find((preset) => {
-    if (!preset.baseURL) return false;
-    return normalizeEndpoint(preset.baseURL) === normalized;
-  });
+  const exact = httpPresets.find((preset) => normalizeEndpoint(preset.baseURL) === normalized);
   if (exact) return exact.id;
 
-  const prefixMatches = AI_SOURCE_PRESETS
+  const prefixMatches = httpPresets
     .map((preset) => {
-      if (!preset.baseURL) return null;
       const presetBase = normalizeEndpoint(preset.baseURL);
       if (!presetBase) return null;
       return normalized.startsWith(presetBase)
@@ -115,9 +123,8 @@ export const inferPresetIdByEndpoint = (endpoint: string): string => {
     return prefixMatches[0].id;
   }
 
-  const fuzzyMatches = AI_SOURCE_PRESETS
+  const fuzzyMatches = httpPresets
     .map((preset) => {
-      if (!preset.baseURL) return null;
       const presetHost = normalizeEndpoint(preset.baseURL)
         .replace(/^https?:\/\//, '')
         .split('/')[0];

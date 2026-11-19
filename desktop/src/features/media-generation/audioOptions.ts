@@ -1,6 +1,6 @@
 import { QWEN_IMAGE_STUDIO } from '../../../shared/qwenImageStudio';
 import { imageRoutingForPreset } from '../../../shared/imageSourceRouting';
-import { normalizeXcliImageAgent } from '../../../shared/xcliSource';
+import { normalizeXcliImageAgent, XCLI_IMAGE_AGENT_LABELS, XCLI_IMAGE_AGENTS, type XcliImageAgent } from '../../../shared/xcliSource';
 import { findAiPresetById, inferPresetIdByEndpoint, type AiSourceConfig } from '../../config/aiSources';
 import { filterAiModelsByCapability, normalizeAiModelDescriptors, parseAiSources } from '../../pages/settings/shared';
 import { getAppTitleBarPlatform } from '../app-shell/AppTitleBar';
@@ -114,7 +114,7 @@ export function getAiSourceTypeLabel(source: AiSourceConfig): string {
     const presetId = String(source.presetId || inferPresetIdByEndpoint(source.baseURL || '') || '').trim();
     const preset = findAiPresetById(presetId);
     if (preset?.label) return preset.label;
-    if (presetId) return presetId;
+    if (presetId) return source.name?.trim() || presetId;
     return source.protocol ? source.protocol.toUpperCase() : 'Custom';
 }
 
@@ -128,6 +128,16 @@ export function getAiSourceModelDescriptors(source: AiSourceConfig) {
         ...metadata,
         ...[...(source.models || []), source.model].filter((id) => !described.has(id)).map((id) => ({ id })),
     ]);
+}
+
+function xcliModelSelection(agent: XcliImageAgent): string {
+    return `xcli:${agent}`;
+}
+
+export function getDefaultImageModelSelection(settings: SettingsShape): string {
+    return settings.image_provider === 'xcli' || settings.image_provider_template === 'xcli'
+        ? xcliModelSelection(normalizeXcliImageAgent(settings.image_model))
+        : String(settings.image_model || '').trim();
 }
 
 export function buildImageModelOptions(settings: SettingsShape): PickerOption[] {
@@ -147,9 +157,12 @@ export function buildImageModelOptions(settings: SettingsShape): PickerOption[] 
             : sourceType;
 
         for (const model of imageModels) {
-            const existing = optionsByModel.get(model.id);
+            const xcliAgent = source.presetId === 'xcli' ? normalizeXcliImageAgent(model.id) : undefined;
+            const value = xcliAgent ? xcliModelSelection(xcliAgent) : model.id;
+            const label = xcliAgent ? `xcli · ${XCLI_IMAGE_AGENT_LABELS[xcliAgent]}` : model.id;
+            const existing = optionsByModel.get(value);
             if (!existing) {
-                optionsByModel.set(model.id, { label: model.id, sourceLabels: [sourceLabel] });
+                optionsByModel.set(value, { label, sourceLabels: [sourceLabel] });
                 continue;
             }
             if (!existing.sourceLabels.includes(sourceLabel)) {
@@ -157,9 +170,9 @@ export function buildImageModelOptions(settings: SettingsShape): PickerOption[] 
             }
         }
     }
-    const xcliDefault = settings.image_provider === 'xcli' || settings.image_provider_template === 'xcli';
-    const currentImageModel = xcliDefault ? (supportsXcli ? normalizeXcliImageAgent(settings.image_model) : '') : String(settings.image_model || '').trim();
-    if (currentImageModel && !optionsByModel.has(currentImageModel)) {
+    const currentImageModel = getDefaultImageModelSelection(settings);
+    const currentIsXcli = settings.image_provider === 'xcli' || settings.image_provider_template === 'xcli';
+    if (currentImageModel && !currentIsXcli && !optionsByModel.has(currentImageModel)) {
         optionsByModel.set(currentImageModel, { label: currentImageModel, sourceLabels: ['当前设置'] });
     }
 
@@ -252,7 +265,10 @@ export function resolveSelectedModelOverride(
     if (!selectedModel) return {};
     const sources = parseAiSources(settings.ai_sources_json);
     const supportsXcli = getAppTitleBarPlatform() !== 'windows';
-    const candidates = sources.filter((source) => (supportsXcli || source.presetId !== 'xcli') && sourceContainsModel(source, capability, selectedModel));
+    const xcliAgent = scope === 'image' ? XCLI_IMAGE_AGENTS.find((agent) => xcliModelSelection(agent) === selectedModel) : undefined;
+    const candidates = sources.filter((source) => source.presetId === 'xcli'
+        ? supportsXcli && Boolean(xcliAgent)
+        : !xcliAgent && sourceContainsModel(source, capability, selectedModel));
     if (candidates.length === 0) return {};
 
     const routes = parseAiModelRoutes(settings);
@@ -265,7 +281,7 @@ export function resolveSelectedModelOverride(
     const defaultSourceId = String(settings.default_ai_source_id || '').trim();
 
     const selectedSource = (
-        routeSourceId && (!routeModel || routeModel === selectedModel)
+        routeSourceId && (xcliAgent || !routeModel || routeModel === selectedModel)
             ? candidates.find((source) => source.id === routeSourceId)
             : null
     )
@@ -274,7 +290,7 @@ export function resolveSelectedModelOverride(
 
     const routeOverride = aiSourceToRouteOverride(selectedSource);
     return scope === 'image'
-        ? { ...routeOverride, ...imageRoutingForPreset(selectedSource.presetId || inferPresetIdByEndpoint(selectedSource.baseURL || '') || '') }
+        ? { ...routeOverride, ...(xcliAgent ? { model: xcliAgent } : {}), ...imageRoutingForPreset(selectedSource.presetId || inferPresetIdByEndpoint(selectedSource.baseURL || '') || '') }
         : routeOverride;
 }
 

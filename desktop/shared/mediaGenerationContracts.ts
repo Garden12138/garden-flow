@@ -30,6 +30,7 @@ export const ImageGenerateParamsSchema = z.object({
     size: z.string().min(1).optional(),
     quality: z.string().min(1).optional(),
     model: z.string().min(1).optional(),
+    sourceId: z.string().min(1).optional().describe('Identifier of a saved image provider.'),
     provider: z.string().min(1).optional(),
     providerTemplate: z.string().min(1).optional(),
     generationMode: z.enum(['text-to-image', 'image-to-image', 'reference-guided']).optional(),
@@ -120,6 +121,7 @@ export const AudioGenerateParamsSchema = z.object({
 export const GenerationToolConstraintsSchema = z.object({
     imageGenerate: z.object({
         model: z.string().min(1).optional(),
+        sourceId: z.string().min(1).optional(),
     }).strict().optional(),
     videoGenerate: z.object({
         operation: z.enum(['generate', 'generate-note']).optional(),

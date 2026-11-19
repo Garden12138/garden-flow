@@ -37,6 +37,7 @@ export interface GenerateCoverInput {
     templateName?: string;
     count?: number;
     model?: string;
+    sourceId?: string;
     provider?: string;
     providerTemplate?: ImageProviderTemplate | string;
     endpoint?: string;
@@ -223,8 +224,8 @@ export async function generateCoverAssets(input: GenerateCoverInput): Promise<Ge
     const { images: referenceImages, referenceMode } = normalizeReferenceImages(input);
 
     const settings = (getSettings() || {}) as Record<string, unknown>;
-    const route = !input.provider && !input.providerTemplate && !input.endpoint
-        ? resolveConfiguredImageRoute(settings, input.model)
+    const route = input.sourceId || (!input.provider && !input.providerTemplate && !input.endpoint)
+        ? resolveConfiguredImageRoute(settings, input.model, input.sourceId)
         : null;
     if (route) input = { ...input, ...route };
     const requestedProvider = String(input.provider || settings.image_provider || 'openai-compatible').trim();

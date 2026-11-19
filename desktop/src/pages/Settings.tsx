@@ -24,9 +24,9 @@ import { normalizeXcliSource, XCLI_IMAGE_AGENTS, XCLI_IMAGE_AGENT_LABELS } from 
 import { MINIMAX_VIDEO_MODEL, type VideoProviderPreset } from '../../shared/videoProvider';
 import { XhsPublisherSettings } from './settings/XhsPublisherSettings';
 import {
-  AI_SOURCE_PRESETS,
   DEFAULT_AI_PRESET_ID,
   findAiPresetById,
+  getAiSourcePresetOptions,
   type AiSourceConfig,
 } from '../config/aiSources';
 import {
@@ -199,19 +199,20 @@ export function Settings({
     setSources((current) => current.map((source) => source.id === id ? { ...source, ...patch } : source));
   };
 
-  const addSource = () => {
-    const preset = findAiPresetById(DEFAULT_AI_PRESET_ID)!;
+  const addSource = (presetId = DEFAULT_AI_PRESET_ID) => {
+    const preset = findAiPresetById(presetId);
+    if (!preset) return;
     const id = uid('provider');
-    setSources((current) => [...current, {
+    setSources((current) => [...current, normalizeXcliSource({
       id,
       name: preset.label,
       presetId: preset.id,
       baseURL: preset.baseURL,
       apiKey: '',
-      model: '',
+      model: preset.defaultModel || '',
       models: [],
       protocol: preset.protocol,
-    }]);
+    })]);
   };
 
   const deleteSource = (id: string) => {
@@ -434,7 +435,7 @@ export function Settings({
 
           {view === 'ai' ? (
             <>
-              {!visibleSources.length && <WorkspaceGuide title="先配置你当前要用的 AI 能力" description="添加一个文本模型，就可以开始对话与写作。图片、视频和声音按需要再配置。" steps={[{ title: '添加供应商', description: '选择接口预设，填写地址、密钥和默认模型。' }, { title: '选择使用方式', description: '展开所需能力，选择供应商与模型，其余可以保持关闭。' }, { title: '保存后继续工作', description: '完成后回到研究或创作页面，不必一次配置全部服务。' }]}><button type="button" className="workspace-primary-button" onClick={addSource}>添加第一个供应商</button></WorkspaceGuide>}
+              {!visibleSources.length && <WorkspaceGuide title="先配置你当前要用的 AI 能力" description="添加一个文本模型，就可以开始对话与写作。图片、视频和声音按需要再配置。" steps={[{ title: '添加供应商', description: '选择接口预设，填写地址、密钥和默认模型。' }, { title: '选择使用方式', description: '展开所需能力，选择供应商与模型，其余可以保持关闭。' }, { title: '保存后继续工作', description: '完成后回到研究或创作页面，不必一次配置全部服务。' }]}><button type="button" className="workspace-primary-button" onClick={() => addSource()}>添加第一个供应商</button></WorkspaceGuide>}
               <SectionCard title="供应商" description="密钥仅保存在本机。支持 OpenAI、Anthropic、Gemini、本地服务以及任意兼容接口。">
                 {visibleSources.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-border p-8 text-center">
@@ -469,7 +470,7 @@ export function Settings({
                                 updateSource(source.id, normalizeXcliSource({ presetId: preset.id, name: preset.label, baseURL: preset.baseURL, protocol: preset.protocol, apiKey: '', models: [], modelsMeta: [], model: preset.defaultModel || '' }));
                               }}
                             >
-                              {AI_SOURCE_PRESETS.filter((preset) => supportsXcli || preset.id !== 'xcli').map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
+                              {getAiSourcePresetOptions(source, supportsXcli).map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
                             </select>
                           </label>
                           <label><span className={labelClass}>名称</span><input className={inputClass} value={source.name} onChange={(event) => updateSource(source.id, { name: event.target.value })} /></label>
@@ -493,7 +494,12 @@ export function Settings({
                     ))}
                   </div>
                 )}
-                <button type="button" onClick={addSource} className="mt-4 inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm text-text-secondary hover:bg-surface-secondary"><Plus className="h-4 w-4" />添加供应商</button>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button type="button" onClick={() => addSource()} className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm text-text-secondary hover:bg-surface-secondary"><Plus className="h-4 w-4" />添加供应商</button>
+                  {supportsXcli && !sources.some((source) => source.presetId === 'xcli') && (
+                    <button type="button" onClick={() => addSource('xcli')} className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm text-text-secondary hover:bg-surface-secondary"><Plus className="h-4 w-4" />添加 xcli</button>
+                  )}
+                </div>
               </SectionCard>
 
               <SectionCard title="能力路由" description="每项能力都可显式关闭，或指定一个已配置供应商和模型。">

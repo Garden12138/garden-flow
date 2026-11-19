@@ -66,10 +66,10 @@ GardenFlow 使用 BYOK（Bring Your Own Key）模式，不包含共享 API Key�
 
 安装 xcli v2，建议放到 `~/.local/bin/xcli`。在终端登录 Codex、Antigravity 或 Cursor CLI 中的至少一个，然后运行 `xcli agents` 确认状态。生图使用所选 CLI 的登录和额度。[下载 xcli v2](https://github.com/Garden12138/xcli/releases)
 
-1. 在设置中点击「添加供应商」，选择「xcli（本机 CLI 生图）」。
+1. 在设置中点击「添加 xcli」，新建「xcli（本机 CLI 生图）」供应商。
 2. 「xcli 可执行文件」可保留为 `xcli`，按 `XCLI_PATH`、`PATH`、`~/.local/bin/xcli` 的顺序查找。也可以填写绝对路径，文件名须为 `xcli`。配置无需 API Key。
 3. 在「生图 CLI」选择「自动（推荐）」或固定一个 CLI，然后点击「检查 CLI 状态」。GardenFlow 会先保存设置，再检查可用 CLI。检查不消耗生图额度。
-4. 在「能力路由」的「图片生成」中选择该来源并保存。
+4. 在「创作 → 生成工具」的「图片模型」中选择 `xcli · 自动（推荐）` 或指定 CLI。也可以在「能力路由 → 图片生成」中把 xcli 设为默认来源。
 
 支持文生图、参考图生成、图生图编辑和封面生图，最多可使用 4 张参考图。图片和封面分别进入媒体库和封面库。一次生成多张时，每个 xcli 子任务的第一张有效图片分别入库。每张通常需要 1～5 分钟。比例和尺寸作为生成要求传给 CLI，实际结果可能不同。xcli 不支持遮罩编辑、对话模型或 Windows。私密项目暂不支持 xcli，因为 xcli 和各 CLI 会在项目目录外保存提示词副本。
 

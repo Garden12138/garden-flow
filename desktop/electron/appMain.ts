@@ -8201,6 +8201,7 @@ ipcMain.handle('cover:generate', async (_, {
   templateName,
   count,
   model,
+  sourceId,
   provider,
   providerTemplate,
   endpoint,
@@ -8224,6 +8225,7 @@ ipcMain.handle('cover:generate', async (_, {
   templateName?: string;
   count?: number;
   model?: string;
+  sourceId?: string;
   provider?: string;
   providerTemplate?: string;
   endpoint?: string;
@@ -8245,6 +8247,7 @@ ipcMain.handle('cover:generate', async (_, {
       templateName,
       count,
       model,
+      sourceId,
       provider,
       providerTemplate,
       endpoint: endpoint || baseURL,

@@ -1,4 +1,5 @@
 import { parseAiModelRoutesValue } from '../../src/features/settings/modelRouteValue.ts';
+import { inferPresetIdByEndpoint } from '../../src/config/aiSources.ts';
 import {
   getModelInputCapabilities,
   normalizeModelInputCapabilities,
@@ -226,26 +227,30 @@ export function resolveVisionCapablePlanningLlm(
   return null;
 }
 
-export function resolveConfiguredImageRoute(settings: Record<string, unknown>, requestedModel?: string) {
+export function resolveConfiguredImageRoute(settings: Record<string, unknown>, requestedModel?: string, requestedSourceId?: string) {
   const route = parseAiModelRoutesValue(settings.ai_model_routes_json).image as Record<string, unknown> | undefined;
   const sources = parseAiSources(settings);
+  const sourceId = text(requestedSourceId);
+  const requestedSource = sourceId ? findSource(sources, sourceId) : null;
+  if (sourceId && !requestedSource) throw new Error('所选图片供应商已移除，请重新选择图片模型。');
   const selectedSource = route?.mode !== 'disabled' ? findSource(sources, text(route?.sourceId || route?.source_id)) : null;
-  const selectedModel = text(route?.model || route?.modelName || selectedSource?.model);
+  const selectedModel = text(requestedSource ? requestedSource.model : route?.model || route?.modelName || selectedSource?.model);
   const requested = text(requestedModel);
-  const requestedQwenSource = requested && requested !== selectedModel
+  const requestedQwenSource = !requestedSource && requested && requested !== selectedModel
     ? sources.find((source) => source.presetId === QWEN_IMAGE_STUDIO && (
       text(source.model) === requested || (Array.isArray(source.models) && source.models.includes(requested))
     ))
     : null;
-  const source = requestedQwenSource || selectedSource;
-  const preset = text(source?.presetId);
-  if (!source || !preset) return null;
+  const source = requestedSource || requestedQwenSource || selectedSource;
+  if (!source) return null;
+  const preset = text(source.presetId) || (requestedSource ? inferPresetIdByEndpoint(text(source.baseURL || source.baseUrl)) : '');
+  if (!preset) return null;
   const routing = imageRoutingForPreset(preset);
   if (preset === 'xcli') {
     return {
       endpoint: text(source.baseURL) || 'xcli',
       apiKey: '',
-      model: normalizeXcliImageAgent(selectedModel),
+      model: normalizeXcliImageAgent(requestedSource ? requested || selectedModel : selectedModel),
       ...routing,
     };
   }

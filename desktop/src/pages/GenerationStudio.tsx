@@ -115,6 +115,7 @@ import {
     fileUrlToPath,
     digitalHumanReadiness,
     buildImageModelOptions,
+    getDefaultImageModelSelection,
     buildAudioModelOptions,
     resolveSelectedModelOverride,
     hasImageGenerationConfig,
@@ -1948,8 +1949,9 @@ export function GenerationStudio({
             const normalizedSettings = (nextSettings || {}) as SettingsShape;
             setSettings(normalizedSettings);
 
-            setImageModel((prev) => (overwriteDraftDefaults || !prev.trim() ? (normalizedSettings.image_model || '') : prev));
-            setCoverModel((prev) => (overwriteDraftDefaults || !prev.trim() ? (normalizedSettings.image_model || '') : prev));
+            const defaultImageModel = getDefaultImageModelSelection(normalizedSettings);
+            setImageModel((prev) => (overwriteDraftDefaults || !prev.trim() ? defaultImageModel : prev));
+            setCoverModel((prev) => (overwriteDraftDefaults || !prev.trim() ? defaultImageModel : prev));
             setImageAspectRatio((prev) => (overwriteDraftDefaults || !prev.trim() ? (normalizedSettings.image_aspect_ratio || '4:3') : prev));
             setImageSize((prev) => (overwriteDraftDefaults || !prev.trim() ? (normalizedSettings.image_size || '') : prev));
             setCoverQuality((prev) => (overwriteDraftDefaults || !prev.trim() ? normalizeImageQuality(normalizedSettings.image_quality) : prev));
@@ -3861,10 +3863,11 @@ export function GenerationStudio({
                 ...(currentAgentRequest.title.trim() ? { title: currentAgentRequest.title.trim() } : {}),
             }
             : undefined;
+        const imageToolRoute = currentAgentRequest.type === 'cover' ? coverModelRoute : imageModelRoute;
         const generationToolConstraints = videoToolInputs
             ? { videoGenerate: videoToolInputs }
             : currentAgentRequest.type === 'image' || currentAgentRequest.type === 'cover'
-                ? { imageGenerate: { model: currentAgentRequest.model } }
+                ? { imageGenerate: { model: imageToolRoute.model || currentAgentRequest.model, sourceId: imageToolRoute.sourceId } }
                 : currentAgentRequest.type === 'audio'
                     ? {
                         audioGenerate: {
@@ -3931,8 +3934,10 @@ export function GenerationStudio({
         audioVoicesForModel,
         contextIntent?.source,
         contextIntent?.sourceTitle,
+        coverModelRoute,
         currentAgentRequest,
         ensureAgentFeedEntry,
+        imageModelRoute,
         isAgentSessionLoading,
         isPreparingAgentMessage,
         recentAgentAssets,

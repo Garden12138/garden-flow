@@ -29,6 +29,7 @@ export interface GenerateImagesInput {
     size?: string;
     quality?: string;
     model?: string;
+    sourceId?: string;
     provider?: string;
     providerTemplate?: ImageProviderTemplate | string;
     endpoint?: string;
@@ -122,8 +123,8 @@ export async function generateImagesToMediaLibrary(input: GenerateImagesInput): 
     }
 
     const settings = (getSettings() || {}) as Record<string, unknown>;
-    const route = !input.provider && !input.providerTemplate && !input.endpoint
-        ? resolveConfiguredImageRoute(settings, input.model)
+    const route = input.sourceId || (!input.provider && !input.providerTemplate && !input.endpoint)
+        ? resolveConfiguredImageRoute(settings, input.model, input.sourceId)
         : null;
     if (route) input = { ...input, ...route };
     const requestedProvider = String(input.provider || settings.image_provider || 'openai-compatible').trim();

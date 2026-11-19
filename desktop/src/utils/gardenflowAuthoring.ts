@@ -48,6 +48,7 @@ export interface AuthoringTaskHints {
     generationToolConstraints?: {
         imageGenerate?: {
             model?: string;
+            sourceId?: string;
         };
         videoGenerate?: {
             operation?: 'generate' | 'generate-note';

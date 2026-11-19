@@ -9,6 +9,7 @@ import type {
 
 export type ModelRouteOverride = {
     sourceId?: string;
+    model?: string;
     baseURL?: string;
     endpoint?: string;
     apiKey?: string;
