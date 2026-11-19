@@ -3466,15 +3466,27 @@ function initializeTaskQueueWithExecutors() {
 // --------- IPC Handlers ---------
 
 // Database
-ipcMain.handle('db:save-settings', async (_, settings) => {
-  const normalized = normalizeSettingsInput((settings || {}) as Record<string, unknown>) as Parameters<typeof saveSettings>[0];
-  const result = saveSettings(normalized);
-  embeddingService.reload();
-  setDebugLoggingEnabled(Boolean(normalized.debug_log_enabled));
-  await applyGlobalNetworkProxy((getSettings() || {}) as Record<string, unknown>);
-  broadcastSettingsUpdated();
-  return result;
-})
+let settingsSaveQueue: Promise<unknown> = Promise.resolve();
+ipcMain.handle('db:save-settings', (_, settings) => {
+  const operation = settingsSaveQueue.then(async () => {
+    const normalized = normalizeSettingsInput((settings || {}) as Record<string, unknown>) as Parameters<typeof saveSettings>[0];
+    const previous = getSettings() || {};
+    await applyGlobalNetworkProxy({ ...previous, ...normalized });
+    let result: ReturnType<typeof saveSettings>;
+    try {
+      result = saveSettings(normalized);
+    } catch (error) {
+      await applyGlobalNetworkProxy(previous).catch(rollbackError => console.error('Failed to restore network proxy', rollbackError));
+      throw error;
+    }
+    embeddingService.reload();
+    setDebugLoggingEnabled(Boolean(getSettings()?.debug_log_enabled));
+    broadcastSettingsUpdated();
+    return result;
+  });
+  settingsSaveQueue = operation.catch(() => undefined);
+  return operation;
+});
 
 ipcMain.handle('db:get-settings', () => {
   return getSettings()

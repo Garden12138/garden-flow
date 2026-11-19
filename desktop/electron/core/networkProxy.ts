@@ -1,7 +1,7 @@
 import { session } from 'electron';
 
 type ProxySettingsLike = {
-  proxy_enabled?: boolean;
+  proxy_enabled?: boolean | number;
   proxy_url?: string;
   proxy_bypass?: string;
 };
@@ -56,15 +56,6 @@ function clearProxyEnv(): void {
   delete process.env.no_proxy;
 }
 
-async function applyUndiciDispatcher(enabled: boolean): Promise<void> {
-  const undici = await import('undici');
-  if (enabled) {
-    undici.setGlobalDispatcher(new undici.EnvHttpProxyAgent());
-    return;
-  }
-  undici.setGlobalDispatcher(new undici.Agent());
-}
-
 export async function applyGlobalNetworkProxy(settings?: ProxySettingsLike | null): Promise<AppliedProxyState> {
   const enabled = Boolean(settings?.proxy_enabled) && Boolean(String(settings?.proxy_url || '').trim());
   const proxyUrl = enabled ? normalizeProxyUrl(settings?.proxy_url) : '';
@@ -79,25 +70,22 @@ export async function applyGlobalNetworkProxy(settings?: ProxySettingsLike | nul
     return { enabled, proxyUrl, proxyBypass };
   }
 
-  if (enabled) {
-    setProxyEnv(proxyUrl, proxyBypass);
-  } else {
-    clearProxyEnv();
+  const undici = await import('undici');
+  const dispatcher = enabled
+    ? new undici.EnvHttpProxyAgent({ httpProxy: proxyUrl, httpsProxy: proxyUrl, noProxy: proxyBypass })
+    : new undici.Agent();
+  try {
+    await session.defaultSession?.setProxy(enabled
+      ? { proxyRules: proxyUrl, proxyBypassRules: proxyBypass }
+      : { mode: 'direct' });
+  } catch (error) {
+    await dispatcher.close().catch(() => undefined);
+    throw error;
   }
 
-  await applyUndiciDispatcher(enabled);
-
-  if (session.defaultSession) {
-    if (enabled) {
-      await session.defaultSession.setProxy({
-        proxyRules: proxyUrl,
-        proxyBypassRules: proxyBypass,
-      });
-    } else {
-      await session.defaultSession.setProxy({ mode: 'direct' });
-    }
-  }
-
+  if (enabled) setProxyEnv(proxyUrl, proxyBypass);
+  else clearProxyEnv();
+  undici.setGlobalDispatcher(dispatcher);
   lastAppliedSignature = signature;
   return { enabled, proxyUrl, proxyBypass };
 }

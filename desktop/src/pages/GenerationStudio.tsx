@@ -1,5 +1,6 @@
 import { WorkspaceGuide } from '../features/workbench/WorkspaceGuidance';
 import { useDialogFocus } from '../features/workbench/useDialogFocus';
+import { useXcliProxyConsent } from '../features/media-generation/useXcliProxyConsent';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import {
     ArrowLeft,
@@ -150,6 +151,10 @@ import { resolveAssetUrl } from '../utils/pathManager';
 import { appAlert, appConfirm } from '../utils/appDialogs';
 import { collectNestedFiles, isInternalPackageFile, type FileNode } from '../features/manuscripts/editorModel';
 import { WorkbenchStatePanel } from '../features/workbench/WorkbenchPrimitives';
+
+function usesXcliImageRoute(settings: SettingsShape, route: { providerTemplate?: unknown; provider?: unknown }): boolean {
+    return (route.providerTemplate || route.provider || settings.image_provider_template || settings.image_provider) === 'xcli';
+}
 
 type GenerationSubmitButtonProps = {
     onClick: () => void;
@@ -1688,6 +1693,7 @@ export function GenerationStudio({
     onReturnHome,
     onOpenAssets,
 }: GenerationStudioProps) {
+    const { confirmProxy, proxyDialog } = useXcliProxyConsent(isActive);
     const [recipeOpen, setRecipeOpen] = useState(false);
     const [recipeNarrow, setRecipeNarrow] = useState(() => window.innerWidth < 1200);
     const recipeRef = useDialogFocus(() => setRecipeOpen(false), recipeOpen && recipeNarrow);
@@ -2523,7 +2529,7 @@ export function GenerationStudio({
         sourceTitle: contextIntent?.sourceTitle,
     }), [contextIntent?.source, contextIntent?.sourceTitle]);
 
-    const runImageRequest = useCallback((request: ImageGenerationRequest): boolean => {
+    const runImageRequest = useCallback(async (request: ImageGenerationRequest): Promise<boolean> => {
         const modelRouteOverride = resolveSelectedModelOverride(settings, 'image', 'image', request.model);
         const qwenStudio = (modelRouteOverride.providerTemplate || settings.image_provider_template) === QWEN_IMAGE_STUDIO;
         const validationError = qwenStudio && request.referenceItems.length > 1
@@ -2533,6 +2539,7 @@ export function GenerationStudio({
             setImageError(validationError);
             return false;
         }
+        if (usesXcliImageRoute(settings, modelRouteOverride) && !(await confirmProxy())) return false;
 
         const entry = createFeedEntry(request);
         updateFeedEntries((prev) => [...prev, entry]);
@@ -2565,6 +2572,7 @@ export function GenerationStudio({
         })();
         return true;
     }, [
+        confirmProxy,
         createFeedEntry,
         contextIntent?.source,
         settings,
@@ -2732,13 +2740,14 @@ export function GenerationStudio({
         uploadDigitalHumanMedia,
     ]);
 
-    const runCoverRequest = useCallback((request: CoverGenerationRequest): boolean => {
+    const runCoverRequest = useCallback(async (request: CoverGenerationRequest): Promise<boolean> => {
         const modelRouteOverride = resolveSelectedModelOverride(settings, 'image', 'image', request.model);
         const validationError = validateCoverGenerationRequest(request, { hasImageConfig: hasImageGenerationConfig(settings, modelRouteOverride) });
         if (validationError) {
             setCoverError(validationError);
             return false;
         }
+        if (usesXcliImageRoute(settings, modelRouteOverride) && !(await confirmProxy())) return false;
 
         const entry = createFeedEntry(request);
         updateFeedEntries((prev) => [...prev, entry]);
@@ -2770,6 +2779,7 @@ export function GenerationStudio({
         })();
         return true;
     }, [
+        confirmProxy,
         createFeedEntry,
         settings,
         settings.image_provider,
@@ -2777,8 +2787,8 @@ export function GenerationStudio({
         updateFeedEntries,
     ]);
 
-    const handleGenerateImage = useCallback(() => {
-        const accepted = runImageRequest(buildImageGenerationRequest({
+    const handleGenerateImage = useCallback(async () => {
+        const accepted = await runImageRequest(buildImageGenerationRequest({
             prompt: imagePrompt,
             title: imageTitle,
             projectId: imageProjectId,
@@ -2907,8 +2917,8 @@ export function GenerationStudio({
         selectedDigitalHumanRole,
     ]);
 
-    const handleGenerateCover = useCallback(() => {
-        const accepted = runCoverRequest(buildCoverGenerationRequest({
+    const handleGenerateCover = useCallback(async () => {
+        const accepted = await runCoverRequest(buildCoverGenerationRequest({
             prompt: coverPrompt,
             title: coverTitle,
             projectId: coverProjectId,
@@ -2994,16 +3004,18 @@ export function GenerationStudio({
         return true;
     }, [createFeedEntry, updateFeedEntries]);
 
-    const handleRegenerate = useCallback((entry: GenerationFeedEntry) => {
+    const handleRegenerate = useCallback(async (entry: GenerationFeedEntry) => {
+        if (entry.request.type === 'image' && entry.jobRequest
+            && usesXcliImageRoute(settings, entry.jobRequest) && !(await confirmProxy())) return;
         if (replayQueuedMediaRequest(entry)) {
             return;
         }
         if (entry.request.type === 'cover') {
-            runCoverRequest(entry.request);
+            void runCoverRequest(entry.request);
             return;
         }
         if (entry.request.type === 'image') {
-            runImageRequest(entry.request);
+            void runImageRequest(entry.request);
             return;
         }
         if (entry.request.type === 'audio') {
@@ -3015,7 +3027,7 @@ export function GenerationStudio({
             return;
         }
         runVideoRequest(entry.request);
-    }, [replayQueuedMediaRequest, runAudioRequest, runCoverRequest, runDigitalHumanRequest, runImageRequest, runVideoRequest]);
+    }, [confirmProxy, replayQueuedMediaRequest, runAudioRequest, runCoverRequest, runDigitalHumanRequest, runImageRequest, runVideoRequest, settings]);
 
     const handleCancelEntry = useCallback((entry: GenerationFeedEntry) => {
         if (!entry.jobId || entry.status !== 'running') return;
@@ -3670,6 +3682,12 @@ export function GenerationStudio({
             || isPreparingAgentMessage
             || agentExecutionActive) return;
         setIsPreparingAgentMessage(true);
+        const imageToolRoute = currentAgentRequest.type === 'cover' ? coverModelRoute : imageModelRoute;
+        if ((currentAgentRequest.type === 'image' || currentAgentRequest.type === 'cover')
+            && usesXcliImageRoute(settings, imageToolRoute) && !(await confirmProxy())) {
+            setIsPreparingAgentMessage(false);
+            return;
+        }
         const attachments: UploadedFileAttachment[] = [];
         const attachmentContextNotes: string[] = [];
         const videoReferenceImagePaths: string[] = [];
@@ -3863,7 +3881,6 @@ export function GenerationStudio({
                 ...(currentAgentRequest.title.trim() ? { title: currentAgentRequest.title.trim() } : {}),
             }
             : undefined;
-        const imageToolRoute = currentAgentRequest.type === 'cover' ? coverModelRoute : imageModelRoute;
         const generationToolConstraints = videoToolInputs
             ? { videoGenerate: videoToolInputs }
             : currentAgentRequest.type === 'image' || currentAgentRequest.type === 'cover'
@@ -3932,6 +3949,7 @@ export function GenerationStudio({
         agentSessionId,
         audioLanguageBoost,
         audioVoicesForModel,
+        confirmProxy,
         contextIntent?.source,
         contextIntent?.sourceTitle,
         coverModelRoute,
@@ -3941,6 +3959,7 @@ export function GenerationStudio({
         isAgentSessionLoading,
         isPreparingAgentMessage,
         recentAgentAssets,
+        settings,
         studioMode,
     ]);
     const handleAgentPendingMessageError = useCallback((message: string) => {
@@ -4027,6 +4046,7 @@ export function GenerationStudio({
         && !runningEntries.some((entry) => entry.ownerSessionId === agentSessionId));
     return (
         <div data-recipe-open={recipeOpen} className="workbench-production h-full min-h-0 text-text-primary">
+            {proxyDialog}
             <div className="production-workspace">
                 {onReturnHome && (
                     <div className="flex h-12 shrink-0 items-center">

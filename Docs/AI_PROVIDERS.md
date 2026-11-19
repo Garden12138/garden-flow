@@ -77,4 +77,6 @@ GardenFlow 使用 BYOK（Bring Your Own Key）模式，不包含共享 API Key�
 
 Antigravity 报 `plan model not specified` 时，可用只读的 `agy models` 检查模型列表。GardenFlow 会按应用内的网络代理设置启动 CLI。终端通过代理运行成功时，也要核对桌面应用的代理设置。
 
+在「创作 → 生成工具」发起 xcli 生图或封面生成时，如果代理未启用，GardenFlow 会弹窗询问。已有代理地址会预填，也可以在弹窗里填写。选择「启用并继续」会保存并启用 GardenFlow 的全局网络代理，然后提交本次生成。选择「继续直连」会直接提交，选择「取消」会保留提示词。
+
 开发者可运行 `pnpm --dir desktop test`。其中 xcli 测试使用临时假脚本，不消耗额度。
