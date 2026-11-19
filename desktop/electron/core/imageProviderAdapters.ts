@@ -1666,8 +1666,17 @@ export function xcliProgressMessage(event: XcliEvent, startedAt: number, now: nu
     }
 }
 
-function xcliImageFailure(result: XcliResult): Error {
-    return new Error(`xcli 生成失败（${result.error?.kind || 'no_artifact'}）：${result.error?.message || '未返回图片'}（任务 ${result.task_id}，可运行 xcli result ${result.task_id} 查看详情）`);
+export class XcliImageTaskError extends Error {
+    readonly taskId: string;
+    readonly providerCode: string;
+
+    constructor(result: XcliResult) {
+        const providerCode = result.error?.kind || 'no_artifact';
+        super(`xcli 生成失败（${providerCode}）：${result.error?.message || '未返回图片'}（任务 ${result.task_id}，可运行 xcli result ${result.task_id} 查看详情）`);
+        this.name = 'XcliImageTaskError';
+        this.taskId = result.task_id;
+        this.providerCode = providerCode;
+    }
 }
 
 const xcliImageAdapter: ImageProviderAdapter = {
@@ -1720,7 +1729,7 @@ const xcliImageAdapter: ImageProviderAdapter = {
             if (temporaryDirectory) await fs.rm(temporaryDirectory, { recursive: true, force: true });
         }
 
-        if (result.status !== 'completed') throw xcliImageFailure(result);
+        if (result.status !== 'completed') throw new XcliImageTaskError(result);
         // A single xcli task can return multiple files for one generated image.
         for (const artifact of result.artifacts) {
             if (artifact?.kind !== 'image' || typeof artifact.path !== 'string' || !isAbsolute(artifact.path)) continue;
@@ -1732,7 +1741,7 @@ const xcliImageAdapter: ImageProviderAdapter = {
                 size: artifact.width && artifact.height ? `${artifact.width}x${artifact.height}` : undefined,
             }];
         }
-        throw xcliImageFailure(result);
+        throw new XcliImageTaskError(result);
     },
 };
 

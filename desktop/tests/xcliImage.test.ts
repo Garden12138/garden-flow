@@ -84,6 +84,9 @@ if (args === 'agents --json') {
         } else if (mode === 'fail') {
             finish('failed', [], { kind: 'quota', message: 'codex 额度暂不可用' });
             process.exitCode = 1;
+        } else if (mode === 'plan-model-missing') {
+            finish('failed', [], { kind: 'failed', message: '请检查 CLI 参数、模型和运行环境后重试' });
+            process.exitCode = 1;
         } else if (mode === 'noresult') {
             console.error('boom');
             process.exitCode = 3;
@@ -166,6 +169,18 @@ const xcliSettings = (executable: string) => ({
 const adapterInput = {
     prompt: '猫', model: 'auto', endpoint: 'xcli', apiKey: '', provider: 'xcli', providerTemplate: 'xcli' as const,
 };
+
+test('keeps the task ID and provider error code when xcli finishes without an image', unixOnly, async (t) => {
+    const fake = makeFakeXcli(t, 'plan-model-missing');
+    const { generateImagesToMediaLibrary } = await loadImageService(xcliSettings(fake.executable));
+    await assert.rejects(generateImagesToMediaLibrary({ prompt: '猫', count: 1 }), {
+        name: 'XcliImageTaskError',
+        taskId: 't-fake',
+        providerCode: 'failed',
+        message: /xcli 生成失败（failed）.*任务 t-fake/,
+    });
+    assert.equal(JSON.parse(fs.readFileSync(fake.stdinPath, 'utf8')).agent, undefined);
+});
 
 test('normalizes xcli image agents and defaults legacy aliases to auto', () => {
     assert.equal(normalizeXcliImageAgent(' Codex '), 'codex');

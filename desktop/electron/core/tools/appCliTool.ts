@@ -124,6 +124,7 @@ import {
     searchSubjects,
 } from '../subjectsLibraryStore';
 import { generateImagesToMediaLibrary } from '../imageGenerationService';
+import { XcliImageTaskError } from '../imageProviderAdapters';
 import { generateVideosToMediaLibrary, VideoGenerationProviderError } from '../videoGenerationService';
 import { createBrandWorkspaceStore } from '../brandWorkspaceStore';
 import { SkillManager } from '../skillManager';
@@ -1864,6 +1865,19 @@ export class AppCliTool extends DeclarativeTool<typeof AppCliParamsSchema> {
                 error: message,
             });
             const failure = createErrorResult(`app_cli failed: ${message}`, ToolErrorType.EXECUTION_FAILED);
+            if (error instanceof XcliImageTaskError) {
+                return {
+                    ...failure,
+                    data: {
+                        kind: 'media-generation-error',
+                        mediaType: 'image',
+                        provider: 'xcli',
+                        providerErrorCode: error.providerCode,
+                        taskId: error.taskId,
+                        terminal: true,
+                    },
+                };
+            }
             if (error instanceof VideoGenerationProviderError) {
                 return {
                     ...failure,

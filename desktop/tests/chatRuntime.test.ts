@@ -3,7 +3,11 @@ import test from 'node:test';
 import type { Message } from '../src/components/MessageItem.tsx';
 import { finalizeCancelledChatMessages } from '../src/features/chat/chatCancellation.ts';
 import { buildEditorSessionBinding } from '../src/features/chat/editorSessionBinding.ts';
-import { validateRuntimeCompletion } from '../electron/core/ai/runtimeCompletion.ts';
+import {
+  applyRuntimeMediaToolResult,
+  trackRuntimeMediaToolResult,
+  validateRuntimeCompletion,
+} from '../electron/core/ai/runtimeCompletion.ts';
 import {
   INTENT_NAMES,
   resolveIntentExecutionPolicy,
@@ -69,6 +73,39 @@ const imageRoute: IntentRoute = {
   requiredCapabilities: ['image-generation'],
   recommendedRole: 'image-director',
 };
+
+test('a terminal xcli result ends media completion recovery for both image tool entry points', () => {
+  const message = 'xcli 生成失败（failed）：请检查模型（任务 t-fake）';
+  const result = {
+    success: false,
+    llmContent: message,
+    error: { message },
+    data: {
+      kind: 'media-generation-error',
+      mediaType: 'image',
+      provider: 'xcli',
+      terminal: true,
+      taskId: 't-fake',
+      providerErrorCode: 'failed',
+    },
+  };
+  const completion = validateRuntimeCompletion({ route: imageRoute, artifacts: [] });
+  for (const toolName of ['image_generate', 'app_cli']) {
+    const mediaResult = trackRuntimeMediaToolResult(undefined, toolName, result);
+    const validation = applyRuntimeMediaToolResult(completion, mediaResult);
+    assert.equal(validation.complete, false);
+    assert.equal(validation.terminalError, `媒体生成失败：${message}`);
+  }
+  const untyped = { ...result, data: undefined };
+  const retryable = trackRuntimeMediaToolResult(undefined, 'image_generate', untyped);
+  assert.equal(applyRuntimeMediaToolResult(completion, retryable).terminalError, undefined);
+  assert.equal(trackRuntimeMediaToolResult(undefined, 'app_cli', untyped), undefined);
+  const success = { success: true, llmContent: '生成成功', data: { kind: 'generated-images', provider: 'xcli' } };
+  assert.equal(
+    applyRuntimeMediaToolResult(completion, trackRuntimeMediaToolResult(result, 'app_cli', success)).terminalError,
+    undefined,
+  );
+});
 
 test('persisted terminal chat state overrides a stale streaming warm snapshot', () => {
   const warm = {

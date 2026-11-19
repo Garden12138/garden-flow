@@ -1,11 +1,46 @@
 import type { AgentTaskArtifactRecord } from '../../db';
 import type { IntentRoute } from './types';
+import type { ToolResult } from '../toolRegistry';
+import { MEDIA_GENERATION_TOOL_NAMES } from '../../../shared/mediaGenerationContracts.ts';
 import { validateXhsPublishCompletion } from './xhsPublishWorkflowPolicy.ts';
 
 export interface RuntimeCompletionValidation {
   complete: boolean;
   feedback?: string;
   maxRecoveryAttempts?: number;
+  terminalError?: string;
+}
+
+export function trackRuntimeMediaToolResult(
+  previous: ToolResult | undefined,
+  toolName: string,
+  result: ToolResult,
+): ToolResult | undefined {
+  if (MEDIA_GENERATION_TOOL_NAMES.some((name) => name === toolName)) return result;
+  if (toolName !== 'app_cli') return previous;
+
+  const data = result.data as { kind?: string; provider?: string; mediaType?: string } | undefined;
+  if (data?.provider === 'xcli' && (data.kind === 'generated-images'
+    || (data.kind === 'media-generation-error' && data.mediaType === 'image'))) return result;
+  return previous;
+}
+
+export function applyRuntimeMediaToolResult(
+  completion: RuntimeCompletionValidation,
+  result?: ToolResult,
+): RuntimeCompletionValidation {
+  if (completion.complete || !result || result.success) return completion;
+  const message = String(result.error?.message || result.llmContent || result.display || '').trim();
+  if (!message) return completion;
+
+  const data = result.data as { kind?: string; terminal?: boolean } | undefined;
+  return {
+    ...completion,
+    terminalError: data?.kind === 'media-generation-error' && data.terminal === true
+      ? `媒体生成失败：${message}`
+      : completion.terminalError,
+    feedback: [completion.feedback, `最近一次媒体工具错误：${message}`].filter(Boolean).join('\n'),
+  };
 }
 
 export interface XhsMediaCompletionState {

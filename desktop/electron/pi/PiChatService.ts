@@ -61,6 +61,8 @@ import { logDebugEvent } from '../core/debugLogger';
 import { loadPrompt, renderPrompt } from '../prompts/runtime';
 import { getAgentRuntime, getTaskGraphRuntime, type PreparedRuntimeExecution, type RuntimeMode } from '../core/ai';
 import {
+  applyRuntimeMediaToolResult,
+  trackRuntimeMediaToolResult,
   validateRuntimeCompletion,
   type ProductVideoCompletionState,
   type XhsMediaCompletionState,
@@ -1091,8 +1093,7 @@ export class PiChatService {
           throw error;
         }
       }
-      let lastMediaToolError = '';
-      let lastMediaToolErrorIsTerminal = false;
+      let lastMediaToolResult: ToolResult | undefined;
       const captureTask = isXhsAutoCaptureTask({
         ...preparedTaskMetadata,
         builtinTaskId: preparedTaskMetadata.builtinTaskId || metadata.builtinTaskId,
@@ -1141,19 +1142,7 @@ export class PiChatService {
                 };
               }
             }
-            if (toolName === 'image_generate' || toolName === 'video_generate' || toolName === 'audio_generate') {
-              if (result.success) {
-                lastMediaToolError = '';
-                lastMediaToolErrorIsTerminal = false;
-              } else {
-                lastMediaToolError = String(result.error?.message || result.llmContent || result.display || '').trim();
-                const errorData = result.data && typeof result.data === 'object' && !Array.isArray(result.data)
-                  ? result.data as Record<string, unknown>
-                  : null;
-                lastMediaToolErrorIsTerminal = errorData?.kind === 'media-generation-error'
-                  && errorData.terminal === true;
-              }
-            }
+            lastMediaToolResult = trackRuntimeMediaToolResult(lastMediaToolResult, toolName, result);
           },
           summarizeToolResult: (_toolName, result) => {
             const contentText = String(result.llmContent || result.display || result.error?.message || '');
@@ -1241,19 +1230,7 @@ export class PiChatService {
               xhsMediaState,
               productVideoState: productVideoCompletion.state,
             });
-            if (!completion.complete && lastMediaToolError) {
-              return {
-                ...completion,
-                terminalError: lastMediaToolErrorIsTerminal
-                  ? `媒体生成失败：${lastMediaToolError}`
-                  : undefined,
-                feedback: [
-                  completion.feedback,
-                  `最近一次媒体工具错误：${lastMediaToolError}`,
-                ].filter(Boolean).join('\n'),
-              };
-            }
-            return completion;
+            return applyRuntimeMediaToolResult(completion, lastMediaToolResult);
           },
         },
         {
