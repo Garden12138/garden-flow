@@ -64,7 +64,7 @@ GardenFlow 使用 BYOK（Bring Your Own Key）模式，不包含共享 API Key�
 
 ## xcli（本机 CLI 生图）
 
-安装 xcli v2，建议放到 `~/.local/bin/xcli`。在终端登录 Codex、Antigravity 或 Cursor CLI 中的至少一个，然后运行 `xcli agents` 确认状态。生图使用所选 CLI 的登录和额度。[下载 xcli v2](https://github.com/Garden12138/xcli/releases)
+建议安装 xcli v2.0.1 或更新的 v2 版本，放到 `~/.local/bin/xcli`。在终端登录 Codex、Antigravity 或 Cursor CLI 中的至少一个，然后运行 `xcli agents` 确认状态。生图使用所选 CLI 的登录和额度。[下载 xcli v2](https://github.com/Garden12138/xcli/releases)
 
 1. 在设置中点击「添加 xcli」，新建「xcli（本机 CLI 生图）」供应商。
 2. 「xcli 可执行文件」可保留为 `xcli`，按 `XCLI_PATH`、`PATH`、`~/.local/bin/xcli` 的顺序查找。也可以填写绝对路径，文件名须为 `xcli`。配置无需 API Key。
@@ -73,7 +73,7 @@ GardenFlow 使用 BYOK（Bring Your Own Key）模式，不包含共享 API Key�
 
 支持文生图、参考图生成、图生图编辑和封面生图，最多可使用 4 张参考图。图片和封面分别进入媒体库和封面库。一次生成多张时，每个 xcli 子任务的第一张有效图片分别入库。每张通常需要 1～5 分钟。比例和尺寸作为生成要求传给 CLI，实际结果可能不同。xcli 不支持遮罩编辑、对话模型或 Windows。私密项目暂不支持 xcli，因为 xcli 和各 CLI 会在项目目录外保存提示词副本。
 
-如果错误信息包含任务 ID，在终端运行 `xcli result <任务 ID>` 查看详情。自动模式由 xcli 处理回退，遇到额度不足、认证失败或服务不可用等可切换错误时，会尝试其他可用的 CLI。通用 `failed` 会结束该任务。生成工具收到 xcli 的终态失败后显示原错误和任务 ID，停止本次交付物恢复。
+如果错误信息包含任务 ID，在终端运行 `xcli result <任务 ID>` 查看详情。xcli v2.0.1 的默认自动路由优先选择 Codex。遇到额度不足、认证失败或服务不可用等可切换错误时，xcli 会尝试其他可用的 CLI。此版本将 Antigravity 缺少可用模型归为服务不可用。通用 `failed` 会结束该任务。生成工具收到 xcli 的终态失败后显示原错误和任务 ID，停止本次交付物恢复。
 
 Antigravity 报 `plan model not specified` 时，可用只读的 `agy models` 检查模型列表。GardenFlow 会按应用内的网络代理设置启动 CLI。终端通过代理运行成功时，也要核对桌面应用的代理设置。
 
